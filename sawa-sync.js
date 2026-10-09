@@ -207,7 +207,8 @@
   // ---------- شارة الفحص (اختياريّة، للجوّال) ----------
   function debugOn() {
     try {
-      if (/[?&]sync=debug/.test(global.location.search)) return true;
+      // يتعرّف على ?sync=debug و ?sync=seed (أيّ قيمة sync=…)
+      if (/[?&]sync=(debug|seed)/.test(global.location.search)) return true;
       return localStorage.getItem("sawa_sync_debug") === "1";
     } catch (e) { return false; }
   }
@@ -217,9 +218,9 @@
     try {
       if (!badgeEl) {
         badgeEl = global.document.createElement("div");
-        badgeEl.style.cssText = "position:fixed;left:8px;bottom:70px;z-index:99999;" +
-          "font:600 11px system-ui;padding:6px 10px;border-radius:10px;" +
-          "box-shadow:0 2px 8px rgba(0,0,0,.25);direction:ltr;pointer-events:none;max-width:70vw";
+        badgeEl.style.cssText = "position:fixed;left:8px;right:8px;top:8px;z-index:2147483647;" +
+          "font:700 13px system-ui;padding:9px 12px;border-radius:10px;text-align:center;" +
+          "box-shadow:0 2px 10px rgba(0,0,0,.35);direction:ltr;pointer-events:none;";
         global.document.body.appendChild(badgeEl);
       }
       var ok = state.ready && state.uid;
