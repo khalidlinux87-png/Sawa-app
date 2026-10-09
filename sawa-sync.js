@@ -48,6 +48,7 @@
   function lsRead(key, fb) { return lsGet("sawa:" + key, fb); } // مخازن التطبيق (البادئة sawa:)
   function isAr() { try { return (localStorage.getItem("sawaLang") || "ar") === "ar"; } catch (e) { return true; } }
   function L(ar, en) { return isAr() ? ar : en; }
+  function clock() { var d = new Date(); return [d.getHours(), d.getMinutes(), d.getSeconds()].map(function (n) { return (n < 10 ? "0" : "") + n; }).join(":"); }
   function hasFirebase() { return !!(global.firebase && firebase.auth && global.SawaAuth); }
 
   function enabled() {
@@ -154,7 +155,7 @@
       }
       state.sending = false; paintBadge(); drain();
     }).catch(function (e) {
-      state.sending = false; state.lastAck = "… " + item.op; paintBadge();
+      state.sending = false; state.lastAck = "… " + item.op + " (" + String((e && e.message) || e).slice(0, 40) + ")"; paintBadge();
       log("شبكة — إعادة لاحقاً:", (e && e.message) || e);
       if (!retryTimer) retryTimer = setTimeout(function () { retryTimer = null; drain(); }, 15000);
     });
@@ -272,18 +273,21 @@
       onPersons: function (arr) {
         if (!remote || remote.sg !== sg) return;
         remote.persons = arr.filter(function (p) { return p.deleted !== true; });
+        state.lastSnap = clock();
         state.dbgPersons = remote.persons.length; paintBadge();
         applyPendingRemote();
       },
       onRelations: function (arr) {
         if (!remote || remote.sg !== sg) return;
         remote.relations = arr.filter(function (r) { return !r.deleted; });
+        state.lastSnap = clock();
         state.dbgRelations = remote.relations.length; paintBadge();
         applyPendingRemote();
       },
       onError: function (e) {
         // فقدان الصلاحيّة (أُزيلت العضوية مثلاً): نتوقّف عن المزامنة بصمت
         log("القراءة مرفوضة:", e && e.code);
+        state.applyNote = "listen✗ " + ((e && e.code) || "err"); paintBadge();
       }
     });
   }
@@ -315,21 +319,21 @@
     });
   }
   function applyPendingRemote() {
-    if (!app || !remote || !remote.persons || !remote.relations) return;
-    if (outboxLen() > 0 || state.sending) return;       // تعديلاتنا أوّلاً، ثمّ نطابق الخادم
+    if (!app || !remote || !remote.persons || !remote.relations) { state.applyNote = !app ? "noapp" : "wait"; paintBadge(); return; }
+    if (outboxLen() > 0 || state.sending) { state.applyNote = "defer(Q)"; paintBadge(); return; } // تعديلاتنا أوّلاً
     var lg = remote.localGid;
-    if (serverGid(lg) !== remote.sg) return;
+    if (serverGid(lg) !== remote.sg) { state.applyNote = "gid≠"; paintBadge(); return; }
     var gp = lastGp || {}, rels = lastRels || [];
     var nextList = mergePersons(gp[lg] || [], remote.persons);
     var nextRels = rels.filter(function (r) { return r.groupId !== lg; }).concat(remoteRels(lg, remote.relations));
     var nextGp = {}; for (var k in gp) nextGp[k] = gp[k]; nextGp[lg] = nextList;
     var before = snapshot(lg, gp, rels), after = snapshot(lg, nextGp, nextRels);
-    if (JSON.stringify(before) === JSON.stringify(after)) return; // متطابقان — لا شيء
+    if (JSON.stringify(before) === JSON.stringify(after)) { state.applyNote = "same"; paintBadge(); return; } // متطابقان
     applying[lg] = true;
     baseline[lg] = after;
     app.setGroupPersons(function (prev) { var o = {}; for (var k in prev) o[k] = prev[k]; o[lg] = mergePersons(prev[lg] || [], remote.persons); return o; });
     app.setKinshipRelations(function (prev) { return prev.filter(function (r) { return r.groupId !== lg; }).concat(remoteRels(lg, remote.relations)); });
-    state.lastAck = "⇣ server"; paintBadge();
+    state.applyNote = "applied " + clock(); paintBadge();
   }
 
   // ---------- «ارفع شجرتي» ----------
@@ -702,8 +706,12 @@
                 " P:" + (state.dbgPersons == null ? "?" : state.dbgPersons) +
                 " R:" + (state.dbgRelations == null ? "?" : state.dbgRelations);
       }
-      body += " · Q:" + outboxLen() + " F:" + lsGet(FAILED, []).length + " Rv:" + state.reviews;
+      var fl = lsGet(FAILED, []);
+      body += " · Q:" + outboxLen() + " F:" + fl.length + " Rv:" + state.reviews;
       if (state.lastAck) body += " " + state.lastAck;
+      if (fl.length) body += " [" + fl[fl.length - 1].op + ": " + String(fl[fl.length - 1].error || "").slice(0, 60) + "]";
+      body += " · snap " + (state.lastSnap || "–") + " · " + (state.applyNote || "–");
+      if (state.watching) body += " · L " + String(currentLocalGid()).slice(-6);
       if (state.dbgNote) body = state.dbgNote + " · " + body;
       badgeEl.textContent = "sync " + (enabled() ? "ON" : "off") + " · " + body;
     } catch (e) {}
