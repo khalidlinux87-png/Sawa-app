@@ -275,12 +275,13 @@
     if (state.watching === sg + "|" + state.uid) return;
     state.watching = sg + "|" + state.uid;
     remote = { localGid: lg, sg: sg, persons: null, relations: null };
+    state.listenErr = null;
     state.dbgGid = sg;
     rawWatch(sg, {
       onPersons: function (arr) {
         if (!remote || remote.sg !== sg) return;
         remote.persons = arr.filter(function (p) { return p.deleted !== true; });
-        state.lastSnap = clock();
+        state.lastSnap = clock(); state.listenErr = null;
         state.dbgPersons = remote.persons.length; paintBadge();
         applyPendingRemote();
       },
@@ -294,7 +295,8 @@
       onError: function (e) {
         // فقدان الصلاحيّة (أُزيلت العضوية مثلاً): نتوقّف عن المزامنة بصمت
         log("القراءة مرفوضة:", e && e.code);
-        state.applyNote = "listen✗ " + ((e && e.code) || "err"); paintBadge();
+        state.listenErr = (e && e.code) || "err";
+        state.applyNote = "listen✗ " + state.listenErr; paintBadge();
       }
     });
   }
@@ -330,7 +332,11 @@
     });
   }
   function applyPendingRemote() {
-    if (!app || !remote || !remote.persons || !remote.relations) { state.applyNote = !app ? "noapp" : "wait"; paintBadge(); return; }
+    if (!app || !remote || !remote.persons || !remote.relations) {
+      if (state.listenErr) { paintBadge(); return; }          // رسالة الفشل تبقى ظاهرة
+      state.applyNote = !app ? "noapp" : !serverGid(currentLocalGid()) ? "unlinked" : !state.uid ? "no-auth" : "waiting-snap";
+      paintBadge(); return;
+    }
     if (outboxLen() > 0 || state.sending) { state.applyNote = "defer(Q)"; paintBadge(); return; } // تعديلاتنا أوّلاً
     var lg = remote.localGid;
     if (serverGid(lg) !== remote.sg) { state.applyNote = "gid≠"; paintBadge(); return; }
@@ -612,7 +618,24 @@
   function restoreGroup(sg, name, role) {
     var existing = localGidOf(sg);
     setRole(sg, role || "viewer");
-    if (existing) { app.setCurrentGroupId(existing); return existing; }
+    if (existing) { app.setCurrentGroupId(existing); return Promise.resolve(existing); }
+    // إن كانت العائلة المفتوحة غير مربوطة وفارغةً أو هي الشجرة نفسها: نربطها بدل إنشاء عائلةٍ ثانية بالاسم نفسه
+    var cur = currentLocalGid(), gp = lastGp || lsRead("groupPersons", {}), rels = lastRels || lsRead("kinshipRelations", []);
+    var curIds = (((gp || {})[cur]) || []).map(function (p) { return p.id; });
+    if (cur && !serverGid(cur)) {
+      return serverPersonIds(sg).then(function (ids) {
+        if (!curIds.length || overlap(curIds, ids) >= 0.5) {
+          setMap(cur, sg);
+          baseline[cur] = snapshot(cur, gp, rels);     // الخادم مرجع: تُطابَق المحلّية معه
+          state.watching = null; rewatch();
+          return cur;
+        }
+        return createRestored(sg, name, role);
+      }).catch(function () { return createRestored(sg, name, role); });
+    }
+    return Promise.resolve(createRestored(sg, name, role));
+  }
+  function createRestored(sg, name, role) {
     var lg = "g-" + Date.now();
     setMap(lg, sg);
     baseline[lg] = { persons: {}, relations: {} };
@@ -622,6 +645,7 @@
     app.setCurrentGroupId(lg);
     return lg;
   }
+
   function roleLabel(role) {
     return role === "owner" ? L("مالك", "owner") : role === "editor" ? L("محرّر", "editor") : L("مشاهد", "viewer");
   }
@@ -896,7 +920,8 @@
       if (fl.length) body += " [" + fl[fl.length - 1].op + ": " + String(fl[fl.length - 1].error || "").slice(0, 60) + "]";
       body += " · snap " + (state.lastSnap || "–") + " · " + (state.applyNote || "–");
       if (state.contactNote) body += " · " + state.contactNote;
-      if (state.watching) body += " · L " + String(currentLocalGid()).slice(-6);
+      var cl = currentLocalGid(), csg = serverGid(cl);
+      body += " · L " + String(cl).slice(-6) + "→" + (csg ? String(csg).slice(0, 6) : "∅");
       if (state.dbgNote) body = state.dbgNote + " · " + body;
       badgeEl.textContent = "sync " + (enabled() ? "ON" : "off") + " · " + body;
     } catch (e) {}
@@ -925,6 +950,7 @@
     uid: function () { return state.uid; },
     isReady: function () { return !!(state.ready && state.uid); },
     _state: state, _diff: diffAndEnqueue, _snapshot: snapshot, _merge: mergePersons, _overlap: overlap,
+    _restore: function (sg, name, role) { return restoreGroup(sg, name, role); },
     _testPanel: function (groups) { myGroups = groups; myGroupsLoading = false; openPanel(); myGroups = groups; myGroupsLoading = false; renderPanel(); return panelEl.innerHTML; },
     _testRemote: function (lg, sg, persons, relations) { remote = { localGid: lg, sg: sg, persons: persons, relations: relations }; applyPendingRemote(); }
   };
