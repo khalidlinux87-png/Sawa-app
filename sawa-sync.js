@@ -655,6 +655,41 @@
     }).catch(function () { myGroups = myGroups || []; })
       .then(function () { myGroupsLoading = false; renderPanel(); });
   }
+  function unmap(sg) {
+    var m = groupMap(), changed = false;
+    for (var k in m) if (m[k] === sg) { delete m[k]; delete baseline[k]; changed = true; }
+    if (changed) lsSet("sawa_group_map", m);
+    var r = roles(); delete r[sg]; lsSet("sawa_group_roles", r);
+    if (remote && remote.sg === sg) remote = null;
+    state.watching = null; rewatch();
+  }
+  function fmtNum(n) { try { return Number(n || 0).toLocaleString(isAr() ? "ar-EG" : "en-US"); } catch (e) { return String(n); } }
+  function fmtWhen(ts) {
+    if (!ts) return "";
+    try { return new Date(ts).toLocaleString(isAr() ? "ar-EG" : "en-GB", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }); }
+    catch (e) { return ""; }
+  }
+  function deleteGroup(sg) {
+    var g = (myGroups || []).filter(function (x) { return x.groupId === sg; })[0] || { name: "", personCount: 0 };
+    var ok = global.confirm(L(
+      "حذف «" + g.name + "» (" + fmtNum(g.personCount) + " شخصاً، أُنشئت " + fmtWhen(g.createdTs) + ") من الخادم؟\n" +
+      "يفقد كلّ من شاركتها معهم الوصول إليها، وتتوقّف روابط دعوتها. نسخ الأجهزة المحلّية لا تُحذف.",
+      "Delete «" + g.name + "» (" + g.personCount + " people, created " + fmtWhen(g.createdTs) + ") from the server?\n" +
+      "Everyone you shared it with loses access and its invite links stop working. Local copies on devices stay."));
+    if (!ok) return;
+    call("group.delete", { groupId: sg }).then(function () {
+      unmap(sg);
+      toast(L("حُذفت العائلة من الخادم ✓", "Family deleted from the server ✓"));
+      refreshMyGroups(); renderPanel();
+    }).catch(function (e) { toast(L("تعذّر الحذف: ", "Couldn't delete: ") + ((e && e.message) || e)); });
+  }
+  function leaveGroup(sg) {
+    var g = (myGroups || []).filter(function (x) { return x.groupId === sg; })[0] || { name: "" };
+    if (!global.confirm(L("مغادرة «" + g.name + "»؟ لن تصلك تحديثاتها بعد الآن.", "Leave «" + g.name + "»? You'll stop receiving its updates."))) return;
+    call("group.leave", { groupId: sg }).then(function () {
+      unmap(sg); toast(L("غادرتَ العائلة ✓", "You left the family ✓")); refreshMyGroups(); renderPanel();
+    }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+  }
   function groupName(lg) {
     var groups = lastGroups || lsRead("familyGroups", []);
     var g = (groups || []).filter(function (x) { return x && x.id === lg; })[0];
@@ -679,6 +714,8 @@
         else if (act === "dup-replace") resolveDup("replace");
         else if (act === "dup-server") resolveDup("useServer");
         else if (act === "dup-cancel") resolveDup("cancel");
+        else if (act === "delete") deleteGroup(t.getAttribute("data-gid"));
+        else if (act === "leave") leaveGroup(t.getAttribute("data-gid"));
         else if (act === "share-viewer") shareLink("viewer");
         else if (act === "share-editor") shareLink("editor");
         else if (act === "restore") {
@@ -722,7 +759,13 @@
              (pendingDup.role !== "viewer" ? btn("dup-replace", L("استبدال نسخة الخادم بشجرة هذا الجهاز", "Replace the server copy with this device's tree"), true) : "") +
              btn("dup-server", L("استخدام نسخة الخادم (تحلّ محلّ شجرة هذا الجهاز)", "Use the server copy (replaces this device's tree)")) +
              btn("dup-cancel", L("إلغاء", "Cancel"));
-    } else if (!sg) fam += p(L("محفوظة على هذا الجهاز فقط.", "Saved on this device only.")) + btn("upload", L("ارفع شجرتي إلى السحابة", "Upload my tree"), true);
+    } else if (!sg) {
+      fam += p(L("محفوظة على هذا الجهاز فقط — غير مربوطة بالخادم، فلا تتزامن.", "Saved on this device only — not linked, so it doesn't sync."));
+      if (myGroups && myGroups.some(function (g) { return !localGidOf(g.groupId); }))
+        fam += p(L("على حسابك عائلاتٌ محفوظة أدناه: إن كانت هذه الشجرة منها فاضغط «استعادة» بدل الرفع.",
+                   "Your account has families below — if this tree is one of them, tap «Restore» instead of uploading."), "#8a5a00");
+      fam += btn("upload", L("ارفع شجرتي إلى السحابة", "Upload my tree"), true);
+    }
     else {
       fam += p(L("متزامنة مع السحابة ✓ · دورك: ", "Synced ✓ · your role: ") + roleLabel(role), "#187854");
       if (role === "owner" || role === "editor") fam += btn("share-viewer", L("مشاركة للمشاهدة (رابط)", "Share view-only link"));
@@ -733,12 +776,22 @@
     var mine;
     if (myGroupsLoading && !myGroups) mine = p(L("جارٍ التحميل…", "Loading…"), "#5b6b7c");
     else {
-      var others = (myGroups || []).filter(function (g) { return !localGidOf(g.groupId); });
-      if (!others.length) mine = p(L("لا عائلات أخرى على حسابك.", "No other families on your account."), "#5b6b7c");
-      else mine = others.map(function (g) {
-        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px">' +
-          '<div style="font:700 14px system-ui">' + esc(g.name) + ' <span style="font-weight:500;color:#5b6b7c">· ' + roleLabel(g.role) + '</span></div>' +
-          '<button data-act="restore" data-gid="' + esc(g.groupId) + '" style="padding:8px 12px;border-radius:10px;border:none;background:#2F80C8;color:#fff;font:700 13px system-ui">' + L("استعادة", "Restore") + '</button></div>';
+      var all = myGroups || [];
+      if (!all.length) mine = p(L("لا عائلات على حسابك بعد.", "No families on your account yet."), "#5b6b7c");
+      else mine = all.map(function (g) {
+        var here = localGidOf(g.groupId), isCur = here && here === lg;
+        var meta = roleLabel(g.role) + " · " + fmtNum(g.personCount) + L(" شخصاً", " people") + (g.createdTs ? " · " + fmtWhen(g.createdTs) : "");
+        var tag = here ? '<div style="font:700 12px system-ui;color:#187854;margin-top:2px">' + (isCur ? L("مربوطة · المفتوحة الآن ✓", "Linked · open now ✓") : L("مربوطة بهذا الجهاز ✓", "Linked on this device ✓")) + '</div>' : "";
+        var smallBtn = function (act, label, bg, fg, border) {
+          return '<button data-act="' + act + '" data-gid="' + esc(g.groupId) + '" style="padding:8px 12px;border-radius:10px;border:' + (border || "none") + ';background:' + bg + ';color:' + fg + ';font:700 13px system-ui">' + label + '</button>';
+        };
+        var actions = (!here ? smallBtn("restore", L("استعادة", "Restore"), "#2F80C8", "#fff") : "") +
+                      (g.role === "owner" ? smallBtn("delete", L("حذف", "Delete"), "#fff", "#b23b3b", "1.5px solid #e6b4b4")
+                                          : smallBtn("leave", L("مغادرة", "Leave"), "#fff", "#5b6b7c", "1.5px solid #cfdbe8"));
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 0;border-top:1px solid #e3eaf1">' +
+          '<div><div style="font:700 15px system-ui">' + esc(g.name) + '</div>' +
+          '<div style="font:500 12.5px system-ui;color:#5b6b7c;margin-top:2px">' + esc(meta) + '</div>' + tag + '</div>' +
+          '<div style="display:flex;gap:6px;flex-shrink:0">' + actions + '</div></div>';
       }).join("");
     }
 
@@ -872,6 +925,7 @@
     uid: function () { return state.uid; },
     isReady: function () { return !!(state.ready && state.uid); },
     _state: state, _diff: diffAndEnqueue, _snapshot: snapshot, _merge: mergePersons, _overlap: overlap,
+    _testPanel: function (groups) { myGroups = groups; myGroupsLoading = false; openPanel(); myGroups = groups; myGroupsLoading = false; renderPanel(); return panelEl.innerHTML; },
     _testRemote: function (lg, sg, persons, relations) { remote = { localGid: lg, sg: sg, persons: persons, relations: relations }; applyPendingRemote(); }
   };
 
