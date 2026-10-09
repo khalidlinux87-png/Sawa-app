@@ -207,8 +207,8 @@
   // ---------- شارة الفحص (اختياريّة، للجوّال) ----------
   function debugOn() {
     try {
-      // يتعرّف على ?sync=debug و ?sync=seed (أيّ قيمة sync=…)
-      if (/[?&]sync=(debug|seed)/.test(global.location.search)) return true;
+      // يتعرّف على ?sync=debug و seed و upload (أيّ قيمة sync=…)
+      if (/[?&]sync=(debug|seed|upload)/.test(global.location.search)) return true;
       return localStorage.getItem("sawa_sync_debug") === "1";
     } catch (e) { return false; }
   }
@@ -271,6 +271,54 @@
   function debugParam(name) {
     try { return new URLSearchParams(global.location.search).get(name); } catch (e) { return null; }
   }
+
+  // يقرأ مخزناً من localStorage التطبيق (البادئة "sawa:").
+  function lsRead(key, fallback) {
+    try {
+      var raw = localStorage.getItem("sawa:" + key);
+      return raw == null ? fallback : JSON.parse(raw);
+    } catch (e) { return fallback; }
+  }
+
+  // ترحيل شجرة المجموعة الحالية الحقيقيّة من localStorage عبر bulk.import.
+  // معرّف المجموعة يولّده الخادم (المجموعات غير فريدةٍ محلّياً) ويُحفَظ في خريطة.
+  function debugUpload() {
+    var curGid = lsRead("currentGroupId", "g-1");
+    var groups = lsRead("familyGroups", []);
+    var gp     = lsRead("groupPersons", {});
+    var rels   = lsRead("kinshipRelations", []);
+    var gObj   = (groups || []).filter(function (g) { return g && g.id === curGid; })[0];
+    var name   = (gObj && gObj.name) || "عائلتي";
+    var persons = (gp && gp[curGid]) || [];
+    var groupRels = (rels || []).filter(function (r) { return r && r.groupId === curGid; });
+
+    state.localP = persons.length; state.localR = groupRels.length;
+    state.dbgNote = "uploading L:" + persons.length + "/" + groupRels.length + "…";
+    paintBadge();
+
+    var payload = {
+      name: name, // بلا groupId: يولّده الخادم
+      persons: persons.map(function (p) {
+        return { localId: p.id, local_name: p.local_name, gender: p.gender, kinship: p.kinship,
+                 birthYear: p.birthYear, deathYear: p.deathYear, phones: p.phones,
+                 notes: p.notes, alive: p.alive, motherId: p.motherId };
+      }),
+      relations: groupRels.map(function (r) {
+        return { localId: r.id, fromLocalId: r.source, toLocalId: r.target, type: r.type };
+      })
+    };
+    return sendOnce("bulk.import", payload).then(function (b) {
+      if (!b || !b.ok) throw new Error("bulk.import: " + JSON.stringify(b));
+      // احفظ خريطة محلّي→خادم للمجموعة
+      try {
+        var map = JSON.parse(localStorage.getItem("sawa_group_map") || "{}");
+        map[curGid] = b.groupId; localStorage.setItem("sawa_group_map", JSON.stringify(map));
+      } catch (e) {}
+      state.dbgNote = "up P:" + b.personsImported + " R:" + b.relationsImported +
+                      " orphans:" + b.orphansSkipped;
+      return b.groupId;
+    });
+  }
   function debugRun() {
     if (!debugOn()) return;
     onReady(function () {
@@ -284,7 +332,12 @@
           onRelations: function (arr) { state.dbgRelations = arr.length; paintBadge(); }
         });
       };
-      if (mode === "seed" && !gid) {
+      if (mode === "upload") {
+        debugUpload().then(startWatch).catch(function (e) {
+          state.error = "upload: " + ((e && e.message) || e); paintBadge();
+          log("debugUpload فشل:", (e && e.message) || e);
+        });
+      } else if (mode === "seed" && !gid) {
         state.dbgNote = "seeding…"; paintBadge();
         debugSeed().then(startWatch).catch(function (e) {
           state.error = "seed: " + ((e && e.message) || e); paintBadge();
