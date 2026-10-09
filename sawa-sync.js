@@ -1,97 +1,96 @@
 /* ============================================================
    sawa-sync.js — طبقة الجسر بين التطبيق والخلفية (الـWorker + Firestore)
    ------------------------------------------------------------
-   محلّيٌّ-أوّلاً: localStorage يبقى المخزن المؤقّت، والخادم مرجع.
-   • connect()          — دخولٌ مجهول + وثيقة accounts/{uid}  (المرحلة B1)
-   • watchGroup(gid,cb) — مستمعات Firestore الحيّة            (B2+)
-   • push(op,payload)   — تحويل الكتابة إلى applyEdit           (B3+)
+   محلّيٌّ-أوّلاً: localStorage يبقى المخزن، والخادم مرجع للمجموعات المرفوعة.
 
-   يُحمَّل بعد firebase-*-compat و sawa-auth.js، قبل sawa-core/sawa-app.
-   معزولٌ تماماً: فشله (شبكة محجوبة مثلاً) لا يُعطّل التطبيق إطلاقاً.
+   • connect()            — دخولٌ مجهول + accounts/{uid}            (B1)
+   • watchGroup(gid, cb)  — مستمعات Firestore الحيّة                 (B2 / B5)
+   • observe(gp, rels)    — يُنادى من sawa-app.js عند كلّ تغيّر؛ يحسب
+                            الفرق لكلّ مجموعةٍ مرفوعة ويرسله للخادم  (B4)
+   • uploadCurrent()      — زرّ «ارفع شجرتي»: bulk.import + ربط المجموعة (B4)
 
-   مفتاح التفعيل: window.SAWA_SYNC (افتراضياً false).
-     - false: connect() يعمل (دخولٌ مجهول فقط)، لكن push/watchGroup صامتان.
-     - true : الكتابة تُرسَل، والمستمعات تُحدّث حالة التطبيق.
-   شارة الفحص: افتح الرابط بـ ?sync=debug لرؤية حالة الاتصال على الشاشة.
+   المجموعات: معرّفها المحلّيّ (g-1…) غير فريد عالمياً، فيولّد الخادم معرّفها
+   ويُحفَظ الربط في sawa_group_map. الأشخاص والصلات: المعرّف المحلّيّ = معرّف
+   الخادم (قرار §٨-١)، فلا ترجمة.
+
+   ⛔ الخصوصية: status_detail (الحالة الصحّية) و healthStatus و photo لا تغادر
+   الجهاز أبداً — ليست في SYNC_FIELDS.
+
+   مفتاح الإيقاف: localStorage "sawa_sync_off" = "1" أو ?sync=off.
+   شارة الفحص: ?sync=debug (أو seed / upload).
    ============================================================ */
 (function (global) {
   "use strict";
 
   var WORKER = "https://sawa-deploy-test.khalidlinux87.workers.dev";
 
-  if (typeof global.SAWA_SYNC === "undefined") global.SAWA_SYNC = false;
+  // الحقول التي تُزامَن — مطابقةٌ تماماً لقائمة ALLOWED في الـWorker v8.
+  var SYNC_FIELDS = ["local_name", "gender", "kinship", "proximity", "birthYear", "birthday",
+                     "alive", "death_date", "deathYear", "contacts", "phones", "notes", "motherId"];
 
   var state = {
-    uid: null,
-    ready: false,
-    error: null,
-    groupListeners: null,   // { gid, off }
+    uid: null, ready: false, error: null,
+    groupListeners: null,
+    reviews: 0, lastAck: "", sending: false
   };
   var readyResolvers = [];
 
-  // ---------- أدوات صغيرة ----------
+  // ---------- أدوات ----------
   function log() {
     if (global.console && console.log) {
       try { console.log.apply(console, ["[sawa-sync]"].concat([].slice.call(arguments))); } catch (e) {}
     }
   }
-  function hasFirebase() {
-    return !!(global.firebase && firebase.auth && global.SawaAuth);
-  }
+  function lsGet(k, fb) { try { var r = localStorage.getItem(k); return r == null ? fb : JSON.parse(r); } catch (e) { return fb; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  function lsRead(key, fb) { return lsGet("sawa:" + key, fb); } // مخازن التطبيق (البادئة sawa:)
+  function isAr() { try { return (localStorage.getItem("sawaLang") || "ar") === "ar"; } catch (e) { return true; } }
+  function hasFirebase() { return !!(global.firebase && firebase.auth && global.SawaAuth); }
 
-  // ---------- B1: الاتصال والدخول المجهول ----------
+  function enabled() {
+    try {
+      if (/[?&]sync=off/.test(global.location.search)) localStorage.setItem("sawa_sync_off", "1");
+      if (/[?&]sync=on/.test(global.location.search)) localStorage.removeItem("sawa_sync_off");
+      return localStorage.getItem("sawa_sync_off") !== "1";
+    } catch (e) { return true; }
+  }
+  global.SAWA_SYNC = enabled();
+
+  // ---------- B1: الاتصال ----------
   function connect() {
     if (state.ready && state.uid) return Promise.resolve(state.uid);
     return new Promise(function (resolve) {
       try {
         if (!hasFirebase()) throw new Error("Firebase/SawaAuth غير محمَّل");
-        // تهيئة Firebase عبر SawaAuth (currentUser تستدعي ensureInit داخلياً).
-        SawaAuth.currentUser();
+        SawaAuth.currentUser(); // يُهيّئ Firebase
         var auth = firebase.auth();
-
-        // استمع لحالة الدخول: تثبّت الـuid وتُحدّث الشارة.
         auth.onAuthStateChanged(function (user) {
           if (user) {
-            state.uid = user.uid;
-            state.ready = true;
-            state.error = null;
-            paintBadge();
-            log("uid =", user.uid, "| anon =", user.isAnonymous);
-            flushReady(user.uid);
-            drainQueue(); // أرسل ما تراكم في الطابور إن وُجد
+            state.uid = user.uid; state.ready = true; state.error = null;
+            paintBadge(); flushReady(user.uid); drain();
           }
         });
-
-        // ادخل مجهولاً إن لم تكن هناك جلسة قائمة.
         if (!auth.currentUser) {
           auth.signInAnonymously().catch(function (e) {
             state.error = (e && e.message) || "تعذّر الدخول المجهول";
-            paintBadge();
-            log("signInAnonymously فشل:", state.error);
-            resolve(null);
+            paintBadge(); resolve(null);
           });
         }
-        // حُلّ الوعد بالـuid الحاليّ أو عبر flushReady عند وصوله.
         onReady(resolve);
       } catch (e) {
-        state.error = (e && e.message) || String(e);
-        state.ready = false;
-        paintBadge();
-        log("connect فشل:", state.error);
-        resolve(null); // محلّيٌّ-أوّلاً: لا نُسقِط التطبيق
+        state.error = (e && e.message) || String(e); state.ready = false;
+        paintBadge(); log("connect فشل:", state.error); resolve(null);
       }
     });
   }
-
   function onReady(cb) {
     if (state.uid) { try { cb(state.uid); } catch (e) {} return; }
     readyResolvers.push(cb);
   }
   function flushReady(uid) {
-    var list = readyResolvers; readyResolvers = [];
-    list.forEach(function (cb) { try { cb(uid); } catch (e) {} });
+    var l = readyResolvers; readyResolvers = [];
+    l.forEach(function (cb) { try { cb(uid); } catch (e) {} });
   }
-
   function getToken() {
     try {
       var u = firebase.auth().currentUser;
@@ -99,13 +98,6 @@
       return u.getIdToken();
     } catch (e) { return Promise.reject(e); }
   }
-
-  // ---------- B3+: إرسال الكتابة إلى الـWorker ----------
-  var QKEY = "sawa_sync_queue";
-  function loadQueue() { try { return JSON.parse(localStorage.getItem(QKEY) || "[]"); } catch (e) { return []; } }
-  function saveQueue(q) { try { localStorage.setItem(QKEY, JSON.stringify(q)); } catch (e) {} }
-  function enqueue(item) { var q = loadQueue(); q.push(item); saveQueue(q); }
-
   function sendOnce(op, payload) {
     return getToken().then(function (tok) {
       return fetch(WORKER, {
@@ -116,45 +108,176 @@
     }).then(function (r) { return r.json(); });
   }
 
-  // يُرسل أمراً. محلّيٌّ-أوّلاً: الفشل يذهب للطابور ويُعاد لاحقاً، ولا يُزعج المستخدم.
-  function push(op, payload) {
-    if (!global.SAWA_SYNC) return Promise.resolve({ skipped: true });
-    return sendOnce(op, payload).then(function (b) {
-      if (!b || b.ok === false) log("push ردّ غير ناجح:", op, b);
+  // ---------- صندوق الصادر: طابورٌ متسلسل محفوظ ----------
+  // الترتيب مهمّ (الشخص قبل صلته)، فيُرسَل أمرٌ واحد في كلّ مرّة.
+  // فشل الشبكة ⇒ يبقى ويُعاد لاحقاً. رفضٌ من الخادم ⇒ يُسجَّل ويُتخطّى.
+  var OUTBOX = "sawa_outbox", FAILED = "sawa_sync_failed";
+  var retryTimer = null;
+  function enqueue(op, payload) {
+    var q = lsGet(OUTBOX, []); q.push({ op: op, payload: payload, ts: Date.now() }); lsSet(OUTBOX, q);
+    paintBadge(); drain();
+  }
+  function push(op, payload) { if (!enabled()) return; enqueue(op, payload); } // واجهةٌ متوافقة
+  function drain() {
+    if (state.sending || !state.uid || !enabled()) return;
+    var q = lsGet(OUTBOX, []);
+    if (!q.length) return;
+    state.sending = true;
+    var item = q[0];
+    sendOnce(item.op, item.payload).then(function (b) {
+      var rest = lsGet(OUTBOX, []); rest.shift(); lsSet(OUTBOX, rest);
+      if (!b || b.ok === false) {
+        var f = lsGet(FAILED, []); f.push({ op: item.op, error: b && b.error, ts: Date.now() });
+        lsSet(FAILED, f.slice(-20));
+        log("رُفض:", item.op, b && b.error);
+        state.lastAck = "✗ " + item.op;
+      } else {
+        state.lastAck = "✓ " + item.op;
+        if (b.queued) { state.reviews++; toast(isAr() ? "تعديلٌ ذهب للمراجعة" : "A change was sent for review"); }
+      }
+      state.sending = false; paintBadge(); drain();
+    }).catch(function (e) {
+      // شبكة: أبقِ الأمر وأعد المحاولة
+      state.sending = false; state.lastAck = "… " + item.op; paintBadge();
+      log("شبكة — إعادة لاحقاً:", (e && e.message) || e);
+      if (!retryTimer) retryTimer = setTimeout(function () { retryTimer = null; drain(); }, 15000);
+    });
+  }
+  try { global.addEventListener("online", drain); } catch (e) {}
+
+  // ---------- ربط المجموعات المحلّية بالخادم ----------
+  function groupMap() { return lsGet("sawa_group_map", {}); }
+  function serverGid(localGid) { return groupMap()[localGid] || null; }
+
+  // ---------- B4: المراقبة وحساب الفرق ----------
+  function personToFields(p) {
+    var out = {};
+    for (var i = 0; i < SYNC_FIELDS.length; i++) {
+      var k = SYNC_FIELDS[i];
+      if (p && p[k] !== undefined) out[k] = p[k];
+    }
+    return out;
+  }
+  function snapshot(localGid, gp, rels) {
+    var persons = {}, relations = {};
+    ((gp && gp[localGid]) || []).forEach(function (p) { if (p && p.id) persons[p.id] = personToFields(p); });
+    (rels || []).forEach(function (r) {
+      if (r && r.id && r.groupId === localGid)
+        relations[r.id] = { source: r.source, target: r.target, type: r.type, inferred: r.inferred || null };
+    });
+    return { persons: persons, relations: relations };
+  }
+  function same(a, b) { return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b); }
+
+  function diffAndEnqueue(sg, base, snap) {
+    var id, k;
+    // ١) الأشخاص: جديدٌ أو حقولٌ تغيّرت (حقليّاً — قرار ④)
+    for (id in snap.persons) {
+      var cur = snap.persons[id], old = base.persons[id];
+      if (!old) { enqueue("person.set", { groupId: sg, personId: id, fields: cur }); continue; }
+      var changed = {}, any = false, keys = {};
+      for (k in cur) keys[k] = 1;
+      for (k in old) keys[k] = 1;
+      for (k in keys) if (!same(cur[k], old[k])) { changed[k] = cur[k] === undefined ? null : cur[k]; any = true; }
+      if (any) enqueue("person.set", { groupId: sg, personId: id, fields: changed });
+    }
+    // ٢) الصلات: جديدة / تغيّر طرفاها / تغيّر نوعها
+    for (id in snap.relations) {
+      var r = snap.relations[id], b = base.relations[id];
+      var addPayload = { groupId: sg, relationId: id, type: r.type, from: r.source, to: r.target };
+      if (r.inferred) addPayload.inferred = r.inferred;
+      if (!b) { enqueue("relation.add", addPayload); continue; }
+      if (b.source !== r.source || b.target !== r.target) {
+        enqueue("relation.remove", { groupId: sg, relationId: id });
+        enqueue("relation.add", addPayload);
+      } else if (b.type !== r.type) {
+        enqueue("relation.update", { groupId: sg, relationId: id, type: r.type });
+      }
+    }
+    // ٣) حذف الصلات قبل حذف الأشخاص
+    for (id in base.relations) if (!snap.relations[id]) enqueue("relation.remove", { groupId: sg, relationId: id });
+    for (id in base.persons) if (!snap.persons[id]) enqueue("person.delete", { groupId: sg, personId: id });
+  }
+
+  var baseline = {};          // localGid -> لقطة آخر حالةٍ أُرسلت
+  var lastGp = null, lastRels = null;
+  function observe(gp, rels) {
+    lastGp = gp; lastRels = rels;
+    if (!enabled()) return;
+    var map = groupMap();
+    for (var localGid in map) {
+      if (!Object.prototype.hasOwnProperty.call(map, localGid)) continue;
+      var snap = snapshot(localGid, gp, rels);
+      var base = baseline[localGid];
+      baseline[localGid] = snap;
+      if (!base) continue;      // أوّل مراقبة بعد الفتح = خطّ الأساس
+      diffAndEnqueue(map[localGid], base, snap);
+    }
+  }
+
+  // ---------- B4: «ارفع شجرتي» ----------
+  function currentLocalGid() { return lsRead("currentGroupId", "g-1"); }
+  function buildImport(localGid, gp, rels) {
+    var groups = lsRead("familyGroups", []);
+    var gObj = (groups || []).filter(function (g) { return g && g.id === localGid; })[0];
+    var persons = (gp && gp[localGid]) || [];
+    var groupRels = (rels || []).filter(function (r) { return r && r.groupId === localGid; });
+    return {
+      persons: persons, groupRels: groupRels,
+      payload: {
+        name: (gObj && gObj.name) || "عائلتي",
+        persons: persons.map(function (p) {
+          var o = personToFields(p); o.localId = p.id; return o; // ⛔ بلا status_detail ولا photo
+        }),
+        relations: groupRels.map(function (r) {
+          var o = { localId: r.id, fromLocalId: r.source, toLocalId: r.target, type: r.type };
+          if (r.inferred) o.inferred = r.inferred;
+          return o;
+        })
+      }
+    };
+  }
+  function uploadGroup(localGid, gp, rels) {
+    var built = buildImport(localGid, gp, rels);
+    return sendOnce("bulk.import", built.payload).then(function (b) {
+      if (!b || !b.ok) throw new Error((b && b.error) || "bulk.import failed");
+      var map = groupMap(); map[localGid] = b.groupId; lsSet("sawa_group_map", map);
+      baseline[localGid] = snapshot(localGid, gp, rels); // ما رُفع هو خطّ الأساس
+      return b;
+    });
+  }
+  function uploadCurrent() {
+    var ar = isAr();
+    var localGid = currentLocalGid();
+    var gp = lastGp || lsRead("groupPersons", {});
+    var rels = lastRels || lsRead("kinshipRelations", []);
+    var n = ((gp && gp[localGid]) || []).length;
+    if (!n) { toast(ar ? "المجموعة الحالية لا تحوي أشخاصاً بعد" : "This group has no people yet"); return Promise.resolve(null); }
+    if (serverGid(localGid)) {
+      var again = global.confirm(ar
+        ? "شجرة هذه المجموعة مرفوعةٌ ومتزامنة. أترفع نسخةً جديدة كاملة؟ (تحلّ محلّ الربط الحاليّ)"
+        : "This tree is already synced. Upload a fresh full copy? (replaces the current link)");
+      if (!again) return Promise.resolve(null);
+    }
+    if (!state.uid) { toast(ar ? "تعذّر الاتصال بالخادم — حاول بعد قليل" : "Can't reach the server — try again shortly"); return Promise.resolve(null); }
+    toast(ar ? "جارٍ رفع الشجرة…" : "Uploading tree…");
+    return uploadGroup(localGid, gp, rels).then(function (b) {
+      toast(ar ? ("رُفعت شجرتك: " + b.personsImported + " شخصاً و" + b.relationsImported + " صلة ✓")
+               : ("Tree uploaded: " + b.personsImported + " people, " + b.relationsImported + " links ✓"));
+      paintBadge();
       return b;
     }).catch(function (e) {
-      log("push فشل (إلى الطابور):", op, (e && e.message) || e);
-      enqueue({ op: op, payload: payload, ts: Date.now() });
-      return { ok: false, queuedLocally: true, error: String(e && e.message || e) };
+      toast((ar ? "تعذّر الرفع: " : "Upload failed: ") + ((e && e.message) || e));
+      return null;
     });
   }
 
-  // يُفرّغ الطابور عند عودة الاتّصال/الدخول.
-  var draining = false;
-  function drainQueue() {
-    if (draining || !global.SAWA_SYNC) return;
-    var q = loadQueue();
-    if (!q.length) return;
-    draining = true;
-    var item = q[0];
-    sendOnce(item.op, item.payload).then(function () {
-      var rest = loadQueue(); rest.shift(); saveQueue(rest);
-      draining = false;
-      if (rest.length) drainQueue();
-    }).catch(function () { draining = false; /* نُعيد لاحقاً */ });
-  }
-
-  // ---------- B2+: مستمعات القراءة الحيّة ----------
-  // rawWatch غير محكوم بالعلم — تستعمله أداة الفحص. watchGroup (العامّة) محكومة.
+  // ---------- القراءة الحيّة ----------
   function rawWatch(gid, cbs) {
     if (!gid) return function () {};
-    // أغلق مستمع المجموعة السابقة (مستمعٌ واحدٌ في كلّ وقت — قرار §٨-٢).
-    if (state.groupListeners && state.groupListeners.off) {
-      try { state.groupListeners.off(); } catch (e) {}
-    }
+    if (state.groupListeners && state.groupListeners.off) { try { state.groupListeners.off(); } catch (e) {} }
     try {
-      var db = firebase.firestore();
-      var base = db.collection("groups").doc(gid);
+      var base = firebase.firestore().collection("groups").doc(gid);
       var offP = base.collection("persons").onSnapshot(function (snap) {
         var arr = []; snap.forEach(function (d) { arr.push(personFromDoc(d.id, d.data())); });
         cbs && cbs.onPersons && cbs.onPersons(arr);
@@ -166,48 +289,44 @@
       var off = function () { try { offP(); } catch (e) {} try { offR(); } catch (e) {} };
       state.groupListeners = { gid: gid, off: off };
       return off;
-    } catch (e) {
-      log("rawWatch فشل:", (e && e.message) || e);
-      return function () {};
-    }
+    } catch (e) { log("rawWatch فشل:", (e && e.message) || e); return function () {}; }
   }
-  function watchGroup(gid, cbs) {
-    if (!global.SAWA_SYNC) return function () {};
-    return rawWatch(gid, cbs);
-  }
-
-  // ---------- مُحوِّلات الشكل ----------
-  // حقول الشخص المسموح بمزامنتها (⛔ healthStatus محظور — لا يُرسَل أبداً).
-  var PERSON_FIELDS = ["local_name", "gender", "kinship", "birthYear", "deathYear",
-                       "phones", "notes", "alive", "favorite", "motherId"];
-  function personToFields(p) {
-    var out = {};
-    for (var i = 0; i < PERSON_FIELDS.length; i++) {
-      var k = PERSON_FIELDS[i];
-      if (p && p[k] !== undefined) out[k] = p[k];
-    }
-    return out; // لا id، لا healthStatus
-  }
-  function relToServer(r) {
-    return { groupId: r.groupId, type: r.type, from: r.source, to: r.target };
-  }
+  function watchGroup(gid, cbs) { if (!enabled()) return function () {}; return rawWatch(gid, cbs); }
   function personFromDoc(id, data) {
     var p = { id: id };
     for (var k in data) {
       if (!Object.prototype.hasOwnProperty.call(data, k)) continue;
-      if (k === "fts" || k === "healthStatus") continue; // بيانات تعارضٍ داخلية
+      if (k === "fts" || k === "healthStatus" || k === "status_detail") continue;
       p[k] = data[k];
     }
     return p;
   }
   function relFromDoc(gid, id, data) {
-    return { id: id, groupId: gid, source: data.from, target: data.to, type: data.type };
+    return { id: id, groupId: gid, source: data.from, target: data.to, type: data.type,
+             inferred: data.inferred, deleted: data.deleted === true };
+  }
+  function relToServer(r) { return { groupId: r.groupId, type: r.type, from: r.source, to: r.target }; }
+
+  // ---------- إشعارٌ صغير ----------
+  var toastEl = null, toastTimer = null;
+  function toast(msg) {
+    try {
+      if (!toastEl) {
+        toastEl = document.createElement("div");
+        toastEl.style.cssText = "position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:2147483646;" +
+          "background:rgba(20,30,40,.92);color:#fff;font:600 14px system-ui;padding:10px 16px;border-radius:12px;" +
+          "max-width:86vw;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.3);transition:opacity .25s;pointer-events:none";
+        document.body.appendChild(toastEl);
+      }
+      toastEl.textContent = msg; toastEl.style.opacity = "1";
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { toastEl.style.opacity = "0"; }, 3500);
+    } catch (e) {}
   }
 
-  // ---------- شارة الفحص (اختياريّة، للجوّال) ----------
+  // ---------- شارة الفحص ----------
   function debugOn() {
     try {
-      // يتعرّف على ?sync=debug و seed و upload (أيّ قيمة sync=…)
       if (/[?&]sync=(debug|seed|upload)/.test(global.location.search)) return true;
       return localStorage.getItem("sawa_sync_debug") === "1";
     } catch (e) { return false; }
@@ -217,161 +336,104 @@
     if (!debugOn()) return;
     try {
       if (!badgeEl) {
-        badgeEl = global.document.createElement("div");
+        badgeEl = document.createElement("div");
         badgeEl.style.cssText = "position:fixed;left:8px;right:8px;top:8px;z-index:2147483647;" +
           "font:700 13px system-ui;padding:9px 12px;border-radius:10px;text-align:center;" +
           "box-shadow:0 2px 10px rgba(0,0,0,.35);direction:ltr;pointer-events:none;";
-        global.document.body.appendChild(badgeEl);
+        document.body.appendChild(badgeEl);
       }
       var ok = state.ready && state.uid;
       badgeEl.style.background = ok ? "#187854" : (state.error ? "#b23b3b" : "#8a6d1f");
       badgeEl.style.color = "#fff";
-      var body = ok ? ("uid " + String(state.uid).slice(0, 6) + "…")
-                    : (state.error ? ("err: " + state.error) : "connecting…");
+      var body = ok ? ("uid " + String(state.uid).slice(0, 6) + "…") : (state.error ? ("err: " + state.error) : "connecting…");
       if (state.dbgGid) {
         body += " · G " + String(state.dbgGid).slice(0, 6) +
                 " P:" + (state.dbgPersons == null ? "?" : state.dbgPersons) +
                 " R:" + (state.dbgRelations == null ? "?" : state.dbgRelations);
       }
+      body += " · Q:" + lsGet(OUTBOX, []).length + " F:" + lsGet(FAILED, []).length + " Rv:" + state.reviews;
+      if (state.lastAck) body += " " + state.lastAck;
       if (state.dbgNote) body = state.dbgNote + " · " + body;
-      badgeEl.textContent = "sync " + (global.SAWA_SYNC ? "ON" : "off") + " · " + body;
+      badgeEl.textContent = "sync " + (enabled() ? "ON" : "off") + " · " + body;
     } catch (e) {}
   }
 
-  // ---------- الواجهة العامّة ----------
-  global.SawaSync = {
-    connect: connect,
-    onReady: onReady,
-    getToken: getToken,
-    push: push,
-    watchGroup: watchGroup,
-    personToFields: personToFields,
-    relToServer: relToServer,
-    uid: function () { return state.uid; },
-    isReady: function () { return !!(state.ready && state.uid); },
-    _state: state
-  };
-
-  // ---------- أداة فحص B2: بذرةٌ في المتصفّح + مراقبة حيّة ----------
-  // تعمل فقط في وضع الفحص؛ لا أثر على المستخدم العاديّ ولا على sawa-app.js.
+  // ---------- أدوات الفحص (seed / upload / debug) ----------
+  function debugParam(name) { try { return new URLSearchParams(global.location.search).get(name); } catch (e) { return null; } }
   function debugSeed() {
     return sendOnce("group.create", { name: "مجموعة البذرة (B2)" }).then(function (g) {
       if (!g || !g.ok) throw new Error("group.create: " + JSON.stringify(g));
       var gid = g.groupId;
-      return sendOnce("person.set", { groupId: gid, fields: { local_name: "خالد", gender: "male" } })
-        .then(function (a) {
-          return sendOnce("person.set", { groupId: gid, fields: { local_name: "أحمد", gender: "male" } })
-            .then(function (b) {
-              return sendOnce("relation.add", { groupId: gid, type: "parent", from: a.personId, to: b.personId })
-                .then(function () { return gid; });
-            });
+      return sendOnce("person.set", { groupId: gid, fields: { local_name: "خالد", gender: "male" } }).then(function (a) {
+        return sendOnce("person.set", { groupId: gid, fields: { local_name: "أحمد", gender: "male" } }).then(function (b) {
+          return sendOnce("relation.add", { groupId: gid, type: "parent", from: a.personId, to: b.personId })
+            .then(function () { return gid; });
         });
+      });
     });
   }
-  function debugParam(name) {
-    try { return new URLSearchParams(global.location.search).get(name); } catch (e) { return null; }
-  }
-
-  // يقرأ مخزناً من localStorage التطبيق (البادئة "sawa:").
-  function lsRead(key, fallback) {
-    try {
-      var raw = localStorage.getItem("sawa:" + key);
-      return raw == null ? fallback : JSON.parse(raw);
-    } catch (e) { return fallback; }
-  }
-
-  // ترحيل شجرة المجموعة الحالية الحقيقيّة من localStorage عبر bulk.import.
-  // معرّف المجموعة يولّده الخادم (المجموعات غير فريدةٍ محلّياً) ويُحفَظ في خريطة.
   function debugUpload() {
-    var curGid = lsRead("currentGroupId", "g-1");
-    var groups = lsRead("familyGroups", []);
-    var gp     = lsRead("groupPersons", {});
-    var rels   = lsRead("kinshipRelations", []);
-    // لو المجموعة الحالية فارغة، خذ المجموعة الأكثر أشخاصاً (أداة فحص فقط).
-    var countOf = function (id) { return ((gp && gp[id]) || []).length; };
-    if (!countOf(curGid)) {
-      var best = curGid, bestN = 0;
-      for (var k in (gp || {})) {
-        if (Object.prototype.hasOwnProperty.call(gp, k) && countOf(k) > bestN) { best = k; bestN = countOf(k); }
-      }
-      curGid = best;
+    var gp = lsRead("groupPersons", {}), rels = lsRead("kinshipRelations", []);
+    var localGid = currentLocalGid();
+    var count = function (id) { return ((gp && gp[id]) || []).length; };
+    if (!count(localGid)) {
+      var best = localGid, bestN = 0;
+      for (var k in (gp || {})) if (Object.prototype.hasOwnProperty.call(gp, k) && count(k) > bestN) { best = k; bestN = count(k); }
+      localGid = best;
     }
-    state.dbgLocalGid = curGid;
-    var gObj   = (groups || []).filter(function (g) { return g && g.id === curGid; })[0];
-    var name   = (gObj && gObj.name) || "عائلتي";
-    var persons = (gp && gp[curGid]) || [];
-    var groupRels = (rels || []).filter(function (r) { return r && r.groupId === curGid; });
-
-    state.localP = persons.length; state.localR = groupRels.length;
-    state.dbgNote = "uploading " + curGid + " L:" + persons.length + "/" + groupRels.length + "…";
-    paintBadge();
-
-    var payload = {
-      name: name, // بلا groupId: يولّده الخادم
-      persons: persons.map(function (p) {
-        return { localId: p.id, local_name: p.local_name, gender: p.gender, kinship: p.kinship,
-                 birthYear: p.birthYear, deathYear: p.deathYear, phones: p.phones,
-                 notes: p.notes, alive: p.alive, motherId: p.motherId };
-      }),
-      relations: groupRels.map(function (r) {
-        return { localId: r.id, fromLocalId: r.source, toLocalId: r.target, type: r.type };
-      })
-    };
-    return sendOnce("bulk.import", payload).then(function (b) {
-      if (!b || !b.ok) throw new Error("bulk.import: " + JSON.stringify(b));
-      // احفظ خريطة محلّي→خادم للمجموعة
-      try {
-        var map = JSON.parse(localStorage.getItem("sawa_group_map") || "{}");
-        map[curGid] = b.groupId; localStorage.setItem("sawa_group_map", JSON.stringify(map));
-      } catch (e) {}
-      state.dbgNote = curGid + " L:" + persons.length + "/" + groupRels.length +
-                      " → up P:" + b.personsImported + " R:" + b.relationsImported +
-                      " orphans:" + b.orphansSkipped;
+    var built = buildImport(localGid, gp, rels);
+    state.dbgNote = "uploading " + localGid + " L:" + built.persons.length + "/" + built.groupRels.length + "…"; paintBadge();
+    return uploadGroup(localGid, gp, rels).then(function (b) {
+      state.dbgNote = localGid + " L:" + built.persons.length + "/" + built.groupRels.length +
+                      " → up P:" + b.personsImported + " R:" + b.relationsImported + " orphans:" + b.orphansSkipped;
       return b.groupId;
     });
   }
   function debugRun() {
     if (!debugOn()) return;
     onReady(function () {
-      var mode = debugParam("sync"); // "debug" | "seed"
-      var gid  = debugParam("gid") || (function(){ try { return localStorage.getItem("sawa_b2_gid"); } catch(e){ return null; } })();
+      var mode = debugParam("sync");
+      var gid = debugParam("gid") || serverGid(currentLocalGid()) || lsGet("sawa_b2_gid", null);
       var startWatch = function (g) {
-        try { localStorage.setItem("sawa_b2_gid", g); } catch (e) {}
+        lsSet("sawa_b2_gid", g);
         state.dbgGid = g; if (mode !== "upload") state.dbgNote = ""; paintBadge();
         rawWatch(g, {
-          onPersons:   function (arr) { state.dbgPersons   = arr.length; paintBadge(); },
-          onRelations: function (arr) { state.dbgRelations = arr.length; paintBadge(); }
+          // العدّ يستثني المحذوف (شاهدة)
+          onPersons:   function (arr) { state.dbgPersons   = arr.filter(function (p) { return p.deleted !== true; }).length; paintBadge(); },
+          onRelations: function (arr) { state.dbgRelations = arr.filter(function (r) { return !r.deleted; }).length; paintBadge(); }
         });
       };
       if (mode === "upload") {
-        debugUpload().then(startWatch).catch(function (e) {
-          state.error = "upload: " + ((e && e.message) || e); paintBadge();
-          log("debugUpload فشل:", (e && e.message) || e);
-        });
+        debugUpload().then(startWatch).catch(function (e) { state.error = "upload: " + ((e && e.message) || e); paintBadge(); });
       } else if (mode === "seed" && !gid) {
         state.dbgNote = "seeding…"; paintBadge();
-        debugSeed().then(startWatch).catch(function (e) {
-          state.error = "seed: " + ((e && e.message) || e); paintBadge();
-          log("debugSeed فشل:", (e && e.message) || e);
-        });
+        debugSeed().then(startWatch).catch(function (e) { state.error = "seed: " + ((e && e.message) || e); paintBadge(); });
       } else if (gid) {
         startWatch(gid);
       }
     });
   }
 
-  // ---------- إقلاعٌ ذاتيّ (لا يلمس sawa-app.js) ----------
+  // ---------- الواجهة العامّة ----------
+  global.SawaSync = {
+    connect: connect, onReady: onReady, getToken: getToken,
+    push: push, observe: observe, uploadCurrent: uploadCurrent,
+    watchGroup: watchGroup, serverGid: serverGid,
+    personToFields: personToFields, relToServer: relToServer,
+    uid: function () { return state.uid; },
+    isReady: function () { return !!(state.ready && state.uid); },
+    _state: state, _diff: diffAndEnqueue, _snapshot: snapshot
+  };
+
+  // ---------- إقلاعٌ ذاتيّ ----------
   function boot() {
-    paintBadge();            // يُظهر "connecting…" لو الفحص مُفعَّل
+    paintBadge();
     connect().then(function (uid) {
       paintBadge();
       log(uid ? ("متّصل: " + uid) : "تعذّر الاتصال — التطبيق يعمل محلّياً");
-      debugRun();            // أداة فحص B2 (وضع الفحص فقط)
+      debugRun();
     });
   }
-  if (global.document && document.readyState === "loading") {
-    global.document.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  if (global.document && document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
 })(typeof window !== "undefined" ? window : this);
