@@ -16,8 +16,8 @@
    في sawa_group_map {localGid: serverGid}، والأدوار في sawa_group_roles.
    الأشخاص والصلات: المعرّف المحلّيّ = معرّف الخادم (قرار §٨-١).
 
-   ⛔ الخصوصية: قيمة «sick» في status_detail (الحالة الصحّية) و healthStatus و photo
-   لا تغادر الجهاز أبداً — «sick» تُرسَل «بلا حالة» وتبقى محلّياً عند دمج بيانات الخادم.
+   الخصوصية: status_detail (ومنه «مريض») يُزامَن لأعضاء العائلة فقط (قرار خالد).
+   photo و favorite و linkedTo تبقى محلّية؛ lastContactDate خاصٌّ بالمستخدم (contacts.sync).
 
    مفتاح الإيقاف: ?sync=off (و ?sync=on للإعادة). شارة الفحص: ?sync=debug.
    ============================================================ */
@@ -27,12 +27,13 @@
   var WORKER = "https://sawa-deploy-test.khalidlinux87.workers.dev";
 
   // مطابقةٌ تماماً لقائمة ALLOWED في الـWorker (v8+).
-  // status_detail: مسافر/مغترب/متزوّج حديثاً تُزامَن؛ «sick» (مريض) لا تغادر الجهاز أبداً.
+  // status_detail (مسافر/مغترب/متزوّج حديثاً/مريض) يُزامَن داخل العائلة — قرار خالد ٩ أكتوبر:
+  // «مريض» يظهر لأهله ليطمئنّوا عليه. القراءة لأعضاء العائلة وحدهم (قواعد الأمان).
   // lastContactDate لا تُزامَن هنا: هي خاصّة بالمستخدم (contacts.sync أدناه).
   var SYNC_FIELDS = ["local_name", "gender", "kinship", "proximity", "birthYear", "birthday",
                      "alive", "death_date", "deathYear", "contacts", "phones", "notes", "motherId",
                      "status_detail", "noChildren"];
-  var HEALTH_VALUE = "sick";
+
 
   var state = {
     uid: null, ready: false, error: null, isAnon: true, email: null,
@@ -181,7 +182,7 @@
     var out = {};
     for (var i = 0; i < SYNC_FIELDS.length; i++) {
       var k = SYNC_FIELDS[i];
-      if (p && p[k] !== undefined) out[k] = (k === "status_detail" && p[k] === HEALTH_VALUE) ? null : p[k];
+      if (p && p[k] !== undefined) out[k] = p[k];
     }
     return out;
   }
@@ -308,8 +309,6 @@
       for (var j = 0; j < SYNC_FIELDS.length; j++) {
         var f = SYNC_FIELDS[j];
         if (!(f in r)) continue;
-        // «مريض» محلّيّ لا يعرفه الخادم: لا يمحوه غيابُ الحالة هناك
-        if (f === "status_detail" && p.status_detail === HEALTH_VALUE && (r[f] == null || r[f] === "")) continue;
         m[f] = r[f];
       }
       out.push(m); seen[p.id] = 1;
@@ -413,13 +412,59 @@
       }
     };
   }
-  function uploadGroup(localGid, gp, rels) {
+  function uploadGroup(localGid, gp, rels, opts) {
     var built = buildImport(localGid, gp, rels);
+    if (opts && opts.groupId) { built.payload.groupId = opts.groupId; built.payload.replace = !!opts.replace; }
     return call("bulk.import", built.payload).then(function (b) {
-      setMap(localGid, b.groupId); setRole(b.groupId, "owner");
+      setMap(localGid, b.groupId); if (!b.existing) setRole(b.groupId, "owner");
       baseline[localGid] = snapshot(localGid, gp, rels);
       state.watching = null; rewatch();
       return b;
+    });
+  }
+  // تطابق شجرتين = نسبة أشخاص الشجرة المحلّية الموجودين (غير محذوفين) في نسخة الخادم.
+  // ممكنٌ لأنّ معرّفات الأشخاص ثابتة: الشجرة نفسها (تصديرٌ/استيراد أو جهازٌ آخر) لها المعرّفات نفسها.
+  function overlap(localIds, serverIds) {
+    if (!localIds.length) return 0;
+    var set = {}; serverIds.forEach(function (id) { set[id] = 1; });
+    var hit = 0; localIds.forEach(function (id) { if (set[id]) hit++; });
+    return hit / localIds.length;
+  }
+  function serverPersonIds(sg) {
+    return firebase.firestore().collection("groups").doc(sg).collection("persons").get().then(function (snap) {
+      var ids = []; snap.forEach(function (d) { if (d.data().deleted !== true) ids.push(d.id); });
+      return ids;
+    });
+  }
+  function findDuplicate(localGid, gp) {
+    var localIds = (((gp || {})[localGid]) || []).map(function (p) { return p.id; });
+    return call("my.groups", {}).then(function (b) {
+      var groups = (b.groups || []).filter(function (g) { return g.role === "owner" || g.role === "editor" || g.role === "viewer"; });
+      return Promise.all(groups.map(function (g) {
+        return serverPersonIds(g.groupId).then(function (ids) {
+          return { sg: g.groupId, name: g.name, role: g.role, ratio: overlap(localIds, ids), serverCount: ids.length };
+        }).catch(function () { return null; });
+      }));
+    }).then(function (list) {
+      var best = null;
+      (list || []).forEach(function (x) { if (x && (!best || x.ratio > best.ratio)) best = x; });
+      return best && best.ratio >= 0.5 ? best : null;
+    });
+  }
+  var pendingDup = null; // { localGid, sg, name, role, ratio, serverCount, localCount }
+  function doUpload(localGid, gp, rels, opts) {
+    toast(L("جارٍ الرفع…", "Uploading…"));
+    return uploadGroup(localGid, gp, rels, opts).then(function (b) {
+      var msg;
+      if (b.replaced) msg = L("استُبدلت نسخة الخادم ✓ (" + b.personsImported + " شخصاً" + (b.removedPersons ? "، وأُزيل " + b.removedPersons : "") + ")",
+                              "Server copy replaced ✓ (" + b.personsImported + " people" + (b.removedPersons ? ", " + b.removedPersons + " removed" : "") + ")");
+      else msg = L("رُفعت شجرتك: " + b.personsImported + " شخصاً و" + b.relationsImported + " صلة ✓",
+                   "Tree uploaded: " + b.personsImported + " people, " + b.relationsImported + " links ✓");
+      toast(msg); paintBadge(); renderPanel(); refreshMyGroups();
+      return b;
+    }).catch(function (e) {
+      toast(L("تعذّر الرفع: ", "Upload failed: ") + ((e && e.message) || e)); renderPanel();
+      return null;
     });
   }
   function uploadCurrent() {
@@ -428,23 +473,41 @@
     var rels = lastRels || lsRead("kinshipRelations", []);
     var n = ((gp && gp[localGid]) || []).length;
     if (!n) { toast(L("المجموعة الحالية لا تحوي أشخاصاً بعد", "This group has no people yet")); return Promise.resolve(null); }
-    if (serverGid(localGid)) {
-      var again = global.confirm(L(
-        "شجرة هذه المجموعة مرفوعةٌ ومتزامنة. أترفع نسخةً جديدة كاملة؟ (يتوقّف الربط بالنسخة القديمة ومن شاركتَها معهم)",
-        "This tree is already synced. Upload a fresh full copy? (unlinks the old copy and anyone you shared it with)"));
-      if (!again) return Promise.resolve(null);
-    }
     if (!state.uid) { toast(L("تعذّر الاتصال بالخادم — حاول بعد قليل", "Can't reach the server — try again shortly")); return Promise.resolve(null); }
-    toast(L("جارٍ رفع الشجرة…", "Uploading tree…"));
-    return uploadGroup(localGid, gp, rels).then(function (b) {
-      toast(L("رُفعت شجرتك: " + b.personsImported + " شخصاً و" + b.relationsImported + " صلة ✓",
-              "Tree uploaded: " + b.personsImported + " people, " + b.relationsImported + " links ✓"));
-      paintBadge(); renderPanel();
-      return b;
-    }).catch(function (e) {
-      toast(L("تعذّر الرفع: ", "Upload failed: ") + ((e && e.message) || e));
+    var sg = serverGid(localGid);
+    if (sg) {
+      // مربوطةٌ سلفاً: استبدالٌ في مكانها (تبقى المشاركة والأعضاء)
+      if (roleOf(sg) === "viewer") { toast(L("أنت مشاهد — لا يمكنك استبدال نسخة الخادم", "You're a viewer — can't replace the server copy")); return Promise.resolve(null); }
+      var ok = global.confirm(L("استبدال نسخة الخادم بشجرة هذا الجهاز؟ ما ليس على هذا الجهاز يُزال من الخادم. المشاركة والأعضاء يبقون كما هم.",
+                                "Replace the server copy with this device's tree? Anything not on this device is removed from the server. Sharing stays as is."));
+      if (!ok) return Promise.resolve(null);
+      return doUpload(localGid, gp, rels, { groupId: sg, replace: true });
+    }
+    // غير مربوطة: هل الشجرة نفسها على حسابك سلفاً؟
+    toast(L("أتحقّق إن كانت الشجرة مرفوعةً مسبقاً…", "Checking whether this tree is already uploaded…"));
+    return findDuplicate(localGid, gp).then(function (dup) {
+      if (!dup) return doUpload(localGid, gp, rels);
+      pendingDup = { localGid: localGid, sg: dup.sg, name: dup.name, role: dup.role, ratio: dup.ratio,
+                     serverCount: dup.serverCount, localCount: n };
+      if (!panelEl || panelEl.style.display === "none") openPanel(); else renderPanel();
       return null;
-    });
+    }).catch(function () { return doUpload(localGid, gp, rels); });
+  }
+  function resolveDup(choice) {
+    var d = pendingDup; pendingDup = null;
+    if (!d || choice === "cancel") { renderPanel(); return; }
+    var gp = lastGp || lsRead("groupPersons", {}), rels = lastRels || lsRead("kinshipRelations", []);
+    if (choice === "replace") {
+      if (d.role === "viewer") { toast(L("أنت مشاهد في تلك النسخة — لا يمكنك استبدالها", "You're a viewer there — can't replace it")); renderPanel(); return; }
+      doUpload(d.localGid, gp, rels, { groupId: d.sg, replace: true });
+    } else if (choice === "useServer") {
+      // اربط هذه المجموعة بالنسخة الموجودة؛ الخادم مرجعٌ فتُطابَق الشجرة المحلّية معه
+      setMap(d.localGid, d.sg); setRole(d.sg, d.role);
+      baseline[d.localGid] = snapshot(d.localGid, gp, rels);
+      state.watching = null; rewatch(); indexMine();
+      toast(L("رُبطت بنسخة الخادم «" + d.name + "» ✓", "Linked to the server copy «" + d.name + "» ✓"));
+      renderPanel();
+    }
   }
 
   // ---------- B5: الهويّة — ربط حساب Google ----------
@@ -613,6 +676,9 @@
         if (act === "close") closePanel();
         else if (act === "google") linkGoogle();
         else if (act === "upload") uploadCurrent();
+        else if (act === "dup-replace") resolveDup("replace");
+        else if (act === "dup-server") resolveDup("useServer");
+        else if (act === "dup-cancel") resolveDup("cancel");
         else if (act === "share-viewer") shareLink("viewer");
         else if (act === "share-editor") shareLink("editor");
         else if (act === "restore") {
@@ -649,12 +715,19 @@
     else acct = p("✓ " + esc(state.email || L("حساب Google", "Google account")), "#187854");
 
     var fam = '<div style="font:800 16px system-ui;color:#1f2d3a">' + esc(groupName(lg)) + '</div>';
-    if (!sg) fam += p(L("محفوظة على هذا الجهاز فقط.", "Saved on this device only.")) + btn("upload", L("ارفع شجرتي إلى السحابة", "Upload my tree"), true);
+    if (pendingDup && pendingDup.localGid === lg) {
+      var pct = Math.round(pendingDup.ratio * 100);
+      fam += p(L("هذه الشجرة مرفوعةٌ مسبقاً على حسابك باسم «" + esc(pendingDup.name) + "» (تطابق " + pct + "٪ — على الخادم " + pendingDup.serverCount + " شخصاً، وعلى هذا الجهاز " + pendingDup.localCount + ").",
+                 "This tree is already on your account as «" + esc(pendingDup.name) + "» (" + pct + "% match — " + pendingDup.serverCount + " on server, " + pendingDup.localCount + " here)."), "#8a5a00") +
+             (pendingDup.role !== "viewer" ? btn("dup-replace", L("استبدال نسخة الخادم بشجرة هذا الجهاز", "Replace the server copy with this device's tree"), true) : "") +
+             btn("dup-server", L("استخدام نسخة الخادم (تحلّ محلّ شجرة هذا الجهاز)", "Use the server copy (replaces this device's tree)")) +
+             btn("dup-cancel", L("إلغاء", "Cancel"));
+    } else if (!sg) fam += p(L("محفوظة على هذا الجهاز فقط.", "Saved on this device only.")) + btn("upload", L("ارفع شجرتي إلى السحابة", "Upload my tree"), true);
     else {
       fam += p(L("متزامنة مع السحابة ✓ · دورك: ", "Synced ✓ · your role: ") + roleLabel(role), "#187854");
       if (role === "owner" || role === "editor") fam += btn("share-viewer", L("مشاركة للمشاهدة (رابط)", "Share view-only link"));
       if (role === "owner") fam += btn("share-editor", L("رابط تحرير (لأجهزتك أو من تثق به)", "Edit link (your devices / trusted)"));
-      if (role === "owner") fam += btn("upload", L("رفع نسخة جديدة كاملة", "Re-upload a fresh copy"), false, ' data-small="1"');
+      if (role === "owner" || role === "editor") fam += btn("upload", L("استبدال نسخة الخادم بشجرة هذا الجهاز", "Replace the server copy with this device's tree"));
     }
 
     var mine;
@@ -709,7 +782,6 @@
     for (var k in data) {
       if (!Object.prototype.hasOwnProperty.call(data, k)) continue;
       if (k === "fts" || k === "healthStatus") continue;
-      if (k === "status_detail" && data[k] === HEALTH_VALUE) continue; // دفاعٌ إضافيّ
       p[k] = data[k];
     }
     return p;
@@ -799,7 +871,7 @@
     personToFields: personToFields, relToServer: relToServer,
     uid: function () { return state.uid; },
     isReady: function () { return !!(state.ready && state.uid); },
-    _state: state, _diff: diffAndEnqueue, _snapshot: snapshot, _merge: mergePersons,
+    _state: state, _diff: diffAndEnqueue, _snapshot: snapshot, _merge: mergePersons, _overlap: overlap,
     _testRemote: function (lg, sg, persons, relations) { remote = { localGid: lg, sg: sg, persons: persons, relations: relations }; applyPendingRemote(); }
   };
 
