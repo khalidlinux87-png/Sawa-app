@@ -287,13 +287,23 @@
     var groups = lsRead("familyGroups", []);
     var gp     = lsRead("groupPersons", {});
     var rels   = lsRead("kinshipRelations", []);
+    // لو المجموعة الحالية فارغة، خذ المجموعة الأكثر أشخاصاً (أداة فحص فقط).
+    var countOf = function (id) { return ((gp && gp[id]) || []).length; };
+    if (!countOf(curGid)) {
+      var best = curGid, bestN = 0;
+      for (var k in (gp || {})) {
+        if (Object.prototype.hasOwnProperty.call(gp, k) && countOf(k) > bestN) { best = k; bestN = countOf(k); }
+      }
+      curGid = best;
+    }
+    state.dbgLocalGid = curGid;
     var gObj   = (groups || []).filter(function (g) { return g && g.id === curGid; })[0];
     var name   = (gObj && gObj.name) || "عائلتي";
     var persons = (gp && gp[curGid]) || [];
     var groupRels = (rels || []).filter(function (r) { return r && r.groupId === curGid; });
 
     state.localP = persons.length; state.localR = groupRels.length;
-    state.dbgNote = "uploading L:" + persons.length + "/" + groupRels.length + "…";
+    state.dbgNote = "uploading " + curGid + " L:" + persons.length + "/" + groupRels.length + "…";
     paintBadge();
 
     var payload = {
@@ -314,7 +324,8 @@
         var map = JSON.parse(localStorage.getItem("sawa_group_map") || "{}");
         map[curGid] = b.groupId; localStorage.setItem("sawa_group_map", JSON.stringify(map));
       } catch (e) {}
-      state.dbgNote = "up P:" + b.personsImported + " R:" + b.relationsImported +
+      state.dbgNote = curGid + " L:" + persons.length + "/" + groupRels.length +
+                      " → up P:" + b.personsImported + " R:" + b.relationsImported +
                       " orphans:" + b.orphansSkipped;
       return b.groupId;
     });
@@ -326,7 +337,7 @@
       var gid  = debugParam("gid") || (function(){ try { return localStorage.getItem("sawa_b2_gid"); } catch(e){ return null; } })();
       var startWatch = function (g) {
         try { localStorage.setItem("sawa_b2_gid", g); } catch (e) {}
-        state.dbgGid = g; state.dbgNote = ""; paintBadge();
+        state.dbgGid = g; if (mode !== "upload") state.dbgNote = ""; paintBadge();
         rawWatch(g, {
           onPersons:   function (arr) { state.dbgPersons   = arr.length; paintBadge(); },
           onRelations: function (arr) { state.dbgRelations = arr.length; paintBadge(); }
