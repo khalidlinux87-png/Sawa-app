@@ -16,8 +16,8 @@
    في sawa_group_map {localGid: serverGid}، والأدوار في sawa_group_roles.
    الأشخاص والصلات: المعرّف المحلّيّ = معرّف الخادم (قرار §٨-١).
 
-   ⛔ الخصوصية: status_detail (الحالة الصحّية) و healthStatus و photo لا تغادر
-   الجهاز أبداً — ليست في SYNC_FIELDS، وتُحفَظ محلّياً عند دمج بيانات الخادم.
+   ⛔ الخصوصية: قيمة «sick» في status_detail (الحالة الصحّية) و healthStatus و photo
+   لا تغادر الجهاز أبداً — «sick» تُرسَل «بلا حالة» وتبقى محلّياً عند دمج بيانات الخادم.
 
    مفتاح الإيقاف: ?sync=off (و ?sync=on للإعادة). شارة الفحص: ?sync=debug.
    ============================================================ */
@@ -27,8 +27,12 @@
   var WORKER = "https://sawa-deploy-test.khalidlinux87.workers.dev";
 
   // مطابقةٌ تماماً لقائمة ALLOWED في الـWorker (v8+).
+  // status_detail: مسافر/مغترب/متزوّج حديثاً تُزامَن؛ «sick» (مريض) لا تغادر الجهاز أبداً.
+  // lastContactDate لا تُزامَن هنا: هي خاصّة بالمستخدم (contacts.sync أدناه).
   var SYNC_FIELDS = ["local_name", "gender", "kinship", "proximity", "birthYear", "birthday",
-                     "alive", "death_date", "deathYear", "contacts", "phones", "notes", "motherId"];
+                     "alive", "death_date", "deathYear", "contacts", "phones", "notes", "motherId",
+                     "status_detail", "noChildren"];
+  var HEALTH_VALUE = "sick";
 
   var state = {
     uid: null, ready: false, error: null, isAnon: true, email: null,
@@ -177,7 +181,7 @@
     var out = {};
     for (var i = 0; i < SYNC_FIELDS.length; i++) {
       var k = SYNC_FIELDS[i];
-      if (p && p[k] !== undefined) out[k] = p[k];
+      if (p && p[k] !== undefined) out[k] = (k === "status_detail" && p[k] === HEALTH_VALUE) ? null : p[k];
     }
     return out;
   }
@@ -247,6 +251,8 @@
       }
       diffAndEnqueue(sg, base, snap);
     }
+    var cg = currentLocalGid();
+    if (map[cg] && contactsChanged(cg, gp)) scheduleContactSync();
   }
 
   // ---------- B5: ربط التطبيق + القراءة من الخادم ----------
@@ -299,7 +305,13 @@
       for (var i = 0; i < remoteList.length; i++) if (remoteList[i].id === p.id) { r = remoteList[i]; break; }
       if (!r) return; // حُذف في الخادم
       var m = {}; for (var k in p) m[k] = p[k];
-      for (var j = 0; j < SYNC_FIELDS.length; j++) { var f = SYNC_FIELDS[j]; if (f in r) m[f] = r[f]; }
+      for (var j = 0; j < SYNC_FIELDS.length; j++) {
+        var f = SYNC_FIELDS[j];
+        if (!(f in r)) continue;
+        // «مريض» محلّيّ لا يعرفه الخادم: لا يمحوه غيابُ الحالة هناك
+        if (f === "status_detail" && p.status_detail === HEALTH_VALUE && (r[f] == null || r[f] === "")) continue;
+        m[f] = r[f];
+      }
       out.push(m); seen[p.id] = 1;
     });
     remoteList.forEach(function (r) {
@@ -328,6 +340,7 @@
     var nextRels = rels.filter(function (r) { return r.groupId !== lg; }).concat(remoteRels(lg, remote.relations));
     var nextGp = {}; for (var k in gp) nextGp[k] = gp[k]; nextGp[lg] = nextList;
     var before = snapshot(lg, gp, rels), after = snapshot(lg, nextGp, nextRels);
+    if (!remote.contactsDone) { remote.contactsDone = true; scheduleContactSync(800); }
     if (JSON.stringify(before) === JSON.stringify(after)) { state.applyNote = "same"; paintBadge(); return; } // متطابقان
     applying[lg] = true;
     baseline[lg] = after;
@@ -335,6 +348,51 @@
     app.setKinshipRelations(function (prev) { return prev.filter(function (r) { return r.groupId !== lg; }).concat(remoteRels(lg, remote.relations)); });
     state.applyNote = "applied " + clock(); paintBadge();
   }
+
+  // ---------- «آخر تواصل» الخاصّ بالمستخدم بين أجهزته (contacts.sync) ----------
+  // الدمج = الأحدث لكلّ شخص. لا يمرّ بالصادر: عمليّةٌ متكرّرة آمنة تُعاد عند كلّ مناسبة.
+  var contactSent = {}, contactTimer = null, contactBusy = false;
+  function localContacts(lg, gp) {
+    var out = {};
+    (((gp || {})[lg]) || []).forEach(function (p) { if (p && p.id && p.lastContactDate) out[p.id] = Number(p.lastContactDate); });
+    return out;
+  }
+  function scheduleContactSync(delay) {
+    if (contactTimer) clearTimeout(contactTimer);
+    contactTimer = setTimeout(function () { contactTimer = null; contactSync(); }, delay == null ? 1500 : delay);
+  }
+  function contactSync() {
+    var lg = currentLocalGid(), sg = serverGid(lg);
+    if (!sg || !state.uid || !enabled() || contactBusy || !app) return;
+    contactBusy = true;
+    var mine = localContacts(lg, lastGp);
+    call("contacts.sync", { groupId: sg, last: mine }).then(function (b) {
+      var srv = b.last || {};
+      contactSent[lg] = srv;
+      var newer = {}, n = 0;
+      for (var pid in srv) if (!mine[pid] || srv[pid] > mine[pid]) { newer[pid] = srv[pid]; n++; }
+      if (n) {
+        app.setGroupPersons(function (prev) {
+          var o = {}; for (var k in prev) o[k] = prev[k];
+          o[lg] = (prev[lg] || []).map(function (p) { return newer[p.id] ? Object.assign({}, p, { lastContactDate: newer[p.id] }) : p; });
+          return o;
+        });
+      }
+      state.contactNote = "ct " + clock() + (n ? " +" + n : ""); paintBadge();
+    }).catch(function (e) { state.contactNote = "ct✗"; paintBadge(); log("contacts.sync:", (e && e.message) || e); })
+      .then(function () { contactBusy = false; });
+  }
+  function contactsChanged(lg, gp) {
+    var sent = contactSent[lg]; if (!sent) return false;
+    var mine = localContacts(lg, gp);
+    for (var pid in mine) if (!sent[pid] || mine[pid] > sent[pid]) return true;
+    return false;
+  }
+  try {
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible") { drain(); scheduleContactSync(300); }
+    });
+  } catch (e) {}
 
   // ---------- «ارفع شجرتي» ----------
   function buildImport(localGid, gp, rels) {
@@ -650,7 +708,8 @@
     var p = { id: id };
     for (var k in data) {
       if (!Object.prototype.hasOwnProperty.call(data, k)) continue;
-      if (k === "fts" || k === "healthStatus" || k === "status_detail") continue;
+      if (k === "fts" || k === "healthStatus") continue;
+      if (k === "status_detail" && data[k] === HEALTH_VALUE) continue; // دفاعٌ إضافيّ
       p[k] = data[k];
     }
     return p;
@@ -711,6 +770,7 @@
       if (state.lastAck) body += " " + state.lastAck;
       if (fl.length) body += " [" + fl[fl.length - 1].op + ": " + String(fl[fl.length - 1].error || "").slice(0, 60) + "]";
       body += " · snap " + (state.lastSnap || "–") + " · " + (state.applyNote || "–");
+      if (state.contactNote) body += " · " + state.contactNote;
       if (state.watching) body += " · L " + String(currentLocalGid()).slice(-6);
       if (state.dbgNote) body = state.dbgNote + " · " + body;
       badgeEl.textContent = "sync " + (enabled() ? "ON" : "off") + " · " + body;
