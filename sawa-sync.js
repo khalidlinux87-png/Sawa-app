@@ -145,8 +145,9 @@
   }
 
   // ---------- B2+: مستمعات القراءة الحيّة ----------
-  function watchGroup(gid, cbs) {
-    if (!global.SAWA_SYNC || !gid) return function () {};
+  // rawWatch غير محكوم بالعلم — تستعمله أداة الفحص. watchGroup (العامّة) محكومة.
+  function rawWatch(gid, cbs) {
+    if (!gid) return function () {};
     // أغلق مستمع المجموعة السابقة (مستمعٌ واحدٌ في كلّ وقت — قرار §٨-٢).
     if (state.groupListeners && state.groupListeners.off) {
       try { state.groupListeners.off(); } catch (e) {}
@@ -166,9 +167,13 @@
       state.groupListeners = { gid: gid, off: off };
       return off;
     } catch (e) {
-      log("watchGroup فشل:", (e && e.message) || e);
+      log("rawWatch فشل:", (e && e.message) || e);
       return function () {};
     }
+  }
+  function watchGroup(gid, cbs) {
+    if (!global.SAWA_SYNC) return function () {};
+    return rawWatch(gid, cbs);
   }
 
   // ---------- مُحوِّلات الشكل ----------
@@ -220,9 +225,15 @@
       var ok = state.ready && state.uid;
       badgeEl.style.background = ok ? "#187854" : (state.error ? "#b23b3b" : "#8a6d1f");
       badgeEl.style.color = "#fff";
-      badgeEl.textContent = "sync " + (global.SAWA_SYNC ? "ON" : "off") + " · " +
-        (ok ? ("uid " + String(state.uid).slice(0, 6) + "…")
-            : (state.error ? ("err: " + state.error) : "connecting…"));
+      var body = ok ? ("uid " + String(state.uid).slice(0, 6) + "…")
+                    : (state.error ? ("err: " + state.error) : "connecting…");
+      if (state.dbgGid) {
+        body += " · G " + String(state.dbgGid).slice(0, 6) +
+                " P:" + (state.dbgPersons == null ? "?" : state.dbgPersons) +
+                " R:" + (state.dbgRelations == null ? "?" : state.dbgRelations);
+      }
+      if (state.dbgNote) body = state.dbgNote + " · " + body;
+      badgeEl.textContent = "sync " + (global.SAWA_SYNC ? "ON" : "off") + " · " + body;
     } catch (e) {}
   }
 
@@ -240,12 +251,57 @@
     _state: state
   };
 
+  // ---------- أداة فحص B2: بذرةٌ في المتصفّح + مراقبة حيّة ----------
+  // تعمل فقط في وضع الفحص؛ لا أثر على المستخدم العاديّ ولا على sawa-app.js.
+  function debugSeed() {
+    return sendOnce("group.create", { name: "مجموعة البذرة (B2)" }).then(function (g) {
+      if (!g || !g.ok) throw new Error("group.create: " + JSON.stringify(g));
+      var gid = g.groupId;
+      return sendOnce("person.set", { groupId: gid, fields: { local_name: "خالد", gender: "male" } })
+        .then(function (a) {
+          return sendOnce("person.set", { groupId: gid, fields: { local_name: "أحمد", gender: "male" } })
+            .then(function (b) {
+              return sendOnce("relation.add", { groupId: gid, type: "parent", from: a.personId, to: b.personId })
+                .then(function () { return gid; });
+            });
+        });
+    });
+  }
+  function debugParam(name) {
+    try { return new URLSearchParams(global.location.search).get(name); } catch (e) { return null; }
+  }
+  function debugRun() {
+    if (!debugOn()) return;
+    onReady(function () {
+      var mode = debugParam("sync"); // "debug" | "seed"
+      var gid  = debugParam("gid") || (function(){ try { return localStorage.getItem("sawa_b2_gid"); } catch(e){ return null; } })();
+      var startWatch = function (g) {
+        try { localStorage.setItem("sawa_b2_gid", g); } catch (e) {}
+        state.dbgGid = g; state.dbgNote = ""; paintBadge();
+        rawWatch(g, {
+          onPersons:   function (arr) { state.dbgPersons   = arr.length; paintBadge(); },
+          onRelations: function (arr) { state.dbgRelations = arr.length; paintBadge(); }
+        });
+      };
+      if (mode === "seed" && !gid) {
+        state.dbgNote = "seeding…"; paintBadge();
+        debugSeed().then(startWatch).catch(function (e) {
+          state.error = "seed: " + ((e && e.message) || e); paintBadge();
+          log("debugSeed فشل:", (e && e.message) || e);
+        });
+      } else if (gid) {
+        startWatch(gid);
+      }
+    });
+  }
+
   // ---------- إقلاعٌ ذاتيّ (لا يلمس sawa-app.js) ----------
   function boot() {
     paintBadge();            // يُظهر "connecting…" لو الفحص مُفعَّل
     connect().then(function (uid) {
       paintBadge();
       log(uid ? ("متّصل: " + uid) : "تعذّر الاتصال — التطبيق يعمل محلّياً");
+      debugRun();            // أداة فحص B2 (وضع الفحص فقط)
     });
   }
   if (global.document && document.readyState === "loading") {
