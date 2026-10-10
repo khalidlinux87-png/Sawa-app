@@ -434,7 +434,9 @@
         if (!/^data:/i.test(dataUrl)) return fail("fmt:" + dataUrl.slice(0, 12));
         // صورةٌ صغيرة أصلاً بصيغةٍ مقبولة: لا حاجة للتصغير
         var asIs = /^data:image\/(jpeg|png|webp);base64,/i.test(dataUrl) && dataUrl.length <= 390000 ? dataUrl : null;
-        var img = new Image();
+        // ⛔ لا new Image(): sawa-app.js يعرّف في النطاق العامّ أيقونةً اسمها Image (lucide) فتحجب منشئ المتصفّح
+        //    — كانت النتيجة مكوّن React لا يُحمَّل أبداً ⇒ «ph✗timeout».
+        var img = document.createElement("img");
         img.onload = function () {
           try {
             var max = 320, w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
@@ -465,7 +467,9 @@
     photoBusy = true;
     var job = photoQueue[0];
     // مهلة ١٥ث: صورةٌ لا يكتمل فكّها لا تعطّل طابور الصور كلّه
-    var squeeze = job.data ? Promise.race([compressImpl(job.data), new Promise(function (r) { setTimeout(function () { state.photoWhy = "timeout"; r(null); }, 15000); })]) : Promise.resolve(null);
+    var tmo = null;
+    var squeeze = job.data ? Promise.race([compressImpl(job.data), new Promise(function (r) { tmo = setTimeout(function () { state.photoWhy = "timeout"; r(null); }, 15000); })]) : Promise.resolve(null);
+    squeeze = squeeze.then(function (v) { if (tmo) clearTimeout(tmo); return v; });
     squeeze.then(function (small) {
       if (job.data && !small) { photoQueue.shift(); markPhotoFailed(job.sg, job.pid, job.data); state.photoNote = "ph✗" + (state.photoWhy || "img"); log("تعذّر تصغير الصورة:", state.photoWhy); return; }       // ليست صورة صالحة/كبيرة جداً: تُترك محلّية
       state.photoNote = "ph↑" + (small ? Math.round(small.length / 1024) + "k" : "del");
