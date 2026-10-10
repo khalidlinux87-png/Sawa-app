@@ -27,7 +27,9 @@
     projectId: "sawa-test-9770f",
     storageBucket: "sawa-test-9770f.firebasestorage.app",
     messagingSenderId: "98971055474",
-    appId: "1:98971055474:web:806f40756a2f4cdbdb19eb"
+    appId: "1:98971055474:web:806f40756a2f4cdbdb19eb",
+    // Realtime Database (الحضور · «يكتب…» · إشارات المكالمات) — منطقة أوروبا، الأقرب للسودان
+    databaseURL: "https://sawa-test-9770f-default-rtdb.europe-west1.firebasedatabase.app"
   };
 
   var app, auth, db, recaptcha, pendingConfirm = null;

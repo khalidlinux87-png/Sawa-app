@@ -1448,6 +1448,7 @@
     uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, shareLink: shareLink,
     watchGroup: watchGroup, serverGid: serverGid,
     isCloud: function (lg) { return !!serverGid(lg); },
+    call: function (op, payload) { return call(op, payload); }, toast: function (m) { toast(m); },
     cycleMemberRole: cycleMemberRole, removeMember: removeMember, setAllowMemberEvents: setAllowMemberEvents,
     personToFields: personToFields, relToServer: relToServer,
     uid: function () { return state.uid; },
