@@ -7,8 +7,33 @@
 /index.html
   Cache-Control: public, max-age=0, must-revalidate
 
-/sawa-app.js
+/app.p1.js
   Cache-Control: public, max-age=0, must-revalidate
+
+/app.p2.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/app.p3.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/app.p4.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/app.p5.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/app.p6.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/app.p7.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/app.p8.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/app.p9.js
+  Cache-Control: public, max-age=0, must-revalidate
+
 
 /sawa-core.js
   Cache-Control: public, max-age=0, must-revalidate
