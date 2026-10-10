@@ -2048,9 +2048,9 @@ function AppInner() {
     const [starredMessages, setStarredMessages] = useState([]);
     const [typingConversations, setTypingConversations] = useState([]);
     const [callLog, setCallLog] = usePersistedState("callLog", initialCallLog);
-    const [favoriteContacts, setFavoriteContacts] = useState(["نعمات بابكر"]);
+    const [favoriteContacts, setFavoriteContacts] = useState([]);
     const [callSettings, setCallSettings] = useState({ requireApproval: false, defaultScheduleType: "audio" });
-    const [speedDialContacts, setSpeedDialContacts] = useState(["نعمات بابكر", "عثمان بابكر"]);
+    const [speedDialContacts, setSpeedDialContacts] = useState([]);
     const [scheduledCalls, setScheduledCalls] = useState([]);
     const scheduledCallTimersRef = useRef({});
     function addScheduledCall(entry) {
@@ -2087,19 +2087,11 @@ function AppInner() {
         setCallLog([]);
         showToast(t("tm_msh_sjl_almkalmat"), "success");
     }
-    const [onlineContacts, setOnlineContacts] = useState(["نعمات بابكر", "عثمان بابكر"]);
-    useEffect(() => {
-        // محاكاة تغيّر الحضور بشكل دوري — يمثّل تحديثات حالة حقيقية من الخادم
-        const interval = setInterval(() => {
-            setOnlineContacts((prev) => {
-                const pool = ["نعمات بابكر", "عثمان بابكر", "صديق عبدالماجد", "إقبال بابكر"];
-                const count = 1 + Math.floor(Math.random() * 3);
-                const shuffled = [...pool].sort(() => Math.random() - 0.5);
-                return shuffled.slice(0, count);
-            });
-        }, 15000);
-        return () => clearInterval(interval);
-    }, []);
+    // ⛔ لا حضور عشوائيّ (C1): «متّصل الآن» حقيقيّ من SawaChat (Realtime Database)، وجهات الاتّصال كذلك
+    const [onlineContacts, setOnlineContacts] = useState([]);
+    const [people, setPeople] = useState(() => (window.SawaChat ? window.SawaChat.contacts() : []));
+    setLiveContacts(people);
+    useEffect(() => { if (window.SawaChat && window.SawaChat.bindApp) window.SawaChat.bindApp({ setPeople, setOnlineContacts }); }, []);
     function logCall(name, callType, duration, wasConnected, participants) {
         const mins = Math.floor(duration / 60);
         const secs = duration % 60;
@@ -3604,7 +3596,7 @@ function AppInner() {
                         setCallLog((prev) => prev.filter((x) => x.id !== id));
                         showToast(t("hdhft_mn_alsjl"), "success");
                     }, scheduledCalls: scheduledCalls, onAddScheduledCall: addScheduledCall, onDeleteScheduledCall: deleteScheduledCall })),
-                tab === "contacts" && React.createElement(ContactsScreen, { onMessageContact: messageContact, onLogCall: logCall, onlineContacts: onlineContacts }),
+                tab === "contacts" && React.createElement(ContactsScreen, { onMessageContact: messageContact, onLogCall: logCall, onlineContacts: onlineContacts, people: people }),
                 tab === "discover" && discoverContent,
                 tab === "me" && (React.createElement(MeScreen, { onExportTree: exportFamilyTree, onImportTree: importFamilyTree, onOpenSettings: () => setStack(["security"]), onOpenNotifications: () => setStack(["notifications"]), onOpenLinkedDevices: () => setShowLinkedDevices(true), onOpenWrapped: () => setShowWrapped(true), onOpenFeedback: () => setShowFeedback(true), onOpenHelp: () => setShowHelp(true), statusOption: statusOption, profilePhoto: profilePhoto, onLogout: handleLogout }))))),
             stack.length === 0

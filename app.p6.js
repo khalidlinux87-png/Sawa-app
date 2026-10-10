@@ -294,31 +294,23 @@ function CallsScreen({ callLog, favoriteContacts, onToggleFavorite, onLogCall, c
 // ============================================================================
 // جهات الاتصال — نفس تبويب سوا الأصلي
 // ============================================================================
-const DEFAULT_CONTACTS = [
-    { id: "ct1", name: "نعمات بابكر", phone: "0912345002", onSawa: true },
-    { id: "ct2", name: "عثمان بابكر", phone: "0912345003", onSawa: true },
-    { id: "ct3", name: "صديق عبدالماجد", phone: "0912345005", onSawa: true },
-    { id: "ct4", name: "إقبال بابكر", phone: "0912345006", onSawa: true },
-    { id: "ct5", name: "أحمد محمد", phone: "0912345007", onSawa: false },
-    { id: "ct6", name: "أسماء خالد", phone: "0912345008", onSawa: true },
-    { id: "ct7", name: "بدر الدين علي", phone: "0912345009", onSawa: false },
-    { id: "ct8", name: "تهاني يوسف", phone: "0912345010", onSawa: true },
-    { id: "ct9", name: "جمال عبدالله", phone: "0912345011", onSawa: false },
-    { id: "ct10", name: "حسن إبراهيم", phone: "0912345012", onSawa: true },
-    { id: "ct11", name: "خالد النور", phone: "0912345013", onSawa: false },
-    { id: "ct12", name: "دينا سليمان", phone: "0912345014", onSawa: true },
-    { id: "ct13", name: "رنا عمر", phone: "0912345015", onSawa: false },
-    { id: "ct14", name: "سارة أحمد", phone: "0912345016", onSawa: true },
-    { id: "ct15", name: "شيماء محمود", phone: "0912345017", onSawa: false },
-    { id: "ct16", name: "فاطمة الزهراء", phone: "0912345018", onSawa: true },
-    { id: "ct17", name: "محمد الأمين", phone: "0912345019", onSawa: true },
-    { id: "ct18", name: "منى عبدالرحمن", phone: "0912345020", onSawa: false },
-    { id: "ct19", name: "يوسف مصطفى", phone: "0912345021", onSawa: true },
-];
-function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContacts }) {
+// ⛔ لا جهات اتّصال وهميّة (C1): القائمة الحيّة من SawaChat — أعضاء عائلاتي على السحابة + من أضفتهم برابطٍ شخصيّ.
+//    يحدّثها AppInner في كلّ رسم (setLiveContacts)، فتقرؤها شاشات المكالمات والاتّصال السريع كما كانت تقرأ القائمة الثابتة.
+let DEFAULT_CONTACTS = [];
+function setLiveContacts(list) { DEFAULT_CONTACTS = Array.isArray(list) ? list : []; }
+function lastSeenLabel(ts) { return ts ? t("ct_last_seen", { t: formatChatTime(ts) }) : ""; }
+function contactSubtitle(c, isOnline) {
+    if (isOnline) return t("cp_mtsl_alan");
+    if (c.lastSeen) return lastSeenLabel(c.lastSeen);
+    if (c.families && c.families.length) return c.families.map((f) => f.name).join(" · ");
+    if (c.via && c.via.indexOf("link") >= 0) return t("ct_link_contact");
+    return c.phone || "";
+}
+function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContacts, people = [] }) {
     const { colors } = useTheme();
     const { showToast } = useToast();
-    const [contacts, setContacts] = useState(DEFAULT_CONTACTS);
+    const contacts = people;   // حقيقيّة من SawaChat
+    const isOn = (c) => (c.online !== undefined ? c.online : onlineContacts.includes(c.name));
     const [activeCall, setActiveCall] = useState(null);
     const [activeVideoCall, setActiveVideoCall] = useState(null);
     const [search, setSearch] = useState("");
@@ -326,7 +318,7 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
     const [showAddModal, setShowAddModal] = useState(false);
     const sectionRefs = useRef({});
     // فلترة البحث
-    const filtered = contacts.filter((c) => c.name.includes(search.trim()) || c.phone.includes(search.trim()));
+    const filtered = contacts.filter((c) => c.name.includes(search.trim()) || (c.phone || "").includes(search.trim()));
     // تقسيم: على سوا / من هاتفك فقط
     const sawaContacts = filtered.filter((c) => c.onSawa);
     const phoneContacts = filtered.filter((c) => !c.onSawa);
@@ -373,22 +365,24 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
                 letters.map((letter) => (React.createElement("div", { key: letter, ref: (el) => (sectionRefs.current[letter] = el) },
                     React.createElement("div", { className: "px-4 py-1 mt-2.5", style: { backgroundColor: colors.border + "44" } },
                         React.createElement("span", { className: "text-[11px] font-extrabold", style: { color: colors.textMuted } }, letter)),
-                    grouped[letter].map((c) => (React.createElement(ContactRow, { key: c.id, contact: c, isOnline: onlineContacts.includes(c.name), colors: colors, onPress: () => setSelectedContact(c) })))))))),
+                    grouped[letter].map((c) => (React.createElement(ContactRow, { key: c.id, contact: c, isOnline: isOn(c), colors: colors, onPress: () => setSelectedContact(c) })))))))),
             phoneContacts.length > 0 && (React.createElement("div", null,
                 React.createElement("div", { className: "px-4 pt-4 pb-1" },
                     React.createElement("span", { className: "text-[11px] font-extrabold", style: { color: colors.textMuted } }, t("mn_jhat_hatfk"))),
                 [...phoneContacts].sort((a, b) => a.name.localeCompare(b.name, "ar")).map((c) => (React.createElement(ContactRow, { key: c.id, contact: c, isOnline: false, colors: colors, onPress: () => setSelectedContact(c), showInvite: true }))))),
-            filtered.length === 0 && (React.createElement(EmptyState, { icon: Search, label: t("la_twjd_ntayj") }))),
+            contacts.length === 0 && (React.createElement("div", { className: "px-6 pt-10 flex flex-col items-center text-center" },
+                React.createElement("div", { className: "w-16 h-16 rounded-full flex items-center justify-center mb-3", style: { backgroundColor: colors.primaryLight } },
+                    React.createElement(Users, { size: 28, color: colors.primary })),
+                React.createElement("div", { className: "text-base font-extrabold mb-1.5", style: { color: colors.text } }, t("ct_none_title")),
+                React.createElement("p", { className: "text-xs leading-relaxed mb-4", style: { color: colors.textMuted } }, t("ct_none_desc")),
+                React.createElement(Button, { icon: UserPlus, label: t("ct_add_title"), onPress: () => setShowAddModal(true) }))),
+            contacts.length > 0 && filtered.length === 0 && (React.createElement(EmptyState, { icon: Search, label: t("la_twjd_ntayj") }))),
         !search && letters.length > 1 && (React.createElement("div", { className: "absolute left-1 top-1/2 flex flex-col gap-0.5", style: { transform: "translateY(-50%)", zIndex: 10 } }, letters.map((l) => (React.createElement("button", { key: l, onClick: () => scrollToLetter(l), className: "w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-extrabold", style: { color: colors.primary } }, l))))),
         React.createElement("button", { "aria-label": t("idafa_mshark"), onClick: () => setShowAddModal(true), className: "absolute flex items-center justify-center rounded-full shadow-lg", style: { bottom: 20, left: 20, width: 52, height: 52, backgroundColor: colors.primary, zIndex: 10 } },
             React.createElement(UserPlus, { size: 22, color: "#fff" })),
-        showAddModal && (React.createElement(AddContactModal, { colors: colors, onAdd: (newContact) => {
-                setContacts((prev) => [...prev, { ...newContact, id: "ct" + Date.now(), onSawa: false }]);
-                setShowAddModal(false);
-                showToast(t("tmt_idafa_jha_alatsal"), "success");
-            }, onClose: () => setShowAddModal(false) })),
+        showAddModal && (React.createElement(AddContactSheet, { colors: colors, onClose: () => setShowAddModal(false) })),
         selectedContact && !selectedContact.onSawa && (React.createElement(NonSawaContactSheet, { contact: selectedContact, colors: colors, onClose: () => setSelectedContact(null) })),
-        selectedContact && selectedContact.onSawa && (React.createElement(ContactProfileSheet, { contact: selectedContact, isOnline: onlineContacts.includes(selectedContact.name), colors: colors, onCall: () => { setActiveCall(selectedContact.name); setSelectedContact(null); }, onVideoCall: () => { setActiveVideoCall(selectedContact.name); setSelectedContact(null); }, onMessage: () => { onMessageContact(selectedContact); setSelectedContact(null); }, onClose: () => setSelectedContact(null) }))));
+        selectedContact && selectedContact.onSawa && (React.createElement(ContactProfileSheet, { contact: selectedContact, isOnline: isOn(selectedContact), colors: colors, onRemove: (selectedContact.via && selectedContact.via.indexOf("link") >= 0 && !(selectedContact.via.indexOf("family") >= 0) && window.SawaChat) ? () => { window.SawaChat.removeContact(selectedContact.uid); setSelectedContact(null); } : null, onCall: () => { setActiveCall(selectedContact.name); setSelectedContact(null); }, onVideoCall: () => { setActiveVideoCall(selectedContact.name); setSelectedContact(null); }, onMessage: () => { onMessageContact(selectedContact); setSelectedContact(null); }, onClose: () => setSelectedContact(null) }))));
 }
 function AddContactModal({ colors, onAdd, onClose }) {
     const [name, setName] = useState("");
@@ -430,10 +424,10 @@ function ContactRow({ contact, isOnline, colors, onPress, showInvite }) {
             contact.onSawa && !isOnline && (React.createElement("span", { className: "absolute bottom-0 left-0 w-3 h-3 rounded-full border-2", style: { backgroundColor: colors.primary + "99", borderColor: colors.bg } }))),
         React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
             React.createElement("div", { className: "text-sm font-bold truncate", style: { color: colors.text } }, contact.name),
-            React.createElement("div", { className: "text-xs mt-0.5 truncate", style: { color: isOnline ? "#22C55E" : colors.textMuted } }, isOnline ? "متّصل الآن" : contact.phone)),
+            React.createElement("div", { className: "text-xs mt-0.5 truncate", style: { color: isOnline ? "#22C55E" : colors.textMuted } }, contactSubtitle(contact, isOnline))),
         showInvite && (React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("dawa")))));
 }
-function ContactProfileSheet({ contact, isOnline, colors, onCall, onVideoCall, onMessage, onClose }) {
+function ContactProfileSheet({ contact, isOnline, colors, onCall, onVideoCall, onMessage, onClose, onRemove }) {
     return (React.createElement(React.Fragment, null,
         React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", zIndex: 40 } }),
         React.createElement("div", { className: "absolute left-0 right-0 bottom-0 rounded-t-3xl pb-8 pt-5 px-6", style: { backgroundColor: colors.card, zIndex: 50 } },
@@ -443,7 +437,8 @@ function ContactProfileSheet({ contact, isOnline, colors, onCall, onVideoCall, o
                     React.createElement("div", { className: "w-20 h-20 rounded-full flex items-center justify-center font-extrabold text-3xl", style: { backgroundColor: colors.primaryLight, color: colors.primaryDark } }, contact.name.charAt(0)),
                     isOnline && (React.createElement("span", { className: "absolute bottom-1 left-1 w-4 h-4 rounded-full border-2", style: { backgroundColor: "#22C55E", borderColor: colors.card } }))),
                 React.createElement("span", { className: "text-lg font-extrabold", style: { color: colors.text } }, contact.name),
-                React.createElement("span", { className: "text-sm mt-0.5", style: { color: isOnline ? "#22C55E" : colors.textMuted } }, isOnline ? t("cp_mtsl_alan") : contact.phone),
+                React.createElement("span", { className: "text-sm mt-0.5", style: { color: isOnline ? "#22C55E" : colors.textMuted } }, contactSubtitle(contact, isOnline)),
+                isOnline && contact.families && contact.families.length > 0 && React.createElement("span", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } }, contact.families.map((f) => f.name).join(" · ")),
                 contact.onSawa && (React.createElement("div", { className: "flex items-center gap-1 mt-1.5" },
                     React.createElement("img", { src: IS_RAHIM ? APP_LOGO_RAHIM : SAWA_LOGO, alt: appName(), style: { width: 14, height: 14, objectFit: "contain" } }),
                     React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.primary } }, t("ala_swa"))))),
@@ -459,7 +454,38 @@ function ContactProfileSheet({ contact, isOnline, colors, onCall, onVideoCall, o
                 React.createElement("div", { className: "flex flex-col items-center gap-1.5" },
                     React.createElement("button", { "aria-label": t("fydyw"), onClick: onVideoCall, className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: colors.accent || "#8B5CF6" } },
                         React.createElement(Video, { size: 22, color: "#fff" })),
-                    React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, t("fydyw")))))));
+                    React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, t("fydyw")))),
+            onRemove && React.createElement("button", { onClick: onRemove, className: "w-full mt-5 text-xs font-bold py-2.5 rounded-xl", style: { color: colors.danger, backgroundColor: colors.danger + "12" } }, t("ct_remove")))));
+}
+// إضافة جهة اتّصال (C1): رابطٌ شخصيّ · رمز QR · مسح رمز · لصق رابط — كلّها عبر SawaChat
+function AddContactSheet({ colors, onClose }) {
+    const SC = window.SawaChat;
+    const qrRef = useRef(null);
+    const [qrShown, setQrShown] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [pasted, setPasted] = useState("");
+    function showQr() {
+        if (!SC || !qrRef.current) return;
+        setQrShown(true); setBusy(true);
+        SC.renderQr(qrRef.current, 200).catch((e) => { if (qrRef.current) qrRef.current.textContent = (e && e.message) || String(e); }).then(() => setBusy(false));
+    }
+    function scan() { if (SC) SC.scanAndAdd().then((r) => { if (r) onClose(); }); }
+    function addPasted() { if (SC && pasted.trim()) SC.accept(pasted.trim()).then((r) => { if (r) onClose(); }); }
+    return (React.createElement(React.Fragment, null,
+        React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.45)", zIndex: 40 } }),
+        React.createElement("div", { className: "absolute left-0 right-0 bottom-0 rounded-t-3xl pt-5 px-5 pb-8 overflow-y-auto", style: { backgroundColor: colors.card, zIndex: 50, maxHeight: "92%" } },
+            React.createElement("div", { className: "w-10 h-1 rounded-full mx-auto mb-4", style: { backgroundColor: colors.border } }),
+            React.createElement("h3", { className: `text-base font-extrabold ${textStart()} mb-1.5`, style: { color: colors.text } }, t("ct_add_title")),
+            React.createElement("p", { className: `text-xs leading-relaxed ${textStart()} mb-4`, style: { color: colors.textMuted } }, t("ct_add_desc")),
+            React.createElement(Button, { icon: Share2, label: t("ct_share_link"), onPress: () => SC && SC.shareInvite() }),
+            React.createElement("button", { onClick: showQr, className: `w-full mt-2.5 flex ${rowStart()} items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold border`, style: { borderColor: colors.primary, color: colors.primary } }, t("ct_show_qr")),
+            React.createElement("div", { className: "flex flex-col items-center", style: { display: qrShown ? "flex" : "none" } },
+                React.createElement("div", { ref: qrRef, className: "mt-3 p-2 rounded-xl", style: { backgroundColor: "#fff", minWidth: 216, minHeight: 216, display: "flex", alignItems: "center", justifyContent: "center", color: "#666", fontSize: 12 } }, busy ? "…" : null),
+                React.createElement("p", { className: "text-[10px] mt-2 text-center", style: { color: colors.textMuted } }, t("ct_qr_hint"))),
+            SC && SC.scanSupported() && React.createElement("button", { onClick: scan, className: `w-full mt-2.5 flex ${rowStart()} items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold border`, style: { borderColor: colors.border, color: colors.text } }, t("ct_scan_qr")),
+            React.createElement("div", { className: `flex ${rowStart()} gap-2 mt-3` },
+                React.createElement("input", { dir: "ltr", value: pasted, onChange: (e) => setPasted(e.target.value), placeholder: t("ct_paste_ph"), className: "flex-1 rounded-xl px-3 py-2.5 text-xs border outline-none", style: { backgroundColor: colors.bg, borderColor: colors.border, color: colors.text } }),
+                React.createElement("button", { onClick: addPasted, disabled: !pasted.trim(), className: "rounded-xl px-4 text-xs font-bold", style: { backgroundColor: pasted.trim() ? colors.primary : colors.border, color: "#fff" } }, t("ct_add_btn"))))));
 }
 
 // جهة اتصال غير مسجّلة على سوا — لا محادثة ولا مكالمة داخل التطبيق.
