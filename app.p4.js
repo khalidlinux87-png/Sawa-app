@@ -366,7 +366,7 @@ function FamilyActivityLogScreen({ groupId, activityLog, onBack }) {
                     React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, a.text),
                     React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, new Date(a.ts).toLocaleString(loc(), { day: "numeric", month: "long", hour: "numeric", minute: "numeric" })))))))));
 }
-function FamilyMembersScreen({ groupId, members, canManage, settings, onCycleRole, onToggleSetting, onOpenActivityLog, onBack }) {
+function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, settings, onCycleRole, onToggleSetting, onRemove, onShare, onOpenActivityLog, onBack }) {
     var _a, _b;
     const { colors } = useTheme();
     // ⛔ لا سيرفر، فلا عضوية حقيقية: كانت «دعوة عضو» تُلحق الاسم بالقائمة فوراً
@@ -374,6 +374,8 @@ function FamilyMembersScreen({ groupId, members, canManage, settings, onCycleRol
     // شيء. أُزيلا (v190)، وتُخفى الأسماء التي ألحقتها تلك الدعوة الشكلية —
     // معرّفها `u-${Date.now()}` — دون حذفها من المخزن.
     const list = (members[groupId] || []).filter((m) => !/^u-\d{12,}$/.test(m.userId));
+    // عائلةٌ على السحابة: القائمة من الخادم (من انضمّ فعلاً عبر الروابط)، والإدارة تمرّ بالخادم
+    const [confirmingRemove, setConfirmingRemove] = useState(null);
     // دعوةٌ إلى التطبيق لا إلى المجموعة: رابط الموقع نفسه، يبدأ به القريب
     // شجرته على جهازه. ⛔ t() هنا عند النقر لا عند التحميل.
     function inviteRelative() {
@@ -391,7 +393,16 @@ function FamilyMembersScreen({ groupId, members, canManage, settings, onCycleRol
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
         React.createElement(TopBar, { title: t("alaada_walslahyat"), onBack: onBack }),
         React.createElement("div", { className: "flex-1 overflow-y-auto", style: { backgroundColor: colors.bg } },
-            React.createElement("div", { className: "p-4 border-b", style: { borderColor: colors.border } },
+            cloud && canInvite && (React.createElement("div", { className: "p-4 border-b", style: { borderColor: colors.border } },
+                React.createElement("div", { className: `text-sm font-extrabold ${textStart()}`, style: { color: colors.text } }, t("mb_dawa_title")),
+                React.createElement("p", { className: `text-[11px] mt-1 mb-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, t("mb_dawa_desc")),
+                React.createElement("div", { className: `flex ${rowStart()} gap-2` },
+                    React.createElement("button", { onClick: () => onShare && onShare("viewer"), className: `flex-1 flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-bold`, style: { backgroundColor: colors.primary, color: "#fff" } },
+                        React.createElement(Eye, { size: 15, color: "#fff" }), t("mb_link_view")),
+                    canManage && React.createElement("button", { onClick: () => onShare && onShare("editor"), className: `flex-1 flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-bold border`, style: { borderColor: colors.primary, color: colors.primary } },
+                        React.createElement(Pencil, { size: 14, color: colors.primary }), t("mb_link_edit"))))),
+            !cloud && canManage && React.createElement("p", { className: `text-[11px] px-4 pt-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, t("mb_not_cloud")),
+            !cloud && React.createElement("div", { className: "p-4 border-b", style: { borderColor: colors.border } },
                 React.createElement("div", { className: `text-sm font-extrabold ${textStart()}`, style: { color: colors.text } }, t("inv_aqarbk")),
                 React.createElement("p", { className: `text-[11px] mt-1 mb-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, t("inv_shrh", { app: appName() })),
                 React.createElement(Button, { icon: Share2, label: t("inv_zr"), onPress: inviteRelative }),
@@ -408,10 +419,17 @@ function FamilyMembersScreen({ groupId, members, canManage, settings, onCycleRol
                     React.createElement(FileClock, { size: 17, color: colors.primary }),
                     React.createElement("span", { className: `flex-1 text-xs font-bold ${textStart()} ${me("2.5")}`, style: { color: colors.text } }, t("sjl_nshat_almjmwaa")),
                     React.createElement(ChevronLeft, { size: 14, color: colors.textMuted, style: { transform: "scaleX(-1)" } })))),
-            React.createElement("div", { className: "p-4" }, list.map((m) => (React.createElement(Card, { key: m.userId, className: `flex ${rowStart()} items-center` },
-                React.createElement("span", { className: `flex-1 text-sm ${textStart()}`, style: { color: colors.text } }, m.userId === "u-1" ? t("ant") : m.name),
-                canManage && m.role !== "owner" ? (React.createElement("button", { onClick: () => onCycleRole(groupId, m.userId) },
-                    React.createElement(Badge, { variant: "neutral", label: roleLabel(m.role) }))) : (React.createElement(Badge, { variant: "neutral", label: roleLabel(m.role) })))))))));
+            React.createElement("div", { className: "p-4" },
+                cloud && React.createElement("div", { className: `text-xs font-bold mb-2 ${textStart()}`, style: { color: colors.textMuted } }, t("mb_alaada", { n: list.length })),
+                cloud && canManage && list.length > 1 && React.createElement("p", { className: `text-[10px] mb-2 ${textStart()}`, style: { color: colors.textMuted } }, t("mb_tap_role")),
+                list.map((m) => (React.createElement(Card, { key: m.userId, className: `flex ${rowStart()} items-center gap-2` },
+                React.createElement("span", { className: `flex-1 text-sm ${textStart()}`, style: { color: colors.text, fontWeight: m.me ? 700 : 400 } }, (m.userId === "u-1" || m.me) ? t("ant") + (m.me && m.name && !m.anon ? " · " + m.name : "") : m.name),
+                canManage && m.role !== "owner" && !m.me ? (React.createElement("button", { onClick: () => onCycleRole(groupId, m.userId) },
+                    React.createElement(Badge, { variant: "neutral", label: roleLabel(m.role) }))) : (React.createElement(Badge, { variant: m.role === "owner" ? "success" : "neutral", label: roleLabel(m.role) })),
+                cloud && canManage && onRemove && m.role !== "owner" && !m.me && (confirmingRemove === m.userId
+                    ? React.createElement("button", { onClick: () => { setConfirmingRemove(null); onRemove(groupId, m.userId); }, className: "text-[10px] font-bold rounded-xl px-2 py-1.5 text-white shrink-0", style: { backgroundColor: colors.danger } }, t("mb_remove_q"))
+                    : React.createElement("button", { "aria-label": t("mb_remove"), onClick: () => setConfirmingRemove(m.userId), className: "w-8 h-8 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.bg } },
+                        React.createElement(Trash2, { size: 13, color: colors.danger }))))))))));
 }
 // نافذة إضافة/تعديل قريب شاملة — تُستخدم لكلا الحالتين (person=null للإضافة،
 // أو كائن شخص حقيقي للتعديل المسبق التعبئة)

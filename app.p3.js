@@ -50,7 +50,7 @@ const KINSHIP_RELATION_DEFAULTS = {
     "أخرى": "sibling",
 };
 // نطاق وحدة: مفاتيح لا نصوص — تُترجَم وقت الرسم عبر roleLabel()
-const roleLabelKeys = { owner: "rl_owner", admin: "rl_admin", member: "rl_member", viewer: "rl_viewer" };
+const roleLabelKeys = { owner: "rl_owner", admin: "rl_admin", editor: "rl_admin", member: "rl_member", viewer: "rl_viewer" };
 const roleLabel = (r) => (roleLabelKeys[r] ? t(roleLabelKeys[r]) : r);
 // استدلال افتراضي للجنس من صلة القرابة المُختارة — يمكن للمستخدم تغييره
 // يدوياً؛ "أخرى" و"ابن العم/الخال" بلا استدلال واضح فنتركها بلا افتراض

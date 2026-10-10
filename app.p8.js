@@ -3415,7 +3415,12 @@ function AppInner() {
     }
     else if (discoverTop.type === "members") {
         const group = discoverTop.data;
-        discoverContent = (React.createElement(FamilyMembersScreen, { groupId: group.id, members: members, canManage: group.role === "owner", settings: groupSettings, onCycleRole: cycleMemberRole, onToggleSetting: toggleGroupSetting, onOpenActivityLog: () => setDiscoverStack([...discoverStack, { type: "activityLog", data: group }]), onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
+        const SS = window.SawaSync, cloud = !!(SS && SS.isCloud && SS.isCloud(group.id));
+        discoverContent = (React.createElement(FamilyMembersScreen, { groupId: group.id, members: members, canManage: group.role === "owner", canInvite: group.role === "owner" || group.role === "admin", cloud: cloud, settings: groupSettings,
+            onCycleRole: cloud ? (gid, uid) => SS.cycleMemberRole(gid, uid) : cycleMemberRole,
+            onToggleSetting: cloud ? (gid, val) => { toggleGroupSetting(gid, val); SS.setAllowMemberEvents(gid, val); } : toggleGroupSetting,
+            onRemove: cloud ? (gid, uid) => SS.removeMember(gid, uid) : null,
+            onShare: cloud ? (role) => SS.shareLink(role, group.id) : null, onOpenActivityLog: () => setDiscoverStack([...discoverStack, { type: "activityLog", data: group }]), onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
     }
     else if (discoverTop.type === "activityLog") {
         discoverContent = (React.createElement(FamilyActivityLogScreen, { groupId: discoverTop.data.id, activityLog: activityLog, onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
