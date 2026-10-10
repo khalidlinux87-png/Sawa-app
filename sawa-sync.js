@@ -327,6 +327,7 @@
       if (!want[sg] || w.uid !== state.uid || w.lg !== want[sg]) stopWatch(sg);
     }
     for (var sg2 in want) if (!watchers[sg2]) startWatch(sg2, want[sg2]);
+    sayHello();
     paintBadge();
   }
   function startWatch(sg, lg) {
@@ -365,10 +366,92 @@
         w.photos = m; w.snap = state.lastSnap = clock(); w.snapAt = Date.now();
         applyPendingRemote();
       }, onErr);
-      w.off = function () { [offP, offR, offE, offPh].forEach(function (f) { try { f(); } catch (e) {} }); };
+      // الأعضاء وإعدادات العائلة: خطؤهما لا يعطّل مزامنة الشجرة
+      var softErr = function (what) { return function (e) { log("قراءة " + what + " مرفوضة:", sg, (e && e.code) || e); }; };
+      var offM = base.collection("members").onSnapshot(function (snap) {
+        if (watchers[sg] !== w) return;
+        var arr = []; snap.forEach(function (d) { var x = d.data() || {};
+          arr.push({ uid: d.id, role: x.role || "viewer", name: x.name || null, anon: x.anon === true,
+                     adoptedFrom: x.adoptedFrom || null, joined: x.joinedTs && x.joinedTs.toMillis ? x.joinedTs.toMillis() : 0 }); });
+        w.members = arr; applyMembers(w);
+      }, softErr("الأعضاء"));
+      var offG = base.onSnapshot(function (d) {
+        if (watchers[sg] !== w) return;
+        var x = (d && d.data && d.data()) || {};
+        w.settings = { allowMemberEvents: x.allowMemberEvents === true }; applySettings(w);
+      }, softErr("العائلة"));
+      w.off = function () { [offP, offR, offE, offPh, offM, offG].forEach(function (f) { try { f(); } catch (e) {} }); };
     } catch (e) { w.err = "init"; w.note = "listen✗ init"; w.off = function () {}; }
   }
   function watcherFor(lg) { var sg = serverGid(lg); return sg ? watchers[sg] : null; }
+
+  // ---------- الأعضاء الحقيقيّون (groups/{g}/members) ----------
+  // أدوار الخادم ← أدوار التطبيق: المحرّر = «admin» (يعدّل الشجرة)، المشاهد = «viewer»
+  function appRole(r) { return r === "owner" ? "owner" : r === "editor" ? "admin" : "viewer"; }
+  function serverRole(r) { return r === "owner" ? "owner" : (r === "admin" || r === "editor") ? "editor" : "viewer"; }
+  var memSig = {};
+  function memberList(w) {
+    var hidden = {}; (w.members || []).forEach(function (m) { if (m.adoptedFrom) hidden[m.adoptedFrom] = 1; });   // هويّةٌ قديمة لنفس الشخص
+    var rank = { owner: 0, editor: 1, viewer: 2 };
+    return (w.members || []).filter(function (m) { return !hidden[m.uid]; }).map(function (m) {
+      var me = m.uid === state.uid;
+      return { userId: m.uid, name: m.name || (m.anon ? L("ضيف (بلا حساب Google)", "Guest (no Google account)") : L("عضو", "Member")),
+               role: appRole(m.role), serverRole: m.role, anon: m.anon, me: me, cloud: true, joined: m.joined };
+    }).sort(function (a, b) {
+      if (a.me !== b.me) return a.me ? -1 : 1;
+      return (rank[a.serverRole] - rank[b.serverRole]) || (a.joined - b.joined);
+    });
+  }
+  function applyMembers(w) {
+    if (!app || !w.members) return;
+    var lg = w.lg, list = memberList(w), sig = JSON.stringify(list);
+    // دوري أنا: يُحدَّث محلّياً (يُخفي أدوات التحرير عن المشاهد، ويُظهرها لمن رُقّي)
+    var mine = (w.members || []).filter(function (m) { return m.uid === state.uid; })[0];
+    if (mine && roles()[w.sg] !== mine.role) { setRole(w.sg, mine.role); renderPanel(); }
+    if (mine && app.setFamilyGroups) {
+      var want = appRole(mine.role), cur = (lastGroups || []).filter(function (g) { return g && g.id === lg; })[0];
+      if (cur && cur.role !== want) app.setFamilyGroups(function (prev) { return (prev || []).map(function (g) { return g.id === lg ? Object.assign({}, g, { role: want }) : g; }); });
+    }
+    if (memSig[lg] === sig || !app.setMembers) return;
+    memSig[lg] = sig;
+    app.setMembers(function (prev) { var o = {}; for (var k in prev) o[k] = prev[k]; o[lg] = list; return o; });
+  }
+  function applySettings(w) {
+    if (!app || !app.setGroupSettings || !w.settings) return;
+    var lg = w.lg, v = w.settings.allowMemberEvents;
+    app.setGroupSettings(function (prev) {
+      var cur = prev && prev[lg];
+      if (cur && cur.allowMemberEvents === v) return prev;
+      var o = {}; for (var k in prev) o[k] = prev[k]; o[lg] = Object.assign({}, cur || {}, { allowMemberEvents: v }); return o;
+    });
+  }
+  var helloDone = {};
+  function sayHello() {
+    if (!state.uid || !enabled()) return;
+    var ids = []; for (var sg in watchers) if (!helloDone[state.uid + ":" + sg]) ids.push(sg);
+    if (!ids.length) return;
+    ids.forEach(function (sg) { helloDone[state.uid + ":" + sg] = 1; });
+    call("member.hello", { groupIds: ids }).catch(function (e) { log("member.hello:", (e && e.message) || e); });
+  }
+  function memberAction(lg, op, payload, okMsg) {
+    var sg = serverGid(lg);
+    if (!sg) { toast(L("هذه العائلة ليست على السحابة", "This family isn't in the cloud")); return Promise.resolve(false); }
+    payload.groupId = sg;
+    return call(op, payload).then(function () { if (okMsg) toast(okMsg); return true; }).catch(function (e) {
+      var m = (e && e.message) || String(e);
+      if (/only the owner/.test(m)) m = L("هذا لمالك العائلة وحده", "Only the family's owner can do this");
+      toast(L("تعذّر: ", "Failed: ") + m); return false;
+    });
+  }
+  function cycleMemberRole(lg, uid) {
+    var w = watcherFor(lg), m = w && (w.members || []).filter(function (x) { return x.uid === uid; })[0];
+    if (!m || m.role === "owner") return Promise.resolve(false);
+    var next = m.role === "editor" ? "viewer" : "editor";
+    return memberAction(lg, "member.setRole", { uid: uid, role: next },
+      next === "editor" ? L("صار محرّراً ✓", "Now an editor ✓") : L("صار مشاهداً ✓", "Now a viewer ✓"));
+  }
+  function removeMember(lg, uid) { return memberAction(lg, "member.remove", { uid: uid }, L("أُزيل من العائلة ✓", "Removed from the family ✓")); }
+  function setAllowMemberEvents(lg, v) { return memberAction(lg, "group.settings", { allowMemberEvents: !!v }, null); }
   function mergePersons(localList, remoteList) {
     var byId = {}; (localList || []).forEach(function (p) { byId[p.id] = p; });
     var seen = {}, out = [];
@@ -900,8 +983,8 @@
   }
 
   // ---------- B5: المشاركة والانضمام والاستعادة ----------
-  function shareLink(role) {
-    var lg = currentLocalGid(), sg = serverGid(lg);
+  function shareLink(role, lgArg) {
+    var lg = lgArg || currentLocalGid(), sg = serverGid(lg);
     if (!sg) { toast(L("ارفع الشجرة أوّلاً", "Upload the tree first")); return; }
     toast(L("جارٍ إنشاء الرابط…", "Creating link…"));
     call("invite.create", { groupId: sg, role: role }).then(function (b) {
@@ -948,7 +1031,7 @@
     var lg = "g-" + Date.now();
     setMap(lg, sg);
     baseline[lg] = { persons: {}, relations: {} };
-    app.setFamilyGroups(function (prev) { return (prev || []).concat([{ id: lg, name: name || "عائلتي", description: "", role: role || "viewer" }]); });
+    app.setFamilyGroups(function (prev) { return (prev || []).concat([{ id: lg, name: name || "عائلتي", description: "", role: appRole(role || "viewer") }]); });
     app.setGroupPersons(function (prev) { var o = {}; for (var k in prev) o[k] = prev[k]; o[lg] = []; return o; });
     if (app.setGroupSettings) app.setGroupSettings(function (prev) { var o = {}; for (var k in prev) o[k] = prev[k]; o[lg] = { allowMemberEvents: false }; return o; });
     app.setCurrentGroupId(lg);
@@ -1359,6 +1442,8 @@
     push: push, observe: observe, bindApp: bindApp,
     uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, shareLink: shareLink,
     watchGroup: watchGroup, serverGid: serverGid,
+    isCloud: function (lg) { return !!serverGid(lg); },
+    cycleMemberRole: cycleMemberRole, removeMember: removeMember, setAllowMemberEvents: setAllowMemberEvents,
     personToFields: personToFields, relToServer: relToServer,
     uid: function () { return state.uid; },
     isReady: function () { return !!(state.ready && state.uid); },
@@ -1370,7 +1455,9 @@
           setReviews: function (sg, items) { reviewsBy[sg] = items; }, watchers: function () { return watchers; },
           setWatcher: function (sg, w) { watchers[sg] = Object.assign({ sg: sg, uid: state.uid, off: function () {}, contactsDone: true, reviewsChecked: true, snapAt: Date.now() + 1 }, w); },
           snap: function (sg, patch) { Object.assign(watchers[sg], patch, { snapAt: Date.now() + 1 }); applyPendingRemote(); },
-          apply: function () { applyPendingRemote(); } },
+          apply: function () { applyPendingRemote(); },
+          members: function (sg, list) { watchers[sg].members = list; applyMembers(watchers[sg]); },
+          settings: function (sg, v) { watchers[sg].settings = v; applySettings(watchers[sg]); } },
     _testDenied: function (sg, lg) { watchers[sg] = { sg: sg, lg: lg, uid: state.uid, persons: null, relations: null, off: function () {}, err: "permission-denied", contactsDone: true }; },
     _restore: function (sg, name, role) { return restoreGroup(sg, name, role); },
     _testPanel: function (groups) { myGroups = groups; myGroupsLoading = false; openPanel(); myGroups = groups; myGroupsLoading = false; renderPanel(); return panelEl.innerHTML; },
