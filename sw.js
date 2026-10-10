@@ -1,7 +1,7 @@
 // عامل الخدمة — يحفظ ملفّات التطبيق للعمل دون اتّصال (الشبكة أوّلاً، ثمّ المخزون).
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v192';
+const VERSION = 'sawa-v193';
 const ASSETS = [
   './',
   './index.html',
@@ -20,6 +20,7 @@ const ASSETS = [
   './app.p9.js',
   './sawa-auth.js',
   './sawa-sync.js',
+  './sawa-chat.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
