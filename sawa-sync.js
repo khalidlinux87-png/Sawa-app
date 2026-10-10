@@ -156,6 +156,11 @@
     state.sending = true;
     var item = q[0];
     sendOnce(item.op, item.payload).then(function (b) {
+      if (b && b.error === "rate_limited") {          // الخادم يطلب التمهّل: التعديل يبقى في الطابور ويُعاد بعد دقيقة
+        state.sending = false; state.lastAck = "… " + item.op + " (rate)"; paintBadge();
+        if (!retryTimer) retryTimer = setTimeout(function () { retryTimer = null; drain(); }, 60000);
+        return;
+      }
       var rest = lsGet(OUTBOX, []); rest.shift(); lsSet(OUTBOX, rest);
       if (!b || b.ok === false) {
         var f = lsGet(FAILED, []); f.push({ op: item.op, error: b && b.error, ts: Date.now() });
