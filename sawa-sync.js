@@ -548,8 +548,15 @@
     }
     if (any) { schedPending[lg] = pend; lsSet("sawa_sched_pending", schedPending); scheduleContactSync(); }
   }
-  function applyScheds(lg, items) {
-    var mine = localScheds(lg), byId = {}; items.forEach(function (x) { byId[x.id] = x; });
+  function applyScheds(lg, items, pend) {
+    var mine = localScheds(lg), byId = {};
+    pend = pend || {};
+    // ما لم يُرسَل بعد (أُضيف/عُدِّل أثناء الإرسال) يغلب ما جاء من الخادم، والمحذوف محلّياً لا يعود
+    items = items.filter(function (x) { return !(pend[x.id] && pend[x.id]._deleted); }).map(function (x) {
+      var loc = pend[x.id] && mine.filter(function (m) { return m.id === x.id; })[0]; return loc || x;
+    });
+    mine.forEach(function (m) { if (pend[m.id] && !pend[m.id]._deleted && !items.some(function (x) { return x.id === m.id; })) items.push(m); });
+    items.forEach(function (x) { byId[x.id] = x; });
     var out = [], seen = {};
     mine.forEach(function (x) { if (byId[x.id]) { out.push(byId[x.id]); seen[x.id] = 1; } });      // ترتيب الجهاز
     items.forEach(function (x) { if (!seen[x.id]) out.push(x); });
@@ -571,7 +578,7 @@
       var a1 = schedSigs(items), a2 = schedSigs(mine), diff = false;
       for (var k in a1) if (a1[k] !== a2[k]) diff = true;
       for (var k2 in a2) if (!a1[k2] && !p2[k2]) diff = true;
-      if (diff) { applyScheds(lg, items); return 1; }
+      if (diff) { applyScheds(lg, items, p2); return 1; }
       return 0;
     });
   }
@@ -648,8 +655,10 @@
     if (contactTimer) clearTimeout(contactTimer);
     contactTimer = setTimeout(function () { contactTimer = null; contactSync(); }, delay == null ? 1500 : delay);
   }
+  var contactAgain = false;
   function contactSync() {
-    if (!state.uid || !enabled() || contactBusy || !app) return;
+    if (contactBusy) { contactAgain = true; return; }   // طلبٌ أثناء الإرسال لا يضيع: يُعاد بعد انتهائه
+    if (!state.uid || !enabled() || !app) return;
     var lgs = []; for (var sg in watchers) lgs.push(watchers[sg].lg);
     if (!lgs.length) return;
     contactBusy = true;
@@ -659,7 +668,7 @@
         state.contactNote = "ct " + clock() + (total ? " +" + total : ""); paintBadge();
         var jobs = schedQueue; schedQueue = [];
         jobs.reduce(function (pr, j) { return pr.then(function () { return schedOne(j[0], j[1]).catch(function (e) { log("schedules.sync:", (e && e.message) || e); }); }); }, Promise.resolve())
-          .then(function () { contactBusy = false; });
+          .then(function () { contactBusy = false; if (contactAgain) { contactAgain = false; scheduleContactSync(500); } });
         return;
       }
       var lg = lgs[i], sg = serverGid(lg), mine = localContacts(lg, lastGp);
