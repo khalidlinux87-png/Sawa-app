@@ -1,0 +1,32 @@
+# _headers — Netlify يقرؤه من جذر المستودع. الضغط تلقائيّ؛ هذا الملف للتخزين المؤقّت فقط.
+# أسماء ملفّاتنا ثابتة بلا بصمة، فلو خُزِّنت طويلاً علق المستخدم على نسخةٍ قديمة.
+
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/sawa-app.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/sawa-core.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/sawa-auth.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/sawa-sync.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/daily.json
+  Cache-Control: public, max-age=0, must-revalidate
+
+/duaa.json
+  Cache-Control: public, max-age=0, must-revalidate
+
+/manifest.json
+  Cache-Control: public, max-age=3600
+
+/icons/*
+  Cache-Control: public, max-age=604800
