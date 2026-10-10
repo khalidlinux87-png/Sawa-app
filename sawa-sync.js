@@ -78,7 +78,21 @@
         if (!hasFirebase()) throw new Error("Firebase/SawaAuth غير محمَّل");
         SawaAuth.currentUser(); // يُهيّئ Firebase
         var auth = firebase.auth();
+        // ⛔ لا دخول مجهول قبل أن يسترجع Firebase الجلسة المحفوظة: currentUser فارغٌ لحظة الإقلاع
+        // حتّى لو كان المستخدم مسجّلاً بـGoogle، وطلب دخولٍ مجهول حينها يستبدل حسابه بهويّةٍ جديدة.
+        // أوّل نداءٍ لـ onAuthStateChanged يأتي بعد اكتمال الاسترجاع — عندها فقط نقرّر.
+        var firstAuth = true;
         auth.onAuthStateChanged(function (user) {
+          if (firstAuth) {
+            firstAuth = false;
+            if (!user) {
+              auth.signInAnonymously().catch(function (e) {
+                state.error = (e && e.message) || "تعذّر الدخول المجهول";
+                paintBadge(); resolve(null);
+              });
+              return;
+            }
+          }
           if (user) {
             var changed = state.uid && state.uid !== user.uid;
             setUser(user);
@@ -89,12 +103,6 @@
         });
         // نتيجة ربطٍ بإعادة التوجيه (بديل النافذة المنبثقة)
         handleRedirectResult();
-        if (!auth.currentUser) {
-          auth.signInAnonymously().catch(function (e) {
-            state.error = (e && e.message) || "تعذّر الدخول المجهول";
-            paintBadge(); resolve(null);
-          });
-        }
         onReady(resolve);
       } catch (e) {
         state.error = (e && e.message) || String(e); state.ready = false;
@@ -243,6 +251,8 @@
       if (!Object.prototype.hasOwnProperty.call(map, localGid)) continue;
       var snap = snapshot(localGid, gp, rels);
       var base = baseline[localGid];
+      var wd = watchers[map[localGid]];
+      if (wd && wd.err === "permission-denied" && base) continue;   // بلا صلاحيّة: نحتفظ بالتعديلات ولا نرسلها
       baseline[localGid] = snap;
       if (applying[localGid]) { applying[localGid] = false; continue; } // صدى الخادم
       if (!base) continue;      // أوّل مراقبة بعد الفتح = خطّ الأساس
@@ -371,6 +381,12 @@
     var lg = w.lg;
     if (serverGid(lg) !== w.sg) { w.note = "gid≠"; return; }
     var gp = lastGp || {}, rels = lastRels || [];
+    // تعديلاتٌ محلّية لم تُرسَل (مثلاً أُجريت أثناء فقدان الصلاحيّة): تُرسَل أوّلاً ثمّ نطابق الخادم
+    var localSnap = snapshot(lg, gp, rels), base = baseline[lg];
+    if (base && roleOf(w.sg) !== "viewer" && JSON.stringify(base) !== JSON.stringify(localSnap)) {
+      baseline[lg] = localSnap;
+      if (diffAndEnqueue(w.sg, base, localSnap) > 0) { w.note = "push-first"; return; }
+    }
     var nextList = mergePersons(gp[lg] || [], w.persons);
     var nextRels = rels.filter(function (r) { return r.groupId !== lg; }).concat(remoteRels(lg, w.relations));
     var nextGp = {}; for (var k in gp) nextGp[k] = gp[k]; nextGp[lg] = nextList;
@@ -525,7 +541,7 @@
     var sg = serverGid(localGid);
     if (sg) {
       // مربوطةٌ سلفاً: استبدالٌ في مكانها (تبقى المشاركة والأعضاء)
-      if (roleOf(sg) === "viewer") { toast(L("أنت مشاهد — لا يمكنك استبدال نسخة الخادم", "You're a viewer — can't replace the server copy")); return Promise.resolve(null); }
+      if (roleOf(sg) !== "owner") { toast(L("استبدال الشجرة كلّها للمالك وحده", "Only the owner can replace the whole tree")); return Promise.resolve(null); }
       var ok = global.confirm(L("استبدال نسخة الخادم بشجرة هذا الجهاز؟ ما ليس على هذا الجهاز يُزال من الخادم. المشاركة والأعضاء يبقون كما هم.",
                                 "Replace the server copy with this device's tree? Anything not on this device is removed from the server. Sharing stays as is."));
       if (!ok) return Promise.resolve(null);
@@ -546,7 +562,7 @@
     if (!d || choice === "cancel") { renderPanel(); return; }
     var gp = lastGp || lsRead("groupPersons", {}), rels = lastRels || lsRead("kinshipRelations", []);
     if (choice === "replace") {
-      if (d.role === "viewer") { toast(L("أنت مشاهد في تلك النسخة — لا يمكنك استبدالها", "You're a viewer there — can't replace it")); renderPanel(); return; }
+      if (d.role !== "owner") { toast(L("استبدال الشجرة كلّها للمالك وحده", "Only the owner can replace the whole tree")); renderPanel(); return; }
       doUpload(d.localGid, gp, rels, { groupId: d.sg, replace: true });
     } else if (choice === "useServer") {
       // اربط هذه المجموعة بالنسخة الموجودة؛ الخادم مرجعٌ فتُطابَق الشجرة المحلّية معه
@@ -655,7 +671,11 @@
       } else {
         global.prompt(L("انسخ الرابط:", "Copy the link:"), url);
       }
-    }).catch(function (e) { toast(L("تعذّر إنشاء الرابط: ", "Couldn't create link: ") + ((e && e.message) || e)); });
+    }).catch(function (e) {
+      var m = (e && e.message) || String(e);
+      if (/not a manager|only the owner can invite/.test(m)) m = L("هذا الحساب ليس مالك العائلة على الخادم — سجّل الدخول بحساب Google الذي رفعها.", "This account isn't the family's owner on the server — sign in with the Google account that uploaded it.");
+      toast(L("تعذّر إنشاء الرابط: ", "Couldn't create link: ") + m);
+    });
   }
   function restoreGroup(sg, name, role) {
     var existing = localGidOf(sg);
@@ -780,6 +800,13 @@
         else if (act === "dup-server") resolveDup("useServer");
         else if (act === "dup-cancel") resolveDup("cancel");
         else if (act === "delete") deleteGroup(t.getAttribute("data-gid"));
+        else if (act === "relink-new") {
+          var cg = currentLocalGid(), csg = serverGid(cg);
+          if (csg && global.confirm(L("فكّ ربط هذه العائلة بنسختها القديمة ورفعها كعائلةٍ جديدة على الحساب الحاليّ؟",
+                                      "Unlink this family from its old copy and upload it as a new family on the current account?"))) {
+            unmap(csg); uploadCurrent();
+          }
+        }
         else if (act === "leave") leaveGroup(t.getAttribute("data-gid"));
         else if (act === "share-viewer") shareLink("viewer");
         else if (act === "share-editor") shareLink("editor");
@@ -821,9 +848,15 @@
       var pct = Math.round(pendingDup.ratio * 100);
       fam += p(L("هذه الشجرة مرفوعةٌ مسبقاً على حسابك باسم «" + esc(pendingDup.name) + "» (تطابق " + pct + "٪ — على الخادم " + pendingDup.serverCount + " شخصاً، وعلى هذا الجهاز " + pendingDup.localCount + ").",
                  "This tree is already on your account as «" + esc(pendingDup.name) + "» (" + pct + "% match — " + pendingDup.serverCount + " on server, " + pendingDup.localCount + " here)."), "#8a5a00") +
-             (pendingDup.role !== "viewer" ? btn("dup-replace", L("استبدال نسخة الخادم بشجرة هذا الجهاز", "Replace the server copy with this device's tree"), true) : "") +
+             (pendingDup.role === "owner" ? btn("dup-replace", L("استبدال نسخة الخادم بشجرة هذا الجهاز", "Replace the server copy with this device's tree"), true) : "") +
              btn("dup-server", L("استخدام نسخة الخادم (تحلّ محلّ شجرة هذا الجهاز)", "Use the server copy (replaces this device's tree)")) +
              btn("dup-cancel", L("إلغاء", "Cancel"));
+    } else if (sg && watchers[sg] && watchers[sg].err === "permission-denied") {
+      fam += p(L("⚠ هذه العائلة رُفعت بحسابٍ غير المسجَّل الآن، فالخادم يرفض الوصول إليها. تعديلاتك هنا محفوظةٌ على الجهاز وتُرسَل حين تعود الصلاحيّة.",
+                 "⚠ This family was uploaded by a different account than the one signed in now, so the server refuses access. Your edits here are kept on this device and sent once access is back."), "#8a5a00");
+      if (state.isAnon) fam += p(L("سجّل الدخول بحساب Google الذي رفعها لتستعيد الوصول:", "Sign in with the Google account that uploaded it to regain access:")) +
+                               btn("google", L("الدخول بحساب Google", "Sign in with Google"), true);
+      fam += btn("relink-new", L("أو: ارفعها كعائلةٍ جديدة على هذا الحساب", "Or: upload it as a new family on this account"));
     } else if (!sg) {
       fam += p(L("محفوظة على هذا الجهاز فقط — غير مربوطة بالخادم، فلا تتزامن.", "Saved on this device only — not linked, so it doesn't sync."));
       if (myGroups && myGroups.some(function (g) { return !localGidOf(g.groupId); }))
@@ -835,7 +868,7 @@
       fam += p(L("متزامنة مع السحابة ✓ · دورك: ", "Synced ✓ · your role: ") + roleLabel(role), "#187854");
       if (role === "owner" || role === "editor") fam += btn("share-viewer", L("مشاركة للمشاهدة (رابط)", "Share view-only link"));
       if (role === "owner") fam += btn("share-editor", L("رابط تحرير (لأجهزتك أو من تثق به)", "Edit link (your devices / trusted)"));
-      if (role === "owner" || role === "editor") fam += btn("upload", L("استبدال نسخة الخادم بشجرة هذا الجهاز", "Replace the server copy with this device's tree"));
+      if (role === "owner") fam += btn("upload", L("استبدال نسخة الخادم بشجرة هذا الجهاز", "Replace the server copy with this device's tree"));
     }
 
     var mine;
@@ -995,6 +1028,7 @@
     uid: function () { return state.uid; },
     isReady: function () { return !!(state.ready && state.uid); },
     _state: state, _diff: diffAndEnqueue, _snapshot: snapshot, _merge: mergePersons, _overlap: overlap,
+    _testDenied: function (sg, lg) { watchers[sg] = { sg: sg, lg: lg, uid: state.uid, persons: null, relations: null, off: function () {}, err: "permission-denied", contactsDone: true }; },
     _restore: function (sg, name, role) { return restoreGroup(sg, name, role); },
     _testPanel: function (groups) { myGroups = groups; myGroupsLoading = false; openPanel(); myGroups = groups; myGroupsLoading = false; renderPanel(); return panelEl.innerHTML; },
     _testRemote: function (lg, sg, persons, relations) { watchers[sg] = { sg: sg, lg: lg, uid: state.uid, persons: persons, relations: relations, off: function () {}, contactsDone: true }; applyPendingRemote(); },
