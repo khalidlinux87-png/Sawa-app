@@ -321,7 +321,7 @@ function FamilySchedulesScreen({ groupId, schedules, persons, canAdd = true, onC
                 React.createElement("button", { "aria-label": t("takyd"), onClick: () => onComplete(s.id), className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary } },
                     React.createElement(Check, { size: 16, color: "#fff" }))))))));
 }
-function FamilyEventsScreen({ groupId, events, canAdd, onAdd, onEdit, onDelete, onBack }) {
+function FamilyEventsScreen({ groupId, events, persons = [], canAdd, onAdd, onEdit, onDelete, onBack }) {
     const { colors } = useTheme();
     const [confirmingId, setConfirmingId] = useState(null);
     const items = events.filter((e) => e.groupId === groupId);
@@ -339,6 +339,7 @@ function FamilyEventsScreen({ groupId, events, canAdd, onAdd, onEdit, onDelete, 
                         React.createElement(Icon, { size: 16, color: colors.primary })),
                     React.createElement("div", { className: `flex-1 ${textStart()}` },
                         React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, e.title),
+                        (() => { const ep = persons.find((p) => p.id === e.personId); return ep ? React.createElement("div", { className: "text-xs font-bold mt-0.5", style: { color: colors.primary } }, ep.local_name, ep.kinship ? " \u00B7 " + kinshipLabel(ep.kinship) : "") : null; })(),
                         React.createElement("div", { className: "text-xs mt-0.5", style: { color: colors.textMuted } },
                             eventTypeLabel(e.type),
                             " \u00B7 ",
