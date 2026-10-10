@@ -227,11 +227,15 @@
 
   var baseline = {};          // localGid -> لقطة آخر حالةٍ متّفقٍ عليها مع الخادم
   var applying = {};          // localGid -> true أثناء تطبيق بيانات الخادم (لا ترسل صداها)
-  var lastGp = null, lastRels = null, lastCur = null, lastGroups = null;
+  var lastGp = null, lastRels = null, lastCur = null, lastGroups = null, lastGroupsSig = null;
   var viewerWarned = {};
   function observe(gp, rels, currentGid, familyGroups) {
     lastGp = gp; lastRels = rels;
-    if (familyGroups) lastGroups = familyGroups;
+    if (familyGroups) {
+      var sig = familyGroups.map(function (g) { return g && g.id; }).join("|");
+      lastGroups = familyGroups;
+      if (sig !== lastGroupsSig) { lastGroupsSig = sig; rewatch(); renderPanel(); }
+    }
     if (currentGid !== undefined && currentGid !== lastCur) { lastCur = currentGid; rewatch(); renderPanel(); }
     if (!enabled()) return;
     var map = groupMap();
@@ -252,8 +256,7 @@
       }
       diffAndEnqueue(sg, base, snap);
     }
-    var cg = currentLocalGid();
-    if (map[cg] && contactsChanged(cg, gp)) scheduleContactSync();
+    for (var lg2 in map) if (watchers[map[lg2]] && contactsChanged(lg2, gp)) { scheduleContactSync(); break; }
   }
 
   // ---------- B5: ربط التطبيق + القراءة من الخادم ----------
@@ -265,41 +268,66 @@
     rewatch();
   }
   function whenApp(cb) { if (app) cb(); else appWaiters.push(cb); }
-  function currentLocalGid() { return lastCur != null ? lastCur : lsRead("currentGroupId", "g-1"); }
+  // عائلات هذا الجهاز (من حالة التطبيق).
+  function localGroupIds() {
+    var ids = [];
+    ((lastGroups || lsRead("familyGroups", [])) || []).forEach(function (g) { if (g && g.id) ids.push(g.id); });
+    return ids;
+  }
+  // «العائلة المقصودة»: لا نعتمد على currentGroupId وحده — قد يكون فارغاً أو قديماً
+  // (بعد حذف عائلة أو استيراد شجرة) بينما الشاشة تعرض عائلةً أخرى.
+  function currentLocalGid() {
+    var ids = localGroupIds(), cur = lastCur != null ? lastCur : lsRead("currentGroupId", "");
+    if (cur && (ids.indexOf(cur) >= 0 || !ids.length)) return cur;
+    var map = groupMap();
+    for (var i = 0; i < ids.length; i++) if (map[ids[i]]) return ids[i];       // المربوطة أوّلاً
+    var gp = lastGp || lsRead("groupPersons", {}), best = ids[0] || cur || "", bestN = -1;
+    ids.forEach(function (id) { var n = (((gp || {})[id]) || []).length; if (n > bestN) { best = id; bestN = n; } });
+    return best;                                                               // ثمّ الأكثر أشخاصاً
+  }
 
-  var remote = null; // { localGid, sg, persons, relations } آخر لقطةٍ من الخادم
+  // مستمعٌ لكلّ عائلةٍ مربوطة على هذا الجهاز — التزامن لا يتوقّف على العائلة المفتوحة.
+  var watchers = {}; // sg -> { sg, lg, uid, persons, relations, off, err, snap, note, contactsDone }
+  function stopWatch(sg) { var w = watchers[sg]; if (!w) return; try { w.off && w.off(); } catch (e) {} delete watchers[sg]; }
+  function restartWatch() { for (var sg in watchers) stopWatch(sg); rewatch(); }
   function rewatch() {
     if (!app || !state.uid || !enabled()) return;
-    var lg = currentLocalGid(), sg = serverGid(lg);
-    if (!sg) { if (state.groupListeners) { try { state.groupListeners.off(); } catch (e) {} state.groupListeners = null; } state.watching = null; return; }
-    if (state.watching === sg + "|" + state.uid) return;
-    state.watching = sg + "|" + state.uid;
-    remote = { localGid: lg, sg: sg, persons: null, relations: null };
-    state.listenErr = null;
-    state.dbgGid = sg;
-    rawWatch(sg, {
-      onPersons: function (arr) {
-        if (!remote || remote.sg !== sg) return;
-        remote.persons = arr.filter(function (p) { return p.deleted !== true; });
-        state.lastSnap = clock(); state.listenErr = null;
-        state.dbgPersons = remote.persons.length; paintBadge();
-        applyPendingRemote();
-      },
-      onRelations: function (arr) {
-        if (!remote || remote.sg !== sg) return;
-        remote.relations = arr.filter(function (r) { return !r.deleted; });
-        state.lastSnap = clock();
-        state.dbgRelations = remote.relations.length; paintBadge();
-        applyPendingRemote();
-      },
-      onError: function (e) {
-        // فقدان الصلاحيّة (أُزيلت العضوية مثلاً): نتوقّف عن المزامنة بصمت
-        log("القراءة مرفوضة:", e && e.code);
-        state.listenErr = (e && e.code) || "err";
-        state.applyNote = "listen✗ " + state.listenErr; paintBadge();
-      }
-    });
+    var map = groupMap(), ids = localGroupIds(), want = {};
+    for (var lg in map) if (!ids.length || ids.indexOf(lg) >= 0) want[map[lg]] = lg;
+    for (var sg in watchers) {
+      var w = watchers[sg];
+      if (!want[sg] || w.uid !== state.uid || w.lg !== want[sg]) stopWatch(sg);
+    }
+    for (var sg2 in want) if (!watchers[sg2]) startWatch(sg2, want[sg2]);
+    paintBadge();
   }
+  function startWatch(sg, lg) {
+    var w = { sg: sg, lg: lg, uid: state.uid, persons: null, relations: null, off: null, err: null, snap: null, note: "waiting-snap", contactsDone: false };
+    watchers[sg] = w;
+    try {
+      var base = firebase.firestore().collection("groups").doc(sg);
+      var onErr = function (e) {
+        w.err = (e && e.code) || "err"; w.note = "listen✗ " + w.err;
+        log("القراءة مرفوضة:", sg, w.err); paintBadge();
+      };
+      var offP = base.collection("persons").onSnapshot(function (snap) {
+        if (watchers[sg] !== w) return;
+        var arr = []; snap.forEach(function (d) { arr.push(personFromDoc(d.id, d.data())); });
+        w.persons = arr.filter(function (p) { return p.deleted !== true; });
+        w.snap = state.lastSnap = clock(); w.err = null;
+        applyPendingRemote();
+      }, onErr);
+      var offR = base.collection("relations").onSnapshot(function (snap) {
+        if (watchers[sg] !== w) return;
+        var arr = []; snap.forEach(function (d) { arr.push(relFromDoc(sg, d.id, d.data())); });
+        w.relations = arr.filter(function (r) { return !r.deleted; });
+        w.snap = state.lastSnap = clock(); w.err = null;
+        applyPendingRemote();
+      }, onErr);
+      w.off = function () { try { offP(); } catch (e) {} try { offR(); } catch (e) {} };
+    } catch (e) { w.err = "init"; w.note = "listen✗ init"; w.off = function () {}; }
+  }
+  function watcherFor(lg) { var sg = serverGid(lg); return sg ? watchers[sg] : null; }
   function mergePersons(localList, remoteList) {
     var byId = {}; (localList || []).forEach(function (p) { byId[p.id] = p; });
     var seen = {}, out = [];
@@ -332,26 +360,30 @@
     });
   }
   function applyPendingRemote() {
-    if (!app || !remote || !remote.persons || !remote.relations) {
-      if (state.listenErr) { paintBadge(); return; }          // رسالة الفشل تبقى ظاهرة
-      state.applyNote = !app ? "noapp" : !serverGid(currentLocalGid()) ? "unlinked" : !state.uid ? "no-auth" : "waiting-snap";
-      paintBadge(); return;
-    }
-    if (outboxLen() > 0 || state.sending) { state.applyNote = "defer(Q)"; paintBadge(); return; } // تعديلاتنا أوّلاً
-    var lg = remote.localGid;
-    if (serverGid(lg) !== remote.sg) { state.applyNote = "gid≠"; paintBadge(); return; }
+    if (!app) { state.applyNote = "noapp"; paintBadge(); return; }
+    for (var sg in watchers) applyOne(watchers[sg]);
+    paintBadge();
+  }
+  function applyOne(w) {
+    if (w.err) { w.note = "listen✗ " + w.err; return; }
+    if (!w.persons || !w.relations) { w.note = "waiting-snap"; return; }
+    if (outboxLen() > 0 || state.sending) { w.note = "defer(Q)"; return; }   // تعديلاتنا أوّلاً
+    var lg = w.lg;
+    if (serverGid(lg) !== w.sg) { w.note = "gid≠"; return; }
     var gp = lastGp || {}, rels = lastRels || [];
-    var nextList = mergePersons(gp[lg] || [], remote.persons);
-    var nextRels = rels.filter(function (r) { return r.groupId !== lg; }).concat(remoteRels(lg, remote.relations));
+    var nextList = mergePersons(gp[lg] || [], w.persons);
+    var nextRels = rels.filter(function (r) { return r.groupId !== lg; }).concat(remoteRels(lg, w.relations));
     var nextGp = {}; for (var k in gp) nextGp[k] = gp[k]; nextGp[lg] = nextList;
     var before = snapshot(lg, gp, rels), after = snapshot(lg, nextGp, nextRels);
-    if (!remote.contactsDone) { remote.contactsDone = true; scheduleContactSync(800); }
-    if (JSON.stringify(before) === JSON.stringify(after)) { state.applyNote = "same"; paintBadge(); return; } // متطابقان
+    if (!w.contactsDone) { w.contactsDone = true; scheduleContactSync(800); }
+    if (JSON.stringify(before) === JSON.stringify(after)) { w.note = "same"; return; }   // متطابقان
     applying[lg] = true;
     baseline[lg] = after;
-    app.setGroupPersons(function (prev) { var o = {}; for (var k in prev) o[k] = prev[k]; o[lg] = mergePersons(prev[lg] || [], remote.persons); return o; });
-    app.setKinshipRelations(function (prev) { return prev.filter(function (r) { return r.groupId !== lg; }).concat(remoteRels(lg, remote.relations)); });
-    state.applyNote = "applied " + clock(); paintBadge();
+    var persons = w.persons, relations = w.relations;
+    app.setGroupPersons(function (prev) { var o = {}; for (var k in prev) o[k] = prev[k]; o[lg] = mergePersons(prev[lg] || [], persons); return o; });
+    app.setKinshipRelations(function (prev) { return prev.filter(function (r) { return r.groupId !== lg; }).concat(remoteRels(lg, relations)); });
+    lastGp = nextGp; lastRels = nextRels;
+    w.note = "applied " + clock();
   }
 
   // ---------- «آخر تواصل» الخاصّ بالمستخدم بين أجهزته (contacts.sync) ----------
@@ -367,25 +399,35 @@
     contactTimer = setTimeout(function () { contactTimer = null; contactSync(); }, delay == null ? 1500 : delay);
   }
   function contactSync() {
-    var lg = currentLocalGid(), sg = serverGid(lg);
-    if (!sg || !state.uid || !enabled() || contactBusy || !app) return;
+    if (!state.uid || !enabled() || contactBusy || !app) return;
+    var lgs = []; for (var sg in watchers) lgs.push(watchers[sg].lg);
+    if (!lgs.length) return;
     contactBusy = true;
-    var mine = localContacts(lg, lastGp);
-    call("contacts.sync", { groupId: sg, last: mine }).then(function (b) {
-      var srv = b.last || {};
-      contactSent[lg] = srv;
-      var newer = {}, n = 0;
-      for (var pid in srv) if (!mine[pid] || srv[pid] > mine[pid]) { newer[pid] = srv[pid]; n++; }
-      if (n) {
-        app.setGroupPersons(function (prev) {
-          var o = {}; for (var k in prev) o[k] = prev[k];
-          o[lg] = (prev[lg] || []).map(function (p) { return newer[p.id] ? Object.assign({}, p, { lastContactDate: newer[p.id] }) : p; });
-          return o;
-        });
+    var total = 0;
+    var next = function (i) {
+      if (i >= lgs.length) {
+        state.contactNote = "ct " + clock() + (total ? " +" + total : ""); paintBadge();
+        contactBusy = false; return;
       }
-      state.contactNote = "ct " + clock() + (n ? " +" + n : ""); paintBadge();
-    }).catch(function (e) { state.contactNote = "ct✗"; paintBadge(); log("contacts.sync:", (e && e.message) || e); })
-      .then(function () { contactBusy = false; });
+      var lg = lgs[i], sg = serverGid(lg), mine = localContacts(lg, lastGp);
+      if (!sg) return next(i + 1);
+      call("contacts.sync", { groupId: sg, last: mine }).then(function (b) {
+        var srv = b.last || {};
+        contactSent[lg] = srv;
+        var newer = {}, n = 0;
+        for (var pid in srv) if (!mine[pid] || srv[pid] > mine[pid]) { newer[pid] = srv[pid]; n++; }
+        if (n) {
+          total += n;
+          app.setGroupPersons(function (prev) {
+            var o = {}; for (var k in prev) o[k] = prev[k];
+            o[lg] = (prev[lg] || []).map(function (p) { return newer[p.id] ? Object.assign({}, p, { lastContactDate: newer[p.id] }) : p; });
+            return o;
+          });
+        }
+      }).catch(function (e) { state.contactNote = "ct✗"; log("contacts.sync:", (e && e.message) || e); })
+        .then(function () { next(i + 1); });
+    };
+    next(0);
   }
   function contactsChanged(lg, gp) {
     var sent = contactSent[lg]; if (!sent) return false;
@@ -424,7 +466,7 @@
     return call("bulk.import", built.payload).then(function (b) {
       setMap(localGid, b.groupId); if (!b.existing) setRole(b.groupId, "owner");
       baseline[localGid] = snapshot(localGid, gp, rels);
-      state.watching = null; rewatch();
+      restartWatch();
       return b;
     });
   }
@@ -510,7 +552,7 @@
       // اربط هذه المجموعة بالنسخة الموجودة؛ الخادم مرجعٌ فتُطابَق الشجرة المحلّية معه
       setMap(d.localGid, d.sg); setRole(d.sg, d.role);
       baseline[d.localGid] = snapshot(d.localGid, gp, rels);
-      state.watching = null; rewatch(); indexMine();
+      restartWatch(); indexMine();
       toast(L("رُبطت بنسخة الخادم «" + d.name + "» ✓", "Linked to the server copy «" + d.name + "» ✓"));
       renderPanel();
     }
@@ -535,7 +577,7 @@
   }
   function afterLinked(msg) {
     var u = firebase.auth().currentUser; if (u) setUser(u);
-    state.watching = null; rewatch();
+    restartWatch();
     return indexMine().then(function () { toast(msg); renderPanel(); refreshMyGroups(); });
   }
   function linkGoogle() {
@@ -627,7 +669,7 @@
         if (!curIds.length || overlap(curIds, ids) >= 0.5) {
           setMap(cur, sg);
           baseline[cur] = snapshot(cur, gp, rels);     // الخادم مرجع: تُطابَق المحلّية معه
-          state.watching = null; rewatch();
+          restartWatch();
           return cur;
         }
         return createRestored(sg, name, role);
@@ -684,8 +726,7 @@
     for (var k in m) if (m[k] === sg) { delete m[k]; delete baseline[k]; changed = true; }
     if (changed) lsSet("sawa_group_map", m);
     var r = roles(); delete r[sg]; lsSet("sawa_group_roles", r);
-    if (remote && remote.sg === sg) remote = null;
-    state.watching = null; rewatch();
+    stopWatch(sg); rewatch();
   }
   function fmtNum(n) { try { return Number(n || 0).toLocaleString(isAr() ? "ar-EG" : "en-US"); } catch (e) { return String(n); } }
   function fmtWhen(ts) {
@@ -909,6 +950,8 @@
       badgeEl.style.background = ok ? "#187854" : (state.error ? "#b23b3b" : "#8a6d1f");
       badgeEl.style.color = "#fff";
       var body = ok ? ((state.isAnon ? "anon " : "G✓ ") + String(state.uid).slice(0, 6) + "…") : (state.error ? ("err: " + state.error) : "connecting…");
+      var cw = watcherFor(currentLocalGid());
+      if (cw) { state.dbgGid = cw.sg; state.dbgPersons = cw.persons ? cw.persons.length : null; state.dbgRelations = cw.relations ? cw.relations.length : null; }
       if (state.dbgGid) {
         body += " · G " + String(state.dbgGid).slice(0, 6) +
                 " P:" + (state.dbgPersons == null ? "?" : state.dbgPersons) +
@@ -918,7 +961,9 @@
       body += " · Q:" + outboxLen() + " F:" + fl.length + " Rv:" + state.reviews;
       if (state.lastAck) body += " " + state.lastAck;
       if (fl.length) body += " [" + fl[fl.length - 1].op + ": " + String(fl[fl.length - 1].error || "").slice(0, 60) + "]";
-      body += " · snap " + (state.lastSnap || "–") + " · " + (state.applyNote || "–");
+      var nW = 0; for (var k2 in watchers) nW++;
+      var note = cw ? cw.note : (app ? (serverGid(currentLocalGid()) ? (state.uid ? "waiting-snap" : "no-auth") : "unlinked") : "noapp");
+      body += " · W:" + nW + " · snap " + ((cw && cw.snap) || "–") + " · " + note;
       if (state.contactNote) body += " · " + state.contactNote;
       var cl = currentLocalGid(), csg = serverGid(cl);
       body += " · L " + String(cl).slice(-6) + "→" + (csg ? String(csg).slice(0, 6) : "∅");
@@ -952,7 +997,8 @@
     _state: state, _diff: diffAndEnqueue, _snapshot: snapshot, _merge: mergePersons, _overlap: overlap,
     _restore: function (sg, name, role) { return restoreGroup(sg, name, role); },
     _testPanel: function (groups) { myGroups = groups; myGroupsLoading = false; openPanel(); myGroups = groups; myGroupsLoading = false; renderPanel(); return panelEl.innerHTML; },
-    _testRemote: function (lg, sg, persons, relations) { remote = { localGid: lg, sg: sg, persons: persons, relations: relations }; applyPendingRemote(); }
+    _testRemote: function (lg, sg, persons, relations) { watchers[sg] = { sg: sg, lg: lg, uid: state.uid, persons: persons, relations: relations, off: function () {}, contactsDone: true }; applyPendingRemote(); },
+    _current: function () { return currentLocalGid(); }
   };
 
   // ---------- إقلاعٌ ذاتيّ ----------
