@@ -480,7 +480,11 @@ function AddContactSheet({ colors, onClose }) {
             React.createElement(Button, { icon: Share2, label: t("ct_share_link"), onPress: () => SC && SC.shareInvite() }),
             React.createElement("button", { onClick: showQr, className: `w-full mt-2.5 flex ${rowStart()} items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold border`, style: { borderColor: colors.primary, color: colors.primary } }, t("ct_show_qr")),
             React.createElement("div", { className: "flex flex-col items-center", style: { display: qrShown ? "flex" : "none" } },
-                React.createElement("div", { ref: qrRef, className: "mt-3 p-2 rounded-xl", style: { backgroundColor: "#fff", minWidth: 216, minHeight: 216, display: "flex", alignItems: "center", justifyContent: "center", color: "#666", fontSize: 12 } }, busy ? "…" : null),
+                // ⛔ عنصر الرمز بلا أبناء React: مكتبة QR تكتب داخله مباشرةً، وأيّ ابنٍ يديره React (مثل «…») كان
+                //    يُمحى عند إعادة الرسم فيختفي الرمز فور ظهوره
+                busy && React.createElement("div", { className: "mt-3 text-xs", style: { color: colors.textMuted } }, "…"),
+                React.createElement("div", { className: "mt-3 p-2 rounded-xl", style: { backgroundColor: "#fff", display: busy ? "none" : "block" } },
+                    React.createElement("div", { ref: qrRef, style: { width: 200, height: 200, color: "#666", fontSize: 12 } })),
                 React.createElement("p", { className: "text-[10px] mt-2 text-center", style: { color: colors.textMuted } }, t("ct_qr_hint"))),
             SC && SC.scanSupported() && React.createElement("button", { onClick: scan, className: `w-full mt-2.5 flex ${rowStart()} items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold border`, style: { borderColor: colors.border, color: colors.text } }, t("ct_scan_qr")),
             React.createElement("div", { className: `flex ${rowStart()} gap-2 mt-3` },
