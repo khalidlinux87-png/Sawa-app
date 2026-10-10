@@ -448,14 +448,21 @@
     if (photoBusy || !photoQueue.length || !state.uid) return;
     photoBusy = true;
     var job = photoQueue[0];
-    (job.data ? compressImpl(job.data) : Promise.resolve(null)).then(function (small) {
-      if (job.data && !small) { photoQueue.shift(); return; }       // ليست صورة صالحة/كبيرة جداً: تُترك محلّية
+    // مهلة ١٥ث: صورةٌ لا يكتمل فكّها لا تعطّل طابور الصور كلّه
+    var squeeze = job.data ? Promise.race([compressImpl(job.data), new Promise(function (r) { setTimeout(function () { r(null); }, 15000); })]) : Promise.resolve(null);
+    squeeze.then(function (small) {
+      if (job.data && !small) { photoQueue.shift(); state.photoNote = "ph✗img"; log("تعذّر تصغير الصورة"); return; }       // ليست صورة صالحة/كبيرة جداً: تُترك محلّية
+      state.photoNote = "ph↑" + (small ? Math.round(small.length / 1024) + "k" : "del");
       return sendOnce("photo.set", { groupId: job.sg, personId: job.pid, data: small }).then(function (b) {
         photoQueue.shift();
-        if (b && b.ok !== false) { var s = photoStateFor(job.sg)[job.pid] || (photoStateFor(job.sg)[job.pid] = {}); s.r = psig(small); savePhotoState(); state.lastAck = "✓ photo"; state.lastPhotoAt = Date.now(); }
-        else { state.lastAck = "✗ photo"; log("photo.set رُفض:", b && b.error); }
+        if (b && b.ok !== false) { var s = photoStateFor(job.sg)[job.pid] || (photoStateFor(job.sg)[job.pid] = {}); s.r = psig(small); savePhotoState(); state.lastAck = "✓ photo"; state.photoNote = "ph✓"; state.lastPhotoAt = Date.now(); }
+        else {
+          state.lastAck = "✗ photo"; state.photoNote = "ph✗"; log("photo.set رُفض:", b && b.error);
+          var f = lsGet(FAILED, []); f.push({ op: "photo.set", error: b && b.error, ts: Date.now() }); lsSet(FAILED, f.slice(-20));
+        }
       });
-    }).catch(function () {
+    }).catch(function (e) {
+      state.photoNote = "ph… " + String((e && e.message) || e).slice(0, 30);
       if (!photoTimer) photoTimer = setTimeout(function () { photoTimer = null; drainPhotos(); }, 20000); // شبكة: لاحقاً
     }).then(function () { photoBusy = false; paintBadge(); if (!photoTimer) drainPhotos(); });
   }
@@ -1296,6 +1303,7 @@
       var note = cw ? cw.note : (app ? (serverGid(currentLocalGid()) ? (state.uid ? "waiting-snap" : "no-auth") : "unlinked") : "noapp");
       body += " · W:" + nW + " · snap " + ((cw && cw.snap) || "–") + " · " + note;
       if (state.contactNote) body += " · " + state.contactNote;
+      if (cw) { var nPh = 0; if (cw.photos) for (var k3 in cw.photos) nPh++; body += " · Ph:" + (cw.photos ? nPh : "?") + "/q" + photoQueue.length + (state.photoNote ? " " + state.photoNote : ""); }
       var cl = currentLocalGid(), csg = serverGid(cl);
       body += " · L " + String(cl).slice(-6) + "→" + (csg ? String(csg).slice(0, 6) : "∅");
       if (state.dbgNote) body = state.dbgNote + " · " + body;
