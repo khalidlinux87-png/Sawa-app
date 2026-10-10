@@ -1189,9 +1189,9 @@ function AppInner() {
     const [activityLog, setActivityLog] = useState([]); // { id, groupId, text, ts }
     const [groupSettings, setGroupSettings] = usePersistedState("groupSettings", initialSettings);
     // الجسر (B5): يُعطي sawa-sync.js مُحدِّثات الحالة ليطبّق بيانات الخادم (القراءة، الاستعادة، الانضمام)
-    useEffect(() => { if (window.SawaSync && window.SawaSync.bindApp) window.SawaSync.bindApp({ setFamilyGroups, setGroupPersons, setKinshipRelations, setCurrentGroupId, setGroupSettings, setMembers }); }, []);
+    useEffect(() => { if (window.SawaSync && window.SawaSync.bindApp) window.SawaSync.bindApp({ setFamilyGroups, setGroupPersons, setKinshipRelations, setCurrentGroupId, setGroupSettings, setMembers, setEvents, setSchedules }); }, []);
     // الجسر (B4/B5): كلّ تغيّرٍ يُرسَل فرقُه للخادم (المجموعات المرفوعة فقط)، ويُبلَّغ بالمجموعة الحاليّة لمراقبتها
-    useEffect(() => { if (window.SawaSync && window.SawaSync.observe) window.SawaSync.observe(groupPersons, kinshipRelations, currentGroupId, familyGroups); }, [groupPersons, kinshipRelations, currentGroupId, familyGroups]);
+    useEffect(() => { if (window.SawaSync && window.SawaSync.observe) window.SawaSync.observe(groupPersons, kinshipRelations, currentGroupId, familyGroups, events, schedules); }, [groupPersons, kinshipRelations, currentGroupId, familyGroups, events, schedules]);
     // ⛔ كانت useState: كلّ سؤالٍ تجاهلتَه يعود عند إعادة التحميل. ويزداد
     // الأمر ثقلاً بأسئلة الوالدين، فهي تُطرح لكلّ من لا أبَ له.
     const [dismissedSuggestions, setDismissedSuggestions] = usePersistedState("dismissedSuggestions", {});

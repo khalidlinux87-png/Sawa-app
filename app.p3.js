@@ -1037,7 +1037,7 @@ function FamilyGroupDetailScreen({ group, persons, relations = [], favorites, ot
                         React.createElement("div", { className: "flex-1" },
                             React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5` },
                                 React.createElement("span", { className: "font-bold text-sm", style: { color: colors.text } }, p.local_name),
-                                p.proximity && !hasNoProximityPerson(p) && React.createElement(Badge, { size: "sm", variant: proximityVariant[p.proximity], label: t("kl_n_ywm", { n: proximityContactDays[p.proximity] || 30 }) })),
+                                p.proximity && !hasNoProximityPerson(p) && React.createElement(Badge, { size: "sm", variant: isContactOverdue(p) ? "danger" : "neutral", label: t("kl_n_ywm", { n: proximityContactDays[p.proximity] || 30 }) })),
                             React.createElement("div", { className: "text-xs mt-0.5", style: { color: colors.textMuted } },
                                 kinshipLabel(p.kinship),
                                 !p.alive ? t("fg_mtwfa") : ""),

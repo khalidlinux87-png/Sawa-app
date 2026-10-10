@@ -164,6 +164,7 @@
         state.lastAck = "✗ " + item.op;
       } else {
         state.lastAck = "✓ " + item.op;
+        state.lastPushAt = Date.now();
         if (b.queued) { state.reviews++; toast(L("تعديلٌ ذهب للمراجعة", "A change was sent for review")); }
       }
       state.sending = false; paintBadge(); drain();
@@ -194,14 +195,19 @@
     }
     return out;
   }
-  function snapshot(localGid, gp, rels) {
-    var persons = {}, relations = {};
+  function eventFields(e) {
+    return { personId: e.personId || null, type: e.type || null, title: e.title || "", desc: e.desc || "",
+             dateTimestamp: typeof e.dateTimestamp === "number" ? e.dateTimestamp : null };
+  }
+  function snapshot(localGid, gp, rels, evs) {
+    var persons = {}, relations = {}, events = {};
+    ((evs !== undefined ? evs : lastEvents) || []).forEach(function (e) { if (e && e.id && e.groupId === localGid) events[e.id] = eventFields(e); });
     ((gp && gp[localGid]) || []).forEach(function (p) { if (p && p.id) persons[p.id] = personToFields(p); });
     (rels || []).forEach(function (r) {
       if (r && r.id && r.groupId === localGid)
         relations[r.id] = { source: r.source, target: r.target, type: r.type, inferred: r.inferred || null };
     });
-    return { persons: persons, relations: relations };
+    return { persons: persons, relations: relations, events: events };
   }
   function same(a, b) { return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b); }
 
@@ -228,6 +234,10 @@
         enqueue("relation.update", { groupId: sg, relationId: id, type: r.type }); n++;
       }
     }
+    // الأحداث (مشتركة مع العائلة): جديدٌ أو متغيّر ⇒ event.set كاملاً؛ محذوف ⇒ event.delete
+    var bev = base.events || {}, sev = snap.events || {};
+    for (id in sev) if (!bev[id] || JSON.stringify(bev[id]) !== JSON.stringify(sev[id])) { enqueue("event.set", { groupId: sg, eventId: id, fields: sev[id] }); n++; }
+    for (id in bev) if (!sev[id]) { enqueue("event.delete", { groupId: sg, eventId: id }); n++; }
     for (id in base.relations) if (!snap.relations[id]) { enqueue("relation.remove", { groupId: sg, relationId: id }); n++; }
     for (id in base.persons) if (!snap.persons[id]) { enqueue("person.delete", { groupId: sg, personId: id }); n++; }
     return n;
@@ -236,9 +246,12 @@
   var baseline = {};          // localGid -> لقطة آخر حالةٍ متّفقٍ عليها مع الخادم
   var applying = {};          // localGid -> true أثناء تطبيق بيانات الخادم (لا ترسل صداها)
   var lastGp = null, lastRels = null, lastCur = null, lastGroups = null, lastGroupsSig = null;
+  var lastEvents = null, lastScheds = null;
   var viewerWarned = {};
-  function observe(gp, rels, currentGid, familyGroups) {
+  function observe(gp, rels, currentGid, familyGroups, events, schedules) {
     lastGp = gp; lastRels = rels;
+    if (Array.isArray(events)) lastEvents = events;
+    if (Array.isArray(schedules)) lastScheds = schedules;
     if (familyGroups) {
       var sig = familyGroups.map(function (g) { return g && g.id; }).join("|");
       lastGroups = familyGroups;
@@ -267,6 +280,11 @@
       diffAndEnqueue(sg, base, snap);
     }
     for (var lg2 in map) if (watchers[map[lg2]] && contactsChanged(lg2, gp)) { scheduleContactSync(); break; }
+    for (var lg3 in map) {
+      if (!watchers[map[lg3]]) continue;
+      observePhotos(lg3, map[lg3], gp);
+      observeScheds(lg3);
+    }
   }
 
   // ---------- B5: ربط التطبيق + القراءة من الخادم ----------
@@ -312,7 +330,8 @@
     paintBadge();
   }
   function startWatch(sg, lg) {
-    var w = { sg: sg, lg: lg, uid: state.uid, persons: null, relations: null, off: null, err: null, snap: null, note: "waiting-snap", contactsDone: false };
+    var w = { sg: sg, lg: lg, uid: state.uid, persons: null, relations: null, events: null, photos: null,
+              off: null, err: null, snap: null, note: "waiting-snap", contactsDone: false, reviewsChecked: false };
     watchers[sg] = w;
     try {
       var base = firebase.firestore().collection("groups").doc(sg);
@@ -323,18 +342,30 @@
       var offP = base.collection("persons").onSnapshot(function (snap) {
         if (watchers[sg] !== w) return;
         var arr = []; snap.forEach(function (d) { arr.push(personFromDoc(d.id, d.data())); });
-        w.persons = arr.filter(function (p) { return p.deleted !== true; });
+        w.persons = arr.filter(function (p) { return p.deleted !== true; }); w.snapAt = Date.now();
         w.snap = state.lastSnap = clock(); w.err = null;
         applyPendingRemote();
       }, onErr);
       var offR = base.collection("relations").onSnapshot(function (snap) {
         if (watchers[sg] !== w) return;
         var arr = []; snap.forEach(function (d) { arr.push(relFromDoc(sg, d.id, d.data())); });
-        w.relations = arr.filter(function (r) { return !r.deleted; });
+        w.relations = arr.filter(function (r) { return !r.deleted; }); w.snapAt = Date.now();
         w.snap = state.lastSnap = clock(); w.err = null;
         applyPendingRemote();
       }, onErr);
-      w.off = function () { try { offP(); } catch (e) {} try { offR(); } catch (e) {} };
+      var offE = base.collection("events").onSnapshot(function (snap) {
+        if (watchers[sg] !== w) return;
+        var arr = []; snap.forEach(function (d) { var x = d.data() || {}; x.id = d.id; arr.push(x); });
+        w.events = arr; w.snap = state.lastSnap = clock(); w.snapAt = Date.now();
+        applyPendingRemote();
+      }, onErr);
+      var offPh = base.collection("photos").onSnapshot(function (snap) {
+        if (watchers[sg] !== w) return;
+        var m = {}; snap.forEach(function (d) { m[d.id] = (d.data() || {}).data || null; });
+        w.photos = m; w.snap = state.lastSnap = clock(); w.snapAt = Date.now();
+        applyPendingRemote();
+      }, onErr);
+      w.off = function () { [offP, offR, offE, offPh].forEach(function (f) { try { f(); } catch (e) {} }); };
     } catch (e) { w.err = "init"; w.note = "listen✗ init"; w.off = function () {}; }
   }
   function watcherFor(lg) { var sg = serverGid(lg); return sg ? watchers[sg] : null; }
@@ -362,6 +393,162 @@
     });
     return out;
   }
+  // الأحداث: ترتيب الجهاز محفوظ، والجديد من الخادم يُلحَق
+  var echoTimer = null;
+  function armEcho() { if (!echoTimer) echoTimer = setTimeout(function () { echoTimer = null; applyPendingRemote(); }, 4100); }
+  function awaitingEcho(w) {
+    if (!state.lastPushAt || (w.snapAt || 0) >= state.lastPushAt) return false;
+    if (Date.now() - state.lastPushAt >= 4000) return false;   // لا لقطة جديدة (مثلاً صلةٌ موجودة سلفاً): نكمل
+    armEcho(); return true;
+  }
+  function mergeEvents(localList, remoteList, lg) {
+    var rem = {}; (remoteList || []).forEach(function (e) { rem[e.id] = e; });
+    var out = [], seen = {};
+    (localList || []).forEach(function (e) { var r = rem[e.id]; if (!r) return; out.push(Object.assign({ id: e.id, groupId: lg }, eventFields(r))); seen[e.id] = 1; });
+    (remoteList || []).forEach(function (r) { if (!seen[r.id]) out.push(Object.assign({ id: r.id, groupId: lg }, eventFields(r))); });
+    return out;
+  }
+  function evBackfilled(sg) { return !!lsGet("sawa_ev_bf", {})[sg]; }
+  function setEvBackfilled(sg) { var m = lsGet("sawa_ev_bf", {}); m[sg] = 1; lsSet("sawa_ev_bf", m); }
+
+  // ---------- الصور: مصغَّرة على الجهاز، في groups/{gid}/photos/{pid} ----------
+  // لكلّ شخص: l = بصمة الصورة المحلّية التي عالجناها، r = بصمة ما على الخادم. محفوظةٌ عبر الإقلاع.
+  var photoState = lsGet("sawa_photo_state", {}), photoQueue = [], photoBusy = false, photoTimer = null;
+  function psig(d) { return d ? (d.length + ":" + d.slice(-48)) : ""; }
+  function photoStateFor(sg) { return photoState[sg] || (photoState[sg] = {}); }
+  function savePhotoState() { lsSet("sawa_photo_state", photoState); }
+  var compressImpl = function (dataUrl) {
+    return new Promise(function (res) {
+      try {
+        if (!dataUrl || !/^data:image\//.test(dataUrl)) return res(null);
+        var img = new Image();
+        img.onload = function () {
+          try {
+            var max = 320, w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+            var sc = Math.min(1, max / Math.max(w, h)), c = document.createElement("canvas");
+            c.width = Math.max(1, Math.round(w * sc)); c.height = Math.max(1, Math.round(h * sc));
+            var ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+            ctx.drawImage(img, 0, 0, c.width, c.height);
+            var out = c.toDataURL("image/jpeg", 0.78);
+            if (out.length > 380000) out = c.toDataURL("image/jpeg", 0.6);
+            res(out.length <= 390000 ? out : null);
+          } catch (e) { res(null); }
+        };
+        img.onerror = function () { res(null); };
+        img.src = dataUrl;
+      } catch (e) { res(null); }
+    });
+  };
+  function queuePhoto(sg, pid, data) {
+    photoQueue = photoQueue.filter(function (j) { return !(j.sg === sg && j.pid === pid); });
+    photoQueue.push({ sg: sg, pid: pid, data: data || null });
+    drainPhotos();
+  }
+  function drainPhotos() {
+    if (photoBusy || !photoQueue.length || !state.uid) return;
+    photoBusy = true;
+    var job = photoQueue[0];
+    (job.data ? compressImpl(job.data) : Promise.resolve(null)).then(function (small) {
+      if (job.data && !small) { photoQueue.shift(); return; }       // ليست صورة صالحة/كبيرة جداً: تُترك محلّية
+      return sendOnce("photo.set", { groupId: job.sg, personId: job.pid, data: small }).then(function (b) {
+        photoQueue.shift();
+        if (b && b.ok !== false) { var s = photoStateFor(job.sg)[job.pid] || (photoStateFor(job.sg)[job.pid] = {}); s.r = psig(small); savePhotoState(); state.lastAck = "✓ photo"; state.lastPhotoAt = Date.now(); }
+        else { state.lastAck = "✗ photo"; log("photo.set رُفض:", b && b.error); }
+      });
+    }).catch(function () {
+      if (!photoTimer) photoTimer = setTimeout(function () { photoTimer = null; drainPhotos(); }, 20000); // شبكة: لاحقاً
+    }).then(function () { photoBusy = false; paintBadge(); if (!photoTimer) drainPhotos(); });
+  }
+  function observePhotos(lg, sg, gp) {
+    if (roleOf(sg) === "viewer") return;
+    var st = photoStateFor(sg), changed = false;
+    (((gp || {})[lg]) || []).forEach(function (p) {
+      if (!p || !p.id) return;
+      var ls = psig(p.photo), s = st[p.id];
+      if (!s) { st[p.id] = { l: ls }; changed = true; return; }   // أوّل رؤية: قاعدة اللقطة تقرّر
+      if (ls !== s.l) { s.l = ls; changed = true; queuePhoto(sg, p.id, p.photo || null); }
+    });
+    if (changed) savePhotoState();
+  }
+  function applyPhotos(w) {
+    if (!w || !w.photos || !app || w.err) return;
+    if ((w.snapAt || 0) < (state.lastPhotoAt || 0) && Date.now() - state.lastPhotoAt < 4000) { armEcho(); return; }
+    var lg = w.lg, sg = w.sg, st = photoStateFor(sg), viewer = roleOf(sg) === "viewer";
+    var put = {}, any = false, changed = false;
+    (((lastGp || {})[lg]) || []).forEach(function (p) {
+      if (!p || !p.id) return;
+      var rdata = w.photos[p.id] || null, rs = psig(rdata), s = st[p.id];
+      if (!s) { s = st[p.id] = { l: psig(p.photo) }; changed = true; }
+      if (s.r === undefined) {                       // أوّل مقارنة مع الخادم
+        if (rs !== "" && rs !== s.l) { put[p.id] = rdata; s.l = rs; any = true; }
+        else if (rs === "" && s.l !== "" && !viewer) queuePhoto(sg, p.id, p.photo);   // رفعٌ أوّل
+        s.r = rs; changed = true;
+      } else if (rs !== s.r) {                       // تغيّرت في الخادم
+        s.r = rs; changed = true;
+        if (rs !== s.l) { put[p.id] = rdata; s.l = rs; any = true; }
+      }
+    });
+    if (changed) savePhotoState();
+    if (any) app.setGroupPersons(function (prev) {
+      var o = {}; for (var k in prev) o[k] = prev[k];
+      o[lg] = (prev[lg] || []).map(function (p) {
+        if (!(p.id in put)) return p;
+        var q = Object.assign({}, p); if (put[p.id]) q.photo = put[p.id]; else delete q.photo; return q;
+      });
+      return o;
+    });
+  }
+
+  // ---------- المواعيد: شخصيّة بين أجهزتك (schedules.sync) ----------
+  // دمجٌ موعداً موعداً: كلّ تعديلٍ محلّيّ يُسجَّل في «معلّق» بوقته (_u)، والحذف علامة. الخادم يُبقي الأحدث.
+  var schedBase = {}, schedPending = lsGet("sawa_sched_pending", {}), schedInit = lsGet("sawa_sched_init", {});
+  function localScheds(lg) {
+    return (lastScheds || []).filter(function (x) { return x && x.groupId === lg; }).map(function (x) {
+      var o = {}; for (var k in x) if (k !== "groupId") o[k] = x[k]; return o;
+    });
+  }
+  function schedSigs(list) { var m = {}; list.forEach(function (x) { if (x && x.id) m[x.id] = JSON.stringify(x); }); return m; }
+  function observeScheds(lg) {
+    if (!lastScheds || !app || !app.setSchedules) return;
+    var cur = localScheds(lg), sigs = schedSigs(cur), base = schedBase[lg], pend = schedPending[lg] || {}, any = false, now = Date.now();
+    if (!base) {
+      schedBase[lg] = sigs;
+      if (!schedInit[lg]) cur.forEach(function (x) { if (!pend[x.id]) { pend[x.id] = Object.assign({}, x, { _u: x._u || 1 }); any = true; } });   // رفعٌ أوّل بأولويّةٍ دنيا
+    } else {
+      for (var id in sigs) if (sigs[id] !== base[id]) { var it = cur.filter(function (x) { return x.id === id; })[0]; pend[id] = Object.assign({}, it, { _u: now }); any = true; }
+      for (var id2 in base) if (!sigs[id2]) { pend[id2] = { id: id2, _deleted: true, _u: now }; any = true; }
+      schedBase[lg] = sigs;
+    }
+    if (any) { schedPending[lg] = pend; lsSet("sawa_sched_pending", schedPending); scheduleContactSync(); }
+  }
+  function applyScheds(lg, items) {
+    var mine = localScheds(lg), byId = {}; items.forEach(function (x) { byId[x.id] = x; });
+    var out = [], seen = {};
+    mine.forEach(function (x) { if (byId[x.id]) { out.push(byId[x.id]); seen[x.id] = 1; } });      // ترتيب الجهاز
+    items.forEach(function (x) { if (!seen[x.id]) out.push(x); });
+    var withG = out.map(function (x) { return Object.assign({}, x, { groupId: lg }); });
+    app.setSchedules(function (prev) { return (prev || []).filter(function (x) { return x.groupId !== lg; }).concat(withG); });
+    lastScheds = (lastScheds || []).filter(function (x) { return x.groupId !== lg; }).concat(withG);
+    schedBase[lg] = schedSigs(localScheds(lg));
+  }
+  function schedOne(lg, sg) {
+    if (!lastScheds || !app || !app.setSchedules) return Promise.resolve(0);
+    var pend = schedPending[lg] || {}, changes = [], sentU = {};
+    for (var id in pend) { changes.push(pend[id]); sentU[id] = pend[id]._u; }
+    return call("schedules.sync", { groupId: sg, changes: changes }).then(function (b) {
+      var p2 = schedPending[lg] || {};
+      for (var id in sentU) if (p2[id] && p2[id]._u === sentU[id]) delete p2[id];   // ما تغيّر أثناء الإرسال يبقى معلّقاً
+      schedPending[lg] = p2; lsSet("sawa_sched_pending", schedPending);
+      schedInit[lg] = 1; lsSet("sawa_sched_init", schedInit);
+      var items = b.items || [], mine = localScheds(lg);
+      var a1 = schedSigs(items), a2 = schedSigs(mine), diff = false;
+      for (var k in a1) if (a1[k] !== a2[k]) diff = true;
+      for (var k2 in a2) if (!a1[k2] && !p2[k2]) diff = true;
+      if (diff) { applyScheds(lg, items); return 1; }
+      return 0;
+    });
+  }
+
   function remoteRels(lg, list) {
     return list.map(function (r) {
       var o = { id: r.id, groupId: lg, source: r.source, target: r.target, type: r.type };
@@ -371,13 +558,15 @@
   }
   function applyPendingRemote() {
     if (!app) { state.applyNote = "noapp"; paintBadge(); return; }
-    for (var sg in watchers) applyOne(watchers[sg]);
+    for (var sg in watchers) { applyOne(watchers[sg]); applyPhotos(watchers[sg]); }
     paintBadge();
   }
   function applyOne(w) {
     if (w.err) { w.note = "listen✗ " + w.err; return; }
     if (!w.persons || !w.relations) { w.note = "waiting-snap"; return; }
     if (outboxLen() > 0 || state.sending) { w.note = "defer(Q)"; return; }   // تعديلاتنا أوّلاً
+    // ⛔ بعد إرسالٍ ناجح لا نطبّق لقطةً أقدم منه (كانت تُرجع التعديل لحظةً ثمّ يعود) — ننتظر لقطةً أحدث (≤ ٤ث)
+    if (awaitingEcho(w)) { w.note = "await-echo"; return; }
     var lg = w.lg;
     if (serverGid(lg) !== w.sg) { w.note = "gid≠"; return; }
     var gp = lastGp || {}, rels = lastRels || [];
@@ -387,10 +576,23 @@
       baseline[lg] = localSnap;
       if (diffAndEnqueue(w.sg, base, localSnap) > 0) { w.note = "push-first"; return; }
     }
+    if (!w.reviewsChecked) { w.reviewsChecked = true; reviewsNotice(w.sg); }
+    // الأحداث: تُطبَّق فقط إن كان التطبيق يمرّرها (sawa-app الحديث) ووصلت لقطتها
+    var evs = lastEvents || [], useEv = !!(app.setEvents && lastEvents && w.events);
+    if (useEv && !evBackfilled(w.sg)) {
+      var mineEv = evs.filter(function (e) { return e && e.groupId === lg; });
+      setEvBackfilled(w.sg);
+      if (!w.events.length && mineEv.length && roleOf(w.sg) !== "viewer") {
+        // أوّل ربطٍ لهذه العائلة: أحداث الجهاز تُرفع بدل أن تمحوها نسخة الخادم الفارغة
+        mineEv.forEach(function (e) { enqueue("event.set", { groupId: w.sg, eventId: e.id, fields: eventFields(e) }); });
+        w.note = "backfill"; return;
+      }
+    }
     var nextList = mergePersons(gp[lg] || [], w.persons);
     var nextRels = rels.filter(function (r) { return r.groupId !== lg; }).concat(remoteRels(lg, w.relations));
+    var nextEvs = useEv ? evs.filter(function (e) { return e.groupId !== lg; }).concat(mergeEvents(evs.filter(function (e) { return e.groupId === lg; }), w.events, lg)) : evs;
     var nextGp = {}; for (var k in gp) nextGp[k] = gp[k]; nextGp[lg] = nextList;
-    var before = snapshot(lg, gp, rels), after = snapshot(lg, nextGp, nextRels);
+    var before = snapshot(lg, gp, rels, evs), after = snapshot(lg, nextGp, nextRels, nextEvs);
     if (!w.contactsDone) { w.contactsDone = true; scheduleContactSync(800); }
     if (JSON.stringify(before) === JSON.stringify(after)) { w.note = "same"; return; }   // متطابقان
     applying[lg] = true;
@@ -398,13 +600,18 @@
     var persons = w.persons, relations = w.relations;
     app.setGroupPersons(function (prev) { var o = {}; for (var k in prev) o[k] = prev[k]; o[lg] = mergePersons(prev[lg] || [], persons); return o; });
     app.setKinshipRelations(function (prev) { return prev.filter(function (r) { return r.groupId !== lg; }).concat(remoteRels(lg, relations)); });
+    if (useEv) {
+      var remEv = w.events;
+      app.setEvents(function (prev) { var pv = prev || []; return pv.filter(function (e) { return e.groupId !== lg; }).concat(mergeEvents(pv.filter(function (e) { return e.groupId === lg; }), remEv, lg)); });
+      lastEvents = nextEvs;
+    }
     lastGp = nextGp; lastRels = nextRels;
     w.note = "applied " + clock();
   }
 
   // ---------- «آخر تواصل» الخاصّ بالمستخدم بين أجهزته (contacts.sync) ----------
   // الدمج = الأحدث لكلّ شخص. لا يمرّ بالصادر: عمليّةٌ متكرّرة آمنة تُعاد عند كلّ مناسبة.
-  var contactSent = {}, contactTimer = null, contactBusy = false;
+  var contactSent = {}, contactTimer = null, contactBusy = false, schedQueue = [];
   function localContacts(lg, gp) {
     var out = {};
     (((gp || {})[lg]) || []).forEach(function (p) { if (p && p.id && p.lastContactDate) out[p.id] = Number(p.lastContactDate); });
@@ -423,11 +630,15 @@
     var next = function (i) {
       if (i >= lgs.length) {
         state.contactNote = "ct " + clock() + (total ? " +" + total : ""); paintBadge();
-        contactBusy = false; return;
+        var jobs = schedQueue; schedQueue = [];
+        jobs.reduce(function (pr, j) { return pr.then(function () { return schedOne(j[0], j[1]).catch(function (e) { log("schedules.sync:", (e && e.message) || e); }); }); }, Promise.resolve())
+          .then(function () { contactBusy = false; });
+        return;
       }
       var lg = lgs[i], sg = serverGid(lg), mine = localContacts(lg, lastGp);
       if (!sg) return next(i + 1);
       call("contacts.sync", { groupId: sg, last: mine }).then(function (b) {
+        schedQueue.push([lg, sg]);
         var srv = b.last || {};
         contactSent[lg] = srv;
         var newer = {}, n = 0;
@@ -781,6 +992,65 @@
     return (g && g.name) || L("عائلتي", "My family");
   }
 
+  // ---------- المراجعات المعلّقة (المالك والمحرّر) ----------
+  var reviewsBy = {}, reviewsLoading = false, noticeDone = {};
+  function canReview(sg) { var r = roleOf(sg); return r === "owner" || r === "editor"; }
+  function reviewsNotice(sg) {
+    if (noticeDone[sg] || !canReview(sg)) return;
+    noticeDone[sg] = true;
+    call("review.list", { groupId: sg }).then(function (b) {
+      reviewsBy[sg] = b.items || [];
+      var n = reviewsBy[sg].length;
+      if (n) toast(L("لديك " + n + " " + (n === 1 ? "تعديلٌ ينتظر" : n === 2 ? "تعديلان ينتظران" : "تعديلات تنتظر") + " مراجعتك — في «السحابة والمشاركة»",
+                     n + " change(s) await your review — in «Cloud & sharing»"));
+      renderPanel();
+    }).catch(function () {});
+  }
+  function refreshReviews() {
+    var sg = serverGid(currentLocalGid());
+    if (!sg || !canReview(sg) || !state.uid) return;
+    reviewsLoading = true; renderPanel();
+    call("review.list", { groupId: sg }).then(function (b) { reviewsBy[sg] = b.items || []; })
+      .catch(function () {}).then(function () { reviewsLoading = false; renderPanel(); });
+  }
+  function resolveReview(rid, decision) {
+    call("review.resolve", { reviewId: rid, decision: decision }).then(function (b) {
+      toast(decision === "reject" ? L("رُفض التعديل ✓", "Change rejected ✓")
+                                  : (b.resolution === "acknowledged" ? L("تمّ ✓", "Done ✓") : L("طُبّق التعديل ✓", "Change applied ✓")));
+      refreshReviews();
+    }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+  }
+  function personNameIn(lg, id) {
+    var p = (((lastGp || {})[lg]) || []).filter(function (x) { return x && x.id === id; })[0];
+    return (p && p.local_name) || L("شخص", "someone");
+  }
+  var FIELD_AR = { local_name: "الاسم", gender: "الجنس", kinship: "القرابة", birthYear: "سنة الميلاد", birthday: "تاريخ الميلاد",
+    alive: "الحياة/الوفاة", death_date: "تاريخ الوفاة", contacts: "الهاتف", notes: "الملاحظات", motherId: "الأم",
+    status_detail: "الحالة", noChildren: "ليس له أبناء", proximity: "درجة القرب" };
+  function describeReview(lg, it) {
+    var d = it.detail || {}, q = function (x) { return "«" + esc(x) + "»"; };
+    if (it.kind === "relation") {
+      var a = q(personNameIn(lg, d.from)), b = q(personNameIn(lg, d.to)), what;
+      if (d.type === "parent") what = L(a + " والدٌ لـ" + b, a + " as parent of " + b);
+      else if (d.type === "spouse") what = L(a + " و" + b + " زوجان", a + " and " + b + " as spouses");
+      else if (d.type === "ex_spouse") what = L(a + " و" + b + " زوجان سابقان", a + " and " + b + " as ex-spouses");
+      else what = L(a + " و" + b + " إخوة", a + " and " + b + " as siblings");
+      var why = /parent slot/.test(d.conflict || "") ? L("لـ" + b + " والدٌ من الجنس نفسه مسجّلٌ مسبقاً", b + " already has a parent of that gender")
+              : /cycle/.test(d.conflict || "") ? L("تُنشئ دورة: " + b + " من أسلاف " + a, "creates a loop: " + b + " is an ancestor of " + a)
+              : esc(d.conflict || "");
+      return { title: L("صلة: ", "Link: ") + what, why: why, actions: ["apply", "reject"] };
+    }
+    if (it.kind === "edit_vs_delete") {
+      var flds = (d.fields || []).map(function (k) { return isAr() ? (FIELD_AR[k] || k) : k; }).join(L("، ", ", "));
+      return { title: L("تعديل (" + esc(flds) + ") على " + q(d.name || personNameIn(lg, d.personId)) + " بعد حذفه", "Edit (" + esc(flds) + ") to " + q(d.name || "") + " after it was deleted"),
+               why: L("القبول يُعيد الشخص مع التعديل، والرفض يُبقيه محذوفاً", "Accept restores the person with the edit; reject keeps it deleted"), actions: ["apply", "reject"] };
+    }
+    if (it.kind === "self_duplicate")
+      return { title: L("أكثر من شخصٍ موسومٍ «نفسي» في الشجرة المرفوعة", "More than one person marked as yourself"),
+               why: L("صحّح «نفسي» في الشجرة ثمّ اضغط «تمّ»", "Fix it in the tree, then tap Done"), actions: ["ack"] };
+    return { title: esc(it.kind || ""), why: "", actions: ["reject"] };
+  }
+
   // ---------- B5: لوحة «السحابة والمشاركة» ----------
   var panelEl = null;
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
@@ -800,6 +1070,8 @@
         else if (act === "dup-server") resolveDup("useServer");
         else if (act === "dup-cancel") resolveDup("cancel");
         else if (act === "delete") deleteGroup(t.getAttribute("data-gid"));
+        else if (act === "rv-apply" || act === "rv-ack") resolveReview(t.getAttribute("data-rid"), "apply");
+        else if (act === "rv-reject") resolveReview(t.getAttribute("data-rid"), "reject");
         else if (act === "relink-new") {
           var cg = currentLocalGid(), csg = serverGid(cg);
           if (csg && global.confirm(L("فكّ ربط هذه العائلة بنسختها القديمة ورفعها كعائلةٍ جديدة على الحساب الحاليّ؟",
@@ -821,6 +1093,7 @@
     panelEl.style.display = "flex";
     renderPanel();
     refreshMyGroups();
+    refreshReviews();
   }
   function closePanel() { if (panelEl) panelEl.style.display = "none"; }
   function renderPanel() {
@@ -903,8 +1176,33 @@
         '</div>' +
         sec(L("حسابك", "Your account"), acct) +
         sec(L("هذه العائلة", "This family"), fam) +
+        reviewsSection(lg, sg) +
         sec(L("عائلات على حسابك", "Families on your account"), mine) +
       '</div>';
+  }
+
+  function reviewsSection(lg, sg) {
+    if (!sg || !canReview(sg) || (watchers[sg] && watchers[sg].err)) return "";
+    var items = reviewsBy[sg];
+    var body;
+    if (!items) body = '<div style="font:500 14px system-ui;color:#5b6b7c">' + (reviewsLoading ? L("جارٍ التحميل…", "Loading…") : "") + '</div>';
+    else if (!items.length) body = '<div style="font:500 14px system-ui;color:#5b6b7c">' + L("لا تعديلات تنتظر المراجعة ✓", "Nothing awaiting review ✓") + '</div>';
+    else body = items.map(function (it) {
+      var d = describeReview(lg, it);
+      var b = function (act, label, bg, fg, bd) { return '<button data-act="' + act + '" data-rid="' + esc(it.id) + '" style="padding:8px 14px;border-radius:10px;border:' + (bd || "none") + ';background:' + bg + ';color:' + fg + ';font:700 13px system-ui">' + label + '</button>'; };
+      var acts = d.actions.map(function (a) {
+        return a === "apply" ? b("rv-apply", L("قبول", "Accept"), "#187854", "#fff")
+             : a === "ack" ? b("rv-ack", L("تمّ", "Done"), "#187854", "#fff")
+             : b("rv-reject", L("رفض", "Reject"), "#fff", "#b23b3b", "1.5px solid #e6b4b4");
+      }).join("");
+      return '<div style="padding:10px 0;border-top:1px solid #e3eaf1">' +
+        '<div style="font:700 14px/1.6 system-ui;color:#1f2d3a">' + d.title + (it.mine ? ' <span style="font-weight:500;color:#5b6b7c">' + L("(منك)", "(yours)") + '</span>' : "") + '</div>' +
+        (d.why ? '<div style="font:500 12.5px/1.6 system-ui;color:#8a5a00;margin-top:2px">' + d.why + '</div>' : "") +
+        '<div style="display:flex;gap:8px;margin-top:8px">' + acts + '</div></div>';
+    }).join("");
+    var n = items ? items.length : 0;
+    return '<div style="background:' + (n ? "#fff8e6" : "#f5f8fb") + ';border-radius:14px;padding:14px;margin-top:12px">' +
+      '<div style="font:800 13px system-ui;color:#5b6b7c;margin-bottom:6px">' + L("مراجعات معلّقة", "Pending reviews") + (n ? " (" + n + ")" : "") + '</div>' + body + '</div>';
   }
 
   // ---------- القراءة الحيّة ----------
@@ -1028,6 +1326,13 @@
     uid: function () { return state.uid; },
     isReady: function () { return !!(state.ready && state.uid); },
     _state: state, _diff: diffAndEnqueue, _snapshot: snapshot, _merge: mergePersons, _overlap: overlap,
+    _t: { observePhotos: function (a, b, c) { observePhotos(a, b, c); }, applyPhotos: function (w) { applyPhotos(w); },
+          setCompress: function (f) { compressImpl = f; }, photoState: function () { return photoState; }, photoQueue: function () { return photoQueue; },
+          schedOne: function (a, b) { return schedOne(a, b); }, describe: function (lg, it) { return describeReview(lg, it); },
+          setReviews: function (sg, items) { reviewsBy[sg] = items; }, watchers: function () { return watchers; },
+          setWatcher: function (sg, w) { watchers[sg] = Object.assign({ sg: sg, uid: state.uid, off: function () {}, contactsDone: true, reviewsChecked: true, snapAt: Date.now() + 1 }, w); },
+          snap: function (sg, patch) { Object.assign(watchers[sg], patch, { snapAt: Date.now() + 1 }); applyPendingRemote(); },
+          apply: function () { applyPendingRemote(); } },
     _testDenied: function (sg, lg) { watchers[sg] = { sg: sg, lg: lg, uid: state.uid, persons: null, relations: null, off: function () {}, err: "permission-denied", contactsDone: true }; },
     _restore: function (sg, name, role) { return restoreGroup(sg, name, role); },
     _testPanel: function (groups) { myGroups = groups; myGroupsLoading = false; openPanel(); myGroups = groups; myGroupsLoading = false; renderPanel(); return panelEl.innerHTML; },
