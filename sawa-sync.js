@@ -413,30 +413,46 @@
 
   // ---------- الصور: مصغَّرة على الجهاز، في groups/{gid}/photos/{pid} ----------
   // لكلّ شخص: l = بصمة الصورة المحلّية التي عالجناها، r = بصمة ما على الخادم. محفوظةٌ عبر الإقلاع.
-  var photoState = lsGet("sawa_photo_state", {}), photoQueue = [], photoBusy = false, photoTimer = null;
+  // v2: النسخة الأولى كانت ترفض صوراً صالحة (صيغة/رابط) ⇒ نعيد مقارنة الجميع بالخادم مرّةً واحدة
+  var PHOTO_KEY = "sawa_photo_state2";
+  var photoState = lsGet(PHOTO_KEY, {}), photoQueue = [], photoBusy = false, photoTimer = null;
+  try { localStorage.removeItem("sawa_photo_state"); } catch (e) {}
+  // ما فشل رفعه في تشغيلٍ سابق يُعاد مرّةً عند كلّ فتح (لا في كلّ رسم)
+  (function () { for (var g in photoState) for (var pid in photoState[g]) { var x = photoState[g][pid]; if (x && x.f) { x.l = ""; delete x.f; } } })();
   function psig(d) { return d ? (d.length + ":" + d.slice(-48)) : ""; }
   function photoStateFor(sg) { return photoState[sg] || (photoState[sg] = {}); }
-  function savePhotoState() { lsSet("sawa_photo_state", photoState); }
+  function savePhotoState() { lsSet(PHOTO_KEY, photoState); }
+  function markPhotoFailed(sg, pid, data) { var x = photoStateFor(sg)[pid]; if (x) { x.f = psig(data) || "x"; savePhotoState(); } }
+  // يعيد نسخةً صغيرة صالحة للخادم، أو null مع سببٍ في state.photoWhy (يظهر في الشارة)
   var compressImpl = function (dataUrl) {
     return new Promise(function (res) {
+      var fail = function (why) { state.photoWhy = why; res(null); };
       try {
-        if (!dataUrl || !/^data:image\//.test(dataUrl)) return res(null);
+        if (!dataUrl || typeof dataUrl !== "string") return fail("none");
+        // رابط صورةٍ على الإنترنت: يُرسَل كما هو (لا يمكن رسمه على canvas بسبب CORS)
+        if (/^https:\/\//i.test(dataUrl)) return dataUrl.length <= 2048 && !/[\s"'<>]/.test(dataUrl) ? res(dataUrl) : fail("url");
+        if (!/^data:/i.test(dataUrl)) return fail("fmt:" + dataUrl.slice(0, 12));
+        // صورةٌ صغيرة أصلاً بصيغةٍ مقبولة: لا حاجة للتصغير
+        var asIs = /^data:image\/(jpeg|png|webp);base64,/i.test(dataUrl) && dataUrl.length <= 390000 ? dataUrl : null;
         var img = new Image();
         img.onload = function () {
           try {
             var max = 320, w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+            if (!w || !h) return asIs ? res(asIs) : fail("dim");
             var sc = Math.min(1, max / Math.max(w, h)), c = document.createElement("canvas");
             c.width = Math.max(1, Math.round(w * sc)); c.height = Math.max(1, Math.round(h * sc));
             var ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
             ctx.drawImage(img, 0, 0, c.width, c.height);
             var out = c.toDataURL("image/jpeg", 0.78);
+            if (!/^data:image\/jpeg/.test(out)) out = c.toDataURL("image/png");
             if (out.length > 380000) out = c.toDataURL("image/jpeg", 0.6);
-            res(out.length <= 390000 ? out : null);
-          } catch (e) { res(null); }
+            if (out.length <= 390000 && /^data:image\/(jpeg|png|webp)/.test(out)) return res(out);
+            return asIs ? res(asIs) : fail("big:" + Math.round(out.length / 1024) + "k");
+          } catch (e) { return asIs ? res(asIs) : fail("cnv:" + String((e && e.name) || e).slice(0, 14)); }
         };
-        img.onerror = function () { res(null); };
+        img.onerror = function () { asIs ? res(asIs) : fail("dec:" + dataUrl.slice(5, 20)); };
         img.src = dataUrl;
-      } catch (e) { res(null); }
+      } catch (e) { fail("ex:" + String((e && e.message) || e).slice(0, 14)); }
     });
   };
   function queuePhoto(sg, pid, data) {
@@ -449,15 +465,15 @@
     photoBusy = true;
     var job = photoQueue[0];
     // مهلة ١٥ث: صورةٌ لا يكتمل فكّها لا تعطّل طابور الصور كلّه
-    var squeeze = job.data ? Promise.race([compressImpl(job.data), new Promise(function (r) { setTimeout(function () { r(null); }, 15000); })]) : Promise.resolve(null);
+    var squeeze = job.data ? Promise.race([compressImpl(job.data), new Promise(function (r) { setTimeout(function () { state.photoWhy = "timeout"; r(null); }, 15000); })]) : Promise.resolve(null);
     squeeze.then(function (small) {
-      if (job.data && !small) { photoQueue.shift(); state.photoNote = "ph✗img"; log("تعذّر تصغير الصورة"); return; }       // ليست صورة صالحة/كبيرة جداً: تُترك محلّية
+      if (job.data && !small) { photoQueue.shift(); markPhotoFailed(job.sg, job.pid, job.data); state.photoNote = "ph✗" + (state.photoWhy || "img"); log("تعذّر تصغير الصورة:", state.photoWhy); return; }       // ليست صورة صالحة/كبيرة جداً: تُترك محلّية
       state.photoNote = "ph↑" + (small ? Math.round(small.length / 1024) + "k" : "del");
       return sendOnce("photo.set", { groupId: job.sg, personId: job.pid, data: small }).then(function (b) {
         photoQueue.shift();
         if (b && b.ok !== false) { var s = photoStateFor(job.sg)[job.pid] || (photoStateFor(job.sg)[job.pid] = {}); s.r = psig(small); savePhotoState(); state.lastAck = "✓ photo"; state.photoNote = "ph✓"; state.lastPhotoAt = Date.now(); }
         else {
-          state.lastAck = "✗ photo"; state.photoNote = "ph✗"; log("photo.set رُفض:", b && b.error);
+          state.lastAck = "✗ photo"; state.photoNote = "ph✗"; log("photo.set رُفض:", b && b.error); markPhotoFailed(job.sg, job.pid, job.data);
           var f = lsGet(FAILED, []); f.push({ op: "photo.set", error: b && b.error, ts: Date.now() }); lsSet(FAILED, f.slice(-20));
         }
       });
@@ -1335,6 +1351,7 @@
     isReady: function () { return !!(state.ready && state.uid); },
     _state: state, _diff: diffAndEnqueue, _snapshot: snapshot, _merge: mergePersons, _overlap: overlap,
     _t: { observePhotos: function (a, b, c) { observePhotos(a, b, c); }, applyPhotos: function (w) { applyPhotos(w); },
+          compress: function (d) { return compressImpl(d).then(function (o) { return { out: o, why: state.photoWhy }; }); },
           setCompress: function (f) { compressImpl = f; }, photoState: function () { return photoState; }, photoQueue: function () { return photoQueue; },
           schedOne: function (a, b) { return schedOne(a, b); }, describe: function (lg, it) { return describeReview(lg, it); },
           setReviews: function (sg, items) { reviewsBy[sg] = items; }, watchers: function () { return watchers; },
