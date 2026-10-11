@@ -10,7 +10,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c1";
+  var VERSION = "c2";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -30,6 +30,7 @@
     var w = waiters; waiters = [];
     w.forEach(function (f) { try { f(); } catch (e) {} });
     publish();
+    try { if (state.uid) { publishChats(); Object.keys(days).forEach(publishMessages); } } catch (e) {}
   }
   function whenApp(f) { if (app) f(); else waiters.push(f); }
 
@@ -113,7 +114,7 @@
     document.addEventListener("visibilitychange", function () {
       if (!myStatusRef) return;
       setMine(document.visibilityState === "hidden" ? "offline" : "online");
-      if (document.visibilityState === "visible" && state.uid) refresh();
+      if (document.visibilityState === "visible" && state.uid) { refresh(); if (openCid) markRead(openCid); drainOutbox(); }
     });
     global.addEventListener("pagehide", function () { setMine("offline"); });
   } catch (e) {}
@@ -235,6 +236,416 @@
     whenReady(function () { accept(tok); });
   }
 
+  // ==================================================================
+  // C2: المحادثات — قائمة (chats where members ∋ أنا) · رسائل الأيّام · إرسالٌ متفائل بطابورٍ محفوظ ·
+  //     وصلت/قُرئت · «يكتب…» (RTDB) · إعداداتي متزامنة بين أجهزتي
+  // ==================================================================
+  var chats = {}, chatsUnsub = null, dayUnsubs = {}, dayOrder = [], days = {}, pend = {}, virtualChats = {};
+  var typingRefs = {}, typingNow = {}, openCid = null, prefs = null, prefsLoaded = false, prefsSent = "";
+  var OUTBOX = "sawa_chat_outbox", DAYS_WINDOW = 7, MAX_DAY_LISTENERS = 6, savedAsked = false;
+  function fsdb() { try { return firebase.firestore(); } catch (e) { return null; } }
+  function isCloud(id) { return /^(dm_|sv_|fam_|grp_)/.test(String(id || "")); }
+  function appId(u) { return u === state.uid ? "u-1" : u; }
+  function realId(u) { return u === "u-1" ? state.uid : u; }
+  function newMsgId() { return "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function dmWith(other) { return "dm_" + [state.uid, other].sort().join("_"); }
+  function others(c) { return (c.members || []).filter(function (u) { return u !== state.uid; }); }
+  function personName(u, c) {
+    if (u === state.uid) return L("أنت", "You");
+    var p = state.people.filter(function (x) { return x.uid === u; })[0];
+    if (p) return displayName(p);
+    var n = c && c.names && c.names[u];
+    return n || L("عضو", "Member");
+  }
+  function typeLabel(type) {
+    return type === "voice" ? L("🎤 رسالة صوتيّة", "🎤 Voice message") : type === "image" ? L("📷 صورة", "📷 Photo")
+      : type === "video" ? L("🎥 فيديو", "🎥 Video") : type === "file" ? L("📎 ملفّ", "📎 File") : type === "poll" ? L("📊 استطلاع", "📊 Poll")
+      : type === "contact" ? L("👤 جهة اتّصال", "👤 Contact") : type === "bill" ? L("🧾 فاتورة", "🧾 Bill") : type === "fund" ? L("💝 تبرّعات", "💝 Fundraiser")
+      : type === "tasks" ? L("✅ مهامّ", "✅ Tasks") : "";
+  }
+  function preview(m) {
+    if (!m) return "";
+    if (m.del) return L("🚫 حُذفت هذه الرسالة", "🚫 This message was deleted");
+    if (!m.type || m.type === "text" || m.type === "sticker") return m.text || "";
+    return typeLabel(m.type) || m.text || "";
+  }
+  function statusOf(c, ts) {
+    var os = others(c); if (!os.length) return "read";
+    var reads = c.reads || {}, del = c.delivered || {};
+    if (os.every(function (u) { return (reads[u] || 0) >= ts; })) return "read";
+    if (os.every(function (u) { return (del[u] || 0) >= ts || (reads[u] || 0) >= ts; })) return "delivered";
+    return "sent";
+  }
+  function unreadOf(c) {
+    if (c.cid === openCid && document.visibilityState !== "hidden") return 0;
+    var n = (c.cnt || 0) - ((c.readCnt || {})[state.uid] || 0);
+    return n > 0 ? n : 0;
+  }
+
+  // ---------- القائمة ----------
+  function startChats(uid) {
+    stopChats();
+    var d = fsdb(); if (!d) return;
+    chatsUnsub = d.collection("chats").where("members", "array-contains", uid).onSnapshot(function (snap) {
+      var next = {};
+      snap.forEach(function (doc) { var x = doc.data() || {}; x.cid = doc.id; next[doc.id] = x; });
+      chats = next;
+      for (var v in virtualChats) if (chats[v]) delete virtualChats[v];
+      // «وصلت»: آخر رسالةٍ من غيري أحدث ممّا سجّلتُه
+      Object.keys(chats).forEach(function (cid) {
+        var c = chats[cid], l = c.last;
+        if (l && l.by !== state.uid && l.ts > ((c.delivered || {})[state.uid] || 0)) queueMark(cid, { d: l.ts });
+      });
+      if (openCid && chats[openCid]) markRead(openCid);
+      if (!savedAsked && !Object.keys(chats).some(function (k) { return chats[k].type === "saved"; })) { savedAsked = true; openSaved(); }
+      syncTyping();
+      publishChats();
+    }, function (e) { log("chats:", e && e.code); });
+  }
+  function stopChats() {
+    try { if (chatsUnsub) chatsUnsub(); } catch (e) {}
+    chatsUnsub = null;
+    Object.keys(dayUnsubs).forEach(function (cid) { try { dayUnsubs[cid](); } catch (e) {} });
+    dayUnsubs = {}; dayOrder = []; days = {}; chats = {};
+    Object.keys(typingRefs).forEach(function (cid) { try { typingRefs[cid].off(); } catch (e) {} });
+    typingRefs = {}; typingNow = {};
+  }
+  // ---------- رسائل محادثةٍ مفتوحة: آخر ٧ أيّامٍ فيها رسائل (وثيقةٌ لكلّ يوم) ----------
+  function ensureDays(cid) {
+    var d = fsdb(); if (!d || !isCloud(cid) || !state.uid) return;
+    dayOrder = dayOrder.filter(function (x) { return x !== cid; }); dayOrder.push(cid);
+    if (dayUnsubs[cid]) return;
+    while (dayOrder.length > MAX_DAY_LISTENERS) {
+      var old = dayOrder.shift();
+      if (dayUnsubs[old] && old !== openCid) { try { dayUnsubs[old](); } catch (e) {} delete dayUnsubs[old]; }
+    }
+    var coll = d.collection("chats").doc(cid).collection("days");
+    var onDays = function (snap) {
+      var m = {}; snap.forEach(function (doc) { m[doc.id] = (doc.data() || {}).msgs || {}; });
+      days[cid] = m;
+      // ما وصل صداه يخرج من المعلّق
+      if (pend[cid]) pend[cid] = pend[cid].filter(function (p) { return !findMsg(cid, p.msg.id); });
+      if (cid === openCid) markRead(cid);
+      publishMessages(cid);
+    };
+    dayUnsubs[cid] = coll.orderBy(firebase.firestore.FieldPath.documentId(), "desc").limit(DAYS_WINDOW).onSnapshot(onDays, function (e) {
+      log("days", cid, e && e.code);
+      // احتياط: إن طلب Firestore فهرساً للترتيب التنازليّ نقرأ آخر ١٤ يوماً تصاعديّاً (لا يحتاج فهرساً)
+      if (e && e.code === "failed-precondition") {
+        var from = new Date(Date.now() - 14 * 86400000), key = from.getUTCFullYear() + String(from.getUTCMonth() + 1).padStart(2, "0") + String(from.getUTCDate()).padStart(2, "0");
+        dayUnsubs[cid] = coll.orderBy(firebase.firestore.FieldPath.documentId()).startAt(key).onSnapshot(onDays, function (e2) { log("days2", cid, e2 && e2.code); });
+      }
+    });
+  }
+  function findMsg(cid, id) {
+    var dd = days[cid] || {};
+    for (var day in dd) if (dd[day][id]) return { day: day, msg: dd[day][id] };
+    return null;
+  }
+  function openChat(cid) {
+    if (!isCloud(cid)) return;
+    openCid = cid; ensureDays(cid); markRead(cid); publishChats();
+  }
+  function closeChat(cid) { if (!cid || openCid === cid) openCid = null; }
+
+  // ---------- وصلت/قُرئت (مجمَّعة) ----------
+  var markQ = {}, markTimer = null;
+  function queueMark(cid, m) {
+    var q = markQ[cid] || (markQ[cid] = { cid: cid });
+    for (var k in m) if (m[k] != null) q[k] = Math.max(q[k] || 0, m[k]);
+    if (!markTimer) markTimer = setTimeout(flushMarks, 1200);
+  }
+  function flushMarks() {
+    markTimer = null;
+    var list = Object.keys(markQ).map(function (k) { return markQ[k]; }); markQ = {};
+    if (!list.length || !state.uid) return;
+    call("chat.mark", { marks: list }).catch(function (e) { log("chat.mark:", (e && e.message) || e); });
+  }
+  function markRead(cid) {
+    var c = chats[cid];
+    if (!c || document.visibilityState === "hidden") return;
+    var lastTs = (c.last && c.last.ts) || 0, cnt = c.cnt || 0;
+    var rc = (c.readCnt || {})[state.uid] || 0, r = (c.reads || {})[state.uid] || 0;
+    if (rc >= cnt && r >= lastTs) return;
+    c.readCnt = Object.assign({}, c.readCnt); c.readCnt[state.uid] = cnt;
+    c.reads = Object.assign({}, c.reads); c.reads[state.uid] = lastTs;
+    queueMark(cid, { r: lastTs, rc: cnt, d: lastTs });
+  }
+
+  // ---------- الإرسال: متفائل + طابورٌ محفوظ (يُعاد عند عودة الشبكة) ----------
+  function send(cid, text, opts) {
+    opts = opts || {};
+    if (!isCloud(cid) || !state.uid) return null;
+    var msg = { id: newMsgId(), type: opts.type || "text" };
+    if (text != null) msg.text = String(text);
+    if (opts.reply && opts.reply.id) msg.reply = { id: opts.reply.id, by: realId(opts.reply.by || null), text: String(opts.reply.text || "").slice(0, 200) };
+    if (opts.fwd) msg.fwd = true;
+    if (opts.contact) msg.contact = opts.contact;
+    if (opts.mentions) msg.mentions = opts.mentions;
+    if (opts.extra) msg.extra = opts.extra;
+    (pend[cid] = pend[cid] || []).push({ msg: msg, ts: Date.now(), status: "pending" });
+    var ob = lsGet(OUTBOX, []); ob.push({ cid: cid, msg: msg }); lsSet(OUTBOX, ob);
+    publishMessages(cid); publishChats();
+    drainOutbox();
+    return msg.id;
+  }
+  var draining = false, retryT = null;
+  function drainOutbox() {
+    if (draining || !state.uid) return;
+    var ob = lsGet(OUTBOX, []); if (!ob.length) return;
+    draining = true;
+    var job = ob[0];
+    call("chat.send", { cid: job.cid, msg: job.msg }).then(function (b) {
+      setPend(job.cid, job.msg.id, b && b.blocked ? "sent" : "sent");
+      shiftOutbox(job.msg.id);
+    }).catch(function (e) {
+      var m = (e && e.message) || String(e);
+      if (e instanceof TypeError || /fetch|network|rate/i.test(m)) {        // الشبكة: نعيد لاحقاً
+        draining = false;
+        if (!retryT) retryT = setTimeout(function () { retryT = null; drainOutbox(); }, 10000);
+        return "stop";
+      }
+      setPend(job.cid, job.msg.id, "failed"); shiftOutbox(job.msg.id);
+      toast(L("تعذّر إرسال رسالة: ", "A message couldn't be sent: ") + m);
+    }).then(function (r) { if (r === "stop") return; draining = false; drainOutbox(); });
+  }
+  function shiftOutbox(id) { lsSet(OUTBOX, lsGet(OUTBOX, []).filter(function (x) { return x.msg.id !== id; })); }
+  function setPend(cid, id, st) {
+    (pend[cid] || []).forEach(function (p) { if (p.msg.id === id) p.status = st; });
+    publishMessages(cid);
+  }
+  try { global.addEventListener("online", drainOutbox); } catch (e) {}
+  function restorePending() {   // بعد إعادة الفتح: ما بقي في الطابور يظهر «قيد الإرسال»
+    lsGet(OUTBOX, []).forEach(function (j) { if (!(pend[j.cid] || []).some(function (p) { return p.msg.id === j.msg.id; })) (pend[j.cid] = pend[j.cid] || []).push({ msg: j.msg, ts: Date.now(), status: "pending" }); });
+  }
+
+  // ---------- أفعال الرسالة ----------
+  function patchLocal(cid, id, fn) {
+    var f = findMsg(cid, id); if (!f) return null;
+    days[cid][f.day] = Object.assign({}, days[cid][f.day]); days[cid][f.day][id] = fn(Object.assign({}, f.msg));
+    publishMessages(cid); return f.day;
+  }
+  function fail(e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); }
+  function edit(cid, id, text) {
+    var day = patchLocal(cid, id, function (m) { m.text = text; m.edited = Date.now(); return m; });
+    if (!day) return;
+    call("chat.edit", { cid: cid, day: day, id: id, text: text }).catch(fail);
+  }
+  function deleteForAll(cid, id) {
+    var day = patchLocal(cid, id, function (m) { return { id: m.id, by: m.by, ts: m.ts, type: m.type, del: true }; });
+    if (!day) return;
+    call("chat.delete", { cid: cid, day: day, id: id }).catch(fail);
+  }
+  function deleteForMe(cid, id) {
+    prefs = prefs || {}; prefs.hidden = Object.assign({}, prefs.hidden); prefs.hidden[id] = 1;
+    publishMessages(cid); savePrefs({ hidden: prefs.hidden });
+  }
+  // «حذف المحادثة» عندي: تُخفى رسائلها حتّى الآن، وتختفي من القائمة حتّى تصل رسالةٌ جديدة
+  function clearChat(cid) {
+    prefs = prefs || {}; prefs.cleared = Object.assign({}, prefs.cleared); prefs.cleared[cid] = Date.now();
+    publishMessages(cid); publishChats(); savePrefs({ cleared: prefs.cleared });
+  }
+  function react(cid, id, emoji) {
+    var day = patchLocal(cid, id, function (m) { m.re = Object.assign({}, m.re); if (emoji) m.re[state.uid] = emoji; else delete m.re[state.uid]; return m; });
+    if (!day) return;
+    call("chat.react", { cid: cid, day: day, id: id, emoji: emoji || null }).catch(fail);
+  }
+  function pin(cid, id) {
+    var c = chats[cid]; if (!c) return;
+    var next = c.pinned === id ? null : id; c.pinned = next; publishChats();
+    call("chat.pin", { cid: cid, id: next }).catch(fail);
+  }
+  function setDisappear(cid, seconds) {
+    var c = chats[cid]; if (c) { c.disappear = seconds; publishChats(); }
+    return call("chat.settings", { cid: cid, disappear: seconds }).catch(fail);
+  }
+  function openDm(uid) {
+    if (!state.uid || !uid) return Promise.resolve(null);
+    var cid = dmWith(uid);
+    if (!chats[cid]) virtualChats[cid] = { cid: cid, type: "dm", members: [state.uid, uid].sort(), names: {}, cnt: 0, updatedTs: Date.now(), virtual: true };
+    publishChats();
+    return call("chat.open", { to: uid }).then(function (b) { return b.cid; })
+      .catch(function (e) { delete virtualChats[cid]; publishChats(); fail(e); return null; });
+  }
+  function openSaved() {
+    if (!state.uid) return Promise.resolve(null);
+    return call("chat.open", { saved: true }).then(function (b) { return b.cid; }).catch(function (e) { fail(e); return null; });
+  }
+
+  // ---------- «يكتب…» (Realtime Database: typing/{cid}/{uid}) ----------
+  var lastTyping = {}, typingClear = {};
+  function typing(cid) {
+    var d = db(); if (!d || !isCloud(cid) || !state.uid) return;
+    var now = Date.now();
+    if (!lastTyping[cid] || now - lastTyping[cid] > 3000) {
+      lastTyping[cid] = now;
+      var ref = d.ref("typing/" + cid + "/" + state.uid);
+      try { ref.onDisconnect().remove(); ref.set(firebase.database.ServerValue.TIMESTAMP); } catch (e) {}
+    }
+    clearTimeout(typingClear[cid]);
+    typingClear[cid] = setTimeout(function () { lastTyping[cid] = 0; try { d.ref("typing/" + cid + "/" + state.uid).remove(); } catch (e) {} }, 5000);
+  }
+  function syncTyping() {
+    var d = db(); if (!d) return;
+    var want = Object.keys(chats).slice(0, 30);
+    Object.keys(typingRefs).forEach(function (cid) { if (want.indexOf(cid) < 0) { try { typingRefs[cid].off(); } catch (e) {} delete typingRefs[cid]; delete typingNow[cid]; } });
+    want.forEach(function (cid) {
+      if (typingRefs[cid] || chats[cid].type === "saved") return;
+      var ref = d.ref("typing/" + cid); typingRefs[cid] = ref;
+      ref.on("value", function (s) { typingNow[cid] = s.val() || {}; publishTyping(); }, function () {});
+    });
+  }
+  function typingList() {
+    var now = Date.now(), out = [];
+    Object.keys(typingNow).forEach(function (cid) {
+      var t = typingNow[cid] || {};
+      if (Object.keys(t).some(function (u) { return u !== state.uid && now - (t[u] || 0) < 8000; })) out.push(cid);
+    });
+    return out;
+  }
+  function whoTyping(cid) {
+    var t = typingNow[cid] || {}, now = Date.now(), c = chats[cid];
+    return Object.keys(t).filter(function (u) { return u !== state.uid && now - (t[u] || 0) < 8000; }).map(function (u) { return personName(u, c); });
+  }
+  var typingSig = "";
+  function publishTyping() {
+    var l = typingList(), sig = l.join(",");
+    if (sig === typingSig || !app || !app.setTypingConversations) return;
+    typingSig = sig; app.setTypingConversations(l);
+  }
+  setInterval(function () { if (Object.keys(typingNow).length) publishTyping(); }, 3000);
+
+  // ---------- النشر للتطبيق ----------
+  function chatList() {
+    var all = Object.assign({}, virtualChats, chats), cleared = (prefs && prefs.cleared) || {};
+    return Object.keys(all).map(function (k) { return all[k]; }).filter(function (c) {
+      return !cleared[c.cid] || c.cid === openCid || ((c.last && c.last.ts) || 0) > cleared[c.cid] || (pend[c.cid] || []).length;
+    });
+  }
+  function convOf(c) {
+    var other = others(c)[0], l = c.last;
+    var p = other && state.people.filter(function (x) { return x.uid === other; })[0];
+    var pendList = pend[c.cid] || [], lp = pendList[pendList.length - 1];
+    var lastMine = lp ? true : !!(l && l.by === state.uid);
+    return {
+      id: c.cid, cloud: true, kind: c.type, peerUid: other || null,
+      name: c.type === "saved" ? L("رسائلي المحفوظة", "Saved messages") : personName(other, c),
+      isSavedMessages: c.type === "saved",
+      lastMessage: lp ? preview(lp.msg) : preview(l), lastFromMe: lastMine,
+      lastStatus: lp ? (lp.status === "pending" ? "sent" : lp.status) : (l && l.by === state.uid ? statusOf(c, l.ts) : null),
+      unread: unreadOf(c), updatedAt: lp ? lp.ts : (c.updatedTs || 0), pinnedMessageId: c.pinned || null,
+      disappear: c.disappear || 0, online: !!(p && state.presence[other] && state.presence[other].state === "online")
+    };
+  }
+  function groupOf(c) {
+    var admins = c.admins || [], l = c.last;
+    var members = (c.members || []).map(function (u) {
+      return { id: appId(u), uid: u, name: u === state.uid ? L("أنت", "You") : personName(u, c), role: admins.indexOf(u) >= 0 ? "admin" : "member" };
+    });
+    var pendList = pend[c.cid] || [], lp = pendList[pendList.length - 1];
+    var lastText = lp ? preview(lp.msg) : (l ? ((l.by && l.by !== state.uid ? personName(l.by, c) + ": " : "") + preview(l)) : "");
+    return { id: c.cid, cloud: true, kind: c.type, familyGroupId: c.familyGroupId || null,
+      name: c.name || L("مجموعة", "Group"), members: members, lastMessage: lastText,
+      unread: unreadOf(c), updatedAt: lp ? lp.ts : (c.updatedTs || 0), pinnedMessageId: c.pinned || null, disappear: c.disappear || 0 };
+  }
+  var pubChatsT = null;
+  function publishChats() {
+    if (!app || pubChatsT) return;
+    pubChatsT = setTimeout(function () {
+      pubChatsT = null;
+      var list = chatList();
+      var convs = list.filter(function (c) { return c.type === "dm" || c.type === "saved"; }).map(convOf)
+        .sort(function (a, b) { return b.updatedAt - a.updatedAt; });
+      var groups = list.filter(function (c) { return c.type === "family" || c.type === "group"; }).map(groupOf)
+        .sort(function (a, b) { return b.updatedAt - a.updatedAt; });
+      try { if (app.setConversations) app.setConversations(convs); } catch (e) {}
+      try { if (app.setGroups) app.setGroups(groups); } catch (e) {}
+    }, 40);
+  }
+  function appMessages(cid) {
+    var c = chats[cid] || virtualChats[cid] || { members: [] }, hidden = (prefs && prefs.hidden) || {};
+    var clearedAt = (prefs && prefs.cleared && prefs.cleared[cid]) || 0;
+    var dd = days[cid] || {}, arr = [];
+    Object.keys(dd).forEach(function (day) { var mm = dd[day]; Object.keys(mm).forEach(function (id) { var m = mm[id]; if (m && !hidden[id] && (m.ts || 0) > clearedAt) arr.push({ m: m, day: day }); }); });
+    (pend[cid] || []).forEach(function (p) { if (!hidden[p.msg.id]) arr.push({ m: Object.assign({ by: state.uid, ts: p.ts }, p.msg), pending: p.status }); });
+    arr.sort(function (a, b) { return (a.m.ts || 0) - (b.m.ts || 0); });
+    var group = c.type === "family" || c.type === "group";
+    return arr.map(function (x) {
+      var m = x.m, mine = m.by === state.uid, re = m.re || {};
+      var mineRe = re[state.uid], anyRe = Object.keys(re).map(function (k) { return re[k]; })[0];
+      var o = { id: m.id, day: x.day || null, createdAt: m.ts, text: m.del ? L("🚫 حُذفت هذه الرسالة", "🚫 This message was deleted") : (m.text || ""),
+                type: m.del ? "text" : (m.type === "text" ? undefined : m.type), deleted: !!m.del, edited: !!m.edited,
+                forwarded: !!m.fwd, reaction: mineRe || anyRe || null, reactions: re, replyTo: m.reply || null,
+                replyToText: m.reply ? m.reply.text : null, contact: m.contact || null, extra: m.extra || null, cloud: true,
+                starred: !!(prefs && prefs.starred && prefs.starred.some(function (s) { return s.id === m.id; })) };
+      if (group) { o.senderId = appId(m.by); o.senderName = personName(m.by, c); if (o.type === undefined) o.type = "text"; }
+      else o.senderUserId = appId(m.by);
+      if (mine) o.status = x.pending ? (x.pending === "failed" ? "failed" : "pending") : statusOf(c, m.ts);
+      return o;
+    });
+  }
+  var pubMsgT = {};
+  function publishMessages(cid) {
+    if (!app || pubMsgT[cid]) return;
+    pubMsgT[cid] = setTimeout(function () {
+      delete pubMsgT[cid];
+      var c = chats[cid] || virtualChats[cid] || {}, list = appMessages(cid);
+      var group = c.type === "family" || c.type === "group";
+      var setter = group ? app.setGroupMessages : app.setMessagesByConversation;
+      if (setter) try { setter(function (prev) { var o = {}; for (var k in (prev || {})) if (isCloud(k)) o[k] = prev[k]; o[cid] = list; return o; }); } catch (e) {}
+      publishChats();
+    }, 30);
+  }
+
+  // ---------- إعداداتي في المحادثات (بين أجهزتي) ----------
+  var PREF_SETTERS = { archived: "setArchivedConversations", pinned: "setPinnedConversations", muted: "setMutedConversations",
+    locked: "setLockedConversationIds", folders: "setChatFolders", folderOf: "setFolderAssignments", themes: "setChatThemes",
+    tones: "setConversationTones", starred: "setStarredMessages", blocked: "setBlockedConversations" };
+  function loadPrefs() {
+    return call("chat.prefs", {}).then(function (b) {
+      prefs = b.prefs || {}; prefsLoaded = true;
+      var applied = {};
+      Object.keys(PREF_SETTERS).forEach(function (k) {
+        if (!(k in prefs)) return;
+        var v = k === "blocked" ? (prefs.blocked || []).map(dmWith) : prefs[k];
+        applied[k] = v;
+        try { if (app && app[PREF_SETTERS[k]]) app[PREF_SETTERS[k]](v); } catch (e) {}
+      });
+      prefsSent = JSON.stringify(normPrefs(applied));
+      Object.keys(days).forEach(publishMessages); publishChats();
+    }).catch(function (e) { log("prefs:", (e && e.message) || e); });
+  }
+  function normPrefs(o) {
+    var out = {};
+    Object.keys(PREF_SETTERS).forEach(function (k) {
+      if (o[k] === undefined) return;
+      out[k] = k === "blocked" ? (o.blocked || []).filter(function (id) { return /^dm_/.test(id); }).map(function (id) { return id.slice(3).split("_").filter(function (u) { return u !== state.uid; })[0]; }).filter(Boolean)
+        : o[k];
+    });
+    return out;
+  }
+  var prefsT = null, prefsPending = {};
+  function savePrefs(partial) {
+    Object.assign(prefsPending, partial);
+    clearTimeout(prefsT);
+    prefsT = setTimeout(function () {
+      var set = prefsPending; prefsPending = {};
+      call("chat.prefs", { set: set }).catch(function (e) { log("prefs save:", (e && e.message) || e); });
+    }, 1500);
+  }
+  // يستدعيه التطبيق عند تغيّر أيٍّ من إعداداته (بعد التحميل الأوّل فقط — لا نكتب فوق الخادم بنسخةٍ قديمة)
+  function observePrefs(appPrefs) {
+    if (!prefsLoaded || !state.uid) return;
+    var n = normPrefs(appPrefs || {}), sig = JSON.stringify(n);
+    if (sig === prefsSent) return;
+    var old = {}; try { old = JSON.parse(prefsSent || "{}"); } catch (e) {}
+    var diff = {}; Object.keys(n).forEach(function (k) { if (JSON.stringify(n[k]) !== JSON.stringify(old[k])) diff[k] = n[k]; });
+    prefsSent = sig;
+    if (n.blocked) { prefs = prefs || {}; prefs.blocked = n.blocked; }
+    if (n.starred) { prefs = prefs || {}; prefs.starred = n.starred; if (diff.starred) Object.keys(days).forEach(publishMessages); }
+    if (Object.keys(diff).length) savePrefs(diff);
+  }
+
   // ---------- الإقلاع ----------
   var readyCbs = [];
   function whenReady(f) { if (state.uid) f(state.uid); else readyCbs.push(f); }
@@ -248,6 +659,8 @@
     if (c && c.uid === uid) { state.me = c.me; state.people = c.people || []; publish(); }
     startMyPresence(uid);
     refresh();
+    stopChats(); prefs = null; prefsLoaded = false; pend = {}; virtualChats = {};
+    restorePending(); startChats(uid); loadPrefs(); drainOutbox();
     var cbs = readyCbs; readyCbs = [];
     cbs.forEach(function (f) { try { f(uid); } catch (e) {} });
   }
@@ -275,6 +688,12 @@
     accept: accept, scanSupported: scanSupported, scanAndAdd: scanAndAdd, removeContact: removeContact,
     me: function () { return state.me; }, uid: function () { return state.uid; },
     status: function () { return { loaded: state.loaded, error: state.error, count: state.people.length }; },
+    // C2
+    isCloud: isCloud, enabled: function () { return !!state.uid; }, openChat: openChat, closeChat: closeChat,
+    send: send, edit: edit, clearChat: clearChat, deleteForAll: deleteForAll, deleteForMe: deleteForMe, react: react, pin: pin,
+    setDisappear: setDisappear, openDm: openDm, openSaved: openSaved, dmWith: function (u) { return state.uid ? dmWith(u) : null; },
+    typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
+    _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,
     _state: state, _onUid: onUid, _tokenFrom: tokenFrom
   };
   if (global.document && document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

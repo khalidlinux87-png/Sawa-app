@@ -1208,36 +1208,9 @@ function AppInner() {
     const [backendLinked, setBackendLinked] = useState(true); // وضع تجربة محلية
     const [backendSkipped, setBackendSkipped] = useState(true);
     // ------------------------------- المحادثات -------------------------------
-    const [conversations, setConversations] = usePersistedState("conversations", (() => {
-        const now = Date.now();
-        return [
-            { id: "saved-messages", name: "رسائلي المحفوظة", isSavedMessages: true, updatedAt: now - 0 },
-            { id: "cv-1", name: "نعمات بابكر", lastMessage: "السلام عليكم ورحمة الله", unread: 2, updatedAt: now - 1 * 60000 },
-            { id: "cv-5", name: "أسماء خالد", lastMessage: "جزاك الله خيراً", unread: 3, updatedAt: now - 3 * 60000 },
-            { id: "cv-3", name: "صديق عبدالماجد", lastMessage: "يعطيك العافية!", unread: 1, updatedAt: now - 8 * 60000 },
-            { id: "cv-8", name: "سارة أحمد", lastMessage: "إن شاء الله بشوفك قريب", unread: 1, updatedAt: now - 15 * 60000 },
-            { id: "cv-2", name: "عثمان بابكر", lastMessage: "تمام، بتواصل معك بعدين", unread: 0, lastFromMe: true, lastStatus: "read", updatedAt: now - 2 * 3600000 },
-            { id: "cv-6", name: "تهاني يوسف", lastMessage: "متى تكون متاح؟", unread: 0, updatedAt: now - 5 * 3600000 },
-            { id: "cv-4", name: "إقبال بابكر", lastMessage: "أكيد، خلّني أشوف", unread: 0, lastFromMe: true, lastStatus: "delivered", updatedAt: now - 1 * 86400000 },
-            { id: "cv-7", name: "دينا سليمان", lastMessage: "تم الاستلام، شكراً", unread: 0, lastFromMe: true, lastStatus: "sent", updatedAt: now - 2 * 86400000 },
-        ];
-    })());
-    const [messagesByConversation, setMessagesByConversation] = usePersistedState("messages", (() => {
-        // كل محادثة تبدأ بالرسالة التي تَعِد بها معاينتها — بدون هذا
-        // يرى المستخدم نصاً في القائمة ثم محادثة فارغة عند الفتح
-        const now = Date.now();
-        const seed = (id, text, minsAgo) => [{ id: "seed-" + id, senderUserId: null, text, createdAt: now - minsAgo * 60000, status: "read" }];
-        return {
-            "cv-1": seed("cv-1", "السلام عليكم ورحمة الله", 1),
-            "cv-5": seed("cv-5", "جزاك الله خيراً", 3),
-            "cv-3": seed("cv-3", "يعطيك العافية!", 8),
-            "cv-8": seed("cv-8", "إن شاء الله بشوفك قريب", 15),
-            "cv-2": [{ id: "seed-cv-2", senderUserId: "u-1", text: "تمام، بتواصل معك بعدين", createdAt: now - 120 * 60000, status: "read" }],
-            "cv-6": seed("cv-6", "متى تكون متاح؟", 300),
-            "cv-4": [{ id: "seed-cv-4", senderUserId: "u-1", text: "أكيد، خلّني أشوف", createdAt: now - 1440 * 60000, status: "delivered" }],
-            "cv-7": [{ id: "seed-cv-7", senderUserId: "u-1", text: "تم الاستلام، شكراً", createdAt: now - 2880 * 60000, status: "sent" }],
-        };
-    })());
+    // ⛔ لا محادثات وهميّة (C2): المحادثات من SawaChat (السحابة). ما بقي محفوظاً من النسخة التجريبيّة يُمحى عند أوّل نشرٍ منها.
+    const [conversations, setConversations] = usePersistedState("conversations", []);
+    const [messagesByConversation, setMessagesByConversation] = usePersistedState("messages", {});
     const [chatsStack, setChatsStack] = useState([]); // {type: 'chat'|'group'|'new'|'newGroup'|'info', data}
     const [activeRoom, setActiveRoom] = useState(null); // null | roomCode string
     const [schedulingRoom, setSchedulingRoom] = useState(false);
@@ -1299,61 +1272,8 @@ function AppInner() {
     const [chatDisappearing, setChatDisappearing] = useState(0);
     const myUserId = "u-1";
     // ------------------------------- المجموعات (Group Chat) -------------------------------
-    const [groups, setGroups] = useState([
-        {
-            id: "grp-1",
-            name: "عائلة 👨‍👩‍👧‍👦",
-            members: [
-                { id: "u-1", name: "أنت", role: "admin" },
-                { id: "u-2", name: "نعمات", role: "member" },
-                { id: "u-3", name: "عثمان", role: "member" },
-                { id: "u-4", name: "إقبال", role: "member" },
-            ],
-            lastMessage: "نعمات: السلام عليكم الكل",
-            unread: 4,
-            updatedAt: Date.now() - 2 * 60000,
-        },
-        {
-            id: "grp-2",
-            name: "أصدقاء الجامعة 🎓",
-            members: [
-                { id: "u-1", name: "أنت", role: "admin" },
-                { id: "u-5", name: "خالد", role: "member" },
-                { id: "u-6", name: "محمد", role: "member" },
-                { id: "u-7", name: "يوسف", role: "member" },
-                { id: "u-8", name: "أسماء", role: "member" },
-            ],
-            lastMessage: "خالد: موعد الاجتماع الأسبوع القادم",
-            unread: 0,
-            updatedAt: Date.now() - 4 * 3600000,
-        },
-        {
-            id: "grp-3",
-            name: "فريق العمل 💼",
-            members: [
-                { id: "u-1", name: "أنت", role: "admin" },
-                { id: "u-9", name: "سارة", role: "member" },
-                { id: "u-10", name: "دينا", role: "member" },
-                { id: "u-11", name: "تهاني", role: "member" },
-            ],
-            lastMessage: "سارة: راجعت التقرير، ممتاز!",
-            unread: 2,
-            updatedAt: Date.now() - 30 * 60000,
-        },
-        {
-            id: "grp-4",
-            name: "الجيران 🏘️",
-            members: [
-                { id: "u-1", name: "أنت", role: "member" },
-                { id: "u-12", name: "صديق", role: "admin" },
-                { id: "u-13", name: "حسن", role: "member" },
-            ],
-            lastMessage: "صديق: الكهرباء رجعت الحمد لله",
-            unread: 0,
-            updatedAt: Date.now() - 86400000,
-        },
-    ]);
-    const [groupMessages, setGroupMessages] = usePersistedState("groupMessages", { "grp-1": [], "grp-2": [], "grp-3": [], "grp-4": [] });
+    const [groups, setGroups] = useState([]);   // من SawaChat: محادثات العائلات والمجموعات
+    const [groupMessages, setGroupMessages] = usePersistedState("groupMessages", {});
     const [broadcastLists, setBroadcastLists] = useState([]);
     function createBroadcastList(name, recipientIds) {
         const id = `bl-${Date.now()}`;
@@ -1375,6 +1295,7 @@ function AppInner() {
         showToast(t("tm_albth_ila_shkhs", { length: list.recipientIds.length }), "success");
     }
     function createGroup(name, memberNames) {
+        if (window.SawaChat && window.SawaChat.enabled && window.SawaChat.enabled()) { showToast(t("c3_soon"), "info"); setChatsStack([]); return; }
         const id = `grp-${Date.now()}`;
         const members = [
             { id: myUserId, name: "أنت", role: "admin" },
@@ -1418,26 +1339,31 @@ function AppInner() {
         setChatsStack([]);
     }
     function sendGroupMessage(groupId, text) {
+        if (cloudChat(groupId)) { cloudChat(groupId).send(groupId, text); return; }
         const msg = { id: `gmsg-${Date.now()}`, senderId: myUserId, text, type: "text", createdAt: Date.now() };
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
     }
     function sendGroupFile(groupId, fileName, fileSize, fileUrl, type = "file") {
+        if (cloudChat(groupId)) { showToast(t("c2_media_soon"), "info"); return; }
         const msg = { id: `gmsg-${Date.now()}-file`, senderId: myUserId, text: fileName, fileSize, fileUrl, type, createdAt: Date.now() };
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
     }
     function sendGroupVoice(groupId, audioUrl, duration) {
+        if (cloudChat(groupId)) { showToast(t("c2_media_soon"), "info"); return; }
         const msg = { id: `gmsg-${Date.now()}-v`, senderId: myUserId, type: "voice", audioUrl, duration, createdAt: Date.now() };
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
     }
     function editGroupMessage(groupId, messageId, newText) {
         if (!newText.trim())
             return;
+        if (cloudChat(groupId)) { cloudChat(groupId).edit(groupId, messageId, newText.trim()); return; }
         setGroupMessages((prev) => ({
             ...prev,
             [groupId]: (prev[groupId] || []).map((m) => (m.id === messageId ? { ...m, text: newText.trim(), edited: true } : m)),
         }));
     }
     function createGroupPoll(groupId, question, optionTexts, deadlineMinutes, anonymous) {
+        if (cloudChat(arguments[0])) { showToast(t("c3_soon"), "info"); return; }
         const msg = {
             id: `gpoll-${Date.now()}`,
             type: "poll",
@@ -1488,6 +1414,7 @@ function AppInner() {
         }));
     }
     function createGroupBillSplit(groupId, description, totalAmount, participantAmounts, splitType) {
+        if (cloudChat(arguments[0])) { showToast(t("c3_soon"), "info"); return; }
         const group = groups.find((g) => g.id === groupId);
         const participants = Object.entries(participantAmounts).map(([id, share]) => {
             var _a;
@@ -1513,6 +1440,7 @@ function AppInner() {
         showToast(`تم تحديد حصتك (${myShare.share.toLocaleString(loc())} ج.س) كمدفوعة ✓`, "success");
     }
     function createGroupFundraiser(groupId, cause, goal, deadline) {
+        if (cloudChat(arguments[0])) { showToast(t("c3_soon"), "info"); return; }
         const deadlineTimestamp = deadline ? new Date(`${deadline}T23:59:59`).getTime() : null;
         const msg = { id: `gfund-${Date.now()}`, type: "fundraiser", cause, goal, raised: 0, deadline: deadlineTimestamp, contributions: [], createdAt: Date.now() };
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
@@ -1552,6 +1480,7 @@ function AppInner() {
         }
     }
     function createGroupTaskList(groupId, title, taskDrafts) {
+        if (cloudChat(arguments[0])) { showToast(t("c3_soon"), "info"); return; }
         const group = groups.find((g) => g.id === groupId);
         const tasks = taskDrafts.map((td, i) => {
             var _a;
@@ -1595,6 +1524,14 @@ function AppInner() {
         return id;
     }
     function messageContact(contact) {
+        const SC = window.SawaChat;
+        if (SC && contact && contact.uid && SC.enabled && SC.enabled()) {
+            const cid = SC.dmWith(contact.uid);
+            SC.openDm(contact.uid);
+            setChatsStack([{ type: "chat", data: { id: cid, name: contact.name, cloud: true, peerUid: contact.uid } }]);
+            setTab("chats");
+            return;
+        }
         const existing = conversations.find((c) => c.name === contact.name);
         if (existing) {
             setChatsStack([{ type: "chat", data: existing }]);
@@ -1616,6 +1553,8 @@ function AppInner() {
     }
     const [chatDrafts, setChatDrafts] = usePersistedState("chatDrafts", {});
     function saveChatDraft(conversationId, value) {
+        const realCid = String(conversationId).replace(/^g:/, "");
+        if (value && value.trim() && cloudChat(realCid)) cloudChat(realCid).typing(realCid);
         setChatDrafts((prev) => {
             const next = { ...prev };
             if (value && value.trim()) next[conversationId] = value;
@@ -1625,91 +1564,62 @@ function AppInner() {
     }
     // فتح المحادثة يعني قراءتها — بدون هذا تبقى الشارة إلى الأبد
     function markConversationRead(conversationId) {
+        if (cloudChat(conversationId)) { cloudChat(conversationId).openChat(conversationId); return; }
         setConversations((prev) => prev.map((c) => (c.id === conversationId && c.unread > 0 ? { ...c, unread: 0 } : c)));
     }
     function markGroupRead(groupId) {
+        if (cloudChat(groupId)) { cloudChat(groupId).openChat(groupId); return; }
         setGroups((prev) => prev.map((g) => (g.id === groupId && g.unread > 0 ? { ...g, unread: 0 } : g)));
     }
-    function sendChatMessage(conversationId, text, replyTo) {
-        const msg = { id: `msg-${Date.now()}`, senderUserId: myUserId, text, createdAt: Date.now(), replyToText: (replyTo === null || replyTo === void 0 ? void 0 : replyTo.text) || null, status: "sent" };
-        // محاكاة delivered ثم read
-        setTimeout(() => setMessagesByConversation((prev) => ({ ...prev, [conversationId]: (prev[conversationId] || []).map((m) => m.id === msg.id ? { ...m, status: "delivered" } : m) })), 800);
-        setTimeout(() => setMessagesByConversation((prev) => ({ ...prev, [conversationId]: (prev[conversationId] || []).map((m) => m.id === msg.id ? { ...m, status: "read" } : m) })), 2500);
-        setMessagesByConversation((prev) => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), msg] }));
-        setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, lastMessage: text, lastFromMe: true, lastStatus: "sent", updatedAt: Date.now(), userTouched: true } : c)));
-        setTimeout(() => setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, lastStatus: "delivered" } : c))), 800);
-        setTimeout(() => setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, lastStatus: "read" } : c))), 2500);
+    // ⛔ لا محاكاة (C2): لا «وصلت/قُرئت» بمؤقّتات ولا ردود آليّة ولا «يكتب…» مزيّف.
+    //    محادثة السحابة ⇒ SawaChat (إرسالٌ حقيقيّ وحالاتٌ من الخادم)؛ غير ذلك ⇒ تُحفظ محلّياً فقط.
+    function cloudChat(id) { const SC = window.SawaChat; return SC && SC.isCloud && SC.isCloud(id) ? SC : null; }
+    function touchFamilyContact(conversationId) {
         // تحديث آخر تواصل في صلة الرحم إذا كان الاسم يطابق شخصاً
         const conv = conversations.find(c => c.id === conversationId);
-        if (conv) {
-            setGroupPersons(prev => {
-                const updated = { ...prev };
-                Object.keys(updated).forEach(gId => {
-                    updated[gId] = updated[gId].map(p => {
-                        var _a, _b, _c;
-                        const fn = (_b = (_a = p.local_name) === null || _a === void 0 ? void 0 : _a.split(" ")[0]) === null || _b === void 0 ? void 0 : _b.toLowerCase();
-                        if (fn && ((_c = conv.name) === null || _c === void 0 ? void 0 : _c.toLowerCase().includes(fn))) {
-                            return { ...p, lastContactDate: Date.now() };
-                        }
-                        return p;
-                    });
+        if (!conv) return;
+        setGroupPersons(prev => {
+            const updated = { ...prev };
+            Object.keys(updated).forEach(gId => {
+                updated[gId] = updated[gId].map(p => {
+                    const fn = p.local_name && p.local_name.split(" ")[0] && p.local_name.split(" ")[0].toLowerCase();
+                    if (fn && conv.name && conv.name.toLowerCase().includes(fn)) return { ...p, lastContactDate: Date.now() };
+                    return p;
                 });
-                return updated;
             });
+            return updated;
+        });
+    }
+    function sendChatMessage(conversationId, text, replyTo) {
+        const SC = cloudChat(conversationId);
+        if (SC) {
+            SC.send(conversationId, text, { reply: replyTo ? { id: replyTo.id, by: replyTo.senderUserId || replyTo.senderId || null, text: replyTo.text } : null });
+            touchFamilyContact(conversationId);
+            return;
         }
-        // محاكاة واقعية لتقدّم حالة الرسالة: مُرسَلة ← مُسلَّمة ← مقروءة (نفس
-        // فكرة محاكاة "الرد التلقائي" الموجودة أصلاً، بس لتتبّع حالة القراءة)
-        setTimeout(() => {
-            setMessagesByConversation((prev) => ({
-                ...prev,
-                [conversationId]: (prev[conversationId] || []).map((m) => (m.id === msg.id ? { ...m, status: "delivered" } : m)),
-            }));
-        }, 600);
-        if (conversationId !== "saved-messages") {
-            setTimeout(() => {
-                setMessagesByConversation((prev) => ({
-                    ...prev,
-                    [conversationId]: (prev[conversationId] || []).map((m) => (m.id === msg.id ? { ...m, status: "read" } : m)),
-                }));
-                // مؤشر "يكتب الآن" — يظهر بعد قراءة رسالتك مباشرة، لفترة واقعية قبل وصول الرد
-                setTypingConversations((prev) => [...prev, conversationId]);
-            }, 2000);
-            setTimeout(() => {
-                setTypingConversations((prev) => prev.filter((id) => id !== conversationId));
-                const reply = { id: `msg-${Date.now()}-r`, senderUserId: "u-2", text: DEMO_REPLIES[Math.floor(Math.random() * DEMO_REPLIES.length)], createdAt: Date.now() };
-                setMessagesByConversation((prev) => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), reply] }));
-            }, 2600);
-        }
-        else {
-            setTimeout(() => {
-                setMessagesByConversation((prev) => ({
-                    ...prev,
-                    [conversationId]: (prev[conversationId] || []).map((m) => (m.id === msg.id ? { ...m, status: "read" } : m)),
-                }));
-            }, 2000);
-        }
+        const msg = { id: `msg-${Date.now()}`, senderUserId: myUserId, text, createdAt: Date.now(), replyToText: (replyTo && replyTo.text) || null, status: "sent" };
+        setMessagesByConversation((prev) => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), msg] }));
+        setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, lastMessage: text, lastFromMe: true, lastStatus: "sent", updatedAt: Date.now(), userTouched: true } : c)));
+        touchFamilyContact(conversationId);
     }
     function editChatMessage(conversationId, messageId, newText) {
         if (!newText.trim())
             return;
+        if (cloudChat(conversationId)) { cloudChat(conversationId).edit(conversationId, messageId, newText.trim()); return; }
         setMessagesByConversation((prev) => ({
             ...prev,
             [conversationId]: (prev[conversationId] || []).map((m) => (m.id === messageId ? { ...m, text: newText.trim(), edited: true } : m)),
         }));
     }
     function sendChatVoice(conversationId, audioUrl, duration, transcript = null) {
+        if (cloudChat(conversationId)) { showToast(t("c2_media_soon"), "info"); return; }
         const msg = { id: `msg-${Date.now()}-v`, senderUserId: myUserId, type: "voice", audioUrl, duration, transcript, createdAt: Date.now(), status: "sent" };
         setMessagesByConversation((prev) => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), msg] }));
         setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, lastMessage: "🎤 رسالة صوتية" } : c)));
-        setTimeout(() => {
-            setMessagesByConversation((prev) => ({
-                ...prev,
-                [conversationId]: (prev[conversationId] || []).map((m) => (m.id === msg.id ? { ...m, status: "delivered" } : m)),
-            }));
-        }, 600);
     }
     function forwardMessageToTargets(text, destinationIds) {
         destinationIds.forEach((id) => {
+            if (cloudChat(id)) { cloudChat(id).send(id, text, { fwd: true }); return; }
             if (conversations.some((c) => c.id === id)) {
                 const msg = { id: `msg-${Date.now()}-f-${id}`, senderUserId: myUserId, text, createdAt: Date.now(), forwarded: true, status: "sent" };
                 setMessagesByConversation((prev) => ({ ...prev, [id]: [...(prev[id] || []), msg] }));
@@ -1723,12 +1633,14 @@ function AppInner() {
         showToast(t("tm_altwjyh_ila", { length: destinationIds.length }), "success");
     }
     function reactToChatMessage(conversationId, messageId, emoji) {
+        if (cloudChat(conversationId)) { cloudChat(conversationId).react(conversationId, messageId, emoji); return; }
         setMessagesByConversation((prev) => ({
             ...prev,
             [conversationId]: (prev[conversationId] || []).map((m) => (m.id === messageId ? { ...m, reaction: emoji } : m)),
         }));
     }
     function togglePinMessage(conversationId, messageId) {
+        if (cloudChat(conversationId)) { cloudChat(conversationId).pin(conversationId, messageId); return; }
         setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, pinnedMessageId: c.pinnedMessageId === messageId ? null : messageId } : c)));
     }
     function toggleStarMessage(conversationId, messageId, text) {
@@ -1748,20 +1660,16 @@ function AppInner() {
         }
     }
     function sendChatSticker(conversationId, emoji) {
+        if (cloudChat(conversationId)) { cloudChat(conversationId).send(conversationId, emoji, { type: "sticker" }); return; }
         const msg = { id: `msg-${Date.now()}-s`, senderUserId: myUserId, text: emoji, type: "sticker", createdAt: Date.now() };
         setMessagesByConversation((prev) => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), msg] }));
     }
     function sendChatFile(conversationId, fileName, fileSize, fileUrl, type = "file", viewOnce = false) {
+        if (cloudChat(conversationId)) { showToast(t("c2_media_soon"), "info"); return; }
         const lastMessageLabel = viewOnce ? t("ai_swra_mra") : type === "image" ? t("ai_swra") : type === "video" ? t("ai_fydyw") : `📎 ${fileName}`;
         const msg = { id: `msg-${Date.now()}-file`, senderUserId: myUserId, text: fileName, fileSize, fileUrl, type, viewOnce, viewedOnce: false, createdAt: Date.now(), status: "sent" };
         setMessagesByConversation((prev) => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), msg] }));
         setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, lastMessage: lastMessageLabel } : c)));
-        setTimeout(() => {
-            setMessagesByConversation((prev) => ({
-                ...prev,
-                [conversationId]: (prev[conversationId] || []).map((m) => (m.id === msg.id ? { ...m, status: "delivered" } : m)),
-            }));
-        }, 600);
     }
     function markMessageViewedOnce(conversationId, messageId) {
         setMessagesByConversation((prev) => ({
@@ -2091,7 +1999,23 @@ function AppInner() {
     const [onlineContacts, setOnlineContacts] = useState([]);
     const [people, setPeople] = useState(() => (window.SawaChat ? window.SawaChat.contacts() : []));
     setLiveContacts(people);
-    useEffect(() => { if (window.SawaChat && window.SawaChat.bindApp) window.SawaChat.bindApp({ setPeople, setOnlineContacts }); }, []);
+    useEffect(() => { if (window.SawaChat && window.SawaChat.bindApp) window.SawaChat.bindApp({ setPeople, setOnlineContacts,
+        // C2: المحادثات الحقيقيّة تُنشر في نفس حالات الواجهة
+        setConversations, setMessagesByConversation, setGroups, setGroupMessages, setTypingConversations,
+        setArchivedConversations, setPinnedConversations, setMutedConversations, setLockedConversationIds, setChatFolders,
+        setFolderAssignments, setChatThemes, setConversationTones, setStarredMessages, setBlockedConversations }); }, []);
+    // إعداداتي في المحادثات تتزامن بين أجهزتي (SawaChat يتجاهلها قبل تحميل نسخة الخادم)
+    useEffect(() => { if (window.SawaChat && window.SawaChat.observePrefs) window.SawaChat.observePrefs({ archived: archivedConversations, pinned: pinnedConversations,
+        muted: mutedConversations, locked: lockedConversationIds, folders: chatFolders, folderOf: folderAssignments, themes: chatThemes,
+        tones: conversationTones, starred: starredMessages, blocked: blockedConversations }); },
+        [archivedConversations, pinnedConversations, mutedConversations, lockedConversationIds, chatFolders, folderAssignments, chatThemes, conversationTones, starredMessages, blockedConversations]);
+    // المحادثة المفتوحة: تُعلَّم مقروءة وتُستمع رسائلها؛ الخروج منها يوقف «قُرئت» التلقائيّة
+    useEffect(() => {
+        const SC = window.SawaChat; if (!SC || !SC.openChat) return;
+        const top = chatsStack[chatsStack.length - 1];
+        const cid = tab === "chats" && top && (top.type === "chat" || top.type === "group" || top.type === "info") && top.data ? top.data.id : null;
+        if (cid && SC.isCloud(cid)) SC.openChat(cid); else SC.closeChat(null);
+    }, [tab, chatsStack]);
     function logCall(name, callType, duration, wasConnected, participants) {
         const mins = Math.floor(duration / 60);
         const secs = duration % 60;
@@ -3502,6 +3426,7 @@ function AppInner() {
                             }, onToggleReadConv: (id) => {
                                 setConversations((prev) => prev.map((c) => c.id === id ? { ...c, unread: c.unread > 0 ? 0 : 1 } : c));
                             }, onDeleteConv: (id) => {
+                                if (cloudChat(id)) { cloudChat(id).clearChat(id); showToast(t("hdhft_almhadtha"), "success"); return; }
                                 setConversations((prev) => prev.filter((c) => c.id !== id));
                                 setMessagesByConversation((prev) => { const n = { ...prev }; delete n[id]; return n; });
                                 setPinnedConversations((p) => p.filter((x) => x !== id));
@@ -3549,7 +3474,11 @@ function AppInner() {
                     }
                     if (chatsTop.type === "chat") {
                         const convMessages = messagesByConversation[chatsTop.data.id] || [];
-                        return (React.createElement(ChatScreen, { conversation: chatsTop.data, messages: convMessages, draft: chatDrafts[chatsTop.data.id] || "", onSaveDraft: (v) => saveChatDraft(chatsTop.data.id, v), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendChatMessage(chatsTop.data.id, text, replyTo), onForward: (text, destinationIds) => forwardMessageToTargets(text, destinationIds), onTogglePin: (messageId) => togglePinMessage(chatsTop.data.id, messageId), onToggleStar: (messageId, text) => toggleStarMessage(chatsTop.data.id, messageId, text), isTyping: typingConversations.includes(chatsTop.data.id), onLogCall: logCall, isOnline: onlineContacts.includes(chatsTop.data.name), callSettings: callSettings, allConversations: conversations, allGroups: groups, onReact: (messageId, emoji) => reactToChatMessage(chatsTop.data.id, messageId, emoji), onSendSticker: (emoji) => sendChatSticker(chatsTop.data.id, emoji), onSendFile: (name, size, fileUrl, type, viewOnce) => sendChatFile(chatsTop.data.id, name, size, fileUrl, type, viewOnce), onSendVoice: (url, duration, transcript) => sendChatVoice(chatsTop.data.id, url, duration, transcript), onMarkViewedOnce: (messageId) => markMessageViewedOnce(chatsTop.data.id, messageId), onEditMessage: (messageId, newText) => editChatMessage(chatsTop.data.id, messageId, newText), onDeleteMessage: (messageId, scope) => {
+                        // المحادثة الحيّة (الاسم/التثبيت/الاختفاء من الخادم) لا لقطة لحظة الفتح
+                        const liveConv = conversations.find((c) => c.id === chatsTop.data.id) || chatsTop.data;
+                        const SCc = cloudChat(chatsTop.data.id);
+                        return (React.createElement(ChatScreen, { conversation: liveConv, messages: convMessages, draft: chatDrafts[chatsTop.data.id] || "", onSaveDraft: (v) => saveChatDraft(chatsTop.data.id, v), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendChatMessage(chatsTop.data.id, text, replyTo), onForward: (text, destinationIds) => forwardMessageToTargets(text, destinationIds), onTogglePin: (messageId) => togglePinMessage(chatsTop.data.id, messageId), onToggleStar: (messageId, text) => toggleStarMessage(chatsTop.data.id, messageId, text), isTyping: typingConversations.includes(chatsTop.data.id), onLogCall: logCall, isOnline: liveConv.cloud ? !!liveConv.online : onlineContacts.includes(chatsTop.data.name), callSettings: callSettings, allConversations: conversations, allGroups: groups, onReact: (messageId, emoji) => reactToChatMessage(chatsTop.data.id, messageId, emoji), onSendSticker: (emoji) => sendChatSticker(chatsTop.data.id, emoji), onSendFile: (name, size, fileUrl, type, viewOnce) => sendChatFile(chatsTop.data.id, name, size, fileUrl, type, viewOnce), onSendVoice: (url, duration, transcript) => sendChatVoice(chatsTop.data.id, url, duration, transcript), onMarkViewedOnce: (messageId) => markMessageViewedOnce(chatsTop.data.id, messageId), onEditMessage: (messageId, newText) => editChatMessage(chatsTop.data.id, messageId, newText), onDeleteMessage: (messageId, scope) => {
+                                if (SCc) { scope === "all" ? SCc.deleteForAll(chatsTop.data.id, messageId) : SCc.deleteForMe(chatsTop.data.id, messageId); showToast(scope === "all" ? t("ai_hdhft_lljmya") : t("ai_hdhft_andk"), "success"); return; }
                                 // تحرير رابط الوسائط المؤقّت — بدونه يبقى الملف
                                 // في ذاكرة المتصفح بعد حذف الرسالة
                                 try {
@@ -3578,17 +3507,20 @@ function AppInner() {
                                     return { ...c, lastMessage: preview, lastFromMe: last.senderUserId === myUserId, lastStatus: last.status || null };
                                 }));
                                 showToast(scope === "all" ? t("ai_hdhft_lljmya") : t("ai_hdhft_andk"), "success");
-                            }, onOpenInfo: () => setChatsStack([...chatsStack, { type: "info", data: chatsTop.data }]), disappearing: chatDisappearing, setDisappearing: setChatDisappearing, background: chatThemes[chatsTop.data.id] || "default", onBack: () => setChatsStack([]), myUserId: myUserId, isBlocked: blockedConversations.includes(chatsTop.data.id), groupPersons: groupPersons }));
+                            }, onOpenInfo: () => setChatsStack([...chatsStack, { type: "info", data: chatsTop.data }]), disappearing: SCc ? (liveConv.disappear || 0) : chatDisappearing, setDisappearing: SCc ? (v) => SCc.setDisappear(chatsTop.data.id, v) : setChatDisappearing, background: chatThemes[chatsTop.data.id] || "default", onBack: () => setChatsStack([]), myUserId: myUserId, isBlocked: blockedConversations.includes(chatsTop.data.id), groupPersons: groupPersons }));
                     }
                     if (chatsTop.type === "info") {
                         const convMessages = messagesByConversation[chatsTop.data.id] || [];
-                        return (React.createElement(ChatInfoScreen, { conversation: chatsTop.data, messages: convMessages, background: chatThemes[chatsTop.data.id] || "default", setBackground: (themeKey) => setChatThemes((prev) => ({ ...prev, [chatsTop.data.id]: themeKey })), disappearing: chatDisappearing, setDisappearing: setChatDisappearing, isBlocked: blockedConversations.includes(chatsTop.data.id), onBlock: () => blockContact(chatsTop.data.id), onUnblock: () => unblockContact(chatsTop.data.id), onReport: () => showToast(t("tm_irsal_blaghk"), "success"), isLocked: lockedConversationIds.includes(chatsTop.data.id), onToggleLock: () => toggleChatLock(chatsTop.data.id), chatFolders: chatFolders, folderId: folderAssignments[chatsTop.data.id], onSetFolder: (folderId) => assignConversationFolder(chatsTop.data.id, folderId), notificationTone: conversationTones[chatsTop.data.id] || defaultNotificationTone, setNotificationTone: (tone) => setConversationTones((prev) => ({ ...prev, [chatsTop.data.id]: tone })), onBack: () => setChatsStack(chatsStack.slice(0, -1)) }));
+                        const liveConvI = conversations.find((c) => c.id === chatsTop.data.id) || chatsTop.data;
+                        const SCi = cloudChat(chatsTop.data.id);
+                        return (React.createElement(ChatInfoScreen, { conversation: liveConvI, messages: convMessages, background: chatThemes[chatsTop.data.id] || "default", setBackground: (themeKey) => setChatThemes((prev) => ({ ...prev, [chatsTop.data.id]: themeKey })), disappearing: SCi ? (liveConvI.disappear || 0) : chatDisappearing, setDisappearing: SCi ? (v) => SCi.setDisappear(chatsTop.data.id, v) : setChatDisappearing, isBlocked: blockedConversations.includes(chatsTop.data.id), onBlock: () => blockContact(chatsTop.data.id), onUnblock: () => unblockContact(chatsTop.data.id), onReport: () => showToast(t("tm_irsal_blaghk"), "success"), isLocked: lockedConversationIds.includes(chatsTop.data.id), onToggleLock: () => toggleChatLock(chatsTop.data.id), chatFolders: chatFolders, folderId: folderAssignments[chatsTop.data.id], onSetFolder: (folderId) => assignConversationFolder(chatsTop.data.id, folderId), notificationTone: conversationTones[chatsTop.data.id] || defaultNotificationTone, setNotificationTone: (tone) => setConversationTones((prev) => ({ ...prev, [chatsTop.data.id]: tone })), onBack: () => setChatsStack(chatsStack.slice(0, -1)) }));
                     }
                     if (chatsTop.type === "search") {
                         return (React.createElement(UnifiedSearchScreen, { conversations: conversations, groups: groups, shipments: shipments, taxiTripsHistory: taxiTripsHistory, messagesByConversation: messagesByConversation, groupMessages: groupMessages, onOpenChat: (c) => setChatsStack([{ type: "chat", data: c }]), onOpenGroup: (g) => setChatsStack([{ type: "group", data: g }]), onClose: () => setChatsStack([]) }));
                     }
                     if (chatsTop.type === "new") {
-                        return React.createElement(NewConversationScreen, { onCreate: createConversation, onClose: () => setChatsStack([]) });
+                        return React.createElement(NewConversationScreen, { onCreate: createConversation, onClose: () => setChatsStack([]),
+                            contacts: (window.SawaChat && window.SawaChat.enabled && window.SawaChat.enabled()) ? people : null, onPickContact: (c) => messageContact(c) });
                     }
                     return null;
                 })(),

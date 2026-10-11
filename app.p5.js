@@ -933,7 +933,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                                     React.createElement("button", { onClick: () => { onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); }, className: "text-[10px] font-bold", style: { color: mine ? "#fff" : colors.primary } }, t("hfz")),
                                     React.createElement("button", { onClick: () => setEditingMessageId(null), className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, t("ilgha"))))) : (React.createElement("span", { className: "text-sm", style: { color: mine ? "#fff" : colors.text } },
                                 m.text,
-                                m.edited && React.createElement("span", { className: "text-[10px] opacity-70" }, t("ch_madla")))), React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 justify-end`, style: { marginTop: 2, marginBottom: -2 } }, mine && m.status && (React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : t("ch_tm_alirsal") }, m.status === "sent" ? React.createElement(Check, { size: 12, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted }) : React.createElement(CheckCheck, { size: 12, color: m.status === "read" ? (onTint ? "#BFE3FF" : colors.primary) : (onTint ? "rgba(255,255,255,0.85)" : colors.textMuted) }))), React.createElement("span", { className: "text-[10px]", style: { color: onTint ? "rgba(255,255,255,0.75)" : colors.textMuted } }, m.time || (m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" }) : "")))),
+                                m.edited && React.createElement("span", { className: "text-[10px] opacity-70" }, t("ch_madla")))), React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 justify-end`, style: { marginTop: 2, marginBottom: -2 } }, mine && m.status && (React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : m.status === "pending" ? t("c2_pending") : m.status === "failed" ? t("c2_failed") : t("ch_tm_alirsal") }, m.status === "pending" ? React.createElement(Clock, { size: 11, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted }) : m.status === "failed" ? React.createElement(AlertCircle, { size: 12, color: colors.danger }) : m.status === "sent" ? React.createElement(Check, { size: 12, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted }) : React.createElement(CheckCheck, { size: 12, color: m.status === "read" ? (onTint ? "#BFE3FF" : colors.primary) : (onTint ? "rgba(255,255,255,0.85)" : colors.textMuted) }))), React.createElement("span", { className: "text-[10px]", style: { color: onTint ? "rgba(255,255,255,0.75)" : colors.textMuted } }, m.time || (m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" }) : "")))),
                         m.reaction && React.createElement("span", { className: "text-xs mt-0.5" }, m.reaction))));
                 }),
                 isTyping && (React.createElement("div", { className: "flex flex-col mb-2 items-end" },
@@ -1805,9 +1805,18 @@ function UnifiedSearchScreen({ conversations, groups, shipments, taxiTripsHistor
                     React.createElement(Card, null,
                         React.createElement("div", { className: "text-xs", style: { color: colors.text } }, m.text))))))))));
 }
-function NewConversationScreen({ onCreate, onClose }) {
+function NewConversationScreen({ onCreate, onClose, contacts = null, onPickContact }) {
     const { colors } = useTheme();
     const [name, setName] = useState("");
+    // C2: على السحابة لا أسماء تجريبيّة — المحادثة مع جهة اتّصالٍ حقيقيّة
+    if (contacts) {
+        return (React.createElement("div", { className: "absolute inset-0 z-40 flex flex-col", style: { backgroundColor: colors.bg } },
+            React.createElement(TopBar, { title: t("mhadtha_jdyda"), onBack: onClose }),
+            React.createElement("div", { className: "flex-1 overflow-y-auto" },
+                React.createElement("p", { className: `text-xs font-bold px-4 pt-4 pb-2 ${textStart()}`, style: { color: colors.textMuted } }, t("c2_pick_contact")),
+                contacts.length === 0 && React.createElement("p", { className: "text-xs px-4 py-6 text-center", style: { color: colors.textMuted } }, t("c2_no_contacts")),
+                contacts.map((c) => React.createElement(ContactRow, { key: c.id, contact: c, isOnline: !!c.online, colors: colors, onPress: () => onPickContact && onPickContact(c) })))));
+    }
     return (React.createElement("div", { className: "absolute inset-0 z-40 flex flex-col", style: { backgroundColor: colors.bg } },
         React.createElement(TopBar, { title: t("mhadtha_jdyda"), onBack: onClose }),
         React.createElement("div", { className: "flex-1 overflow-y-auto p-4" },
