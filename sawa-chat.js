@@ -10,7 +10,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c3";
+  var VERSION = "c4";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -581,6 +581,7 @@
                 starred: !!(prefs && prefs.starred && prefs.starred.some(function (s) { return s.id === m.id; })) };
       if (group) { o.senderId = appId(m.by); o.senderName = personName(m.by, c); if (o.type === undefined) o.type = "text"; if (!m.del) toolShape(m, o, c); }
       else o.senderUserId = appId(m.by);
+      if (!m.del && MEDIA_TYPES.indexOf(m.type) >= 0) mediaShape(m, o, cid, mine);
       if (mine) o.status = x.pending ? (x.pending === "failed" ? "failed" : "pending") : statusOf(c, m.ts);
       return o;
     });
@@ -782,6 +783,198 @@
     whenReady(function () { joinGroup(tok); });
   }
 
+  // ==================================================================
+  // C4: الوسائط — صور (تُصغَّر) · فيديو · صوت · ملفّات (≤ ١٦ MB) · مشاهدة مرّة واحدة
+  //     الرفع: الجهاز يكتب chats/{cid}/media/{mid} (+ قطع base64 ≤ ٧٠٠ ألف حرف في c/{i}) مباشرةً (القواعد تسمح للعضو المالك)،
+  //     ثمّ يُرسل الرسالة عبر الـWorker (يتحقّق أنّ الوسيط له واكتمل). التنزيل عند الحاجة، ويُحفظ في IndexedDB.
+  // ==================================================================
+  var CHUNK = 700000, MAX_MEDIA = 16 * 1024 * 1024, AUTO_DL = 5 * 1024 * 1024;
+  var mediaUrls = {}, mediaLoading = {}, localUrls = {}, mediaFailed = {};
+  var MEDIA_TYPES = ["image", "video", "voice", "file"];
+  function newMediaId() { return "f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 9); }
+  function blobToB64(blob) {
+    return new Promise(function (res, rej) {
+      var r = new FileReader();
+      r.onload = function () { var s = String(r.result || ""); res(s.slice(s.indexOf(",") + 1)); };
+      r.onerror = function () { rej(new Error("read")); };
+      r.readAsDataURL(blob);
+    });
+  }
+  function b64ToBlob(b64, mime) {
+    var bin = atob(b64), n = bin.length, u = new Uint8Array(n);
+    for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i);
+    return new Blob([u], { type: mime || "application/octet-stream" });
+  }
+  function dataUrlToBlob(du) { var i = du.indexOf(","), mime = (du.slice(5, i).split(";")[0]) || "application/octet-stream"; return b64ToBlob(du.slice(i + 1), mime); }
+  // ⛔ document.createElement("img") لا new Image() — sawa-app يحجب Image (انظر BUILD.md)
+  function loadImg(blob) {
+    return new Promise(function (res, rej) {
+      var url = URL.createObjectURL(blob), img = document.createElement("img");
+      img.onload = function () { res({ img: img, url: url }); };
+      img.onerror = function () { URL.revokeObjectURL(url); rej(new Error("decode")); };
+      img.src = url;
+    });
+  }
+  function drawTo(src, w, h, maxSide) {
+    var sc = Math.min(1, maxSide / Math.max(w, h)), c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(w * sc)); c.height = Math.max(1, Math.round(h * sc));
+    var ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(src, 0, 0, c.width, c.height);
+    return c;
+  }
+  function canvasBlob(c, q) { return new Promise(function (res) { c.toBlob(function (b) { res(b); }, "image/jpeg", q); }); }
+  function smallThumb(src, w, h) {   // ≤ ٦٠٠٠ حرف: معاينةٌ فوريّة داخل الرسالة نفسها
+    var sizes = [96, 72, 56], qs = [0.5, 0.4, 0.3];
+    for (var i = 0; i < sizes.length; i++) { var d = drawTo(src, w, h, sizes[i]).toDataURL("image/jpeg", qs[i]); if (d.length <= 6000) return d; }
+    return null;
+  }
+  function prepareImage(blob) {
+    if (/gif/.test(blob.type) && blob.size < 2 * 1024 * 1024) return loadImg(blob).then(function (r) { var th = smallThumb(r.img, r.img.naturalWidth, r.img.naturalHeight); URL.revokeObjectURL(r.url); return { blob: blob, thumb: th, w: r.img.naturalWidth, h: r.img.naturalHeight }; });
+    return loadImg(blob).then(function (r) {
+      var w = r.img.naturalWidth, h = r.img.naturalHeight, c = drawTo(r.img, w, h, 1600), th = smallThumb(r.img, w, h);
+      URL.revokeObjectURL(r.url);
+      return canvasBlob(c, 0.82).then(function (b) { return { blob: b && b.size < blob.size ? b : blob, thumb: th, w: c.width, h: c.height }; });
+    });
+  }
+  function prepareVideo(blob) {
+    return new Promise(function (res) {
+      var url = URL.createObjectURL(blob), v = document.createElement("video"), done = false;
+      var finish = function (th, dur, w, h) { if (done) return; done = true; URL.revokeObjectURL(url); res({ blob: blob, thumb: th, duration: dur, w: w, h: h }); };
+      v.muted = true; v.playsInline = true; v.preload = "metadata";
+      v.onloadeddata = function () { try { v.currentTime = Math.min(0.2, (v.duration || 1) / 2); } catch (e) { finish(null, v.duration, v.videoWidth, v.videoHeight); } };
+      v.onseeked = function () { var th = null; try { th = smallThumb(v, v.videoWidth, v.videoHeight); } catch (e) {} finish(th, v.duration, v.videoWidth, v.videoHeight); };
+      v.onerror = function () { finish(null, null, null, null); };
+      setTimeout(function () { finish(null, null, null, null); }, 6000);
+      v.src = url;
+    });
+  }
+  // kind: image | video | voice | file · src: Blob/File أو dataURL
+  function sendMedia(cid, opts) {
+    if (!isCloud(cid) || !state.uid) return null;
+    var src = opts.blob || (opts.dataUrl ? dataUrlToBlob(opts.dataUrl) : null);
+    if (!src) { toast(L("تعذّر قراءة الملفّ", "Couldn't read the file")); return null; }
+    if (src.size > MAX_MEDIA) { toast(L("الحدّ الأقصى ١٦ ميجابايت", "The limit is 16 MB")); return null; }
+    var kind = opts.kind, id = newMsgId(), mid = newMediaId();
+    var extra = { mid: mid, name: opts.name || src.name || null, mime: src.type || null, size: src.size };
+    if (opts.viewOnce) extra.viewOnce = true;
+    if (opts.duration) extra.duration = opts.duration;
+    if (opts.transcript) extra.transcript = String(opts.transcript).slice(0, 1500);
+    localUrls[mid] = URL.createObjectURL(src);
+    var msg = { id: id, type: kind, extra: extra };
+    var p = { msg: msg, ts: Date.now(), status: "pending", uploading: true };
+    (pend[cid] = pend[cid] || []).push(p);
+    publishMessages(cid); publishChats();
+    var prep = kind === "image" ? prepareImage(src) : kind === "video" ? prepareVideo(src) : Promise.resolve({ blob: src });
+    prep.then(function (r) {
+      var blob = r.blob || src;
+      if (r.thumb) extra.thumb = r.thumb;
+      if (r.w) { extra.w = r.w; extra.h = r.h; }
+      if (r.duration && !extra.duration) extra.duration = Math.round(r.duration);
+      extra.size = blob.size; extra.mime = blob.type || extra.mime;
+      if (blob !== src) { try { URL.revokeObjectURL(localUrls[mid]); } catch (e) {} localUrls[mid] = URL.createObjectURL(blob); }
+      publishMessages(cid);
+      return uploadMedia(cid, mid, blob, extra);
+    }).then(function () {
+      p.uploading = false;
+      var ob = lsGet(OUTBOX, []); ob.push({ cid: cid, msg: msg }); lsSet(OUTBOX, ob);
+      drainOutbox();
+    }).catch(function (e) {
+      setPend(cid, id, "failed");
+      toast(L("تعذّر رفع الملفّ: ", "Upload failed: ") + ((e && e.message) || e));
+    });
+    return id;
+  }
+  function uploadMedia(cid, mid, blob, extra) {
+    var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
+    var meta = d.collection("chats").doc(cid).collection("media").doc(mid);
+    return blobToB64(blob).then(function (b64) {
+      var n = Math.max(1, Math.ceil(b64.length / CHUNK));
+      return meta.set({ by: state.uid, mime: blob.type || "application/octet-stream", size: blob.size, name: String(extra.name || "").slice(0, 200), n: n, ts: Date.now(), done: false })
+        .then(function () {
+          var i = 0;
+          var next = function () {
+            if (i >= n) return Promise.resolve();
+            var k = i++;
+            return meta.collection("c").doc(String(k)).set({ d: b64.slice(k * CHUNK, (k + 1) * CHUNK) }).then(next);
+          };
+          return next();
+        }).then(function () { return meta.update({ done: true }); });
+    });
+  }
+  // ---------- التنزيل والتخزين المحلّيّ (IndexedDB) ----------
+  var idbP = null;
+  function idb() {
+    if (idbP) return idbP;
+    idbP = new Promise(function (res) {
+      try {
+        var r = indexedDB.open("sawa-media", 1);
+        r.onupgradeneeded = function () { r.result.createObjectStore("m"); };
+        r.onsuccess = function () { res(r.result); }; r.onerror = function () { res(null); };
+      } catch (e) { res(null); }
+    });
+    return idbP;
+  }
+  function idbGet(k) { return idb().then(function (db_) { if (!db_) return null; return new Promise(function (res) { try { var q = db_.transaction("m").objectStore("m").get(k); q.onsuccess = function () { res(q.result || null); }; q.onerror = function () { res(null); }; } catch (e) { res(null); } }); }); }
+  function idbPut(k, v) { return idb().then(function (db_) { if (!db_) return; try { db_.transaction("m", "readwrite").objectStore("m").put(v, k); } catch (e) {} }); }
+  function fetchMedia(cid, mid) {
+    var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
+    var meta = d.collection("chats").doc(cid).collection("media").doc(mid);
+    return Promise.all([meta.get(), meta.collection("c").get()]).then(function (r) {
+      if (!r[0].exists) throw new Error("gone");
+      var m = r[0].data() || {}, parts = [];
+      r[1].forEach(function (doc) { parts.push({ i: Number(doc.id), d: (doc.data() || {}).d || "" }); });
+      parts.sort(function (a, b) { return a.i - b.i; });
+      if (m.n && parts.length < m.n) throw new Error("incomplete");
+      return b64ToBlob(parts.map(function (p) { return p.d; }).join(""), m.mime);
+    });
+  }
+  function ensureMedia(cid, mid, noCache) {
+    if (!mid || mediaUrls[mid] || localUrls[mid] || mediaLoading[mid] || mediaFailed[mid]) return Promise.resolve(mediaUrls[mid] || localUrls[mid] || null);
+    mediaLoading[mid] = true;
+    return idbGet(mid).then(function (b) {
+      return b || fetchMedia(cid, mid).then(function (blob) { if (!noCache) idbPut(mid, blob); return blob; });
+    }).then(function (blob) {
+      mediaUrls[mid] = URL.createObjectURL(blob); delete mediaLoading[mid]; publishMessages(cid); return mediaUrls[mid];
+    }).catch(function (e) { delete mediaLoading[mid]; mediaFailed[mid] = (e && e.message) || "x"; publishMessages(cid); return null; });
+  }
+  // ملفٌّ عامّ: يُنزَّل ثمّ يُفتح/يُحفظ
+  function openFile(m) {
+    if (!m || !m.cloudMid) return;
+    var url = mediaUrls[m.cloudMid] || localUrls[m.cloudMid];
+    var go = function (u) {
+      if (!u) { toast(L("تعذّر تنزيل الملفّ", "Couldn't download the file")); return; }
+      var a = document.createElement("a"); a.href = u; a.download = m.text || "file"; a.target = "_blank";
+      document.body.appendChild(a); a.click(); setTimeout(function () { try { a.remove(); } catch (e) {} }, 500);
+    };
+    if (url) return go(url);
+    delete mediaFailed[m.cloudMid];
+    toast(L("جارٍ التنزيل…", "Downloading…"));
+    ensureMedia(m.cloudCid, m.cloudMid).then(go);
+  }
+  function markViewedOnce(cid, id) {
+    var f = findMsg(cid, id); if (!f) return;
+    patchLocal(cid, id, function (m) { m.viewed = Object.assign({}, m.viewed); m.viewed[state.uid] = Date.now(); return m; });
+    call("media.viewed", { cid: cid, day: f.day, id: id }).catch(fail);
+  }
+  // يحوّل رسالة وسائط إلى شكل الواجهة (ويطلب التنزيل التلقائيّ للصغير في المحادثة المفتوحة)
+  function mediaShape(m, o, cid, mine) {
+    var ex = m.extra || {}, mid = ex.mid, url = localUrls[mid] || mediaUrls[mid] || null;
+    var viewedByMe = !!(m.viewed && m.viewed[state.uid]);
+    o.cloudMid = mid; o.cloudCid = cid; o.fileSize = ex.size || 0; o.mime = ex.mime || null;
+    if (m.type === "image" || m.type === "video") {
+      o.viewOnce = !!ex.viewOnce; o.viewedOnce = !!ex.viewOnce && (mine || viewedByMe || !!m.gone);
+      // الفيديو لا يُعرض بصورةٍ مصغّرة داخل <video> — يبقى «غير متاح» حتّى يكتمل تنزيله
+      o.fileUrl = o.viewedOnce ? null : (url || (m.type === "image" ? ex.thumb || null : null)); o.thumb = ex.thumb || null; o.mediaLoading = !url && !mediaFailed[mid];
+      o.text = ex.name || ""; o.w = ex.w || null; o.h = ex.h || null; o.durationSec = ex.duration || null;
+    } else if (m.type === "voice") {
+      o.audioUrl = url; o.duration = typeof ex.duration === "number" ? (Math.floor(ex.duration / 60) + ":" + String(ex.duration % 60).padStart(2, "0")) : (ex.duration || "0:00");
+      o.transcript = ex.transcript || null;
+    } else { o.text = ex.name || L("ملفّ", "File"); o.fileUrl = url; }
+    var auto = cid === openCid && !url && !mediaFailed[mid] && !(ex.viewOnce && (mine || viewedByMe || m.gone))
+      && (m.type !== "file") && (m.type !== "video" || (ex.size || 0) <= AUTO_DL);
+    if (auto) setTimeout(function () { ensureMedia(cid, mid, !!ex.viewOnce); }, 0);
+    return o;
+  }
+
   // ---------- الإقلاع ----------
   var readyCbs = [];
   function whenReady(f) { if (state.uid) f(state.uid); else readyCbs.push(f); }
@@ -828,6 +1021,8 @@
     // C2
     isCloud: isCloud, enabled: function () { return !!state.uid; }, openChat: openChat, closeChat: closeChat,
     send: send, edit: edit, clearChat: clearChat,
+    // C4
+    sendMedia: sendMedia, openFile: openFile, markViewedOnce: markViewedOnce, ensureMedia: ensureMedia,
     // C3
     createGroup: createGroup, updateGroup: updateGroup, addMembers: addMembers, removeMember: removeMember, setAdmin: setAdmin,
     leaveGroup: leaveGroup, shareGroupInvite: shareGroupInvite, joinGroup: joinGroup,

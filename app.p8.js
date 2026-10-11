@@ -1354,13 +1354,13 @@ function AppInner() {
         const msg = { id: `gmsg-${Date.now()}`, senderId: myUserId, text, type: "text", createdAt: Date.now() };
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
     }
-    function sendGroupFile(groupId, fileName, fileSize, fileUrl, type = "file") {
-        if (cloudChat(groupId)) { showToast(t("c2_media_soon"), "info"); return; }
+    function sendGroupFile(groupId, fileName, fileSize, fileUrl, type = "file", file = null) {
+        if (cloudChat(groupId)) { cloudChat(groupId).sendMedia(groupId, { kind: type, blob: file, dataUrl: file ? null : fileUrl, name: fileName }); return; }
         const msg = { id: `gmsg-${Date.now()}-file`, senderId: myUserId, text: fileName, fileSize, fileUrl, type, createdAt: Date.now() };
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
     }
-    function sendGroupVoice(groupId, audioUrl, duration) {
-        if (cloudChat(groupId)) { showToast(t("c2_media_soon"), "info"); return; }
+    function sendGroupVoice(groupId, audioUrl, duration, transcript = null, blob = null, secs = null) {
+        if (cloudChat(groupId)) { cloudChat(groupId).sendMedia(groupId, { kind: "voice", blob, duration: secs || null, transcript, name: "voice" }); return; }
         const msg = { id: `gmsg-${Date.now()}-v`, senderId: myUserId, type: "voice", audioUrl, duration, createdAt: Date.now() };
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
     }
@@ -1641,8 +1641,8 @@ function AppInner() {
             [conversationId]: (prev[conversationId] || []).map((m) => (m.id === messageId ? { ...m, text: newText.trim(), edited: true } : m)),
         }));
     }
-    function sendChatVoice(conversationId, audioUrl, duration, transcript = null) {
-        if (cloudChat(conversationId)) { showToast(t("c2_media_soon"), "info"); return; }
+    function sendChatVoice(conversationId, audioUrl, duration, transcript = null, blob = null, secs = null) {
+        if (cloudChat(conversationId)) { cloudChat(conversationId).sendMedia(conversationId, { kind: "voice", blob, duration: secs || null, transcript, name: "voice" }); return; }
         const msg = { id: `msg-${Date.now()}-v`, senderUserId: myUserId, type: "voice", audioUrl, duration, transcript, createdAt: Date.now(), status: "sent" };
         setMessagesByConversation((prev) => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), msg] }));
         setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, lastMessage: "🎤 رسالة صوتية" } : c)));
@@ -1694,14 +1694,15 @@ function AppInner() {
         const msg = { id: `msg-${Date.now()}-s`, senderUserId: myUserId, text: emoji, type: "sticker", createdAt: Date.now() };
         setMessagesByConversation((prev) => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), msg] }));
     }
-    function sendChatFile(conversationId, fileName, fileSize, fileUrl, type = "file", viewOnce = false) {
-        if (cloudChat(conversationId)) { showToast(t("c2_media_soon"), "info"); return; }
+    function sendChatFile(conversationId, fileName, fileSize, fileUrl, type = "file", viewOnce = false, file = null) {
+        if (cloudChat(conversationId)) { cloudChat(conversationId).sendMedia(conversationId, { kind: type, blob: file, dataUrl: file ? null : fileUrl, name: fileName, viewOnce }); return; }
         const lastMessageLabel = viewOnce ? t("ai_swra_mra") : type === "image" ? t("ai_swra") : type === "video" ? t("ai_fydyw") : `📎 ${fileName}`;
         const msg = { id: `msg-${Date.now()}-file`, senderUserId: myUserId, text: fileName, fileSize, fileUrl, type, viewOnce, viewedOnce: false, createdAt: Date.now(), status: "sent" };
         setMessagesByConversation((prev) => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), msg] }));
         setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, lastMessage: lastMessageLabel } : c)));
     }
     function markMessageViewedOnce(conversationId, messageId) {
+        if (cloudChat(conversationId)) { cloudChat(conversationId).markViewedOnce(conversationId, messageId); return; }
         setMessagesByConversation((prev) => ({
             ...prev,
             [conversationId]: (prev[conversationId] || []).map((m) => (m.id === messageId ? { ...m, viewedOnce: true } : m)),
@@ -3497,7 +3498,7 @@ function AppInner() {
                             onDeleteMessage: cloudChat(liveGroup.id) ? (messageId, scope) => { scope === "all" ? cloudChat(liveGroup.id).deleteForAll(liveGroup.id, messageId) : cloudChat(liveGroup.id).deleteForMe(liveGroup.id, messageId); showToast(scope === "all" ? t("ai_hdhft_lljmya") : t("ai_hdhft_andk"), "success"); } : null,
                             contacts: cloudChat(liveGroup.id) ? people : null,
                             onInviteLink: cloudChat(liveGroup.id) ? (gid) => cloudChat(gid).shareGroupInvite(gid) : null,
-                            onUpdateGroup: cloudChat(liveGroup.id) ? (gid, patch) => cloudChat(gid).updateGroup(gid, patch) : null, onSendFile: (name, size, fileUrl, type) => sendGroupFile(liveGroup.id, name, size, fileUrl, type), onSendVoice: (url, duration) => sendGroupVoice(liveGroup.id, url, duration), onEditMessage: (messageId, newText) => editGroupMessage(liveGroup.id, messageId, newText), onCreatePoll: (q, opts, deadlineMinutes, anonymous) => createGroupPoll(liveGroup.id, q, opts, deadlineMinutes, anonymous), onEditPoll: (pollId, q, opts) => editGroupPoll(liveGroup.id, pollId, q, opts), onVotePoll: (pollId, optIdx) => voteGroupPoll(liveGroup.id, pollId, optIdx), onCreateBillSplit: (desc, total, participantAmounts, splitType) => createGroupBillSplit(liveGroup.id, desc, total, participantAmounts, splitType), onPayBillSplit: (billId) => payGroupBillSplit(liveGroup.id, billId), onCreateFundraiser: (cause, goal, deadline) => createGroupFundraiser(liveGroup.id, cause, goal, deadline), onContributeFundraiser: (fundraiserId) => contributeGroupFundraiser(liveGroup.id, fundraiserId), onCreateTaskList: (title, drafts) => createGroupTaskList(liveGroup.id, title, drafts), onToggleTaskStatus: (listId, taskId) => toggleGroupTaskStatus(liveGroup.id, listId, taskId), onAddTaskNote: (listId, taskId, note) => addGroupTaskNote(liveGroup.id, listId, taskId, note), onForward: (text, destinationIds) => forwardMessageToTargets(text, destinationIds), allConversations: conversations, allGroups: groups, onRenameGroup: renameGroup, onAddGroupMembers: addGroupMembers, onRemoveGroupMember: removeGroupMember, onToggleGroupAdmin: toggleGroupAdmin, onLeaveGroup: leaveGroup, onBack: () => setChatsStack([]) }));
+                            onUpdateGroup: cloudChat(liveGroup.id) ? (gid, patch) => cloudChat(gid).updateGroup(gid, patch) : null, onSendFile: (name, size, fileUrl, type, file) => sendGroupFile(liveGroup.id, name, size, fileUrl, type, file), onSendVoice: (url, duration, transcript, blob, secs) => sendGroupVoice(liveGroup.id, url, duration, transcript, blob, secs), onEditMessage: (messageId, newText) => editGroupMessage(liveGroup.id, messageId, newText), onCreatePoll: (q, opts, deadlineMinutes, anonymous) => createGroupPoll(liveGroup.id, q, opts, deadlineMinutes, anonymous), onEditPoll: (pollId, q, opts) => editGroupPoll(liveGroup.id, pollId, q, opts), onVotePoll: (pollId, optIdx) => voteGroupPoll(liveGroup.id, pollId, optIdx), onCreateBillSplit: (desc, total, participantAmounts, splitType) => createGroupBillSplit(liveGroup.id, desc, total, participantAmounts, splitType), onPayBillSplit: (billId) => payGroupBillSplit(liveGroup.id, billId), onCreateFundraiser: (cause, goal, deadline) => createGroupFundraiser(liveGroup.id, cause, goal, deadline), onContributeFundraiser: (fundraiserId) => contributeGroupFundraiser(liveGroup.id, fundraiserId), onCreateTaskList: (title, drafts) => createGroupTaskList(liveGroup.id, title, drafts), onToggleTaskStatus: (listId, taskId) => toggleGroupTaskStatus(liveGroup.id, listId, taskId), onAddTaskNote: (listId, taskId, note) => addGroupTaskNote(liveGroup.id, listId, taskId, note), onForward: (text, destinationIds) => forwardMessageToTargets(text, destinationIds), allConversations: conversations, allGroups: groups, onRenameGroup: renameGroup, onAddGroupMembers: addGroupMembers, onRemoveGroupMember: removeGroupMember, onToggleGroupAdmin: toggleGroupAdmin, onLeaveGroup: leaveGroup, onBack: () => setChatsStack([]) }));
                     }
                     if (chatsTop.type === "newGroup") {
                         return React.createElement(NewGroupScreen, { onCreate: createGroup, onClose: () => setChatsStack([]), contacts: (function () {
@@ -3514,7 +3515,7 @@ function AppInner() {
                         // المحادثة الحيّة (الاسم/التثبيت/الاختفاء من الخادم) لا لقطة لحظة الفتح
                         const liveConv = conversations.find((c) => c.id === chatsTop.data.id) || chatsTop.data;
                         const SCc = cloudChat(chatsTop.data.id);
-                        return (React.createElement(ChatScreen, { conversation: liveConv, messages: convMessages, draft: chatDrafts[chatsTop.data.id] || "", onSaveDraft: (v) => saveChatDraft(chatsTop.data.id, v), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendChatMessage(chatsTop.data.id, text, replyTo), onForward: (text, destinationIds) => forwardMessageToTargets(text, destinationIds), onTogglePin: (messageId) => togglePinMessage(chatsTop.data.id, messageId), onToggleStar: (messageId, text) => toggleStarMessage(chatsTop.data.id, messageId, text), isTyping: typingConversations.includes(chatsTop.data.id), onLogCall: logCall, isOnline: liveConv.cloud ? !!liveConv.online : onlineContacts.includes(chatsTop.data.name), callSettings: callSettings, allConversations: conversations, allGroups: groups, onReact: (messageId, emoji) => reactToChatMessage(chatsTop.data.id, messageId, emoji), onSendSticker: (emoji) => sendChatSticker(chatsTop.data.id, emoji), onSendFile: (name, size, fileUrl, type, viewOnce) => sendChatFile(chatsTop.data.id, name, size, fileUrl, type, viewOnce), onSendVoice: (url, duration, transcript) => sendChatVoice(chatsTop.data.id, url, duration, transcript), onMarkViewedOnce: (messageId) => markMessageViewedOnce(chatsTop.data.id, messageId), onEditMessage: (messageId, newText) => editChatMessage(chatsTop.data.id, messageId, newText), onDeleteMessage: (messageId, scope) => {
+                        return (React.createElement(ChatScreen, { conversation: liveConv, messages: convMessages, draft: chatDrafts[chatsTop.data.id] || "", onSaveDraft: (v) => saveChatDraft(chatsTop.data.id, v), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendChatMessage(chatsTop.data.id, text, replyTo), onForward: (text, destinationIds) => forwardMessageToTargets(text, destinationIds), onTogglePin: (messageId) => togglePinMessage(chatsTop.data.id, messageId), onToggleStar: (messageId, text) => toggleStarMessage(chatsTop.data.id, messageId, text), isTyping: typingConversations.includes(chatsTop.data.id), onLogCall: logCall, isOnline: liveConv.cloud ? !!liveConv.online : onlineContacts.includes(chatsTop.data.name), callSettings: callSettings, allConversations: conversations, allGroups: groups, onReact: (messageId, emoji) => reactToChatMessage(chatsTop.data.id, messageId, emoji), onSendSticker: (emoji) => sendChatSticker(chatsTop.data.id, emoji), onSendFile: (name, size, fileUrl, type, viewOnce, file) => sendChatFile(chatsTop.data.id, name, size, fileUrl, type, viewOnce, file), onSendVoice: (url, duration, transcript, blob, secs) => sendChatVoice(chatsTop.data.id, url, duration, transcript, blob, secs), onMarkViewedOnce: (messageId) => markMessageViewedOnce(chatsTop.data.id, messageId), onEditMessage: (messageId, newText) => editChatMessage(chatsTop.data.id, messageId, newText), onDeleteMessage: (messageId, scope) => {
                                 if (SCc) { scope === "all" ? SCc.deleteForAll(chatsTop.data.id, messageId) : SCc.deleteForMe(chatsTop.data.id, messageId); showToast(scope === "all" ? t("ai_hdhft_lljmya") : t("ai_hdhft_andk"), "success"); return; }
                                 // تحرير رابط الوسائط المؤقّت — بدونه يبقى الملف
                                 // في ذاكرة المتصفح بعد حذف الرسالة

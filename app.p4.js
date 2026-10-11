@@ -2014,8 +2014,8 @@ const BILL_SPLIT_TYPES = [
 // حد المنتج المستهدَف 2 جيجابايت (كواتساب وتيليجرام)، لكن في معاينة الويب
 // تُقرأ الوسائط كاملة إلى الذاكرة كـ base64 (+33% حجماً)، فنكتفي بحد آمن.
 // عند الانتقال لـ RN يُرفع الملف بالبثّ إلى الخادم ويعود الحد لقيمته الكاملة.
-const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024; // 8 ميجابايت — حد المعاينة
-const MAX_FILE_SIZE_LABEL = "8 ميجابايت";
+const MAX_FILE_SIZE_BYTES = 16 * 1024 * 1024; // 16 ميجابايت — حدّ الوسائط على السحابة (C4)
+const MAX_FILE_SIZE_LABEL = "16 ميجابايت";
 function formatFileSize(bytes) {
     if (bytes < 1024 * 1024)
         return `${Math.round(bytes / 1024)} كيلوبايت`;
