@@ -1430,7 +1430,7 @@ function ArchivedChatsScreen({ conversations, archivedIds, mutedIds, onOpenChat,
                     mutedIds.includes(c.id) && React.createElement(BellOff, { size: 13, color: colors.textMuted, className: `shrink-0 ${ms("1.5")}` })),
                 React.createElement("button", { onClick: () => onUnarchive(c.id), className: `px-2.5 py-1.5 rounded-xl text-[10px] font-bold shrink-0 ${me("2")}`, style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("astaada"))))))));
 }
-function ConversationsListScreen({ chatDrafts = {}, conversations, groups, broadcastLists, lockedConversationIds, connectionState, onOpenChat, onOpenGroup, onOpenBroadcastList, onNewConversation, onNewGroup, onNewBroadcastList, onOpenLockedChats, onOpenStarredMessages, onScanQr, onOpenSearch, onlineContacts, chatFolders, folderAssignments, onOpenChatSettings, typingConversations = [], momentsPosts = [], familyPersons = [], onOpenMoments, onOpenRoom, myName, groupPersons = {}, groupSchedules = {}, archivedConversations = [], mutedConversations = [], onArchiveConv, onMuteConv, showStoriesRow = true, showFamilyReminders = true, onOpenArchived, pinnedConversations = [], onPinConv, onDeleteConv, onToggleReadConv, onScheduleRoom, scheduledRooms = [], onJoinScheduled, onCancelScheduled, }) {
+function ConversationsListScreen({ chatDrafts = {}, conversations, groups, broadcastLists, lockedConversationIds, connectionState, onOpenChat, onOpenGroup, onOpenBroadcastList, onNewConversation, onNewGroup, onNewBroadcastList, onOpenLockedChats, onOpenStarredMessages, onScanQr, onOpenSearch, onlineContacts, chatFolders, folderAssignments, onOpenChatSettings, typingConversations = [], momentsPosts = [], familyPersons = [], onOpenMoments, onOpenRoom, myName, groupPersons = {}, groupSchedules = {}, archivedConversations = [], mutedConversations = [], onArchiveConv, onMuteConv, showStoriesRow = true, showFamilyReminders = true, onOpenArchived, pinnedConversations = [], onPinConv, onDeleteConv, onToggleReadConv, onScheduleRoom, onJoinRoomCode, scheduledRooms = [], onJoinScheduled, onCancelScheduled, }) {
     const { colors } = useTheme();
     const { showToast } = useToast();
     const [showNewMenu, setShowNewMenu] = useState(false);
@@ -1581,6 +1581,12 @@ function ConversationsListScreen({ chatDrafts = {}, conversations, groups, broad
                         React.createElement("div", { className: `flex-1 ${textStart()}` },
                             React.createElement("span", { className: "text-xs font-bold block", style: { color: colors.text } }, t("jdwla_ghrfa")),
                             React.createElement("span", { className: "text-[9px]", style: { color: colors.textMuted } }, t("mnw_hdd_wqta_lahqa")))),
+                    onJoinRoomCode && (React.createElement("button", { onClick: () => { setShowNewMenu(false); onJoinRoomCode(); }, className: `w-full flex ${rowStart()} items-center gap-3 px-4 py-2.5` },
+                        React.createElement("div", { className: "w-7 h-7 rounded-xl flex items-center justify-center", style: { backgroundColor: "#6366f118" } },
+                            React.createElement(Link2, { size: 14, color: "#6366f1" })),
+                        React.createElement("div", { className: `flex-1 ${textStart()}` },
+                            React.createElement("span", { className: "text-xs font-bold block", style: { color: colors.text } }, "انضمام إلى غرفة"),
+                            React.createElement("span", { className: "text-[9px]", style: { color: colors.textMuted } }, "برابطها أو رمزها")))),
                     React.createElement("div", { style: { height: 1, backgroundColor: colors.border, margin: "6px 0" } }),
                     React.createElement("button", { onClick: () => { setShowNewMenu(false); onScanQr(); }, className: `w-full flex ${rowStart()} items-center gap-3 px-4 py-2.5` },
                         React.createElement("div", { className: "w-7 h-7 rounded-xl flex items-center justify-center", style: { backgroundColor: colors.textMuted + "18" } },

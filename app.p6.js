@@ -196,6 +196,7 @@ function CallsScreen({ groups = [], callLog, favoriteContacts, onToggleFavorite,
     const [activeCall, setActiveCallRaw] = useState(null); // null | { name, callType }
     // C6: جهة اتّصالٍ على سوا ⇒ مكالمةٌ حقيقيّة؛ غير ذلك (لوحة الأرقام…) الواجهة التجريبيّة
     const setActiveCall = (v) => {
+        if (v && v.room && window.SawaRTC && window.SawaRTC.enabled() && window.SawaRTC.roomJoin(v.room)) return;   // C8: سجلّ غرفة
         if (v && v.cid && window.SawaRTC && window.SawaRTC.enabled() && window.SawaRTC.groupCall(v.cid, v.callType)) return;   // C7: سجلّ مكالمة جماعيّة
         if (v && cloudCallTo(v.peerUid ? { uid: v.peerUid, name: v.name } : v.name, v.callType)) return;
         setActiveCallRaw(v);
@@ -293,7 +294,7 @@ function CallsScreen({ groups = [], callLog, favoriteContacts, onToggleFavorite,
                                 (c.cloud && c.timestamp ? callTimeLabel(c.timestamp) : c.time),
                                 c.duration ? ` · ${c.duration}` : "",
                                 (c.participants && c.participants.length > 0) ? ` · مع ${c.participants.join("، ")}` : ""))),
-                    React.createElement("button", { "aria-label": c.callType === "video" ? "مكالمة فيديو" : "مكالمة صوتية", onClick: () => setActiveCall({ name: c.name, peerUid: c.peerUid, cid: c.cid, callType: c.callType || "audio" }), className: "w-9 h-9 flex items-center justify-center shrink-0" }, c.callType === "video" ? React.createElement(Video, { size: 19, color: colors.primary }) : React.createElement(Phone, { size: 19, color: colors.primary })),
+                    React.createElement("button", { "aria-label": c.callType === "video" ? "مكالمة فيديو" : "مكالمة صوتية", onClick: () => setActiveCall({ name: c.name, peerUid: c.peerUid, cid: c.cid, room: c.room, callType: c.callType || "audio" }), className: "w-9 h-9 flex items-center justify-center shrink-0" }, c.callType === "video" ? React.createElement(Video, { size: 19, color: colors.primary }) : React.createElement(Phone, { size: 19, color: colors.primary })),
                     React.createElement("button", { "aria-label": t("khyarat"), onClick: () => setCallMenu(c), className: "w-7 h-7 flex items-center justify-center shrink-0" },
                         React.createElement(MoreVertical, { size: 16, color: colors.textMuted }))));
             })),

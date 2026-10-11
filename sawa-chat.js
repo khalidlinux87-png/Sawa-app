@@ -10,7 +10,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c6";
+  var VERSION = "c8";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1108,6 +1108,7 @@
     shareInvite: shareInvite, createInvite: createInvite, renderQr: renderQr,
     accept: accept, scanSupported: scanSupported, scanAndAdd: scanAndAdd, removeContact: removeContact,
     me: function () { return state.me; }, uid: function () { return state.uid; },
+    qrLib: loadQrLib,   // C8: رمز QR لروابط الغرف
     isBlocked: function (u) { return !!(prefs && prefs.blocked && prefs.blocked.indexOf(u) >= 0); },   // C6: المحظور لا يرنّ
     status: function () { return { loaded: state.loaded, error: state.error, count: state.people.length }; },
     // C2
