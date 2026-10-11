@@ -1,7 +1,7 @@
 // عامل الخدمة — يحفظ ملفّات التطبيق للعمل دون اتّصال (الشبكة أوّلاً، ثمّ المخزون).
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v195';
+const VERSION = 'sawa-v196';
 const ASSETS = [
   './',
   './index.html',
@@ -77,7 +77,7 @@ self.addEventListener('push', (e) => {
     // التطبيق أمامك: هو يرنّ بنفسه (SawaRTC) أو يعرض تنبيهاً — بلا إشعارٍ مكرّر
     if (vis) { vis.postMessage({ type: 'sawa-push', data: d }); return; }
     return self.registration.showNotification(d.title || 'سوا', {
-      body: d.body || '', tag: d.cid || 'sawa', renotify: true, dir: 'auto', lang: 'ar',
+      body: d.body || '', tag: d.cid || (d.call ? 'call-' + d.call : d.sid ? 'sched-' + d.sid : 'sawa'), renotify: true, dir: 'auto', lang: 'ar',
       icon: './icons/icon-192.png', badge: './icons/icon-192.png', data: d,
       requireInteraction: d.t === 'call', vibrate: d.t === 'call' ? [300, 150, 300, 150, 300] : [120],
     });
