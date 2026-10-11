@@ -684,6 +684,7 @@ function PlaceholderTab({ icon: Icon, title, note }) {
 }
 function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePhoto, onLogout, onOpenLinkedDevices, onOpenWrapped, onOpenFeedback, onExportTree, onImportTree, myProfile = null }) {
     // حسابي الحقيقيّ (SawaChat): اسم «سوا» + الرقم (غير موثّق)؛ زرّ التعديل يفتح نافذة الحساب
+    const sawaBuild = useSawaBuild();
     const cloudMe = !!(myProfile && window.SawaChat && window.SawaChat.editProfile);
     const myDisplayName = cloudMe ? (myProfile.name || myProfile.googleName || "") : "";
     const editMe = () => { if (cloudMe && window.SawaChat.editProfile()) return; onOpenSettings(); };
@@ -746,12 +747,30 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
                 React.createElement(LogOut, { size: 18, color: colors.danger }),
                 React.createElement("span", { className: "text-sm font-bold", style: { color: colors.danger } }, t("tsjyl_alkhrwj")))),
         // رقم النسخة — يُحقن آلياً من sw.js عند كل بناء (انظر build.sh)
-        React.createElement("p", { className: "text-[10px] text-center py-4", style: { color: colors.textMuted } }, appName() + " " + SAWA_BUILD)));
+        React.createElement("p", { className: "text-[10px] text-center py-4", style: { color: colors.textMuted } }, appName() + " " + sawaBuild + (window.SawaChat && window.SawaChat.version ? " · " + window.SawaChat.version : ""))));
 }
 // نظام الدعوة والمكافأة — رموز ثابتة مبرمجة بالكود (مو مولّدة عشوائياً)،
 // و50 ج.س بالضبط لكل طرف عند استخدام رمز الطرف الآخر
 // __SAWA_BUILD__ — يستبدلها build.sh برقم النسخة من sw.js
 const SAWA_BUILD = "v190";
+// C9b: رقم النسخة الفعليّ يُسأل عنه عامل الخدمة (VERSION في sw.js) — بدل رقمٍ مكتوبٍ يدويّاً يتقادم
+function useSawaBuild() {
+    const [v, setV] = React.useState(() => { try { return localStorage.getItem("sawa_build") || SAWA_BUILD; } catch (e) { return SAWA_BUILD; } });
+    React.useEffect(() => {
+        const sw = navigator.serviceWorker;
+        if (!sw || !sw.controller) return;
+        const on = (e) => {
+            const d = e.data || {};
+            if (d.type !== "sawa-version" || !d.version) return;
+            const n = String(d.version).replace(/^sawa-/, "");
+            setV(n); try { localStorage.setItem("sawa_build", n); } catch (x) {}
+        };
+        sw.addEventListener("message", on);
+        try { sw.controller.postMessage({ type: "sawa-version" }); } catch (e) {}
+        return () => sw.removeEventListener("message", on);
+    }, []);
+    return v;
+}
 const SAWA_APP = (function () {
     try {
         const q = new URLSearchParams(location.search).get("app"); // ⛔ مُعرِّف لا نصّ
