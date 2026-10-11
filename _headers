@@ -47,6 +47,9 @@
 /sawa-chat.js
   Cache-Control: public, max-age=0, must-revalidate
 
+/sawa-rtc.js
+  Cache-Control: public, max-age=0, must-revalidate
+
 /daily.json
   Cache-Control: public, max-age=0, must-revalidate
 

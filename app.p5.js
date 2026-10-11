@@ -878,10 +878,10 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
         showCallChoice && (React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setShowCallChoice(false), style: { position: "fixed", inset: 0, zIndex: 15 } }),
             React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", top: "3.5rem", left: "1rem", zIndex: 20, backgroundColor: colors.card, borderRadius: 16, border: `1px solid ${colors.border}`, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", overflow: "hidden" } },
-                React.createElement("button", { onClick: () => { setShowCallChoice(false); setActiveCall("audio"); }, className: `w-full flex ${rowStart()} items-center gap-2 px-4 py-3 border-b`, style: { borderColor: colors.border, minWidth: 160 } },
+                React.createElement("button", { onClick: () => { setShowCallChoice(false); if (!(conversation.cloud && conversation.peerUid && cloudCallTo({ uid: conversation.peerUid, name: conversation.name }, "audio"))) setActiveCall("audio"); }, className: `w-full flex ${rowStart()} items-center gap-2 px-4 py-3 border-b`, style: { borderColor: colors.border, minWidth: 160 } },
                     React.createElement(Phone, { size: 15, color: colors.primary }),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("mkalma_swtya"))),
-                React.createElement("button", { onClick: () => { setShowCallChoice(false); setActiveCall("video"); }, className: `w-full flex ${rowStart()} items-center gap-2 px-4 py-3` },
+                React.createElement("button", { onClick: () => { setShowCallChoice(false); if (!(conversation.cloud && conversation.peerUid && cloudCallTo({ uid: conversation.peerUid, name: conversation.name }, "video"))) setActiveCall("video"); }, className: `w-full flex ${rowStart()} items-center gap-2 px-4 py-3` },
                     React.createElement(Video, { size: 15, color: colors.primary }),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("mkalma_fydyw")))))),
         (() => {

@@ -2064,6 +2064,11 @@ function AppInner() {
         const cid = tab === "chats" && top && (top.type === "chat" || top.type === "group" || top.type === "info") && top.data ? top.data.id : null;
         if (cid && SC.isCloud(cid)) SC.openChat(cid); else SC.closeChat(null);
     }, [tab, chatsStack]);
+    // C6: المكالمات الحقيقيّة تُسجَّل هنا · وتُحذف أمثلة السجلّ القديمة (c1..c3) ممّن حُفظت عندهم
+    useEffect(() => {
+        setCallLog((prev) => (prev || []).filter((x) => !/^c[123]$/.test(x.id)));
+        if (window.SawaRTC && window.SawaRTC.bindApp) window.SawaRTC.bindApp({ setCallLog });
+    }, []);
     function logCall(name, callType, duration, wasConnected, participants) {
         const mins = Math.floor(duration / 60);
         const secs = duration % 60;

@@ -169,16 +169,27 @@ function SpeedDialScreen({ speedDialContacts, onUpdate, onCall, onBack }) {
                 React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => onUpdate(speedDialContacts.filter((n) => n !== name)) },
                     React.createElement(X, { size: 15, color: colors.danger }))))))));
 }
-const initialCallLog = [
-    { id: "c1", name: "نعمات بابكر", type: "incoming", callType: "audio", time: "اليوم 3:20م", duration: "5:12" },
-    { id: "c2", name: "عثمان بابكر", type: "outgoing", callType: "video", time: "أمس 11:05ص", duration: "2:40" },
-    { id: "c3", name: "صديق عبدالماجد", type: "missed", callType: "audio", time: "أمس 9:15ص", duration: null },
-];
+// وقت المكالمة الحقيقيّة: «اليوم 3:20م» / «أمس 9:15ص» / «12/10 8:00م»
+function callTimeLabel(ts) {
+    const d = new Date(ts), n = new Date();
+    const h = d.getHours(), m = String(d.getMinutes()).padStart(2, "0");
+    const ar = isRTL();
+    const hm = ar ? `${h % 12 || 12}:${m}${h < 12 ? "ص" : "م"}` : `${h % 12 || 12}:${m} ${h < 12 ? "AM" : "PM"}`;
+    const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const diff = Math.round((day(n) - day(d)) / 86400000);
+    if (diff === 0) return (ar ? "اليوم " : "Today ") + hm;
+    if (diff === 1) return (ar ? "أمس " : "Yesterday ") + hm;
+    return `${d.getDate()}/${d.getMonth() + 1} ${hm}`;
+}
+// C6: السجلّ حقيقيّ (SawaRTC يضيف مكالماتك) — بلا أمثلةٍ وهميّة
+const initialCallLog = [];
 const callTypeIcons = { incoming: PhoneIncoming, outgoing: PhoneOutgoing, missed: PhoneMissed };
 const callTypeColors = { incoming: "success", outgoing: "success", missed: "danger" };
 function CallsScreen({ callLog, favoriteContacts, onToggleFavorite, onLogCall, callSettings, onUpdateCallSettings, speedDialContacts, onUpdateSpeedDial, onClearCallLog, scheduledCalls, onAddScheduledCall, onDeleteScheduledCall, onDeleteCallEntry, }) {
     const { colors } = useTheme();
-    const [activeCall, setActiveCall] = useState(null); // null | { name, callType }
+    const [activeCall, setActiveCallRaw] = useState(null); // null | { name, callType }
+    // C6: جهة اتّصالٍ على سوا ⇒ مكالمةٌ حقيقيّة؛ غير ذلك (لوحة الأرقام…) الواجهة التجريبيّة
+    const setActiveCall = (v) => { if (v && cloudCallTo(v.peerUid ? { uid: v.peerUid, name: v.name } : v.name, v.callType)) return; setActiveCallRaw(v); };
     const [subScreen, setSubScreen] = useState(null); // null | "settings" | "speedDial"
     const [showMenu, setShowMenu] = useState(false);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -269,10 +280,10 @@ function CallsScreen({ callLog, favoriteContacts, onToggleFavorite, onLogCall, c
                             React.createElement(Icon, { size: 12, color: arrowColor }),
                             c.callType === "video" && React.createElement(Video, { size: 10, color: colors.textMuted }),
                             React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } },
-                                c.time,
+                                (c.cloud && c.timestamp ? callTimeLabel(c.timestamp) : c.time),
                                 c.duration ? ` · ${c.duration}` : "",
                                 (c.participants && c.participants.length > 0) ? ` · مع ${c.participants.join("، ")}` : ""))),
-                    React.createElement("button", { "aria-label": c.callType === "video" ? "مكالمة فيديو" : "مكالمة صوتية", onClick: () => setActiveCall({ name: c.name, callType: c.callType || "audio" }), className: "w-9 h-9 flex items-center justify-center shrink-0" }, c.callType === "video" ? React.createElement(Video, { size: 19, color: colors.primary }) : React.createElement(Phone, { size: 19, color: colors.primary })),
+                    React.createElement("button", { "aria-label": c.callType === "video" ? "مكالمة فيديو" : "مكالمة صوتية", onClick: () => setActiveCall({ name: c.name, peerUid: c.peerUid, callType: c.callType || "audio" }), className: "w-9 h-9 flex items-center justify-center shrink-0" }, c.callType === "video" ? React.createElement(Video, { size: 19, color: colors.primary }) : React.createElement(Phone, { size: 19, color: colors.primary })),
                     React.createElement("button", { "aria-label": t("khyarat"), onClick: () => setCallMenu(c), className: "w-7 h-7 flex items-center justify-center shrink-0" },
                         React.createElement(MoreVertical, { size: 16, color: colors.textMuted }))));
             })),
@@ -282,8 +293,8 @@ function CallsScreen({ callLog, favoriteContacts, onToggleFavorite, onLogCall, c
                 React.createElement("div", { className: "w-10 h-1 rounded-full mx-auto my-3", style: { backgroundColor: colors.border } }),
                 React.createElement("p", { className: "text-sm font-extrabold text-center mb-2", style: { color: colors.text } }, callMenu.name),
                 [
-                    { icon: Phone, label: "مكالمة صوتية", act: () => setActiveCall({ name: callMenu.name, callType: "audio" }) },
-                    { icon: Video, label: "مكالمة فيديو", act: () => setActiveCall({ name: callMenu.name, callType: "video" }) },
+                    { icon: Phone, label: "مكالمة صوتية", act: () => setActiveCall({ name: callMenu.name, peerUid: callMenu.peerUid, callType: "audio" }) },
+                    { icon: Video, label: "مكالمة فيديو", act: () => setActiveCall({ name: callMenu.name, peerUid: callMenu.peerUid, callType: "video" }) },
                     { icon: Trash2, label: "حذف من السجل", act: () => onDeleteCallEntry === null || onDeleteCallEntry === void 0 ? void 0 : onDeleteCallEntry(callMenu.id), danger: true },
                 ].map((it) => (React.createElement("button", { key: it.label, onClick: () => { it.act(); setCallMenu(null); }, className: `w-full flex ${rowStart()} items-center gap-3 px-5 py-3.5 border-t`, style: { borderColor: colors.border } },
                     React.createElement(it.icon, { size: 17, color: it.danger ? colors.danger : colors.textMuted }),
@@ -298,6 +309,15 @@ function CallsScreen({ callLog, favoriteContacts, onToggleFavorite, onLogCall, c
 //    يحدّثها AppInner في كلّ رسم (setLiveContacts)، فتقرؤها شاشات المكالمات والاتّصال السريع كما كانت تقرأ القائمة الثابتة.
 let DEFAULT_CONTACTS = [];
 function setLiveContacts(list) { DEFAULT_CONTACTS = Array.isArray(list) ? list : []; }
+// C6: مكالمةٌ حقيقيّة (SawaRTC) لجهة اتّصالٍ على سوا — بالكائن {uid,name} أو بالاسم. تُرجع false إن لم تكن ممكنة
+// (غير مسجّل / رقمٌ من لوحة الأرقام / اسمٌ ليس في جهات الاتّصال) فتبقى الواجهة القديمة.
+function cloudCallTo(who, callType) {
+    const R = window.SawaRTC;
+    if (!R || !R.enabled || !R.enabled()) return false;
+    const c = who && typeof who === "object" ? who : DEFAULT_CONTACTS.find((x) => x.name === who);
+    if (!c || !c.uid) return false;
+    return !!R.call(c.uid, c.name, callType === "video" ? "video" : "audio");
+}
 function lastSeenLabel(ts) { return ts ? t("ct_last_seen", { t: formatChatTime(ts) }) : ""; }
 function contactSubtitle(c, isOnline) {
     if (isOnline) return t("cp_mtsl_alan");
@@ -382,7 +402,7 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
             React.createElement(UserPlus, { size: 22, color: "#fff" })),
         showAddModal && (React.createElement(AddContactSheet, { colors: colors, onClose: () => setShowAddModal(false) })),
         selectedContact && !selectedContact.onSawa && (React.createElement(NonSawaContactSheet, { contact: selectedContact, colors: colors, onClose: () => setSelectedContact(null) })),
-        selectedContact && selectedContact.onSawa && (React.createElement(ContactProfileSheet, { contact: selectedContact, isOnline: isOn(selectedContact), colors: colors, onRemove: (selectedContact.via && selectedContact.via.indexOf("link") >= 0 && !(selectedContact.via.indexOf("family") >= 0) && window.SawaChat) ? () => { window.SawaChat.removeContact(selectedContact.uid); setSelectedContact(null); } : null, onCall: () => { setActiveCall(selectedContact.name); setSelectedContact(null); }, onVideoCall: () => { setActiveVideoCall(selectedContact.name); setSelectedContact(null); }, onMessage: () => { onMessageContact(selectedContact); setSelectedContact(null); }, onClose: () => setSelectedContact(null) }))));
+        selectedContact && selectedContact.onSawa && (React.createElement(ContactProfileSheet, { contact: selectedContact, isOnline: isOn(selectedContact), colors: colors, onRemove: (selectedContact.via && selectedContact.via.indexOf("link") >= 0 && !(selectedContact.via.indexOf("family") >= 0) && window.SawaChat) ? () => { window.SawaChat.removeContact(selectedContact.uid); setSelectedContact(null); } : null, onCall: () => { if (!cloudCallTo(selectedContact, "audio")) setActiveCall(selectedContact.name); setSelectedContact(null); }, onVideoCall: () => { if (!cloudCallTo(selectedContact, "video")) setActiveVideoCall(selectedContact.name); setSelectedContact(null); }, onMessage: () => { onMessageContact(selectedContact); setSelectedContact(null); }, onClose: () => setSelectedContact(null) }))));
 }
 function AddContactModal({ colors, onAdd, onClose }) {
     const [name, setName] = useState("");
