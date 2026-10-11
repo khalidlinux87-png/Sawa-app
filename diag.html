@@ -95,7 +95,7 @@
           return worker(tok, "rtc.ice");
         }).then(function (a) {
           var ok = a.j && a.j.ok;
-          add(ok ? (a.j.turn ? "ok" : "warn") : "bad", "خوادم المكالمات (TURN)", ok ? (a.j.turn ? "الوسيط Metered مفعّل" : "STUN فقط — الوسيط غير مفعّل") + " · " + a.ms : (a.err || (a.j && a.j.error)) + " · " + a.ms);
+          add(ok ? (a.j.turn && !a.j.cfErr ? "ok" : "warn") : "bad", "خوادم المكالمات (TURN)", ok ? (a.j.turn ? "الوسيط مفعّل: " + (a.j.provider === "cloudflare" ? "Cloudflare" : "Metered") + (a.j.cfErr ? " — Cloudflare فشل (" + a.j.cfErr + ")" : "") : "STUN فقط — الوسيط غير مفعّل") + " · " + a.ms : (a.err || (a.j && a.j.error)) + " · " + a.ms);
           return worker(tok, "sched.list");
         }).then(function (a) {
           var ok = a.j && a.j.ok;

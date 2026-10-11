@@ -742,7 +742,7 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
                         : React.createElement("p", { className: "text-xs mt-0.5 truncate", style: { color: colors.textMuted }, dir: "ltr" }, "+249 9X XXX XXXX"),
                     cloudMe && myProfile.code && SCm.fmtCode && React.createElement("button", { onClick: () => SCm.codeSheet(), className: `flex ${rowStart()} items-center gap-1.5 mt-1`, style: { color: colors.primary } },
                         React.createElement("span", { className: "text-[11px] font-bold" }, tl("رمزك:", "Code:")),
-                        React.createElement("span", { className: "text-xs font-extrabold", dir: "ltr", style: { letterSpacing: 1 } }, SCm.fmtCode(myProfile.code))),
+                        React.createElement("span", { className: "text-xs font-extrabold", dir: "ltr", style: { letterSpacing: 1, whiteSpace: "nowrap" } }, SCm.fmtCode(myProfile.code))),
                     React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-2` },
                         React.createElement("span", { className: "w-2 h-2 rounded-full shrink-0", style: { backgroundColor: currentStatus.color } }),
                         React.createElement("span", { className: "text-[11px] font-bold", style: { color: currentStatus.color } }, currentStatus.label))),
@@ -764,6 +764,9 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
 // __SAWA_BUILD__ — يستبدلها build.sh برقم النسخة من sw.js
 const SAWA_BUILD = "v190";
 // C9b: رقم النسخة الفعليّ يُسأل عنه عامل الخدمة (VERSION في sw.js) — بدل رقمٍ مكتوبٍ يدويّاً يتقادم
+// ⛔ الرسائل ليست مشفّرة طرفاً لطرف بعد (يقرؤها حساب الخدمة) — بطاقات «بصمة الأمان» و«التحقّق المتبادل» كانت شكليّة.
+//    تُخفى حتّى يُبنى التشفير الحقيقيّ. المكالمات مشفّرة فعلاً بين الأجهزة (DTLS-SRTP في WebRTC).
+const SHOW_E2E_UI = false;
 // C10: نصٌّ بلغتين لما يُضاف حديثاً (العربيّة افتراضيّاً)
 function tl(ar, en) { return isRTL() ? ar : en; }
 // C10: عدد طلبات التواصل الواردة (من SawaChat — حدث sawa-requests)
@@ -964,8 +967,8 @@ function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiome
                 React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mb-3` }, Object.entries(statusMeta).map(([key, s]) => (React.createElement("button", { key: key, onClick: () => setStatusOption(key), className: "rounded-full px-3 py-1.5 border", style: { backgroundColor: statusOption === key ? s.color : colors.card, borderColor: statusOption === key ? s.color : colors.border } },
                     React.createElement("span", { className: "text-xs font-bold", style: { color: statusOption === key ? "#fff" : colors.text } }, s.label))))),
                 React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: customStatusMessage, onChange: (e) => setCustomStatusMessage(e.target.value), placeholder: t("adf_rsala_hala_mkhssa"), className: "w-full border rounded-xl px-3 py-2 text-sm", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } })),
-            !IS_RAHIM && React.createElement("p", { className: "text-xs font-bold mt-1 mb-2", style: { color: colors.textMuted } }, t("mfatyh_altshfyr")),
-            !IS_RAHIM && React.createElement(Card, null,
+            SHOW_E2E_UI && !IS_RAHIM && React.createElement("p", { className: "text-xs font-bold mt-1 mb-2", style: { color: colors.textMuted } }, t("mfatyh_altshfyr")),
+            SHOW_E2E_UI && !IS_RAHIM && React.createElement(Card, null,
                 React.createElement("p", { className: `text-[11px] ${textStart()} mb-1`, style: { color: colors.textMuted } }, t("bsma_alaman_safety_number")),
                 React.createElement("p", { className: "text-center font-bold tracking-widest mb-1.5", style: { color: colors.text } }, MY_SAFETY_NUMBER),
                 React.createElement("p", { className: `text-[10px] ${textStart()} mb-3`, style: { color: colors.textMuted } }, t("thqq_mn_hdha_alrqm")),

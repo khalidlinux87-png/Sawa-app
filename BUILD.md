@@ -535,3 +535,14 @@ Workers Free: ١٠٠ ألف طلب/يوم (يتصفّر منتصف الليل UT
   + «🔢 أدخل رمز شخص» و«رمزي» في نافذة الإضافة · `goTab` في bindApp.
 - الاختبارات: `wtest/codetest.mjs` (٣٩) · `ptest/onb.js` (٢٩، متصفّح حقيقيّ) · `metest.js` · wtest/run.mjs وكلّ السابق ✓.
 - **مؤجَّل إلى P:** تأكيد البريد برسالة تحقّق · رقم الهاتف بـSMS (Blaze) · البحث بالرقم.
+- ⏳ **ينتظر الحزمة القادمة:** الرمز في بطاقة «حسابي» لا يلتفّ على سطرين (`whiteSpace: nowrap`) — app.p2 + sw.js برقمٍ جديد.
+
+## 🌐 P1 — الوسيط (TURN) من Cloudflare Realtime (١١ أكتوبر)
+- **الـWorker v28-cfturn:** `rtc.ice` يطلب بيانات دخولٍ مؤقّتة (٢٤ س) من `rtc.live.cloudflare.com/v1/turn/keys/{CF_TURN_KEY_ID}/credentials/generate-ice-servers`
+  (Bearer `CF_TURN_API_TOKEN`)، تُخزَّن ٦ ساعات، ويُحذف منفذ 53. يعيد `provider: "cloudflare"|"metered"`.
+  فشل Cloudflare ⇒ رجوعٌ تلقائيّ إلى Metered مع `cfErr`. المتغيّر `TURN_PROVIDER=metered` يُجبر Metered.
+- **diag.html:** يعرض «الوسيط مفعّل: Cloudflare / Metered» وسبب فشل Cloudflare إن وُجد.
+- اختبار: `wtest/turntest.mjs` (٨) · run.mjs و codetest ✓. لا تغيير في التطبيق نفسه (sawa-rtc يأخذ القائمة كما هي).
+- **مع P1 (Sawa-app):** صدق الصياغة — حُذفت ادّعاءات «مشفّرة من طرفٍ إلى طرف» (الترحيب، شرائح البداية، الإعدادات، معلومات المحادثة،
+  الأجهزة المرتبطة)؛ الصياغة الآن: المكالمات مشفّرة بين الأجهزة، والرسائل مشفّرة أثناء النقل والتخزين. بطاقات «بصمة الأمان» الشكليّة مخفيّة
+  (`SHOW_E2E_UI = false`) حتّى يُبنى التشفير الحقيقيّ · الرمز في «حسابي» لا يلتفّ · sw.js v201 · sawa-chat c10b · الأجزاء p1/p2/p4.

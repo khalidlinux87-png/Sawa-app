@@ -10,7 +10,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c10";
+  var VERSION = "c10b";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1681,7 +1681,7 @@
       var logo = mk("img", "width:96px;height:96px;border-radius:24px;box-shadow:0 10px 30px rgba(0,0,0,.25)"); logo.src = "./icons/icon-192.png"; logo.alt = "سوا";
       b.appendChild(logo);
       b.appendChild(hTitle(L("أهلاً بك في سوا", "Welcome to Sawa")));
-      b.appendChild(hSub(L("محادثات ومكالمات مشفّرة، غرف اجتماعات، وصلة رحم — في تطبيقٍ واحد.", "Encrypted chats and calls, meeting rooms, and family ties — in one app.")));
+      b.appendChild(hSub(L("محادثات ومكالمات، غرف اجتماعات، وصلة رحم — في تطبيقٍ واحد.", "Chats and calls, meeting rooms, and family ties — in one app.")));
       var st = bigBtn(L("ابدأ", "Get started"), "white"); st.onclick = function () { onbGo("login"); }; ft.appendChild(st);
       return;
     }
