@@ -2060,7 +2060,8 @@ function AppInner() {
         setConversations, setMessagesByConversation, setGroups, setGroupMessages, setTypingConversations,
         setArchivedConversations, setPinnedConversations, setMutedConversations, setLockedConversationIds, setChatFolders,
         setFolderAssignments, setChatThemes, setConversationTones, setStarredMessages, setBlockedConversations, setBroadcastLists,
-        openChatById: (cid) => openChatByIdRef.current && openChatByIdRef.current(cid) }); }, []);
+        openChatById: (cid) => openChatByIdRef.current && openChatByIdRef.current(cid),
+        goTab: (k) => { setStack([]); setTab(k); } }); }, []);
     // C5: الضغط على إشعار يفتح المحادثة نفسها (مرجعٌ حيّ لأحدث القوائم)
     const openChatByIdRef = useRef(null);
     openChatByIdRef.current = (cid) => {

@@ -950,7 +950,7 @@
     var oldTokP = user.getIdToken();
     // فهرس الهويّة الحالية أوّلاً (يلزم لتبنّيها إن احتجنا)
     indexMine();
-    user.linkWithPopup(provider).then(function () {
+    return user.linkWithPopup(provider).then(function () {
       return afterLinked(L("رُبط حسابك بـGoogle ✓ — ادخل به من أيّ جهاز", "Linked to Google ✓ — sign in with it on any device"));
     }).catch(function (e) {
       var code = e && e.code;
@@ -974,6 +974,37 @@
       if (code === "auth/popup-closed-by-user") return;
       toast(L("تعذّر الربط: ", "Linking failed: ") + ((e && (e.code || e.message)) || e));
     });
+  }
+  // C10: الدخول بالبريد وكلمة المرور (يعمل على الخطّة المجّانيّة — يُفعَّل مرّةً من Firebase Console ← Authentication ← Email/Password)
+  //  mode "create": يربط البريد بالهويّة الحاليّة (نفس uid — لا شيء يضيع) · "signin": حسابٌ قائم ⇒ ندخل به ونتبنّى عائلات هذا الجهاز
+  function linkEmail(email, pass, mode) {
+    if (!hasFirebase() || !state.uid) return Promise.reject({ code: "sawa/no-server" });
+    var auth = firebase.auth(), user = auth.currentUser;
+    email = String(email || "").trim().toLowerCase();
+    if (user && !user.isAnonymous) return Promise.reject({ code: "sawa/already-linked" });
+    var cred = firebase.auth.EmailAuthProvider.credential(email, String(pass || ""));
+    if (mode === "create") {
+      indexMine();
+      return user.linkWithCredential(cred).then(function () {
+        return afterLinked(L("أُنشئ حسابك بالبريد ✓ — ادخل به من أيّ جهاز", "Account created ✓ — sign in with it on any device"));
+      }).then(function () { return true; });
+    }
+    return user.getIdToken().then(function (oldTok) {
+      indexMine();
+      return auth.signInWithEmailAndPassword(email, String(pass || "")).then(function () {
+        return adoptFrom(oldTok).catch(function () { return null; });
+      }).then(function () { return afterLinked(L("دخلتَ بحسابك ✓", "Signed in ✓")); }).then(function () { return true; });
+    });
+  }
+  function resetPassword(email) {
+    if (!hasFirebase()) return Promise.reject({ code: "sawa/no-server" });
+    return firebase.auth().sendPasswordResetEmail(String(email || "").trim().toLowerCase());
+  }
+  function authInfo() {
+    try { var u = firebase.auth().currentUser; if (!u) return null;
+      return { uid: u.uid, anon: !!u.isAnonymous, email: u.email || null, name: u.displayName || null,
+               provider: (u.providerData && u.providerData[0] && u.providerData[0].providerId) || (u.isAnonymous ? "anonymous" : null) };
+    } catch (e) { return null; }
   }
   function handleRedirectResult() {
     try {
@@ -1199,6 +1230,7 @@
         var act = t.getAttribute("data-act");
         if (act === "close") closePanel();
         else if (act === "google") linkGoogle();
+        else if (act === "email") { closePanel(); try { global.SawaChat.emailSheet(); } catch (x) {} }
         else if (act === "upload") uploadCurrent();
         else if (act === "dup-replace") resolveDup("replace");
         else if (act === "dup-server") resolveDup("useServer");
@@ -1245,10 +1277,11 @@
 
     var acct;
     if (!state.uid) acct = p(L("جارٍ الاتصال بالخادم…", "Connecting…"), "#8a6d1f");
-    else if (state.isAnon) acct = p(L("ضيف — هويّتك محفوظة في هذا المتصفّح فقط. اربطها بحساب Google لتصل لعائلتك من أيّ جهاز ولا تضيع عند مسح المتصفّح.",
-                                       "Guest — your identity lives in this browser only. Link Google to reach your family from any device.")) +
-                               btn("google", L("ربط بحساب Google", "Link Google account"), true);
-    else acct = p("✓ " + esc(state.email || L("حساب Google", "Google account")), "#187854");
+    else if (state.isAnon) acct = p(L("ضيف — هويّتك محفوظة في هذا المتصفّح فقط وقد تضيع عند مسح بياناته أو تغيير الهاتف. اربطها بحساب لتصل لمحادثاتك وعائلتك من أيّ جهاز.",
+                                       "Guest — your identity lives in this browser only. Link an account to reach your chats and family from any device.")) +
+                               btn("google", L("ربط بحساب Google", "Link Google account"), true) +
+                               (global.SawaChat && global.SawaChat.emailSheet ? btn("email", L("الدخول بالبريد الإلكتروني", "Continue with email")) : "");
+    else acct = p("✓ " + esc(state.email || L("حسابك مربوط", "Account linked")), "#187854");
 
     var fam = '<div style="font:800 16px system-ui;color:#1f2d3a">' + esc(groupName(lg)) + '</div>';
     if (pendingDup && pendingDup.localGid === lg) {
@@ -1455,7 +1488,7 @@
   global.SawaSync = {
     connect: connect, onReady: onReady, getToken: getToken,
     push: push, observe: observe, bindApp: bindApp,
-    uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, shareLink: shareLink,
+    uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, shareLink: shareLink,
     watchGroup: watchGroup, serverGid: serverGid,
     isCloud: function (lg) { return !!serverGid(lg); },
     call: function (op, payload) { return call(op, payload); }, toast: function (m) { toast(m); },

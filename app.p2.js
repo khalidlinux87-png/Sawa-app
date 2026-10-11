@@ -685,7 +685,9 @@ function PlaceholderTab({ icon: Icon, title, note }) {
 function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePhoto, onLogout, onOpenLinkedDevices, onOpenWrapped, onOpenFeedback, onExportTree, onImportTree, myProfile = null }) {
     // حسابي الحقيقيّ (SawaChat): اسم «سوا» + الرقم (غير موثّق)؛ زرّ التعديل يفتح نافذة الحساب
     const sawaBuild = useSawaBuild();
+    const reqCount = useSawaRequests();
     const cloudMe = !!(myProfile && window.SawaChat && window.SawaChat.editProfile);
+    const SCm = window.SawaChat;
     const myDisplayName = cloudMe ? (myProfile.name || myProfile.googleName || "") : "";
     const editMe = () => { if (cloudMe && window.SawaChat.editProfile()) return; onOpenSettings(); };
     const { colors } = useTheme();
@@ -697,6 +699,11 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
     };
     const currentStatus = statusMap[statusOption] || statusMap.online;
     const listItems = [
+        // C10: رمز سوا وطلبات التواصل
+        ...(cloudMe && SCm.codeSheet ? [
+            { key: "mycode", label: tl("رمزي في سوا", "My Sawa code"), icon: QrCode, onPress: () => SCm.codeSheet(), color: "#2F80C8" },
+            { key: "requests", label: tl("طلبات التواصل", "Contact requests") + (reqCount ? " (" + reqCount + ")" : ""), icon: UserPlus, onPress: () => SCm.requestsSheet(), color: reqCount ? "#E11D48" : "#2F80C8" },
+        ] : []),
         { key: "feedback", label: t("me_arsl_mlahza"), icon: Send, onPress: onOpenFeedback, color: "#10B981" },
         { key: "settings", label: t("me_iadadat_almlf"), icon: MoreHorizontal, onPress: onOpenSettings },
         { key: "notifications", label: t("me_mrkz_altnbyhat"), icon: BellIcon, onPress: onOpenNotifications },
@@ -733,6 +740,9 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
                             React.createElement("span", { className: "text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0", style: { color: "#B7791F", backgroundColor: "#FEF3C7" } }, "غير موثّق"))
                         : React.createElement("button", { onClick: editMe, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, "+ أضف رقم هاتفك"))
                         : React.createElement("p", { className: "text-xs mt-0.5 truncate", style: { color: colors.textMuted }, dir: "ltr" }, "+249 9X XXX XXXX"),
+                    cloudMe && myProfile.code && SCm.fmtCode && React.createElement("button", { onClick: () => SCm.codeSheet(), className: `flex ${rowStart()} items-center gap-1.5 mt-1`, style: { color: colors.primary } },
+                        React.createElement("span", { className: "text-[11px] font-bold" }, tl("رمزك:", "Code:")),
+                        React.createElement("span", { className: "text-xs font-extrabold", dir: "ltr", style: { letterSpacing: 1 } }, SCm.fmtCode(myProfile.code))),
                     React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-2` },
                         React.createElement("span", { className: "w-2 h-2 rounded-full shrink-0", style: { backgroundColor: currentStatus.color } }),
                         React.createElement("span", { className: "text-[11px] font-bold", style: { color: currentStatus.color } }, currentStatus.label))),
@@ -754,6 +764,18 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
 // __SAWA_BUILD__ — يستبدلها build.sh برقم النسخة من sw.js
 const SAWA_BUILD = "v190";
 // C9b: رقم النسخة الفعليّ يُسأل عنه عامل الخدمة (VERSION في sw.js) — بدل رقمٍ مكتوبٍ يدويّاً يتقادم
+// C10: نصٌّ بلغتين لما يُضاف حديثاً (العربيّة افتراضيّاً)
+function tl(ar, en) { return isRTL() ? ar : en; }
+// C10: عدد طلبات التواصل الواردة (من SawaChat — حدث sawa-requests)
+function useSawaRequests() {
+    const [n, setN] = React.useState(() => { try { return window.SawaChat && window.SawaChat.requestCount ? window.SawaChat.requestCount() : 0; } catch (e) { return 0; } });
+    React.useEffect(() => {
+        const on = (e) => setN(Number(e.detail) || 0);
+        window.addEventListener("sawa-requests", on);
+        return () => window.removeEventListener("sawa-requests", on);
+    }, []);
+    return n;
+}
 function useSawaBuild() {
     const [v, setV] = React.useState(() => { try { return localStorage.getItem("sawa_build") || SAWA_BUILD; } catch (e) { return SAWA_BUILD; } });
     React.useEffect(() => {

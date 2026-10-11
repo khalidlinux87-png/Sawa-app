@@ -347,6 +347,7 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
     const [search, setSearch] = useState("");
     const [selectedContact, setSelectedContact] = useState(null);
     const [showAddModal, setShowAddModal] = useState(false);
+    const reqCount = useSawaRequests();
     const sectionRefs = useRef({});
     // فلترة البحث
     const filtered = contacts.filter((c) => c.name.includes(search.trim()) || (c.phone || "").includes(search.trim()));
@@ -389,6 +390,10 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
                 search ? React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => setSearch("") },
                     React.createElement(X, { size: 14, color: colors.textMuted })) : null)),
         React.createElement("div", { className: "flex-1 overflow-y-auto pb-20" },
+            reqCount > 0 && window.SawaChat && window.SawaChat.requestsSheet && React.createElement("button", { onClick: () => window.SawaChat.requestsSheet(), className: `mx-4 mt-2 mb-1 flex ${rowStart()} items-center gap-2 rounded-2xl px-3 py-2.5`, style: { width: "calc(100% - 2rem)", backgroundColor: colors.primaryLight, border: `1px solid ${colors.primary}33` } },
+                React.createElement(UserPlus, { size: 18, color: colors.primary }),
+                React.createElement("span", { className: `flex-1 text-sm font-extrabold ${textStart()}`, style: { color: colors.primary } }, tl("طلبات تواصل جديدة", "New contact requests")),
+                React.createElement("span", { className: "text-xs font-extrabold px-2 py-0.5 rounded-full", style: { backgroundColor: "#E11D48", color: "#fff" } }, reqCount)),
             sawaContacts.length > 0 && (React.createElement("div", null,
                 React.createElement("div", { className: `px-4 pt-3 pb-2.5 flex ${rowStart()} items-center gap-1.5`, style: { borderBottom: `1px solid ${colors.border}` } },
                     React.createElement("img", { src: IS_RAHIM ? APP_LOGO_RAHIM : SAWA_LOGO, alt: appName(), style: { width: 15, height: 15, objectFit: "contain" } }),
@@ -512,6 +517,10 @@ function AddContactSheet({ colors, onClose }) {
             React.createElement("div", { className: "w-10 h-1 rounded-full mx-auto mb-4", style: { backgroundColor: colors.border } }),
             React.createElement("h3", { className: `text-base font-extrabold ${textStart()} mb-1.5`, style: { color: colors.text } }, t("ct_add_title")),
             React.createElement("p", { className: `text-xs leading-relaxed ${textStart()} mb-4`, style: { color: colors.textMuted } }, t("ct_add_desc")),
+            // C10: الأسهل — رمز سوا (١٠ أرقام) بطلب تواصلٍ يوافق عليه صاحبه
+            SC && SC.findSheet && React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-2.5` },
+                React.createElement("button", { onClick: () => { onClose(); SC.findSheet(); }, className: "flex-1 rounded-xl py-2.5 text-sm font-extrabold", style: { backgroundColor: colors.primary, color: "#fff" } }, tl("🔢 أدخل رمز شخص", "🔢 Enter a code")),
+                React.createElement("button", { onClick: () => { onClose(); SC.codeSheet(); }, className: "flex-1 rounded-xl py-2.5 text-sm font-bold border", style: { borderColor: colors.primary, color: colors.primary } }, tl("رمزي", "My code"))),
             React.createElement(Button, { icon: Share2, label: t("ct_share_link"), onPress: () => SC && SC.shareInvite() }),
             React.createElement("button", { onClick: showQr, className: `w-full mt-2.5 flex ${rowStart()} items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold border`, style: { borderColor: colors.primary, color: colors.primary } }, t("ct_show_qr")),
             React.createElement("div", { className: "flex flex-col items-center", style: { display: qrShown ? "flex" : "none" } },

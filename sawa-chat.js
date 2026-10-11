@@ -10,7 +10,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c9";
+  var VERSION = "c10";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -83,7 +83,8 @@
   // ---------- الملفّ الشخصيّ: اسم «سوا» + رقم الهاتف (غير موثّق حتّى الإطلاق) ----------
   function profile() {
     var m = state.me || {};
-    return { uid: state.uid, name: m.name || null, phone: m.phone || null, phoneVerified: false, googleName: m.googleName || null, anon: !!m.anon };
+    return { uid: state.uid, name: m.name || null, phone: m.phone || null, phoneVerified: false, googleName: m.googleName || null, anon: !!m.anon,
+             code: m.code || null, findable: m.findable !== false };
   }
   function saveProfile(patch) {
     return call("profile.set", patch).then(function (b) {
@@ -173,7 +174,7 @@
   // الضيف بلا اسم: نطلب منه اسماً مرّةً واحدة — حتّى يميّزه الآخرون
   function maybeAskName() {
     var m = state.me;
-    if (!m || m.name || lsGet("sawa_name_asked", 0)) return;
+    if (!m || m.name || lsGet("sawa_name_asked", 0) || onbActive()) return;
     lsSet("sawa_name_asked", Date.now());
     setTimeout(function () { editProfile(L("اكتب اسمك ليعرفك من تتواصل معهم — بدل «ضيف»", "Add your name so people know who you are")); }, 1500);
   }
@@ -224,7 +225,7 @@
         try { var fs = firebase.firestore(); fs.disableNetwork().then(function () { return fs.enableNetwork(); }).catch(function () {}); } catch (e) {}
       }
       hiddenAt = 0;
-      if (Date.now() - lastRefresh > 60000) { lastRefresh = Date.now(); refresh(); }   // قائمة جهات الاتّصال: مرّة في الدقيقة على الأكثر
+      if (Date.now() - lastRefresh > 60000) { lastRefresh = Date.now(); refresh(); loadRequests(); }   // قائمة جهات الاتّصال: مرّة في الدقيقة على الأكثر
       if (openCid) markRead(openCid);
       unstickOutbox(); drainOutbox();
     });
@@ -1176,7 +1177,7 @@
   }
   function maybeBanner(st) {
     st = st || pushState();
-    if (bannerEl || !document.body) return;
+    if (bannerEl || !document.body || onbActive()) return;
     if (st !== "default" && st !== "denied") return;
     var snooze = st === "denied" ? 7 * 86400000 : 86400000;
     if (lsGet("sawa_push_asked", 0) > Date.now() - snooze) return;
@@ -1251,8 +1252,12 @@
   try {
     if (global.navigator && navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", function (ev) {
       var m = ev.data || {};
-      if (m.type === "sawa-push" && m.data) { if (m.data.t !== "call" && m.data.cid !== openCid) toast((m.data.title ? m.data.title + ": " : "") + (m.data.body || "")); }
-      if (m.type === "sawa-open" && m.data) openFromPush(m.data.cid);
+      if (m.type === "sawa-push" && m.data) {
+        if (m.data.t !== "call" && m.data.cid !== openCid) toast((m.data.title ? m.data.title + ": " : "") + (m.data.body || ""));
+        if (m.data.t === "req") loadRequests();
+        if (m.data.t === "reqok") { refresh(); loadRequests(); }
+      }
+      if (m.type === "sawa-open" && m.data) { if (m.data.t === "req") whenReady(function () { requestsSheet(); }); else openFromPush(m.data.cid); }
     });
   } catch (e) {}
   function handleChatParam() {
@@ -1268,6 +1273,551 @@
     var n = 0; Object.keys(chats).forEach(function (k) { n += unreadOf(chats[k]); });
     if (n === badgeN) return; badgeN = n;
     try { if (navigator.setAppBadge) { n ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } } catch (e) {}
+  }
+
+  // ==================================================================
+  // C10: رمز سوا (١٠ أرقام) + طلبات التواصل + الدخول بالبريد + شاشات البداية للمستخدم الجديد
+  //   الرمز: ٩ أرقام عشوائيّة (أوّلها ١–٩) + رقم تحقّق (Luhn) يكشف خطأ رقمٍ واحد أو تبديل رقمين.
+  //   من يُدخل الرمز يرى الاسم فقط ويرسل «طلب تواصل» — لا مراسلة ولا اتّصال قبل القبول.
+  // ==================================================================
+  function codeDigits(x) {
+    return String(x == null ? "" : x).replace(/[٠-٩]/g, function (d) { return "٠١٢٣٤٥٦٧٨٩".indexOf(d); })
+      .replace(/[۰-۹]/g, function (d) { return "۰۱۲۳۴۵۶۷۸۹".indexOf(d); }).replace(/\D/g, "");
+  }
+  function luhnDigit(s) {
+    var sum = 0;
+    for (var i = 0; i < s.length; i++) { var d = Number(s[s.length - 1 - i]); if (i % 2 === 0) { d *= 2; if (d > 9) d -= 9; } sum += d; }
+    return String((10 - (sum % 10)) % 10);
+  }
+  function codeValid(c) { return /^[1-9]\d{9}$/.test(c) && luhnDigit(c.slice(0, 9)) === c[9]; }
+  function fmtCode(c) { c = codeDigits(c); return c.length > 6 ? c.slice(0, 3) + " " + c.slice(3, 6) + " " + c.slice(6) : c.length > 3 ? c.slice(0, 3) + " " + c.slice(3) : c; }
+  function myCode() { return (state.me && state.me.code) || null; }
+  function codeUrl(c) { return global.location.origin + global.location.pathname.replace(/index\.html$/, "") + "?code=" + codeDigits(c); }
+  function codeShareText(c) {
+    return L("تواصل معي على سوا — رمزي: ", "Reach me on Sawa — my code: ") + fmtCode(c) + "\n" + codeUrl(c);
+  }
+  function loadCode() {
+    if (myCode()) return Promise.resolve({ code: myCode(), findable: state.me.findable !== false });
+    return call("code.mine", {}).then(function (b) {
+      state.me = Object.assign({}, state.me || {}, { code: b.code, findable: b.findable });
+      lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people }); publish();
+      return b;
+    });
+  }
+  function codeErr(e) {
+    var m = (e && e.message) || String(e);
+    if (/bad_code/.test(m)) return L("الرمز غير صحيح — تأكّد من الأرقام العشرة", "That code isn't valid — check the 10 digits");
+    if (/rate_limited/.test(m)) return L("محاولاتٌ كثيرة — انتظر قليلاً ثمّ أعد المحاولة", "Too many tries — wait a little");
+    if (/too_many_pending/.test(m)) return L("لديك ٢٠ طلباً بانتظار الموافقة — ألغِ بعضها أوّلاً", "You have 20 pending requests — cancel some first");
+    if (/not_found/.test(m)) return L("لا يوجد حسابٌ بهذا الرمز", "No account with this code");
+    if (/^wait$/.test(m)) return L("غيّرتَ رمزك قبل قليل — انتظر ١٠ دقائق", "You changed your code a moment ago — wait 10 minutes");
+    if (/fetch|network|timeout/i.test(m)) return L("تحقّق من الاتّصال بالإنترنت", "Check your internet connection");
+    return m;
+  }
+
+  // ---------- أدوات واجهةٍ صغيرة (DOM) ----------
+  function mk(tag, css, text) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; }
+  function mkBtn(text, kind) {
+    var css = kind === "primary" ? "background:#2e7d5b;color:#fff;border:0"
+      : kind === "danger" ? "background:#fdecec;color:#b42318;border:0"
+      : kind === "ghost" ? "background:transparent;color:#2F80C8;border:0"
+      : "background:#fff;color:#1A1A2E;border:1.5px solid #dfe5ec";
+    return mk("button", css + ";border-radius:12px;padding:12px 14px;font:800 14px system-ui;width:100%;box-sizing:border-box;cursor:pointer", text);
+  }
+  function sheet(title) {
+    var ov = mk("div", "position:fixed;inset:0;z-index:2147483002;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;font-family:system-ui");
+    ov.dir = isAr() ? "rtl" : "ltr";
+    var box = mk("div", "background:#fff;color:#1A1A2E;border-radius:20px 20px 0 0;width:100%;max-width:480px;max-height:92vh;overflow-y:auto;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 18px);box-sizing:border-box");
+    box.appendChild(mk("div", "width:40px;height:4px;border-radius:2px;background:#dde3ea;margin:0 auto 12px"));
+    if (title) box.appendChild(mk("div", "font:800 17px system-ui;text-align:center;margin-bottom:6px", title));
+    ov.appendChild(box); document.body.appendChild(ov);
+    var api = { ov: ov, box: box, close: function () { try { ov.remove(); } catch (e) {} } };
+    ov.onclick = function (e) { if (e.target === ov) api.close(); };
+    return api;
+  }
+  function note(text, color, bg) { return mk("div", "font:500 12.5px/1.7 system-ui;color:" + (color || "#5b6b7c") + ";" + (bg ? "background:" + bg + ";border-radius:10px;padding:8px 10px;" : "") + "margin:6px 0", text); }
+  function avatar(name, size) {
+    size = size || 52;
+    return mk("div", "width:" + size + "px;height:" + size + "px;border-radius:50%;background:#e3effa;color:#2F80C8;display:flex;align-items:center;justify-content:center;font:800 " + Math.round(size * 0.42) + "px system-ui;flex-shrink:0", (name || "؟").trim().charAt(0) || "؟");
+  }
+  function copyText(t) {
+    var done = function () { toast(L("نُسخ ✓", "Copied ✓")); };
+    try { if (navigator.clipboard) return navigator.clipboard.writeText(t).then(done, function () { global.prompt(L("انسخ:", "Copy:"), t); }); } catch (e) {}
+    global.prompt(L("انسخ:", "Copy:"), t);
+  }
+  function shareText(t) {
+    try { if (navigator.share) return navigator.share({ title: "سوا", text: t }).catch(function () {}); } catch (e) {}
+    copyText(t);
+  }
+  function codeBig(c) {
+    var el = mk("div", "font:800 30px/1.3 ui-monospace,Menlo,monospace;letter-spacing:2px;text-align:center;direction:ltr;color:#1A1A2E;background:#f3f7fb;border-radius:16px;padding:14px 8px;margin:8px 0", c ? fmtCode(c) : "… … …");
+    el.className = "sawa-code-big";
+    return el;
+  }
+
+  // ---------- طلبات التواصل ----------
+  var reqs = { incoming: [], outgoing: [], at: 0 };
+  function publishReqs() {
+    try { global.dispatchEvent(new CustomEvent("sawa-requests", { detail: reqs.incoming.length })); } catch (e) {}
+  }
+  function loadRequests() {
+    if (!state.uid) return Promise.resolve(reqs);
+    return call("code.requests", {}).then(function (b) {
+      reqs = { incoming: b.incoming || [], outgoing: b.outgoing || [], at: Date.now() };
+      publishReqs(); return reqs;
+    }).catch(function (e) { log("requests:", (e && e.message) || e); return reqs; });
+  }
+  function respond(from, action) {
+    return call("code.respond", { from: from, action: action }).then(function (b) {
+      reqs.incoming = reqs.incoming.filter(function (r) { return r.uid !== from; }); publishReqs();
+      if (action === "accept") {
+        toast(L("أصبحتما جهتي اتّصال ✓", "You're now connected ✓"));
+        refresh();
+        if (b.cid) whenApp(function () { setTimeout(function () { try { if (app.openChatById) app.openChatById(b.cid); } catch (e) {} }, 900); });
+      } else if (action === "block") { toast(L("حُظر ولن تصلك طلباته ✓", "Blocked ✓")); loadPrefs(); }
+      else toast(L("رُفض الطلب", "Request declined"));
+      return b;
+    }).catch(function (e) { toast(codeErr(e)); return null; });
+  }
+  function timeAgo(ts) {
+    if (!ts) return "";
+    var m = Math.round((Date.now() - ts) / 60000);
+    if (m < 1) return L("الآن", "now");
+    if (m < 60) return L("قبل " + m + " د", m + "m ago");
+    var h = Math.round(m / 60); if (h < 24) return L("قبل " + h + " س", h + "h ago");
+    return new Date(ts).toLocaleDateString(isAr() ? "ar" : "en");
+  }
+  function requestsSheet() {
+    if (!state.uid) return false;
+    var s = sheet(L("طلبات التواصل", "Contact requests"));
+    var list = mk("div", "margin-top:6px"); s.box.appendChild(list);
+    list.appendChild(note(L("جارٍ التحميل…", "Loading…")));
+    function row(r, incoming) {
+      var card = mk("div", "border:1px solid #e6ebf0;border-radius:14px;padding:12px;margin:8px 0");
+      var top = mk("div", "display:flex;gap:10px;align-items:center");
+      top.appendChild(avatar(r.name, 42));
+      var info = mk("div", "flex:1;min-width:0");
+      info.appendChild(mk("div", "font:800 15px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis", r.name || L("مستخدم سوا", "Sawa user")));
+      info.appendChild(mk("div", "font:500 11px system-ui;color:#8796a5;direction:ltr;text-align:" + (isAr() ? "right" : "left"), (r.code ? fmtCode(r.code) + " · " : "") + timeAgo(r.ts)));
+      top.appendChild(info); card.appendChild(top);
+      if (incoming && r.text) card.appendChild(mk("div", "font:500 14px/1.7 system-ui;background:#f5f8fb;border-radius:10px;padding:8px 10px;margin-top:8px;white-space:pre-wrap;word-break:break-word", r.text));
+      var acts = mk("div", "display:flex;gap:8px;margin-top:10px");
+      function act(label, kind, fn) { var b = mkBtn(label, kind); b.style.padding = "9px 8px"; b.style.fontSize = "13px"; b.onclick = function () { b.disabled = true; b.textContent = "…"; fn(); }; acts.appendChild(b); }
+      if (incoming) {
+        act(L("قبول", "Accept"), "primary", function () { respond(r.uid, "accept").then(function () { s.close(); }); });
+        act(L("رفض", "Decline"), "", function () { respond(r.uid, "reject").then(draw); });
+        act(L("حظر", "Block"), "danger", function () { respond(r.uid, "block").then(draw); });
+      } else {
+        acts.appendChild(mk("div", "flex:2;align-self:center;font:600 12px system-ui;color:#8796a5", L("بانتظار موافقته…", "Waiting for them to accept…")));
+        act(L("إلغاء الطلب", "Cancel"), "", function () {
+          call("code.cancel", { to: r.uid }).then(function () { reqs.outgoing = reqs.outgoing.filter(function (x) { return x.uid !== r.uid; }); draw(); })
+            .catch(function (e) { toast(codeErr(e)); draw(); });
+        });
+      }
+      card.appendChild(acts);
+      return card;
+    }
+    function draw() {
+      list.innerHTML = "";
+      if (!reqs.incoming.length && !reqs.outgoing.length) list.appendChild(note(L("لا طلبات الآن. شارك رمزك ليصلك من يعرفك.", "No requests. Share your code so people can reach you.")));
+      if (reqs.incoming.length) { list.appendChild(mk("div", "font:800 13px system-ui;color:#5b6b7c;margin-top:8px", L("وصلتك", "Received") + " (" + reqs.incoming.length + ")")); reqs.incoming.forEach(function (r) { list.appendChild(row(r, true)); }); }
+      if (reqs.outgoing.length) { list.appendChild(mk("div", "font:800 13px system-ui;color:#5b6b7c;margin-top:12px", L("أرسلتَها", "Sent") + " (" + reqs.outgoing.length + ")")); reqs.outgoing.forEach(function (r) { list.appendChild(row(r, false)); }); }
+      var foot = mk("div", "display:flex;gap:8px;margin-top:12px");
+      var b1 = mkBtn(L("🔢 أدخل رمز شخص", "🔢 Enter a code")); b1.onclick = function () { s.close(); findSheet(); };
+      var b2 = mkBtn(L("رمزي", "My code")); b2.onclick = function () { s.close(); codeSheet(); };
+      foot.appendChild(b1); foot.appendChild(b2); list.appendChild(foot);
+      list.appendChild(note(L("الرفض لا يُبلَّغ للمرسل. والحظر يمنع طلباته ورسائله.", "Declining isn't shown to the sender. Blocking stops their requests and messages.")));
+    }
+    loadRequests().then(draw);
+    return true;
+  }
+
+  // ---------- «أدخل رمز شخص» ----------
+  function findSheet(prefill) {
+    if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
+    var s = sheet(L("أضف برمز سوا", "Add by Sawa code"));
+    s.box.appendChild(note(L("اطلب من الشخص رمزه (في «حسابي» عنده) واكتبه هنا — ١٠ أرقام.", "Ask for their code (in their «Me» tab) and type it here — 10 digits.")));
+    var inp = mk("input", "width:100%;box-sizing:border-box;border:1.5px solid #dfe5ec;border-radius:14px;padding:13px;font:800 24px ui-monospace,Menlo,monospace;letter-spacing:2px;text-align:center;direction:ltr;outline:none");
+    inp.setAttribute("inputmode", "numeric"); inp.setAttribute("autocomplete", "off"); inp.placeholder = "000 000 0000";
+    s.box.appendChild(inp);
+    var hint = mk("div", "font:600 12px system-ui;min-height:18px;margin:6px 2px;text-align:center"); s.box.appendChild(hint);
+    var go = mkBtn(L("بحث", "Search"), "primary"); s.box.appendChild(go);
+    var res = mk("div", "margin-top:12px"); s.box.appendChild(res);
+    function sync() {
+      var d = codeDigits(inp.value).slice(0, 10), f = fmtCode(d);
+      if (inp.value !== f) inp.value = f;
+      var ok = d.length === 10 && codeValid(d);
+      hint.style.color = d.length === 10 && !ok ? "#b42318" : "#8796a5";
+      hint.textContent = d.length < 10 ? (d.length ? L("بقي " + (10 - d.length) + " أرقام", (10 - d.length) + " digits left") : "")
+        : ok ? "✓" : L("الرمز غير صحيح — تأكّد من الأرقام", "Invalid code — check the digits");
+      go.disabled = !ok; go.style.opacity = ok ? "1" : ".5";
+      return ok ? d : null;
+    }
+    inp.oninput = function () { res.innerHTML = ""; sync(); };
+    inp.onkeydown = function (e) { if (e.key === "Enter" && !go.disabled) go.onclick(); };
+    function card(b) {
+      res.innerHTML = "";
+      var c = mk("div", "border:1px solid #e6ebf0;border-radius:16px;padding:14px;text-align:center");
+      if (!b.found) { c.appendChild(note(L("لا يوجد حسابٌ بهذا الرمز. ربّما غيّر صاحبه رمزه أو أخفاه — اطلب منه رمزه الحاليّ.", "No account with this code. It may have been changed or hidden."), "#8a5a00")); res.appendChild(c); return; }
+      var a = avatar(b.name, 64); a.style.margin = "0 auto 8px"; c.appendChild(a);
+      c.appendChild(mk("div", "font:800 18px system-ui", b.name || L("مستخدم سوا", "Sawa user")));
+      c.appendChild(mk("div", "font:600 12px system-ui;color:#8796a5;direction:ltr;margin:2px 0 10px", fmtCode(b.code)));
+      if (b.self) { c.appendChild(note(L("هذا رمزك أنت 🙂", "That's your own code 🙂"))); res.appendChild(c); return; }
+      if (b.contact) {
+        c.appendChild(note(L("جهة اتّصالك ✓", "Already a contact ✓"), "#2e7d5b"));
+        var m = mkBtn(L("مراسلة", "Message"), "primary");
+        m.onclick = function () { openDm(b.uid).then(function (cid) { if (cid) whenApp(function () { try { app.openChatById(cid); } catch (e) {} }); s.close(); }); };
+        c.appendChild(m); res.appendChild(c); return;
+      }
+      if (b.pending === "in") {
+        c.appendChild(note(L("أرسل لك طلب تواصل.", "They sent you a request."), "#2F80C8"));
+        var acc = mkBtn(L("قبول الطلب", "Accept"), "primary");
+        acc.onclick = function () { acc.disabled = true; respond(b.uid, "accept").then(function () { s.close(); }); };
+        c.appendChild(acc); res.appendChild(c); return;
+      }
+      if (b.pending === "out") {
+        c.appendChild(note(L("أرسلتَ له طلباً — بانتظار موافقته.", "Request sent — waiting for them."), "#8796a5"));
+        var cn = mkBtn(L("إلغاء الطلب", "Cancel request"));
+        cn.onclick = function () { cn.disabled = true; call("code.cancel", { to: b.uid }).then(function () { toast(L("أُلغي الطلب", "Cancelled")); s.close(); }, function (e) { toast(codeErr(e)); cn.disabled = false; }); };
+        c.appendChild(cn); res.appendChild(c); return;
+      }
+      var myN = (state.me && state.me.name) || "";
+      var ta = mk("textarea", "width:100%;box-sizing:border-box;border:1px solid #dfe5ec;border-radius:12px;padding:10px;font:500 14px/1.6 system-ui;min-height:64px;resize:vertical;margin-top:4px");
+      ta.maxLength = 300; ta.value = myN ? L("السلام عليكم، أنا " + myN + " 👋", "Hi, it's " + myN + " 👋") : L("السلام عليكم 👋", "Hi 👋");
+      c.appendChild(mk("div", "font:700 12px system-ui;color:#5b6b7c;text-align:" + (isAr() ? "right" : "left") + ";margin-top:4px", L("رسالة تعريف (يقرؤها قبل أن يوافق)", "Intro message (they see it before accepting)")));
+      c.appendChild(ta);
+      var snd = mkBtn(L("إرسال طلب تواصل", "Send request"), "primary"); snd.style.marginTop = "10px"; c.appendChild(snd);
+      c.appendChild(note(L("لن تستطيعا المراسلة أو الاتّصال حتّى يقبل طلبك.", "You can't message or call until they accept.")));
+      snd.onclick = function () {
+        snd.disabled = true; snd.textContent = "…";
+        call("code.request", { code: b.code, text: ta.value }).then(function (r) {
+          if (r.accepted) { toast(L("أصبحتما جهتي اتّصال ✓", "You're now connected ✓")); refresh(); loadRequests();
+            if (r.cid) whenApp(function () { setTimeout(function () { try { app.openChatById(r.cid); } catch (e) {} }, 900); }); s.close(); return; }
+          if (r.already) { card({ found: true, contact: true, uid: r.uid, name: b.name, code: b.code }); return; }
+          toast(L("أُرسل الطلب ✓ — ستُبلَّغ حين يوافق", "Request sent ✓")); loadRequests(); s.close();
+        }).catch(function (e) { snd.disabled = false; snd.textContent = L("إرسال طلب تواصل", "Send request"); toast(codeErr(e)); });
+      };
+      res.appendChild(c);
+    }
+    go.onclick = function () {
+      var d = sync(); if (!d) return;
+      go.disabled = true; go.textContent = "…";
+      call("code.find", { code: d }).then(card, function (e) { res.innerHTML = ""; res.appendChild(note(codeErr(e), "#b42318")); })
+        .then(function () { go.disabled = false; go.textContent = L("بحث", "Search"); });
+    };
+    if (prefill) { inp.value = prefill; if (sync()) go.onclick(); } else sync();
+    setTimeout(function () { try { if (!prefill) inp.focus(); } catch (e) {} }, 60);
+    return true;
+  }
+
+  // ---------- «رمزي في سوا» ----------
+  function codeSheet() {
+    if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
+    var s = sheet(L("رمزك في سوا", "Your Sawa code"));
+    var big = codeBig(myCode()); s.box.appendChild(big);
+    s.box.appendChild(note(L("أعطه لمن تريد أن يتواصل معك. يرى اسمك فقط — لا بريدك ولا رقمك — ويرسل لك طلباً، ولا يراسلك قبل أن تقبل.",
+      "Give it to people you want to hear from. They see your name only and send a request — no messages until you accept.")));
+    var row = mk("div", "display:flex;gap:8px;margin:8px 0");
+    var cp = mkBtn(L("نسخ", "Copy")), sh = mkBtn(L("مشاركة", "Share"), "primary");
+    row.appendChild(cp); row.appendChild(sh); s.box.appendChild(row);
+    var qrBtn = mkBtn(L("عرض رمز QR", "Show QR"), "ghost"); s.box.appendChild(qrBtn);
+    var qr = mk("div", "display:none;justify-content:center;margin:8px 0"); var qrIn = mk("div", "background:#fff;padding:8px;border-radius:12px"); qr.appendChild(qrIn); s.box.appendChild(qr);
+    var sep = mk("div", "height:1px;background:#eef1f4;margin:12px 0"); s.box.appendChild(sep);
+    var tg = mk("label", "display:flex;align-items:center;gap:10px;font:700 14px system-ui;padding:6px 2px;cursor:pointer");
+    var cb = mk("input"); cb.type = "checkbox"; cb.style.cssText = "width:20px;height:20px";
+    tg.appendChild(cb); tg.appendChild(mk("span", "flex:1", L("يجدني الآخرون برمزي", "People can find me by my code"))); s.box.appendChild(tg);
+    var reset = mkBtn(L("تغيير رمزي", "Change my code")); reset.style.marginTop = "8px"; s.box.appendChild(reset);
+    s.box.appendChild(note(L("غيّره إن انتشر رمزك أكثر ممّا تريد — القديم يتوقّف فوراً، وجهات اتّصالك الحاليّة لا تتأثّر.", "Change it if it spread too far — the old one stops working; existing contacts stay.")));
+    function fill(b) {
+      big.textContent = fmtCode(b.code); cb.checked = b.findable !== false;
+      cp.onclick = function () { copyText(fmtCode(b.code)); };
+      sh.onclick = function () { shareText(codeShareText(b.code)); };
+      qrBtn.onclick = function () {
+        qr.style.display = "flex"; qrBtn.style.display = "none";
+        loadQrLib().then(function (Q) { qrIn.innerHTML = ""; new Q(qrIn, { text: codeUrl(b.code), width: 200, height: 200, colorDark: "#1A1A2E", colorLight: "#FFFFFF", correctLevel: Q.CorrectLevel.M }); })
+          .catch(function (e) { qrIn.textContent = (e && e.message) || String(e); });
+      };
+    }
+    cb.onchange = function () {
+      var v = cb.checked;
+      call("code.privacy", { findable: v }).then(function () {
+        state.me = Object.assign({}, state.me || {}, { findable: v }); lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
+        toast(v ? L("يمكن العثور عليك برمزك ✓", "Findable by code ✓") : L("لن يجدك أحدٌ برمزك", "Hidden from code search"));
+      }).catch(function (e) { cb.checked = !v; toast(codeErr(e)); });
+    };
+    reset.onclick = function () {
+      if (!global.confirm(L("تغيير رمزك؟ الرمز القديم يتوقّف فوراً.", "Change your code? The old one stops working."))) return;
+      reset.disabled = true;
+      call("code.reset", {}).then(function (b) {
+        state.me = Object.assign({}, state.me || {}, { code: b.code, findable: b.findable }); lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
+        publish(); fill(b); qr.style.display = "none"; qrBtn.style.display = ""; toast(L("رمزك الجديد جاهز ✓", "New code ready ✓"));
+      }).catch(function (e) { toast(codeErr(e)); }).then(function () { reset.disabled = false; });
+    };
+    loadCode().then(fill).catch(function (e) { big.textContent = "—"; toast(codeErr(e)); });
+    return true;
+  }
+
+  // ---------- الدخول بالبريد الإلكتروني ----------
+  function emailErr(e) {
+    var c = (e && e.code) || "";
+    var map = {
+      "auth/email-already-in-use": L("هذا البريد مسجّلٌ سلفاً — اختر «لديّ حساب»", "This email is already registered — choose «I have an account»"),
+      "auth/credential-already-in-use": L("هذا البريد مسجّلٌ سلفاً — اختر «لديّ حساب»", "This email is already registered"),
+      "auth/invalid-email": L("البريد غير صحيح", "Invalid email"),
+      "auth/missing-email": L("اكتب بريدك", "Enter your email"),
+      "auth/weak-password": L("كلمة المرور قصيرة — ٦ أحرف على الأقلّ", "Password too short — at least 6 characters"),
+      "auth/missing-password": L("اكتب كلمة المرور", "Enter a password"),
+      "auth/wrong-password": L("البريد أو كلمة المرور غير صحيحة", "Wrong email or password"),
+      "auth/invalid-credential": L("البريد أو كلمة المرور غير صحيحة", "Wrong email or password"),
+      "auth/invalid-login-credentials": L("البريد أو كلمة المرور غير صحيحة", "Wrong email or password"),
+      "auth/user-not-found": L("البريد أو كلمة المرور غير صحيحة", "Wrong email or password"),
+      "auth/too-many-requests": L("محاولاتٌ كثيرة — انتظر قليلاً", "Too many attempts — wait a little"),
+      "auth/network-request-failed": L("تحقّق من الاتّصال بالإنترنت", "Check your connection"),
+      "auth/operation-not-allowed": L("الدخول بالبريد غير مفعّلٍ بعد في الخادم", "Email sign-in isn't enabled on the server yet"),
+      "sawa/already-linked": L("حسابك مربوطٌ سلفاً", "Already linked"),
+      "sawa/no-server": L("جارٍ الاتّصال بالخادم… حاول بعد لحظة", "Connecting… try again in a moment")
+    };
+    return map[c] || ((e && e.message) || String(e));
+  }
+  // يبني نموذج البريد داخل حاوية؛ onDone يُستدعى بعد النجاح
+  function emailForm(host, onDone) {
+    var mode = "create";
+    var tabs = mk("div", "display:flex;background:#eef2f6;border-radius:12px;padding:3px;margin:6px 0 10px");
+    function tab(m, t) { var b = mk("button", "flex:1;border:0;border-radius:10px;padding:9px;font:800 13px system-ui;cursor:pointer", t); b.onclick = function () { mode = m; paint(); }; tabs.appendChild(b); return b; }
+    var tCreate = tab("create", L("حساب جديد", "New account")), tSign = tab("signin", L("لديّ حساب", "I have an account"));
+    host.appendChild(tabs);
+    function field(ph, type) { var i = mk("input", "width:100%;box-sizing:border-box;border:1.5px solid #dfe5ec;border-radius:12px;padding:12px;font:600 15px system-ui;direction:ltr;text-align:left;margin:4px 0;outline:none"); i.placeholder = ph; i.type = type; return i; }
+    var em = field("name@example.com", "email"); em.autocomplete = "email"; host.appendChild(em);
+    var pwWrap = mk("div", "position:relative");
+    var pw = field(L("كلمة المرور", "Password"), "password"); pwWrap.appendChild(pw);
+    var eye = mk("button", "position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;font-size:18px;cursor:pointer", "👁"); eye.type = "button";
+    eye.onclick = function () { pw.type = pw.type === "password" ? "text" : "password"; };
+    pwWrap.appendChild(eye); host.appendChild(pwWrap);
+    var msg = mk("div", "font:600 12.5px/1.6 system-ui;min-height:18px;margin:4px 2px;color:#b42318"); host.appendChild(msg);
+    var go = mkBtn("", "primary"); host.appendChild(go);
+    var forgot = mkBtn(L("نسيتُ كلمة المرور", "Forgot password"), "ghost"); forgot.style.marginTop = "4px"; host.appendChild(forgot);
+    function paint() {
+      tCreate.style.background = mode === "create" ? "#fff" : "transparent"; tSign.style.background = mode === "signin" ? "#fff" : "transparent";
+      tCreate.style.color = mode === "create" ? "#1A1A2E" : "#6b7a89"; tSign.style.color = mode === "signin" ? "#1A1A2E" : "#6b7a89";
+      go.textContent = mode === "create" ? L("إنشاء الحساب", "Create account") : L("دخول", "Sign in");
+      pw.autocomplete = mode === "create" ? "new-password" : "current-password";
+      pw.placeholder = mode === "create" ? L("كلمة مرور (٦ أحرف على الأقلّ)", "Password (6+ characters)") : L("كلمة المرور", "Password");
+      forgot.style.display = mode === "signin" ? "" : "none"; msg.textContent = "";
+    }
+    go.onclick = function () {
+      var e = em.value.trim(), p = pw.value;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)) { msg.textContent = L("البريد غير صحيح", "Invalid email"); return; }
+      if (p.length < 6) { msg.textContent = L("كلمة المرور قصيرة — ٦ أحرف على الأقلّ", "Password too short — at least 6 characters"); return; }
+      if (!S() || !S().linkEmail) { msg.textContent = emailErr({ code: "sawa/no-server" }); return; }
+      go.disabled = true; go.textContent = "…"; msg.textContent = "";
+      S().linkEmail(e, p, mode).then(function () { onDone && onDone(); }).catch(function (x) {
+        msg.textContent = emailErr(x);
+        if (x && (x.code === "auth/email-already-in-use" || x.code === "auth/credential-already-in-use")) { mode = "signin"; paint(); msg.textContent = emailErr(x); }
+      }).then(function () { go.disabled = false; go.textContent = mode === "create" ? L("إنشاء الحساب", "Create account") : L("دخول", "Sign in"); });
+    };
+    forgot.onclick = function () {
+      var e = em.value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)) { msg.textContent = L("اكتب بريدك أوّلاً", "Enter your email first"); return; }
+      S().resetPassword(e).then(function () { msg.style.color = "#2e7d5b"; msg.textContent = L("أرسلنا إلى بريدك رابطاً لتعيين كلمة مرورٍ جديدة (تفقّد مجلّد الرسائل غير المرغوبة).", "We emailed you a reset link (check spam)."); },
+        function (x) { msg.style.color = "#b42318"; msg.textContent = emailErr(x); });
+    };
+    paint();
+    return { focus: function () { try { em.focus(); } catch (e) {} } };
+  }
+  function emailSheet() {
+    var a = S() && S().authInfo ? S().authInfo() : null;
+    if (a && !a.anon) { toast(L("حسابك مربوطٌ سلفاً", "Already linked") + (a.email ? " — " + a.email : "")); return false; }
+    var s = sheet(L("الدخول بالبريد الإلكتروني", "Continue with email"));
+    s.box.appendChild(note(L("حسابٌ بالبريد يحفظ محادثاتك وجهات اتّصالك، وتدخل به من أيّ جهاز.", "An email account keeps your chats and contacts on any device.")));
+    var f = emailForm(s.box, function () { s.close(); refresh(); });
+    setTimeout(f.focus, 80);
+    return true;
+  }
+
+  // ---------- شاشات البداية (المستخدم الجديد) ----------
+  //  ترحيب ← الدخول (Google · البريد · بدون حساب) ← الاسم ← رمزك ← الإشعارات ← تواصل مع أحد ← المحادثات
+  var onb = null, pendingCode = null;
+  var ONB_STEPS = ["login", "name", "code", "notify", "find"];
+  function onbActive() { return !!onb; }
+  function onbNeeded() {
+    if (lsGet("sawa_onboarded", 0)) return false;
+    if (lsGet("sawa_onb_step", null)) return true;   // بدأها ولم يكملها (أو عاد من صفحة Google)
+    if (lsGet("sawa_people_cache", null)) { lsSet("sawa_onboarded", Date.now()); return false; }   // جهازٌ مستعمَلٌ قبل هذه النسخة
+    try { var q = new URLSearchParams(global.location.search); if (q.get("room") || q.get("call") || q.get("join")) return false; } catch (e) {}
+    return true;
+  }
+  function authNow() { try { return S() && S().authInfo ? S().authInfo() : null; } catch (e) { return null; } }
+  function onbStart() {
+    if (onb || !document.body) return;
+    var el = mk("div", "position:fixed;inset:0;z-index:2147483000;background:linear-gradient(170deg,#2F80C8 0%,#1d5f9e 55%,#174a7c 100%);color:#fff;display:flex;flex-direction:column;font-family:system-ui;overflow-y:auto");
+    el.id = "sawa-onb"; el.dir = isAr() ? "rtl" : "ltr";
+    document.body.appendChild(el);
+    onb = { el: el, step: null, timer: null };
+    onbGo(lsGet("sawa_onb_step", "welcome"));
+  }
+  function onbFrame(step) {
+    var el = onb.el; el.innerHTML = "";
+    if (onb.timer) { clearInterval(onb.timer); onb.timer = null; }
+    var i = ONB_STEPS.indexOf(step);
+    var top = mk("div", "display:flex;justify-content:center;gap:6px;padding:calc(env(safe-area-inset-top,0px) + 18px) 0 4px;min-height:10px");
+    if (i >= 0) ONB_STEPS.forEach(function (_, k) { top.appendChild(mk("div", "height:6px;border-radius:3px;background:" + (k <= i ? "#fff" : "rgba(255,255,255,.3)") + ";width:" + (k === i ? "22px" : "6px"))); });
+    el.appendChild(top);
+    var body = mk("div", "flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:12px 24px;max-width:460px;width:100%;box-sizing:border-box;margin:0 auto");
+    var foot = mk("div", "padding:12px 20px calc(env(safe-area-inset-bottom,0px) + 22px);max-width:460px;width:100%;box-sizing:border-box;margin:0 auto;display:flex;flex-direction:column;gap:10px");
+    el.appendChild(body); el.appendChild(foot);
+    return { body: body, foot: foot };
+  }
+  function bigBtn(text, kind) {
+    var css = kind === "white" ? "background:#fff;color:#1d5f9e;border:0" : kind === "link" ? "background:transparent;color:rgba(255,255,255,.85);border:0;font-weight:700" : "background:rgba(255,255,255,.14);color:#fff;border:1.5px solid rgba(255,255,255,.35)";
+    return mk("button", css + ";border-radius:14px;padding:14px;font:800 15px system-ui;width:100%;cursor:pointer", text);
+  }
+  function hTitle(t) { return mk("div", "font:800 24px/1.4 system-ui;margin:10px 0 6px", t); }
+  function hSub(t) { return mk("div", "font:500 15px/1.8 system-ui;color:rgba(255,255,255,.85)", t); }
+  function onbGo(step) {
+    if (!onb) return;
+    onb.step = step; lsSet("sawa_onb_step", step);
+    var f = onbFrame(step), b = f.body, ft = f.foot;
+    if (step === "welcome") {
+      var logo = mk("img", "width:96px;height:96px;border-radius:24px;box-shadow:0 10px 30px rgba(0,0,0,.25)"); logo.src = "./icons/icon-192.png"; logo.alt = "سوا";
+      b.appendChild(logo);
+      b.appendChild(hTitle(L("أهلاً بك في سوا", "Welcome to Sawa")));
+      b.appendChild(hSub(L("محادثات ومكالمات مشفّرة، غرف اجتماعات، وصلة رحم — في تطبيقٍ واحد.", "Encrypted chats and calls, meeting rooms, and family ties — in one app.")));
+      var st = bigBtn(L("ابدأ", "Get started"), "white"); st.onclick = function () { onbGo("login"); }; ft.appendChild(st);
+      return;
+    }
+    if (step === "login") {
+      var a = authNow();
+      if (a && !a.anon) return onbGo("name");
+      b.appendChild(mk("div", "font-size:54px", "🔐"));
+      b.appendChild(hTitle(L("أنشئ حسابك", "Create your account")));
+      b.appendChild(hSub(L("حسابك يحفظ محادثاتك وجهات اتّصالك، وتدخل به من أيّ جهاز.", "Your account keeps your chats and contacts, on any device.")));
+      var g = bigBtn(L("المتابعة بحساب Google", "Continue with Google"), "white");
+      g.insertBefore(mk("span", "font:900 16px system-ui;color:#4285F4;margin-inline-end:8px", "G"), g.firstChild);
+      var em = bigBtn(L("✉️  المتابعة بالبريد الإلكتروني", "✉️  Continue with email"));
+      var gu = bigBtn(L("جرّب بدون حساب", "Try without an account"), "link");
+      ft.appendChild(g); ft.appendChild(em); ft.appendChild(gu);
+      g.onclick = function () {
+        if (!state.uid || !S() || !S().linkGoogle) { toast(L("جارٍ الاتّصال بالخادم… حاول بعد لحظة", "Connecting… try again in a moment")); return; }
+        try { Promise.resolve(S().linkGoogle()).catch(function () {}); } catch (e) {}
+      };
+      em.onclick = function () { onbGo("email"); };
+      gu.onclick = function () {
+        var s = sheet(L("المتابعة بدون حساب؟", "Continue without an account?"));
+        s.box.appendChild(note(L("حسابك سيكون محفوظاً في هذا الهاتف فقط: إن مسحتَ بيانات التطبيق أو غيّرت هاتفك تضيع محادثاتك وجهات اتّصالك. يمكنك ربطه بحسابٍ لاحقاً من «حسابي» ← «السحابة والمشاركة».",
+          "Your account will live on this phone only: clearing app data or changing phones loses your chats and contacts. You can link an account later from «Me» → «Cloud & sharing»."), "#8a5a00", "#fff7e0"));
+        var y = mkBtn(L("متابعة بدون حساب", "Continue without account")); var n = mkBtn(L("رجوع", "Back"), "primary");
+        y.style.marginTop = "8px"; n.style.marginTop = "8px";
+        y.onclick = function () { s.close(); onbGo("name"); }; n.onclick = s.close;
+        s.box.appendChild(n); s.box.appendChild(y);
+      };
+      // ربط Google (نافذةً منبثقة أو إعادة توجيه): نلاحظ تغيّر الهويّة ونتقدّم
+      onb.timer = setInterval(function () { var x = authNow(); if (x && !x.anon && onb && onb.step === "login") onbGo("name"); }, 700);
+      return;
+    }
+    if (step === "email") {
+      var card = mk("div", "background:#fff;color:#1A1A2E;border-radius:20px;padding:16px;width:100%;box-sizing:border-box;text-align:start");
+      card.dir = isAr() ? "rtl" : "ltr";
+      card.appendChild(mk("div", "font:800 18px system-ui;text-align:center;margin-bottom:4px", L("البريد الإلكتروني", "Email")));
+      b.appendChild(card);
+      var form = emailForm(card, function () { onbGo("name"); });
+      var back = bigBtn(L("رجوع", "Back"), "link"); back.onclick = function () { onbGo("login"); }; ft.appendChild(back);
+      setTimeout(form.focus, 80);
+      return;
+    }
+    if (step === "name") {
+      b.appendChild(mk("div", "font-size:54px", "👤"));
+      b.appendChild(hTitle(L("ما اسمك؟", "What's your name?")));
+      b.appendChild(hSub(L("يظهر لمن تتواصل معهم.", "Shown to the people you talk to.")));
+      var inp = mk("input", "width:100%;box-sizing:border-box;margin-top:18px;border:0;border-radius:14px;padding:14px;font:700 18px system-ui;text-align:center;outline:none");
+      inp.placeholder = L("مثال: خالد علي", "e.g. Khalid Ali"); inp.maxLength = 40; inp.autocomplete = "name";
+      var err = mk("div", "font:700 13px system-ui;color:#ffd7d7;min-height:20px;margin-top:8px");
+      b.appendChild(inp); b.appendChild(err);
+      var fillName = function () { if (inp.value) return; var a2 = authNow(); inp.value = (state.me && state.me.name) || (state.me && state.me.googleName) || (a2 && a2.name) || ""; };
+      fillName(); whenReady(function () { refresh().then(fillName); });
+      var nx = bigBtn(L("التالي", "Next"), "white"); ft.appendChild(nx);
+      nx.onclick = function () {
+        var nm = inp.value.replace(/\s+/g, " ").trim();
+        if (nm.length < 2) { err.textContent = L("اكتب اسماً من حرفين على الأقلّ", "At least 2 letters"); return; }
+        nx.disabled = true; nx.textContent = "…";
+        whenReady(function () {
+          var p = nm === ((state.me && state.me.name) || "") ? Promise.resolve() : saveProfile({ name: nm });
+          p.then(function () { lsSet("sawa_name_asked", Date.now()); onbGo("code"); })
+            .catch(function (e) { err.textContent = codeErr(e); nx.disabled = false; nx.textContent = L("التالي", "Next"); });
+        });
+      };
+      inp.onkeydown = function (e) { if (e.key === "Enter") nx.onclick(); };
+      setTimeout(function () { try { inp.focus(); } catch (e) {} }, 80);
+      return;
+    }
+    if (step === "code") {
+      b.appendChild(mk("div", "font-size:54px", "🔢"));
+      b.appendChild(hTitle(L("هذا رمزك في سوا", "This is your Sawa code")));
+      var big = mk("div", "font:800 32px/1.3 ui-monospace,Menlo,monospace;letter-spacing:2px;direction:ltr;background:#fff;color:#1d5f9e;border-radius:18px;padding:16px 10px;margin:12px 0;width:100%;box-sizing:border-box", "… … …");
+      b.appendChild(big);
+      b.appendChild(hSub(L("أعطه لمن تريد أن يتواصل معك. يرى اسمك فقط، ويرسل لك طلباً لا يُقبَل إلا بموافقتك.", "Give it to people you want to hear from. They see your name only and send a request you approve.")));
+      var row = mk("div", "display:flex;gap:10px;width:100%;margin-top:14px");
+      var cp = bigBtn(L("نسخ", "Copy")), sh = bigBtn(L("مشاركة", "Share"));
+      row.appendChild(cp); row.appendChild(sh); b.appendChild(row);
+      var nx2 = bigBtn(L("التالي", "Next"), "white"); ft.appendChild(nx2);
+      nx2.onclick = function () { onbGo("notify"); };
+      whenReady(function () {
+        loadCode().then(function (r) {
+          big.textContent = fmtCode(r.code);
+          cp.onclick = function () { copyText(fmtCode(r.code)); };
+          sh.onclick = function () { shareText(codeShareText(r.code)); };
+        }).catch(function (e) { big.textContent = "—"; toast(codeErr(e)); });
+      });
+      return;
+    }
+    if (step === "notify") {
+      if (pushState() !== "default") return onbGo("find");
+      b.appendChild(mk("div", "font-size:54px", "🔔"));
+      b.appendChild(hTitle(L("لا تفوّتك رسالةٌ أو مكالمة", "Don't miss a message or call")));
+      b.appendChild(hSub(L("نُعلمك حين تصلك رسالة أو مكالمة أو طلب تواصل — حتّى والتطبيق مغلق.", "We'll tell you about messages, calls and requests — even when the app is closed.")));
+      var on = bigBtn(L("تفعيل الإشعارات", "Turn on notifications"), "white");
+      var later = bigBtn(L("ليس الآن", "Not now"), "link");
+      ft.appendChild(on); ft.appendChild(later);
+      on.onclick = function () { on.disabled = true; enablePush().then(function () { onbGo("find"); }); };
+      later.onclick = function () { lsSet("sawa_push_asked", Date.now()); onbGo("find"); };
+      return;
+    }
+    if (step === "find") {
+      b.appendChild(mk("div", "font-size:54px", "🤝"));
+      b.appendChild(hTitle(L("تواصل مع من تعرف", "Connect with people you know")));
+      b.appendChild(hSub(L("أدخل رمز صديقٍ أو زميل، أو أرسل له رمزك ليضيفك.", "Enter a friend's code, or send them yours.")));
+      var fc = bigBtn(L("🔢  أدخل رمز شخص", "🔢  Enter someone's code"));
+      var inv = bigBtn(L("📤  أرسل رمزي لصديق", "📤  Send my code to a friend"));
+      var done = bigBtn(L("ابدأ استخدام سوا", "Start using Sawa"), "white");
+      ft.appendChild(fc); ft.appendChild(inv); ft.appendChild(done);
+      fc.onclick = function () { findSheet(); };
+      inv.onclick = function () { loadCode().then(function (r) { shareText(codeShareText(r.code)); }, function (e) { toast(codeErr(e)); }); };
+      done.onclick = onbDone;
+      return;
+    }
+    onbGo("welcome");
+  }
+  function onbDone() {
+    if (!onb) return;
+    if (onb.timer) clearInterval(onb.timer);
+    lsSet("sawa_onboarded", Date.now()); lsSet("sawa_name_asked", Date.now());
+    try { localStorage.removeItem("sawa_onb_step"); } catch (e) {}
+    try { onb.el.remove(); } catch (e) {}
+    onb = null;
+    whenApp(function () { try { if (app.goTab) app.goTab("chats"); } catch (e) {} });
+    if (pendingCode) { var c = pendingCode; pendingCode = null; whenReady(function () { findSheet(c); }); }
+  }
+  // ?code=… (رابط «رمزي») و ?requests=1 (إشعار طلب تواصل)
+  function handleCodeParams() {
+    var q; try { q = new URLSearchParams(global.location.search); } catch (e) { return; }
+    var code = q.get("code"), rq = q.get("requests");
+    if (!code && !rq) return;
+    try { var u = new URL(global.location.href); u.searchParams.delete("code"); u.searchParams.delete("requests"); global.history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + u.hash); } catch (e) {}
+    if (code) {
+      var d = codeDigits(code);
+      if (onb || onbNeeded()) pendingCode = d;
+      else whenReady(function () { setTimeout(function () { findSheet(d); }, 700); });
+    }
+    if (rq) whenReady(function () { setTimeout(requestsSheet, 700); });
   }
 
   // ---------- الإقلاع ----------
@@ -1286,10 +1836,13 @@
     stopChats(); prefs = null; prefsLoaded = false; pend = {}; virtualChats = {};
     restorePending(); startChats(uid); loadPrefs(); drainOutbox();
     setTimeout(refreshPush, 3000);
+    setTimeout(loadRequests, 2500);
     var cbs = readyCbs; readyCbs = [];
     cbs.forEach(function (f) { try { f(uid); } catch (e) {} });
   }
   function boot() {
+    try { if (onbNeeded()) onbStart(); } catch (e) { log("onboarding:", e && e.message); }
+    handleCodeParams();
     handleContactParam();
     handleGroupParam();
     handleChatParam();
@@ -1333,6 +1886,10 @@
     setDisappear: setDisappear, openDm: openDm, openSaved: openSaved, dmWith: function (u) { return state.uid ? dmWith(u) : null; },
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
     _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,
+    // C10
+    codeSheet: codeSheet, findSheet: findSheet, requestsSheet: requestsSheet, emailSheet: emailSheet, loadRequests: loadRequests,
+    requestCount: function () { return reqs.incoming.length; }, fmtCode: fmtCode, codeValid: codeValid,
+    onboarding: function () { return onb ? onb.step : null; }, startOnboarding: function () { try { localStorage.removeItem("sawa_onboarded"); } catch (e) {} onbStart(); },
     _state: state, _onUid: onUid, _tokenFrom: tokenFrom
   };
   if (global.document && document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

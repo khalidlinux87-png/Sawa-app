@@ -4,7 +4,7 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v199';
+const VERSION = 'sawa-v200';
 const ASSETS = [
   './',
   './index.html',
@@ -98,7 +98,7 @@ self.addEventListener('push', (e) => {
     // التطبيق أمامك: هو يرنّ بنفسه (SawaRTC) أو يعرض تنبيهاً — بلا إشعارٍ مكرّر
     if (vis) { vis.postMessage({ type: 'sawa-push', data: d }); return; }
     return self.registration.showNotification(d.title || 'سوا', {
-      body: d.body || '', tag: d.cid || (d.call ? 'call-' + d.call : d.sid ? 'sched-' + d.sid : 'sawa'), renotify: true, dir: 'auto', lang: 'ar',
+      body: d.body || '', tag: d.cid || (d.call ? 'call-' + d.call : d.sid ? 'sched-' + d.sid : d.t === 'req' ? 'req-' + (d.from || '') : 'sawa'), renotify: true, dir: 'auto', lang: 'ar',
       icon: './icons/icon-192.png', badge: './icons/icon-192.png', data: d,
       requireInteraction: d.t === 'call', vibrate: d.t === 'call' ? [300, 150, 300, 150, 300] : [120],
     });
@@ -107,7 +107,7 @@ self.addEventListener('push', (e) => {
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const d = e.notification.data || {};
-  const url = d.room ? './?room=' + encodeURIComponent(d.room) : './?' + (d.cid ? 'chat=' + encodeURIComponent(d.cid) : '') + (d.call ? '&call=' + encodeURIComponent(d.call) : '');
+  const url = d.t === 'req' ? './?requests=1' : d.room ? './?room=' + encodeURIComponent(d.room) : './?' + (d.cid ? 'chat=' + encodeURIComponent(d.cid) : '') + (d.call ? '&call=' + encodeURIComponent(d.call) : '');
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
     for (const c of cs) { if ('focus' in c) { c.postMessage({ type: 'sawa-open', data: d }); return c.focus(); } }
     return self.clients.openWindow(url);
