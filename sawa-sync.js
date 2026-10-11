@@ -125,12 +125,22 @@
       return u.getIdToken();
     } catch (e) { return Promise.reject(e); }
   }
+  // ⛔ مهلة ٢٥ث: طلبٌ بدأ قبل أن يُجمَّد التطبيق في الخلفية قد يعلق إلى الأبد — فيعلق خلفه كلّ الطابور (الرسائل على «⏱»)
   function sendWith(tok, op, payload) {
+    var ctl = null; try { ctl = new global.AbortController(); } catch (e) {}
+    var timer = setTimeout(function () { try { if (ctl) ctl.abort(); } catch (e) {} }, 25000);
+    var done = function () { clearTimeout(timer); };
     return fetch(WORKER, {
       method: "POST",
       headers: { "Authorization": "Bearer " + tok, "Content-Type": "application/json" },
-      body: JSON.stringify({ op: op, payload: payload })
-    }).then(function (r) { return r.json(); });
+      body: JSON.stringify({ op: op, payload: payload }),
+      signal: ctl ? ctl.signal : undefined
+    }).then(function (r) { return r.json(); })
+      .then(function (b) { done(); return b; }, function (e) {
+        done();
+        if (e && e.name === "AbortError") throw new TypeError("network timeout (" + op + ")");
+        throw e;
+      });
   }
   function sendOnce(op, payload) { return getToken().then(function (tok) { return sendWith(tok, op, payload); }); }
   function call(op, payload) { // كـsendOnce لكن يرمي عند الرفض

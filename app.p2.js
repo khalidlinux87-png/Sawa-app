@@ -708,6 +708,8 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         { key: "export", label: t("me_tsdyr_alshjra"), icon: Download, onPress: onExportTree, color: "#0EA5E9" },
         { key: "import", label: t("me_astyrad_alshjra"), icon: Upload, onPress: onImportTree, color: "#8B5CF6" },
         // الجسر (B5): لوحة السحابة والمشاركة (رفع، Google، روابط، استعادة) — sawa-sync.js
+        // فحص الاتّصال (diag.html): يعمل داخل التطبيق المثبّت أيضاً — زرّ «رجوع إلى سوا» في أسفله
+        { key: "diag", label: "فحص الاتّصال", icon: Wifi, onPress: () => { location.href = "./diag.html"; }, color: "#64748B" },
         { key: "cloud", label: t("me_rfa_alshjra"), icon: Cloud, onPress: () => { if (window.SawaSync) (window.SawaSync.openPanel ? window.SawaSync.openPanel() : window.SawaSync.uploadCurrent()); }, color: "#187854" },
         // في مرحلة التجربة: الوصول للملاحظات من مكان ثابت يعرفه المجرِّب
     ];

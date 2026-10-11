@@ -24,8 +24,11 @@
   <div id="out"></div>
   <button id="push" style="background:#4f46e5">🔔 تفعيل الإشعارات على هذا الجهاز الآن</button>
   <div id="pushOut" class="d" style="margin:6px 2px 4px"></div>
+  <button id="msg" style="background:#0e7490">📨 اختبار سرعة الرسائل (يرسل رسالة فحص إلى «رسائلي المحفوظة»)</button>
+  <div id="msgOut" class="d" style="margin:6px 2px 4px"></div>
   <button id="copy">نسخ النتائج</button>
   <button id="again" class="sec">إعادة الفحص</button>
+  <button id="back" class="sec">↩ رجوع إلى سوا</button>
 </div>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -142,6 +145,38 @@
     (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(function () { alert("نُسخت النتائج"); }, function () { prompt("انسخ النتائج:", txt); });
   };
   document.getElementById("again").onclick = run;
+  document.getElementById("back").onclick = function () { location.href = "./"; };
+  // المسار الكامل لرسالة: الخادم يحفظها ⇐ تصل عبر مستمع Firestore (كما تصل لمن تراسله)
+  document.getElementById("msg").onclick = function () {
+    var mo = document.getElementById("msgOut"), log = [];
+    function say(t) { log.push(t); mo.textContent = log.join("\n"); lines.push("📨 " + t); }
+    mo.textContent = "";
+    var u = firebase.auth().currentUser; if (!u) { say("❌ لا حساب"); return; }
+    var unsub = null, t0 = 0, id = "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    u.getIdToken().then(function (tok) {
+      var t1 = performance.now();
+      return worker(tok, "chat.open", { saved: true }).then(function (a) {
+        if (!a.j || !a.j.ok) throw new Error("chat.open: " + (a.err || (a.j && a.j.error)));
+        say("فتح المحفوظة: " + a.ms);
+        var cid = a.j.cid;
+        t0 = performance.now();
+        return worker(tok, "chat.send", { cid: cid, msg: { id: id, type: "text", text: "🔧 رسالة فحص — يمكنك حذفها" } }).then(function (b) {
+          if (!b.j || !b.j.ok) throw new Error("chat.send: " + (b.err || (b.j && b.j.error)));
+          say((parseInt(b.ms) > 4000 ? "⚠️ " : "✅ ") + "الإرسال (الخادم حفظها): " + b.ms);
+          var day = b.j.day;
+          return timeout(new Promise(function (res, rej) {
+            unsub = firebase.firestore().collection("chats").doc(cid).collection("days").doc(day).onSnapshot(function (s) {
+              var d = s.data(); if (d && d.msgs && d.msgs[id]) res();
+            }, rej);
+          }), 30000, "وصول الرسالة").then(function () {
+            var ms2 = Math.round(performance.now() - t0);
+            say((ms2 > 6000 ? "⚠️ " : "✅ ") + "الوصول عبر Firestore (من لحظة الإرسال): " + ms2 + "ms");
+          });
+        });
+      });
+    }).catch(function (e) { say("❌ " + (e && (e.code || "") + " " + (e.message || e))); })
+      .then(function () { try { if (unsub) unsub(); } catch (e) {} });
+  };
   // تفعيل الإشعارات خطوةً خطوة — يعرض أين يتوقّف بالضبط
   var VAPID = "BIXTjlI7zsibBBqZXkdIGu7tEnqVKf9Rf63v20ZdfNiNs6jj5olbf-a1SJ1SpnNm3OcC807QpPEUR7GrwMAuGdw";
   document.getElementById("push").onclick = function () {

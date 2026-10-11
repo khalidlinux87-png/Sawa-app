@@ -10,7 +10,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c8c";
+  var VERSION = "c8d";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -214,10 +214,19 @@
     connRef = null; myStatusRef = null;
   }
   try {
+    var hiddenAt = 0, lastRefresh = 0;
     document.addEventListener("visibilitychange", function () {
-      if (!myStatusRef) return;
-      setMine(document.visibilityState === "hidden" ? "offline" : "online");
-      if (document.visibilityState === "visible" && state.uid) { refresh(); if (openCid) markRead(openCid); drainOutbox(); }
+      if (document.visibilityState === "hidden") { hiddenAt = Date.now(); if (myStatusRef) setMine("offline"); return; }
+      if (myStatusRef) setMine("online");
+      if (!state.uid) return;
+      // عودةٌ بعد غيابٍ في الخلفية: اتّصال Firestore قد يكون «ميّتاً» دون أن يعلم — نعيد فتحه فوراً بدل انتظار مهلته الطويلة
+      if (hiddenAt && Date.now() - hiddenAt > 15000) {
+        try { var fs = firebase.firestore(); fs.disableNetwork().then(function () { return fs.enableNetwork(); }).catch(function () {}); } catch (e) {}
+      }
+      hiddenAt = 0;
+      if (Date.now() - lastRefresh > 60000) { lastRefresh = Date.now(); refresh(); }   // قائمة جهات الاتّصال: مرّة في الدقيقة على الأكثر
+      if (openCid) markRead(openCid);
+      unstickOutbox(); drainOutbox();
     });
     global.addEventListener("pagehide", function () { setMine("offline"); });
   } catch (e) {}
@@ -494,19 +503,23 @@
     return msg.id;
   }
   var draining = false, retryT = null;
+  // حارس: إن علق طلبٌ (رغم المهلة) لا يبقى الطابور كلّه معلّقاً
+  var drainAt = 0;
+  function unstickOutbox() { if (draining && Date.now() - drainAt > 35000) { log("outbox: unstick"); draining = false; } }
+  setInterval(function () { unstickOutbox(); if (!draining && lsGet(OUTBOX, []).length) drainOutbox(); }, 15000);
   function drainOutbox() {
     if (draining || !state.uid) return;
     var ob = lsGet(OUTBOX, []); if (!ob.length) return;
-    draining = true;
+    draining = true; drainAt = Date.now();
     var job = ob[0];
     call("chat.send", { cid: job.cid, msg: job.msg }).then(function (b) {
       setPend(job.cid, job.msg.id, b && b.blocked ? "sent" : "sent");
       shiftOutbox(job.msg.id);
     }).catch(function (e) {
       var m = (e && e.message) || String(e);
-      if (e instanceof TypeError || /fetch|network|rate/i.test(m)) {        // الشبكة: نعيد لاحقاً
+      if (e instanceof TypeError || /fetch|network|rate|timeout/i.test(m)) {        // الشبكة: نعيد لاحقاً (أسرع في المحاولة الأولى)
         draining = false;
-        if (!retryT) retryT = setTimeout(function () { retryT = null; drainOutbox(); }, 10000);
+        if (!retryT) retryT = setTimeout(function () { retryT = null; drainOutbox(); }, 4000);
         return "stop";
       }
       setPend(job.cid, job.msg.id, "failed"); shiftOutbox(job.msg.id);
