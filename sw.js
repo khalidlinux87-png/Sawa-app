@@ -1,7 +1,7 @@
 // عامل الخدمة — يحفظ ملفّات التطبيق للعمل دون اتّصال (الشبكة أوّلاً، ثمّ المخزون).
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v194';
+const VERSION = 'sawa-v195';
 const ASSETS = [
   './',
   './index.html',
@@ -21,6 +21,7 @@ const ASSETS = [
   './sawa-auth.js',
   './sawa-sync.js',
   './sawa-chat.js',
+  './sawa-rtc.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
@@ -73,7 +74,8 @@ self.addEventListener('push', (e) => {
   const d = (p && p.data) || p || {};
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
     const vis = cs.find((c) => c.visibilityState === 'visible' && c.focused);
-    if (vis && d.t !== 'call') { vis.postMessage({ type: 'sawa-push', data: d }); return; }
+    // التطبيق أمامك: هو يرنّ بنفسه (SawaRTC) أو يعرض تنبيهاً — بلا إشعارٍ مكرّر
+    if (vis) { vis.postMessage({ type: 'sawa-push', data: d }); return; }
     return self.registration.showNotification(d.title || 'سوا', {
       body: d.body || '', tag: d.cid || 'sawa', renotify: true, dir: 'auto', lang: 'ar',
       icon: './icons/icon-192.png', badge: './icons/icon-192.png', data: d,
