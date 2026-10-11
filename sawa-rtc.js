@@ -1850,7 +1850,7 @@
   function rMore() {
     var r = rm; if (!r) return;
     sheet(null, function (body, close) {
-      item(body, "➕", L("دعوة من جهات الاتّصال والعائلة", "Invite contacts & family"), function () { close(); rInvite(); });
+      item(body, "➕", L("دعوة من جهات الاتّصال", "Invite contacts"), function () { close(); rInvite(); });
       item(body, "📝", L("المحضر: قرارات · مهامّ · نقاط", "Minutes: decisions · tasks · points"), function () { close(); rOpenPanel("notes"); });
       item(body, r.low ? "🎥" : "📶", r.low ? L("إعادة الفيديو", "Video back on") : L("بيانات قليلة (صوتٌ فقط)", "Low data (audio only)"), function () { close(); rToggleLow(r); });
       if (r.camOn) item(body, "🔄", L("تبديل الكاميرا", "Flip camera"), function () { close(); rFlip(r); });

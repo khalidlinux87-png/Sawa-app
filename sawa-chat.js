@@ -10,7 +10,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c8b";
+  var VERSION = "c8c";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -36,12 +36,15 @@
 
   // ---------- جهات الاتّصال ----------
   // الشكل الذي يراه التطبيق: { id: uid, uid, name, anon, families:[{groupId,name}], via:[…], online, lastSeen, onSawa:true }
+  // التسمية: اسمٌ أختاره أنا لجهة الاتّصال (يظهر لي وحدي، ويتزامن بين أجهزتي) ← اسمه في سوا ← «ضيف · رمز» يميّز الضيوف
+  function guestTag(uid) { var t = String(uid || "").replace(/[^A-Za-z0-9]/g, "").slice(-4).toUpperCase(); return t || "؟"; }
+  function nickOf(uid) { try { return (prefs && prefs.nick && prefs.nick[uid]) || null; } catch (e) { return null; } }
   function displayName(p) {
-    return p.name || (p.anon ? L("ضيف (بلا حساب Google)", "Guest (no Google account)") : L("عضو", "Member"));
+    return nickOf(p.uid) || p.name || (p.anon ? L("ضيف · ", "Guest · ") + guestTag(p.uid) : L("عضو", "Member") + " · " + guestTag(p.uid));
   }
   function decorate(p) {
     var pr = state.presence[p.uid] || null;
-    return { id: p.uid, uid: p.uid, name: displayName(p), realName: p.name || null, anon: !!p.anon,
+    return { id: p.uid, uid: p.uid, name: displayName(p), realName: p.name || null, nick: nickOf(p.uid), anon: !!p.anon, tag: guestTag(p.uid),
              families: p.families || [], via: p.via || [], onSawa: true, phone: p.phone || "",
              online: !!(pr && pr.state === "online"), lastSeen: pr && pr.ts ? pr.ts : null };
   }
@@ -66,6 +69,7 @@
     state.loading = true;
     return call("people.list", {}).then(function (b) {
       state.me = b.me || null; state.people = b.people || []; state.loaded = true; state.error = null;
+      maybeAskName();
       lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
       watchPresence();
       publish();
@@ -89,7 +93,7 @@
       return profile();
     });
   }
-  function editProfile() {
+  function editProfile(hint) {
     if (!state.uid) return false;
     var p = profile();
     var ov = document.createElement("div");
@@ -101,13 +105,14 @@
     function inp(v, ph, ltr) { var i = document.createElement("input"); i.value = v || ""; i.placeholder = ph; i.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:12px;padding:11px 12px;font:600 15px system-ui;" + (ltr ? "direction:ltr;text-align:left" : ""); return i; }
     var h = document.createElement("div"); h.textContent = L("حسابي", "My account"); h.style.cssText = "font:800 16px system-ui;text-align:center;margin-bottom:4px";
     box.appendChild(h);
-    box.appendChild(lab(L("اسمك في سوا — يراه أهلك وجهات اتّصالك", "Your name in Sawa — shown to your family and contacts")));
+    if (typeof hint === "string" && hint) { var hh = document.createElement("div"); hh.textContent = hint; hh.style.cssText = "font:700 13px system-ui;color:#2e7d5b;text-align:center;margin:2px 0 4px"; box.appendChild(hh); }
+    box.appendChild(lab(L("اسمك في سوا — يراه من تتواصل معهم", "Your name in Sawa — shown to people you connect with")));
     var nIn = inp(p.name || p.googleName || "", L("مثال: خالد علي", "e.g. Khalid Ali")); box.appendChild(nIn);
     if (p.googleName && p.googleName !== p.name) { var g = document.createElement("div"); g.textContent = L("اسم حساب Google: ", "Google name: ") + p.googleName; g.style.cssText = "font:500 11px system-ui;color:#888;margin:4px 2px 0"; box.appendChild(g); }
     box.appendChild(lab(L("رقم هاتفك (اختياريّ)", "Your phone number (optional)")));
     var pIn = inp(p.phone || "", "+249 9X XXX XXXX", true); pIn.type = "tel"; box.appendChild(pIn);
     var note = document.createElement("div");
-    note.textContent = L("⚠️ «غير موثّق»: يظهر لعائلتك وجهات اتّصالك فقط، ولا يُستعمل للدخول أو البحث عنك حتّى نوثّقه برسالة SMS عند الإطلاق.", "⚠️ Unverified: visible to your family and contacts only; not used for sign-in or search until SMS verification at launch.");
+    note.textContent = L("⚠️ «غير موثّق»: يظهر لجهات اتّصالك فقط، ولا يُستعمل للدخول أو البحث عنك حتّى نوثّقه برسالة SMS عند الإطلاق.", "⚠️ Unverified: visible to your contacts only; not used for sign-in or search until SMS verification at launch.");
     note.style.cssText = "font:500 11px system-ui;color:#8a6d00;background:#fff7e0;border-radius:10px;padding:8px 10px;margin-top:8px;line-height:1.6";
     box.appendChild(note);
     var row = document.createElement("div"); row.style.cssText = "display:flex;gap:8px;margin-top:14px";
@@ -124,11 +129,53 @@
       if (!Object.keys(patch).length) { close(); return; }
       if (patch.name !== undefined && patch.name.length < 2) { toast(L("اكتب اسماً من حرفين على الأقلّ", "Enter at least 2 letters")); return; }
       ok.disabled = true; ok.textContent = "…";
-      saveProfile(patch).then(function () { toast(L("حُفظ ✓ — يظهر لأهلك خلال لحظات", "Saved ✓")); close(); refresh(); })
+      saveProfile(patch).then(function () { toast(L("حُفظ ✓ — يظهر لجهات اتّصالك خلال لحظات", "Saved ✓")); close(); refresh(); })
         .catch(function (e) { ok.disabled = false; ok.textContent = L("حفظ", "Save"); toast((e && e.message) || String(e)); });
     };
     setTimeout(function () { try { nIn.focus(); } catch (e) {} }, 50);
     return true;
+  }
+
+  function renameContact(uid) {
+    if (!state.uid || !uid) return false;
+    var p = state.people.filter(function (x) { return x.uid === uid; })[0] || { uid: uid };
+    var cur = nickOf(uid) || "";
+    var ov = document.createElement("div");
+    ov.style.cssText = "position:fixed;inset:0;z-index:2147483002;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;font-family:system-ui";
+    ov.dir = isAr() ? "rtl" : "ltr";
+    var box = document.createElement("div");
+    box.style.cssText = "background:#fff;color:#1A1A2E;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 16px);box-sizing:border-box";
+    var h = document.createElement("div"); h.textContent = L("تسمية جهة الاتّصال", "Name this contact"); h.style.cssText = "font:800 16px system-ui;text-align:center";
+    var sub = document.createElement("div");
+    sub.textContent = (p.name ? L("اسمه في سوا: ", "Their Sawa name: ") + p.name : (p.anon ? L("ضيف بلا اسم · الرمز ", "Unnamed guest · code ") + guestTag(uid) : "")) + " — " + L("التسمية تظهر لك وحدك", "only you see this name");
+    sub.style.cssText = "font:500 12px system-ui;color:#777;text-align:center;margin:6px 0 10px";
+    var i = document.createElement("input"); i.value = cur; i.placeholder = L("مثال: أحمد — زميل العمل", "e.g. Ahmed — work");
+    i.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:12px;padding:11px 12px;font:600 15px system-ui";
+    var row = document.createElement("div"); row.style.cssText = "display:flex;gap:8px;margin-top:12px";
+    var ok = document.createElement("button"); ok.textContent = L("حفظ", "Save"); ok.style.cssText = "flex:1;padding:12px;border:0;border-radius:12px;background:#2e7d5b;color:#fff;font:800 14px system-ui";
+    var clr = document.createElement("button"); clr.textContent = L("إزالة التسمية", "Clear"); clr.style.cssText = "flex:1;padding:12px;border:0;border-radius:12px;background:#eee;color:#333;font:700 14px system-ui";
+    row.appendChild(ok); if (cur) row.appendChild(clr);
+    box.appendChild(h); box.appendChild(sub); box.appendChild(i); box.appendChild(row); ov.appendChild(box); document.body.appendChild(ov);
+    var close = function () { ov.remove(); };
+    ov.onclick = function (e) { if (e.target === ov) close(); };
+    var apply = function (v) {
+      prefs = prefs || {}; var nk = Object.assign({}, prefs.nick || {});
+      if (v) nk[uid] = v.slice(0, 40); else delete nk[uid];
+      prefs.nick = nk; savePrefs({ nick: nk });
+      publish(); publishChats(); Object.keys(days).forEach(publishMessages);
+      toast(v ? L("حُفظت التسمية ✓", "Name saved ✓") : L("أُزيلت التسمية", "Name cleared")); close();
+    };
+    ok.onclick = function () { apply(i.value.replace(/\s+/g, " ").trim()); };
+    clr.onclick = function () { apply(""); };
+    setTimeout(function () { try { i.focus(); } catch (e) {} }, 50);
+    return true;
+  }
+  // الضيف بلا اسم: نطلب منه اسماً مرّةً واحدة — حتّى يميّزه الآخرون
+  function maybeAskName() {
+    var m = state.me;
+    if (!m || m.name || lsGet("sawa_name_asked", 0)) return;
+    lsSet("sawa_name_asked", Date.now());
+    setTimeout(function () { editProfile(L("اكتب اسمك ليعرفك من تتواصل معهم — بدل «ضيف»", "Add your name so people know who you are")); }, 1500);
   }
 
   // ---------- الحضور (Realtime Database) ----------
@@ -310,8 +357,8 @@
     if (u === state.uid) return L("أنت", "You");
     var p = state.people.filter(function (x) { return x.uid === u; })[0];
     if (p) return displayName(p);
-    var n = c && c.names && c.names[u];
-    return n || L("عضو", "Member");
+    var n = nickOf(u) || (c && c.names && c.names[u]);
+    return n || L("عضو", "Member") + " · " + guestTag(u);
   }
   function typeLabel(type) {
     return type === "voice" ? L("🎤 رسالة صوتيّة", "🎤 Voice message") : type === "image" ? L("📷 صورة", "📷 Photo")
@@ -672,7 +719,7 @@
         try { if (app && app[PREF_SETTERS[k]]) app[PREF_SETTERS[k]](v); } catch (e) {}
       });
       prefsSent = JSON.stringify(normPrefs(applied));
-      Object.keys(days).forEach(publishMessages); publishChats();
+      Object.keys(days).forEach(publishMessages); publishChats(); publish();   // التسميات تظهر في جهات الاتّصال
     }).catch(function (e) { log("prefs:", (e && e.message) || e); });
   }
   function normPrefs(o) {
@@ -1087,7 +1134,7 @@
     bannerEl.dir = isAr() ? "rtl" : "ltr";
     bannerEl.style.cssText = "position:fixed;left:12px;right:12px;top:12px;z-index:2147483640;background:#1f2d3a;color:#fff;border-radius:14px;padding:12px 14px;font:600 13px system-ui;box-shadow:0 6px 20px rgba(0,0,0,.3);display:flex;gap:10px;align-items:center";
     var txt = document.createElement("div"); txt.style.flex = "1";
-    txt.textContent = L("🔔 فعّل الإشعارات ليصلك ما يكتبه أهلك والتطبيق مغلق", "🔔 Turn on notifications to get your family's messages when the app is closed");
+    txt.textContent = L("🔔 فعّل الإشعارات لتصلك الرسائل والمكالمات والتطبيق مغلق", "🔔 Turn on notifications to get messages and calls when the app is closed");
     var yes = document.createElement("button"); yes.textContent = L("تفعيل", "Turn on");
     yes.style.cssText = "background:#2e7d5b;color:#fff;border:0;border-radius:10px;padding:8px 12px;font:700 13px system-ui";
     var no = document.createElement("button"); no.textContent = L("لاحقاً", "Later");
@@ -1165,6 +1212,7 @@
     accept: accept, scanSupported: scanSupported, scanAndAdd: scanAndAdd, removeContact: removeContact,
     me: function () { return state.me; }, uid: function () { return state.uid; },
     profile: profile, saveProfile: saveProfile, editProfile: editProfile,   // حسابي: الاسم والرقم
+    renameContact: renameContact, nickOf: nickOf,
     qrLib: loadQrLib,   // C8: رمز QR لروابط الغرف
     isBlocked: function (u) { return !!(prefs && prefs.blocked && prefs.blocked.indexOf(u) >= 0); },   // C6: المحظور لا يرنّ
     status: function () { return { loaded: state.loaded, error: state.error, count: state.people.length }; },

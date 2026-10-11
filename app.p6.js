@@ -468,6 +468,10 @@ function ContactProfileSheet({ contact, isOnline, colors, onCall, onVideoCall, o
                     React.createElement("div", { className: "w-20 h-20 rounded-full flex items-center justify-center font-extrabold text-3xl", style: { backgroundColor: colors.primaryLight, color: colors.primaryDark } }, contact.name.charAt(0)),
                     isOnline && (React.createElement("span", { className: "absolute bottom-1 left-1 w-4 h-4 rounded-full border-2", style: { backgroundColor: "#22C55E", borderColor: colors.card } }))),
                 React.createElement("span", { className: "text-lg font-extrabold", style: { color: colors.text } }, contact.name),
+                // التسمية: اسمٌ أختاره أنا (يظهر لي وحدي) — يميّز الضيوف ومن تتشابه أسماؤهم
+                contact.uid && window.SawaChat && window.SawaChat.renameContact && (React.createElement("button", { onClick: () => { onClose(); window.SawaChat.renameContact(contact.uid); }, className: "text-[11px] font-bold mt-1 px-2.5 py-1 rounded-full", style: { color: colors.primary, backgroundColor: colors.primaryLight } }, contact.nick ? "✏️ تعديل التسمية" : "✏️ تسمية")),
+                contact.nick && contact.realName && contact.realName !== contact.nick && React.createElement("span", { className: "text-[11px] mt-1", style: { color: colors.textMuted } }, "اسمه في سوا: " + contact.realName),
+                contact.phone && React.createElement("span", { className: "text-xs mt-1", style: { color: colors.textMuted }, dir: "ltr" }, contact.phone + "  ·  غير موثّق"),
                 React.createElement("span", { className: "text-sm mt-0.5", style: { color: isOnline ? "#22C55E" : colors.textMuted } }, contactSubtitle(contact, isOnline)),
                 isOnline && contact.families && contact.families.length > 0 && React.createElement("span", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } }, contact.families.map((f) => f.name).join(" · ")),
                 contact.onSawa && (React.createElement("div", { className: "flex items-center gap-1 mt-1.5" },
