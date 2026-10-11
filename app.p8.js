@@ -2000,6 +2000,13 @@ function AppInner() {
     const [scheduledCalls, setScheduledCalls] = useState([]);
     const scheduledCallTimersRef = useRef({});
     function addScheduledCall(entry) {
+        // C7: موعدٌ حقيقيّ في الخادم (يظهر عند المدعوّين ويصلهم تذكير) — والقائمة يعيد نشرها SawaRTC
+        const R = window.SawaRTC;
+        if (R && R.enabled && R.enabled() && (entry.peerUid || entry.cid)) {
+            R.schedSave(entry).catch(() => showToast("تعذّر حفظ الموعد — تحقّق من الاتّصال", "error"));
+            showToast(t("tm_hfz_mwad_almkalma", { contactName: entry.contactName }), "success");
+            return;
+        }
         setScheduledCalls((prev) => [...prev, entry]);
         // تذكير حقيقي — نحسب الوقت الفعلي المتبقّي حتى موعد التذكير، ونجدوله
         // بمؤقّت حقيقي لو كان بمدى زمني معقول ضمن هذي الجلسة
@@ -2022,6 +2029,8 @@ function AppInner() {
         setNotifications((prev) => [newNotif, ...prev]);
     }
     function deleteScheduledCall(id) {
+        const cloudEntry = scheduledCalls.find((s) => s.id === id && s.cloud);
+        if (cloudEntry && window.SawaRTC) { window.SawaRTC.schedRemove(id); showToast(t("tm_ilgha_almwad"), "success"); return; }
         if (scheduledCallTimersRef.current[id]) {
             clearTimeout(scheduledCallTimersRef.current[id]);
             delete scheduledCallTimersRef.current[id];
@@ -2033,6 +2042,14 @@ function AppInner() {
         setCallLog([]);
         showToast(t("tm_msh_sjl_almkalmat"), "success");
     }
+    // C7: تذكيرٌ داخل التطبيق أيضاً للمواعيد الحقيقيّة (لي ولمن دعاني) — والإشعار يأتي من الخادم حتّى والتطبيق مغلق
+    useEffect(() => {
+        scheduledCalls.forEach((e) => {
+            if (!e.cloud || scheduledCallTimersRef.current[e.id]) return;
+            const ms = e.timestamp - e.reminderMinutes * 60000 - Date.now();
+            if (ms > 0 && ms < 24 * 60 * 60 * 1000) scheduledCallTimersRef.current[e.id] = setTimeout(() => sendCallReminder(e), ms);
+        });
+    }, [scheduledCalls]);
     // ⛔ لا حضور عشوائيّ (C1): «متّصل الآن» حقيقيّ من SawaChat (Realtime Database)، وجهات الاتّصال كذلك
     const [onlineContacts, setOnlineContacts] = useState([]);
     const [people, setPeople] = useState(() => (window.SawaChat ? window.SawaChat.contacts() : []));
@@ -2067,7 +2084,7 @@ function AppInner() {
     // C6: المكالمات الحقيقيّة تُسجَّل هنا · وتُحذف أمثلة السجلّ القديمة (c1..c3) ممّن حُفظت عندهم
     useEffect(() => {
         setCallLog((prev) => (prev || []).filter((x) => !/^c[123]$/.test(x.id)));
-        if (window.SawaRTC && window.SawaRTC.bindApp) window.SawaRTC.bindApp({ setCallLog });
+        if (window.SawaRTC && window.SawaRTC.bindApp) window.SawaRTC.bindApp({ setCallLog, setScheduledCalls });
     }, []);
     function logCall(name, callType, duration, wasConnected, participants) {
         const mins = Math.floor(duration / 60);
@@ -3584,7 +3601,7 @@ function AppInner() {
                     }
                     return null;
                 })(),
-                tab === "calls" && (React.createElement(CallsScreen, { callLog: callLog, favoriteContacts: favoriteContacts, onToggleFavorite: toggleFavoriteContact, onLogCall: logCall, callSettings: callSettings, onUpdateCallSettings: setCallSettings, speedDialContacts: speedDialContacts, onUpdateSpeedDial: setSpeedDialContacts, onClearCallLog: clearCallLog, onDeleteCallEntry: (id) => {
+                tab === "calls" && (React.createElement(CallsScreen, { groups: groups.filter((g) => /^(fam_|grp_)/.test(g.id || "")), callLog: callLog, favoriteContacts: favoriteContacts, onToggleFavorite: toggleFavoriteContact, onLogCall: logCall, callSettings: callSettings, onUpdateCallSettings: setCallSettings, speedDialContacts: speedDialContacts, onUpdateSpeedDial: setSpeedDialContacts, onClearCallLog: clearCallLog, onDeleteCallEntry: (id) => {
                         setCallLog((prev) => prev.filter((x) => x.id !== id));
                         showToast(t("hdhft_mn_alsjl"), "success");
                     }, scheduledCalls: scheduledCalls, onAddScheduledCall: addScheduledCall, onDeleteScheduledCall: deleteScheduledCall })),

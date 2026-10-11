@@ -27,7 +27,7 @@ function DialPadScreen({ onCall, onBack }) {
                 number.length > 0 && (React.createElement("button", { onClick: () => setNumber((prev) => prev.slice(0, -1)), className: "w-12 h-12 rounded-full flex items-center justify-center" },
                     React.createElement(Delete, { size: 18, color: colors.textMuted })))))));
 }
-function ScheduleCallScreen({ defaultCallType, onSave, onBack }) {
+function ScheduleCallScreen({ defaultCallType, onSave, onBack, groups = [] }) {
     var _a;
     const { colors } = useTheme();
     const [contactName, setContactName] = useState(((_a = DEFAULT_CONTACTS[0]) === null || _a === void 0 ? void 0 : _a.name) || "");
@@ -52,6 +52,9 @@ function ScheduleCallScreen({ defaultCallType, onSave, onBack }) {
             setEndTime(`${String(newH).padStart(2, "0")}:${String(newM).padStart(2, "0")}`);
         }
     }
+    // C7: الموعد مع جهة اتّصال أو مع مجموعة/عائلة (قيمة «g:معرّف»)
+    const pickedGroup = String(contactName).indexOf("g:") === 0 ? groups.find((g) => "g:" + g.id === contactName) : null;
+    const shownName = pickedGroup ? pickedGroup.name : contactName;
     const canSave = contactName && date && startTime && endTime;
     const reminderLabels = { 5: "قبل 5 دقائق", 15: "قبل 15 دقيقة", 30: "قبل 30 دقيقة", 60: "قبل ساعة" };
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col" },
@@ -59,9 +62,10 @@ function ScheduleCallScreen({ defaultCallType, onSave, onBack }) {
         React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
             React.createElement("h3", { className: "text-base font-extrabold mb-4", style: { color: colors.text } },
                 "\u0645\u0643\u0627\u0644\u0645\u0629 ",
-                contactName),
+                shownName),
             React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, t("ma")),
-            React.createElement("select", { value: contactName, onChange: (e) => setContactName(e.target.value), className: "w-full border rounded-xl px-3 py-2.5 text-sm mb-4", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }, DEFAULT_CONTACTS.map((c) => React.createElement("option", { key: c.id, value: c.name }, c.name))),
+            React.createElement("select", { value: contactName, onChange: (e) => setContactName(e.target.value), className: "w-full border rounded-xl px-3 py-2.5 text-sm mb-4", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }, DEFAULT_CONTACTS.map((c) => React.createElement("option", { key: c.id, value: c.name }, c.name)),
+                groups.length > 0 && React.createElement("optgroup", { label: "المجموعات والعائلات" }, groups.map((g) => React.createElement("option", { key: g.id, value: "g:" + g.id }, "👥 " + g.name)))),
             React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, t("alwsf_akhtyary")),
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: description, onChange: (e) => setDescription(e.target.value), placeholder: t("mthal_mtabaa_mshrwa_alaayla"), className: "w-full border rounded-xl px-3 py-2.5 text-sm mb-4", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
             React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, t("altarykh")),
@@ -95,7 +99,9 @@ function ScheduleCallScreen({ defaultCallType, onSave, onBack }) {
             !canSave && (date || startTime) && (React.createElement("p", { className: "text-[11px] text-center mb-2", style: { color: colors.danger } }, t("akml_altarykh_wwqty_albdaya"))),
             React.createElement(Button, { label: t("hfz_almwad"), disabled: !canSave, onPress: () => onSave({
                     id: `sched-call-${Date.now()}`,
-                    contactName, description, date, startTime, endTime, callType, requireApproval, reminderMinutes,
+                    contactName: shownName, description, date, startTime, endTime, callType, requireApproval, reminderMinutes,
+                    peerUid: pickedGroup ? undefined : ((DEFAULT_CONTACTS.find((c) => c.name === contactName) || {}).uid),
+                    cid: pickedGroup ? pickedGroup.id : undefined,
                     timestamp: new Date(`${date}T${startTime}`).getTime(),
                 }) }))));
 }
@@ -185,11 +191,15 @@ function callTimeLabel(ts) {
 const initialCallLog = [];
 const callTypeIcons = { incoming: PhoneIncoming, outgoing: PhoneOutgoing, missed: PhoneMissed };
 const callTypeColors = { incoming: "success", outgoing: "success", missed: "danger" };
-function CallsScreen({ callLog, favoriteContacts, onToggleFavorite, onLogCall, callSettings, onUpdateCallSettings, speedDialContacts, onUpdateSpeedDial, onClearCallLog, scheduledCalls, onAddScheduledCall, onDeleteScheduledCall, onDeleteCallEntry, }) {
+function CallsScreen({ groups = [], callLog, favoriteContacts, onToggleFavorite, onLogCall, callSettings, onUpdateCallSettings, speedDialContacts, onUpdateSpeedDial, onClearCallLog, scheduledCalls, onAddScheduledCall, onDeleteScheduledCall, onDeleteCallEntry, }) {
     const { colors } = useTheme();
     const [activeCall, setActiveCallRaw] = useState(null); // null | { name, callType }
     // C6: جهة اتّصالٍ على سوا ⇒ مكالمةٌ حقيقيّة؛ غير ذلك (لوحة الأرقام…) الواجهة التجريبيّة
-    const setActiveCall = (v) => { if (v && cloudCallTo(v.peerUid ? { uid: v.peerUid, name: v.name } : v.name, v.callType)) return; setActiveCallRaw(v); };
+    const setActiveCall = (v) => {
+        if (v && v.cid && window.SawaRTC && window.SawaRTC.enabled() && window.SawaRTC.groupCall(v.cid, v.callType)) return;   // C7: سجلّ مكالمة جماعيّة
+        if (v && cloudCallTo(v.peerUid ? { uid: v.peerUid, name: v.name } : v.name, v.callType)) return;
+        setActiveCallRaw(v);
+    };
     const [subScreen, setSubScreen] = useState(null); // null | "settings" | "speedDial"
     const [showMenu, setShowMenu] = useState(false);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -213,10 +223,10 @@ function CallsScreen({ callLog, favoriteContacts, onToggleFavorite, onLogCall, c
         return (React.createElement(NewCallScreen, { onCall: (name, callType) => { setSubScreen(null); setActiveCall({ name, callType }); }, onBack: () => setSubScreen(null) }));
     }
     if (subScreen === "schedule") {
-        return (React.createElement(ScheduleCallScreen, { defaultCallType: callSettings.defaultScheduleType, onSave: (entry) => { onAddScheduledCall(entry); setSubScreen(null); }, onBack: () => setSubScreen(null) }));
+        return (React.createElement(ScheduleCallScreen, { groups: groups, defaultCallType: callSettings.defaultScheduleType, onSave: (entry) => { onAddScheduledCall(entry); setSubScreen(null); }, onBack: () => setSubScreen(null) }));
     }
     if (subScreen === "scheduledList") {
-        return (React.createElement(ScheduledCallsScreen, { scheduledCalls: scheduledCalls, onDelete: onDeleteScheduledCall, onJoinNow: (entry) => { setSubScreen(null); setActiveCall({ name: entry.contactName, callType: entry.callType }); }, onNewSchedule: () => setSubScreen("schedule"), onBack: () => setSubScreen(null) }));
+        return (React.createElement(ScheduledCallsScreen, { scheduledCalls: scheduledCalls, onDelete: onDeleteScheduledCall, onJoinNow: (entry) => { setSubScreen(null); if (entry.cloud && window.SawaRTC && window.SawaRTC.schedStart(entry)) return; setActiveCall({ name: entry.contactName, callType: entry.callType }); }, onNewSchedule: () => setSubScreen("schedule"), onBack: () => setSubScreen(null) }));
     }
     const missedCount = callLog.filter((c) => c.type === "missed").length;
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 overflow-y-auto relative", style: { backgroundColor: colors.card } },
@@ -283,7 +293,7 @@ function CallsScreen({ callLog, favoriteContacts, onToggleFavorite, onLogCall, c
                                 (c.cloud && c.timestamp ? callTimeLabel(c.timestamp) : c.time),
                                 c.duration ? ` · ${c.duration}` : "",
                                 (c.participants && c.participants.length > 0) ? ` · مع ${c.participants.join("، ")}` : ""))),
-                    React.createElement("button", { "aria-label": c.callType === "video" ? "مكالمة فيديو" : "مكالمة صوتية", onClick: () => setActiveCall({ name: c.name, peerUid: c.peerUid, callType: c.callType || "audio" }), className: "w-9 h-9 flex items-center justify-center shrink-0" }, c.callType === "video" ? React.createElement(Video, { size: 19, color: colors.primary }) : React.createElement(Phone, { size: 19, color: colors.primary })),
+                    React.createElement("button", { "aria-label": c.callType === "video" ? "مكالمة فيديو" : "مكالمة صوتية", onClick: () => setActiveCall({ name: c.name, peerUid: c.peerUid, cid: c.cid, callType: c.callType || "audio" }), className: "w-9 h-9 flex items-center justify-center shrink-0" }, c.callType === "video" ? React.createElement(Video, { size: 19, color: colors.primary }) : React.createElement(Phone, { size: 19, color: colors.primary })),
                     React.createElement("button", { "aria-label": t("khyarat"), onClick: () => setCallMenu(c), className: "w-7 h-7 flex items-center justify-center shrink-0" },
                         React.createElement(MoreVertical, { size: 16, color: colors.textMuted }))));
             })),
@@ -293,8 +303,8 @@ function CallsScreen({ callLog, favoriteContacts, onToggleFavorite, onLogCall, c
                 React.createElement("div", { className: "w-10 h-1 rounded-full mx-auto my-3", style: { backgroundColor: colors.border } }),
                 React.createElement("p", { className: "text-sm font-extrabold text-center mb-2", style: { color: colors.text } }, callMenu.name),
                 [
-                    { icon: Phone, label: "مكالمة صوتية", act: () => setActiveCall({ name: callMenu.name, peerUid: callMenu.peerUid, callType: "audio" }) },
-                    { icon: Video, label: "مكالمة فيديو", act: () => setActiveCall({ name: callMenu.name, peerUid: callMenu.peerUid, callType: "video" }) },
+                    { icon: Phone, label: "مكالمة صوتية", act: () => setActiveCall({ name: callMenu.name, peerUid: callMenu.peerUid, cid: callMenu.cid, callType: "audio" }) },
+                    { icon: Video, label: "مكالمة فيديو", act: () => setActiveCall({ name: callMenu.name, peerUid: callMenu.peerUid, cid: callMenu.cid, callType: "video" }) },
                     { icon: Trash2, label: "حذف من السجل", act: () => onDeleteCallEntry === null || onDeleteCallEntry === void 0 ? void 0 : onDeleteCallEntry(callMenu.id), danger: true },
                 ].map((it) => (React.createElement("button", { key: it.label, onClick: () => { it.act(); setCallMenu(null); }, className: `w-full flex ${rowStart()} items-center gap-3 px-5 py-3.5 border-t`, style: { borderColor: colors.border } },
                     React.createElement(it.icon, { size: 17, color: it.danger ? colors.danger : colors.textMuted }),

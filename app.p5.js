@@ -1207,7 +1207,13 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
     const [showSearch, setShowSearch] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [searchMatchIndex, setSearchMatchIndex] = useState(0);
-    const [activeGroupCall, setActiveGroupCall] = useState(null); // null | "audio" | "video"
+    const [activeGroupCall, setActiveGroupCallRaw] = useState(null); // null | "audio" | "video"
+    // C7: مجموعة/عائلة حقيقيّة ⇒ مكالمة جماعيّة حقيقيّة (SawaRTC)؛ غير ذلك الواجهة التجريبيّة
+    const cloudGroup = !!(window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled() && /^(fam_|grp_)/.test(group.id || ""));
+    const setActiveGroupCall = (type) => { if (type && cloudGroup && window.SawaRTC.groupCall(group.id, type)) return; setActiveGroupCallRaw(type); };
+    // شريط «مكالمة جارية — انضمام»
+    const [liveGroupCall, setLiveGroupCall] = useState(null);
+    useEffect(() => { if (!cloudGroup || !window.SawaRTC.watchChat) return; return window.SawaRTC.watchChat(group.id, setLiveGroupCall); }, [group.id, cloudGroup]);
     const scrollContainerRef = useRef(null);
     useEffect(() => {
         const el = scrollContainerRef.current;
@@ -1357,7 +1363,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
         });
     }
     if (activeGroupCall) {
-        return React.createElement(GroupCallOverlay, { groupName: group.name, members: group.members, callType: activeGroupCall, onEnd: () => setActiveGroupCall(null) });
+        return React.createElement(GroupCallOverlay, { groupName: group.name, members: group.members, callType: activeGroupCall, onEnd: () => setActiveGroupCallRaw(null) });
     }
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col relative" },
         React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-3 border-b`, style: { borderColor: colors.border, backgroundColor: colors.card } },
@@ -1375,6 +1381,10 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 React.createElement(Phone, { size: 17, color: colors.textMuted })),
             React.createElement("button", { "aria-label": t("bhth"), onClick: () => setShowSearch(!showSearch) },
                 React.createElement(Search, { size: 17, color: colors.textMuted }))),
+        liveGroupCall && !liveGroupCall.inCall && (React.createElement("button", { onClick: () => window.SawaRTC.groupCall(group.id, liveGroupCall.type), className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2`, style: { backgroundColor: "#E6F4EC", borderBottom: `1px solid ${colors.border}` } },
+            liveGroupCall.type === "video" ? React.createElement(Video, { size: 15, color: "#1E7A4C" }) : React.createElement(Phone, { size: 15, color: "#1E7A4C" }),
+            React.createElement("span", { className: `flex-1 ${textStart()} text-xs font-bold`, style: { color: "#1E7A4C" } }, (liveGroupCall.type === "video" ? "مكالمة فيديو جارية" : "مكالمة صوتيّة جارية") + (liveGroupCall.n ? " · " + liveGroupCall.n + " في المكالمة" : "")),
+            React.createElement("span", { className: "text-[11px] font-extrabold text-white rounded-full px-3 py-1", style: { backgroundColor: "#21A366" } }, "انضمام"))),
         false && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-2 border-b`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: searchQuery, onChange: (e) => { setSearchQuery(e.target.value); setSearchMatchIndex(0); }, placeholder: t("bhth_balmhadtha"), className: "flex-1 border rounded-full px-3 py-1.5 text-xs", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg }, autoFocus: true }),
             searchQuery.trim() && (React.createElement("span", { className: "text-[10px] shrink-0", style: { color: colors.textMuted } }, searchMatches.length > 0 ? `${searchMatchIndex + 1}/${searchMatches.length}` : t("gc_0_ntyja"))),

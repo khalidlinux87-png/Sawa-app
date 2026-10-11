@@ -1,5 +1,5 @@
 /* ============================================================
-   sawa-rtc.js — المكالمات الصوتيّة والمرئيّة 1:1 (C6 في CHAT.md)
+   sawa-rtc.js — المكالمات: الثنائيّة (C6) والجماعيّة والمجدولة (C7)
    ------------------------------------------------------------
    • الوسائط مباشرةً بين الجهازين (WebRTC). STUN مجّاني؛ TURN (Metered) يعطيه الـWorker
      عبر rtc.ice إن ضُبط METERED_KEY/METERED_APP — بدونه قد تفشل بعض الشبكات (4G خلف NAT صارم).
@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c6";
+  var VERSION = "c7";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -55,6 +55,7 @@
   function bindApp(fns) {
     app = fns || null;
     if (app && app.setCallLog && logQueue.length) { var q = logQueue; logQueue = []; q.forEach(addLog); }
+    if (app && app.setScheduledCalls && schedAt) publishSched();
   }
   function addLog(entry) {
     if (!app || !app.setCallLog) { logQueue.push(entry); return; }
@@ -237,6 +238,7 @@
       bar.appendChild(btn(c.camOff ? "🚫" : "📷", c.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), c.camOff ? "#e8f5ee" : "rgba(255,255,255,.16)", toggleCam));
       bar.appendChild(btn("🔄", L("تبديل", "Flip"), "rgba(255,255,255,.16)", switchCam));
     }
+    if (c.state === "connected") bar.appendChild(btn("➕", L("إضافة", "Add"), "rgba(255,255,255,.16)", function () { pickPerson(cur); }));
     bar.appendChild(btn("📞", L("إنهاء", "End"), "#d64545", function () { hangup(); }));
     bar.lastChild._b.style.transform = "rotate(135deg)";
   }
@@ -368,7 +370,7 @@
   // ---------- المتّصل ----------
   function startCall(peer, name, type) {
     if (!enabled() || !peer || peer === myUid()) return false;
-    if (cur) { if (ui.min) minimize(false); toast(L("أنت في مكالمة الآن", "You're already in a call")); return true; }
+    if (busy()) { if (cur && ui.min) minimize(false); else if (gc && gui.min) gMinimize(false); toast(L("أنت في مكالمة الآن", "You're already in a call")); return true; }
     type = type === "video" ? "video" : "audio";
     var me = myUid(), d = db();
     var c = cur = newCall({ id: "k" + Date.now().toString(36) + rid(7), role: "caller", peer: peer, name: name || nameOf(peer), type: type, state: "starting" });
@@ -407,6 +409,7 @@
   function onCallerValue(c, v) {
     if (c.done) return;
     if (!v) { finish(c, "remote", { remote: true }); return; }
+    if (v.up && !c.upSeen) { c.upSeen = true; c.silent = true; finish(c, "upgraded", { remote: true }); groupJoinDirect(v.up, c.type, null, c.upgrading ? "starter" : "joiner"); return; }
     if (v.acc && !c.accepted) {
       c.accepted = true; clearTimeout(c.timers.ring); stopTone();
       setState(c, "connecting");
@@ -439,7 +442,7 @@
     inboxRef.on("child_added", function (s) {
       var v = s.val() || {}, id = s.key;
       if (!v.ts || now() - v.ts > STALE_MS) { s.ref.remove().catch(function () {}); return; }
-      incoming(id);
+      if (v.gid) groupIncoming(id, v); else incoming(id);
     }, function (e) { log("inbox listen", e && e.code); });
   }
   function incoming(id) {
@@ -453,7 +456,7 @@
       // المحظور: لا رنين ولا سجلّ — ويبقى عنده «يرنّ» حتّى ينتهي الوقت (لا نكشف الحظر)
       try { if (C().isBlocked && C().isBlocked(v.from)) { inbox.remove().catch(function () {}); return; } } catch (e) {}
       var name = nameOf(v.from) || v.fromName || "";
-      if (cur) {   // مشغول بمكالمة أخرى
+      if (busy()) {   // مشغول بمكالمة أخرى
         ref.update({ state: "busy" }).catch(function () {}); inbox.remove().catch(function () {});
         addLog({ id: "call-" + id, name: name, peerUid: v.from, callType: v.type === "video" ? "video" : "audio", type: "missed", time: L("الآن", "Now"), duration: null, timestamp: Date.now(), participants: null, cloud: true });
         return;
@@ -470,6 +473,7 @@
     if (c.done) return;
     if (!v) { finish(c, c.connectedAt ? "remote" : "missed", { remote: true }); return; }
     if (v.acc && v.acc !== devId) { c.silent = true; finish(c, "elsewhere", { remote: true }); return; }   // ردّ جهازٌ آخر لي
+    if (v.up && !c.upSeen && c.connectedAt) { c.upSeen = true; c.silent = true; finish(c, "upgraded", { remote: true }); groupJoinDirect(v.up, c.type, null, c.upgrading ? "starter" : "joiner"); return; }
     if (v.reoffer && v.reoffer.n > c.reSeen && c.pc && c.remoteSet) {
       var n = v.reoffer.n; c.reSeen = n;
       c.pc.setRemoteDescription({ type: v.reoffer.type, sdp: v.reoffer.sdp })
@@ -591,18 +595,643 @@
     setTimeout(function () { if (!cur) hide(); }, opts.text ? 3200 : 1800);
   }
 
+  // ============================================================
+  //  C7: المكالمات الجماعيّة — شبكةٌ مباشرة بين الأجهزة (≤ ٤ فيديو / ≤ ٨ صوت حتّى SFU)
+  //  gcalls/{gid} = { by, type, title, cid, ts, approval, allow{uid}, members{uid:{name,sess,ts}},
+  //                   sig/{to}/{push}:{from,fs,tsn,t,sdp|cand}, req{uid}, adm{uid} }
+  //  الـWorker وحده ينشئها ويحدّد allow (gcall.start / gcall.add). الوافد الجديد يرسل العروض لمن سبقه (لا تصادم).
+  //  sess: رقم الجلسة — رسائلُ جلسةٍ قديمة (خروج ثمّ عودة) تُتجاهل.
+  // ============================================================
+  var GC_MAX = { video: 4, audio: 8 }, ALONE_MS = global.__sawaRtcAloneMs || 60000;
+  var gc = null, gui = { root: null };
+  function busy() { return !!(cur || gc); }
+
+  function gcNew(o) {
+    o.peers = {}; o.members = {}; o.offs = []; o.timers = {}; o.sess = rid(8); o.muted = false; o.camOff = false; o.facing = "user";
+    o.met = {}; o.reqs = {};
+    return o;
+  }
+  function gListen(g, ref, ev, fn) { var h = ref.on(ev, fn, function () {}); g.offs.push(function () { try { ref.off(ev, h); } catch (e) {} }); }
+  function gName(g, uid) { return (g.members[uid] && g.members[uid].name) || nameOf(uid) || L("عضو", "Member"); }
+
+  // ---------- البدء ----------
+  // opts: { cid } من مجموعة/عائلة · { to:[uid…], quiet:[uid] } من جهات الاتّصال · { sched: id } موعدٌ مجدول
+  function groupStart(opts, type, title) {
+    if (!enabled()) return false;
+    // ترنّ عندي مكالمة هذه المحادثة نفسها ⇒ «انضمام» = ردّ
+    if (gc && gc.state === "incoming" && opts.cid && gc.cid === opts.cid) { groupAccept(); return true; }
+    if (busy()) { if (gc && gui.min) gMinimize(false); else if (cur && ui.min) minimize(false); toast(L("أنت في مكالمة الآن", "You're already in a call")); return true; }
+    type = type === "video" ? "video" : "audio";
+    var g = gc = gcNew({ gid: null, type: type, title: title || "", state: "starting", role: "starter" });
+    gShow(g);
+    var p = { type: type };
+    if (opts.cid) p.cid = opts.cid; else if (opts.sched) p.sched = opts.sched; else { p.to = opts.to; if (opts.quiet) p.quiet = opts.quiet; }
+    wcall("gcall.start", p).then(function (r) {
+      if (g.done) return;
+      g.gid = r.gid; g.type = r.type || type; g.title = r.title || g.title; g.cid = r.cid || null; g.by = r.by; g.approval = !!r.approval;
+      if (r.joined) g.role = "joiner";
+      seen[g.gid] = 1;
+      gJoin(g);
+    }).catch(function (e) {
+      log("gcall.start", e && e.message);
+      gFinish(g, "error", { text: /not a contact/.test(String(e && e.message)) ? L("ليسوا كلّهم في جهات اتّصالك", "Not all are your contacts") : L("تعذّر بدء المكالمة", "Couldn't start the call") });
+    });
+    return true;
+  }
+  // الانضمام مباشرةً (ترقية مكالمة ثنائيّة إلى جماعيّة — لا رنين)
+  function groupJoinDirect(gid, type, by, role) {
+    if (gc) return;
+    var g = gc = gcNew({ gid: gid, type: type, title: "", state: "starting", role: role || "joiner", by: by });
+    seen[gid] = 1; gShow(g); gJoin(g);
+  }
+
+  // ---------- الرنين ----------
+  function groupIncoming(gid, v) {
+    var me = myUid(), d = db();
+    if (!me || !d || !gid || seen[gid]) return;
+    seen[gid] = 1; v = v || {};
+    var inbox = d.ref("inbox/" + me + "/" + gid), ref = d.ref("gcalls/" + gid);
+    ref.once("value").then(function (snap) {
+      var n = snap.val();
+      // بلا أعضاء: إمّا انتهت، أو أنشأها الخادم للتوّ والمتّصل لم يدخل بعد (أقلّ من دقيقة)
+      var empty = !n || !n.members || !Object.keys(n.members).length;
+      if (!n || !n.allow || !n.allow[me] || (n.members && n.members[me]) || (empty && now() - (n.ts || 0) > 60000) || (n.ts && now() - n.ts > 6 * 3600000)) { inbox.remove().catch(function () {}); return; }
+      try { if (C().isBlocked && v.from && C().isBlocked(v.from)) { inbox.remove().catch(function () {}); return; } } catch (e) {}
+      var title = n.title || "", from = v.from || n.by;
+      if (busy()) {
+        inbox.remove().catch(function () {});
+        addLog({ id: "gcall-" + gid, name: title || nameOf(from) || L("مكالمة جماعيّة", "Group call"), callType: n.type, type: "missed", time: L("الآن", "Now"), duration: null, timestamp: Date.now(), participants: null, cloud: true, cid: n.cid || null });
+        return;
+      }
+      var g = gc = gcNew({ gid: gid, type: n.type === "video" ? "video" : "audio", title: title, cid: n.cid || null, by: n.by, approval: !!n.approval,
+                           state: "incoming", role: "incoming", from: from, fromName: nameOf(from) || v.fromName || "", inbox: inbox, ref: ref });
+      g.members = n.members || {};
+      gShow(g); playTone("ring");
+      var saw = !empty;
+      gListen(g, ref.child("members"), "value", function (s) {
+        if (g.done || g.state !== "incoming") return;
+        g.members = s.val() || {};
+        if (Object.keys(g.members).length) { saw = true; gPaint(g); }
+        else if (saw) gFinish(g, "missed");   // غادر الجميع قبل أن أردّ
+      });
+      g.timers.empty = setTimeout(function () { if (g.state === "incoming" && !saw) gFinish(g, "missed"); }, 25000);
+      g.timers.ring = setTimeout(function () { if (g.state === "incoming") gFinish(g, "missed"); }, RING_MS + 5000);
+      getIce();
+    }).catch(function () { inbox.remove().catch(function () {}); });
+  }
+  function groupAccept() {
+    var g = gc; if (!g || g.state !== "incoming") return;
+    stopTone(); clearTimeout(g.timers.ring);
+    if (g.inbox) g.inbox.remove().catch(function () {});
+    g.offs.forEach(function (f) { f(); }); g.offs = [];
+    g.role = "joiner"; g.state = "starting"; gPaint(g);
+    gJoin(g);
+  }
+  function groupDecline() {
+    var g = gc; if (!g || g.state !== "incoming") return;
+    g.declined = true; gFinish(g, "declined");
+  }
+
+  // ---------- الانضمام ----------
+  function gJoin(g) {
+    var me = myUid(), d = db();
+    g.ref = d.ref("gcalls/" + g.gid);
+    Promise.all([getMedia(g.type), getIce(), g.ref.once("value")]).then(function (r) {
+      if (g.done) { stopStream(r[0]); return; }
+      g.local = r[0]; g.ice = r[1];
+      var n = r[2].val();
+      if (!n || !n.allow || !n.allow[me]) { gFinish(g, "error", { text: L("انتهت هذه المكالمة", "This call has ended") }); return; }
+      g.by = n.by; g.approval = !!n.approval; g.title = n.title || g.title; g.cid = n.cid || g.cid || null; g.type = n.type === "video" ? "video" : "audio";
+      g.allow = n.allow;
+      var others = Object.keys(n.members || {}).filter(function (u) { return u !== me; });
+      if (others.length + 1 > GC_MAX[g.type]) { gFinish(g, "full"); return; }
+      gLocalTile(g);
+      if (g.approval && g.by !== me && !(n.adm && n.adm[me] === true)) { gWait(g); return; }
+      gEnter(g);
+    }).catch(function (e) {
+      log("gjoin", e && (e.name || e.message), e && e.message);
+      gFinish(g, "error", { text: mediaError(e) || L("تعذّر الانضمام للمكالمة", "Couldn't join the call") });
+    });
+  }
+  // غرفة الانتظار: المضيف يوافق (adm/{uid} = true) أو يرفض (false)
+  function gWait(g) {
+    var me = myUid();
+    g.state = "waiting"; gPaint(g);
+    g.ref.child("req/" + me).set({ name: myName() || "", ts: TS() }).catch(function (e) { log("req", e && e.message); });
+    try { g.ref.child("req/" + me).onDisconnect().remove(); } catch (e) {}
+    var h = function (s) {
+      var v = s.val();
+      if (g.done || g.state !== "waiting") return;
+      if (v === true) { g.ref.child("adm/" + me).off("value", h); g.ref.child("req/" + me).remove().catch(function () {}); gEnter(g); }
+      else if (v === false) gFinish(g, "rejected");
+    };
+    g.ref.child("adm/" + me).on("value", h, function () {});
+    g.offs.push(function () { try { g.ref.child("adm/" + me).off("value", h); } catch (e) {} });
+    g.timers.wait = setTimeout(function () { if (g.state === "waiting") gFinish(g, "error", { text: L("لم يوافق المضيف بعد — حاول لاحقاً", "The host hasn't let you in yet") }); }, 5 * 60000);
+  }
+  function gEnter(g) {
+    var me = myUid();
+    g.state = "joining"; gPaint(g);
+    var mine = g.ref.child("sig/" + me);
+    mine.remove().catch(function () {}).then(function () {
+      if (g.done) return;
+      return g.ref.child("members/" + me).set({ name: myName() || "", sess: g.sess, ts: TS() });
+    }).then(function () {
+      if (g.done) return;
+      g.live = true;
+      try { g.ref.child("members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
+      g.joinedAt = Date.now(); g.state = "live"; wakeOn(); gPaint(g);
+      if (!g.tick) g.tick = setInterval(function () { gPaintHead(g); }, 1000);
+      if (g.role === "starter") playTone("back");   // نغمة «يرنّ» حتّى ينضمّ أوّل شخص
+      var first = true;
+      gListen(g, mine, "child_added", function (s) { onGSig(g, s.val() || {}); });
+      gListen(g, g.ref.child("members"), "value", function (s) {
+        var m = s.val() || {};
+        if (first) {   // من سبقني (وقت دخولٍ أقدم بحسب الخادم): أرسل لهم العروض؛ ومن يأتي بعدي يرسل هو
+          first = false;
+          var mt = m[me] && m[me].ts;
+          Object.keys(m).forEach(function (u) {
+            if (u === me || !m[u] || !m[u].sess) return;
+            if (!mt || m[u].ts < mt || (m[u].ts === mt && u < me)) gOffer(g, u, m[u].sess);
+          });
+        }
+        onGMembers(g, m);
+      });
+      if (g.by === me && g.approval) gListen(g, g.ref.child("req"), "value", function (s) { g.reqs = s.val() || {}; gPaintReqs(g); });
+      gListen(g, g.ref.child("allow"), "value", function (s) { g.allow = s.val() || g.allow; });
+    }).catch(function (e) {
+      log("genter", e && e.message);
+      gFinish(g, "error", { text: L("تعذّر الانضمام للمكالمة", "Couldn't join the call") });
+    });
+  }
+  function onGMembers(g, m) {
+    if (g.done) return;
+    var me = myUid();
+    g.members = m;
+    Object.keys(g.peers).forEach(function (u) {
+      var p = g.peers[u];
+      if (!m[u] || m[u].sess !== p.sess) gDrop(g, u);
+    });
+    Object.keys(m).forEach(function (u) {
+      if (u === me) return;
+      g.met[u] = gName(g, u);
+      // احتياط: عضوٌ لم يصلني منه عرضٌ خلال ٦ ثوانٍ ⇒ أعرض أنا (والتصادم يحسمه onGSig)
+      if (!g.peers[u] && m[u] && m[u].sess && !(g.timers["o" + u])) g.timers["o" + u] = setTimeout(function () {
+        delete g.timers["o" + u];
+        if (!g.done && !g.peers[u] && g.members[u] && g.members[u].sess === m[u].sess) gOffer(g, u, m[u].sess);
+      }, 6000);
+    });
+    var others = Object.keys(m).filter(function (u) { return u !== me; });
+    // وحدك: انتظر قليلاً ثمّ أنهِ (لا يبقى أحدٌ في مكالمةٍ فارغة)
+    if (!others.length) { if (!g.timers.alone) g.timers.alone = setTimeout(function () { gFinish(g, Object.keys(g.met).length ? "everyoneLeft" : "nobody"); }, ALONE_MS); }
+    else { clearTimeout(g.timers.alone); delete g.timers.alone; stopTone(); }
+    gPaint(g);
+  }
+  function gSend(g, to, toSess, payload) {
+    var o = { from: myUid(), fs: g.sess, tsn: toSess, ts: TS() };
+    for (var k in payload) o[k] = payload[k];
+    return g.ref.child("sig/" + to).push(o).catch(function (e) { log("gsig", e && e.message); });
+  }
+  function gPeer(g, uid, sess, offerer) {
+    var me = myUid();
+    var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: null };
+    var pc = p.pc = new global.RTCPeerConnection({ iceServers: g.ice || STUN });
+    g.local.getTracks().forEach(function (t) { pc.addTrack(t, g.local); });
+    pc.onicecandidate = function (e) { if (e.candidate && e.candidate.candidate) gSend(g, uid, sess, { t: "ice", cand: iceJson(e.candidate) }); };
+    pc.ontrack = function (e) {
+      if (!p.stream) p.stream = (e.streams && e.streams[0]) || new global.MediaStream();
+      if (p.stream.getTracks().indexOf(e.track) < 0) try { p.stream.addTrack(e.track); } catch (x) {}
+      e.track.onunmute = function () { gTile(g, uid); };
+      gTile(g, uid);
+    };
+    pc.onconnectionstatechange = function () {
+      var s = pc.connectionState;
+      if (g.done || g.peers[uid] !== p) return;
+      if (s === "connected") {
+        p.state = "connected"; p.everConnected = true; clearTimeout(p.lost); p.lost = null;
+        gCap(g); stopTone(); gTile(g, uid); gPaintHead(g);
+      } else if (s === "disconnected" || s === "failed") {
+        p.state = "reconnecting"; gTile(g, uid);
+        if (p.offerer) setTimeout(function () { if (g.peers[uid] === p && p.state !== "connected") gRenegotiate(g, p, true); }, s === "failed" ? 0 : 3000);
+        if (!p.lost) p.lost = setTimeout(function () { if (g.peers[uid] === p && p.state !== "connected") { p.state = "lost"; gTile(g, uid); } }, LOST_MS);
+      }
+    };
+    g.peers[uid] = p;
+    gTile(g, uid);
+    return p;
+  }
+  function gOffer(g, uid, sess) {
+    var p = gPeer(g, uid, sess, true);
+    gRenegotiate(g, p, false);
+  }
+  function gRenegotiate(g, p, restart) {
+    if (g.done || !p.pc) return;
+    p.pc.createOffer(restart ? { iceRestart: true } : undefined)
+      .then(function (o) { return p.pc.setLocalDescription(o).then(function () { return o; }); })
+      .then(function (o) { gSend(g, p.uid, p.sess, { t: "offer", sdp: o.sdp }); })
+      .catch(function (e) { log("goffer", e && e.message); });
+  }
+  function gFlush(p) { p.remoteSet = true; var q = p.iceIn; p.iceIn = []; q.forEach(function (c) { p.pc.addIceCandidate(c).catch(function () {}); }); }
+  function onGSig(g, msg) {
+    if (g.done || msg.tsn !== g.sess || !msg.from) return;
+    var u = msg.from, p = g.peers[u];
+    if (msg.t === "offer") {
+      if (p && p.sess !== msg.fs) { gDrop(g, u); p = null; }
+      // تصادم عرضين: الأصغر معرّفاً «مهذّب» يتراجع ويقبل عرض الآخر، والأكبر يتجاهله
+      if (p && p.pc.signalingState === "have-local-offer") { if (myUid() < u) { gDrop(g, u); p = null; } else return; }
+      if (!p) p = gPeer(g, u, msg.fs, false);
+      p.pc.setRemoteDescription({ type: "offer", sdp: msg.sdp })
+        .then(function () { gFlush(p); return p.pc.createAnswer(); })
+        .then(function (a) { return p.pc.setLocalDescription(a).then(function () { return a; }); })
+        .then(function (a) { gSend(g, u, p.sess, { t: "answer", sdp: a.sdp }); })
+        .catch(function (e) { log("ganswer", e && e.message); });
+    } else if (msg.t === "answer") {
+      if (!p || p.sess !== msg.fs || p.pc.signalingState !== "have-local-offer") return;
+      p.pc.setRemoteDescription({ type: "answer", sdp: msg.sdp }).then(function () { gFlush(p); }).catch(function (e) { log("gans", e && e.message); });
+    } else if (msg.t === "ice") {
+      if (!p || p.sess !== msg.fs || !msg.cand) return;
+      if (!p.remoteSet) p.iceIn.push(msg.cand); else p.pc.addIceCandidate(msg.cand).catch(function () {});
+    }
+  }
+  function gDrop(g, uid) {
+    var p = g.peers[uid]; if (!p) return;
+    try { p.pc.close(); } catch (e) {}
+    clearTimeout(p.lost);
+    delete g.peers[uid];
+    gTile(g, uid);
+  }
+  // سقف الفيديو يتوزّع: كلّ جهازٍ يرسل نسخةً لكلّ مشارك
+  function gCap(g) {
+    var n = Object.keys(g.peers).length, br = n <= 1 ? 600000 : n === 2 ? 450000 : 320000;
+    Object.keys(g.peers).forEach(function (u) {
+      try {
+        g.peers[u].pc.getSenders().forEach(function (s) {
+          if (!s.track || s.track.kind !== "video" || !s.getParameters) return;
+          var pr = s.getParameters(); if (!pr.encodings || !pr.encodings.length) pr.encodings = [{}];
+          pr.encodings[0].maxBitrate = br; s.setParameters(pr).catch(function () {});
+        });
+      } catch (e) {}
+    });
+  }
+
+  // ---------- أثناء المكالمة ----------
+  function gToggleMute() { var g = gc; if (!g || !g.local) return; g.muted = !g.muted; g.local.getAudioTracks().forEach(function (t) { t.enabled = !g.muted; }); gPaint(g); }
+  function gToggleCam() { var g = gc; if (!g || !g.local) return; g.camOff = !g.camOff; g.local.getVideoTracks().forEach(function (t) { t.enabled = !g.camOff; }); gLocalTile(g); gPaint(g); }
+  function gSwitchCam() {
+    var g = gc; if (!g || !g.local || g.switching) return;
+    var want = g.facing === "user" ? "environment" : "user", old = g.local.getVideoTracks()[0];
+    g.switching = true;
+    try { if (old) old.stop(); } catch (e) {}
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: want }, width: { ideal: 640 }, height: { ideal: 480 } } })
+      .catch(function () { return navigator.mediaDevices.getUserMedia({ video: { facingMode: want } }); })
+      .then(function (s) {
+        var nt = s.getVideoTracks()[0]; if (!nt) throw new Error("no track");
+        nt.enabled = !g.camOff;
+        if (old) g.local.removeTrack(old);
+        g.local.addTrack(nt); g.facing = want; gLocalTile(g);
+        return Promise.all(Object.keys(g.peers).map(function (u) {
+          var snd = g.peers[u].pc.getSenders().filter(function (x) { return x.track === old || (x.track && x.track.kind === "video"); })[0];
+          return snd ? snd.replaceTrack(nt) : null;
+        }));
+      })
+      .catch(function (e) { log("gswitch", e && e.message); toast(L("تعذّر تبديل الكاميرا", "Couldn't switch camera")); })
+      .then(function () { g.switching = false; });
+  }
+  function gAdmit(uid, yes) {
+    var g = gc; if (!g || g.by !== myUid()) return;
+    g.ref.child("adm/" + uid).set(!!yes).catch(function () {});
+    g.ref.child("req/" + uid).remove().catch(function () {});
+  }
+  // إضافة شخص: من جهات اتّصالي أو من أعضاء المحادثة
+  function gAdd(uid, name) {
+    var g = gc; if (!g || !g.gid) return;
+    var n = Object.keys(g.members).length;
+    if (n >= GC_MAX[g.type]) { toast(L("المكالمة ممتلئة", "The call is full")); return; }
+    wcall("gcall.add", { gid: g.gid, to: [uid] }).then(function () { toast(L("جارٍ الاتّصال بـ", "Calling ") + (name || "")); })
+      .catch(function (e) { log("gadd", e && e.message); toast(L("تعذّرت الإضافة", "Couldn't add")); });
+  }
+  // ترقية مكالمةٍ ثنائيّة إلى جماعيّة: Worker ينشئ المكالمة ويرنّ للجديد، والطرف الآخر ينتقل تلقائيّاً
+  function upgrade(c, uid, name) {
+    if (!c || c.done || c.state !== "connected" || c.upgrading) return;
+    c.upgrading = true; toast(L("جارٍ الاتّصال بـ", "Calling ") + (name || ""));
+    wcall("gcall.start", { to: [c.peer, uid], quiet: [c.peer], type: c.type }).then(function (r) {
+      if (c.done) return;
+      return c.ref.update({ up: r.gid }).then(function () {
+        c.silent = true; finish(c, "upgraded", { remote: true });
+        groupJoinDirect(r.gid, r.type || c.type, r.by, "starter");
+      });
+    }).catch(function (e) { c.upgrading = false; log("upgrade", e && e.message); toast(L("تعذّرت الإضافة", "Couldn't add")); });
+  }
+
+  // ---------- النهاية ----------
+  var G_END = {
+    missed: ["مكالمة جماعيّة فائتة", "Missed group call"], full: ["المكالمة ممتلئة (الحدّ ٤ فيديو / ٨ صوت حاليّاً)", "The call is full"],
+    rejected: ["لم يوافق المضيف على انضمامك", "The host declined your request"], nobody: ["لم ينضمّ أحد", "Nobody joined"],
+    everyoneLeft: ["غادر الجميع", "Everyone left"]
+  };
+  function gFinish(g, reason, opts) {
+    if (!g || g.done) return;
+    opts = opts || {}; g.done = true;
+    var me = myUid();
+    for (var k in g.timers) clearTimeout(g.timers[k]); g.timers = {};
+    if (g.tick) clearInterval(g.tick); g.tick = null;
+    stopTone(); wakeOff();
+    g.offs.forEach(function (f) { f(); }); g.offs = [];
+    if (g.inbox && (g.state === "incoming" || reason === "missed")) g.inbox.remove().catch(function () {});
+    Object.keys(g.peers).forEach(function (u) { try { g.peers[u].pc.close(); } catch (e) {} });
+    stopStream(g.local);
+    if (g.ref && me) {
+      try { g.ref.child("members/" + me).onDisconnect().cancel(); g.ref.child("sig/" + me).onDisconnect().cancel(); g.ref.child("req/" + me).onDisconnect().cancel(); } catch (e) {}
+      if (g.state === "waiting") g.ref.child("req/" + me).remove().catch(function () {});
+      if (g.live) {
+        var ref = g.ref, cid = g.cid, gid = g.gid;
+        ref.child("members/" + me).remove().then(function () { return ref.child("sig/" + me).remove(); }).then(function () {
+          return ref.child("members").once("value");
+        }).then(function (s) {
+          if (s.val()) return;
+          // آخر من يغادر ينظّف المكالمة ومؤشّرها في المحادثة
+          ref.remove().catch(function () {});
+          if (cid) db().ref("gcur/" + cid).once("value").then(function (x) { var v = x.val(); if (v && v.gid === gid) x.ref.remove().catch(function () {}); }).catch(function () {});
+        }).catch(function () {});
+      }
+    }
+    // السجلّ
+    if (!g.silentLog && g.gid) {
+      var secs = g.joinedAt && g.live ? Math.max(1, Math.round((Date.now() - g.joinedAt) / 1000)) : 0;
+      var names = Object.keys(g.met).map(function (u) { return g.met[u]; });
+      var type = g.role === "starter" ? "outgoing" : (g.live ? "incoming" : (g.declined ? "incoming" : "missed"));
+      if (!(g.role === "starter" && !g.live && reason === "error"))
+        addLog({ id: "gcall-" + g.gid + "-" + g.sess, name: g.title || names.join("، ") || g.fromName || L("مكالمة جماعيّة", "Group call"), callType: g.type,
+                 type: type, time: L("الآن", "Now"), duration: secs ? fmt(secs) : null, timestamp: Date.now(), participants: names.length ? names : null, cloud: true, cid: g.cid || null, gid: g.gid });
+    }
+    if (gc === g) gc = null;
+    log("gend", g.gid, reason);
+    if (reason === "declined") { gHide(); return; }
+    if (g.live) endTone();
+    var tx = opts.text || (G_END[reason] && L(G_END[reason][0], G_END[reason][1])) || L("غادرت المكالمة", "You left the call");
+    g.endText = tx; g.state = "ended";
+    if (gui.root) { if (gui.min) gMinimize(false); gPaint(g); }
+    setTimeout(function () { if (!gc) gHide(); }, opts.text ? 3200 : 1800);
+  }
+  function groupLeave() { if (gc) gFinish(gc, "left"); }
+
+  // ---------- الواجهة ----------
+  function gBuild() {
+    if (gui.root) return gui;
+    var r = el("div", "position:fixed;inset:0;z-index:2147483000;background:linear-gradient(160deg,#10324a,#071320);color:#fff;display:none;flex-direction:column;font-family:system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;overflow:hidden;user-select:none;-webkit-user-select:none");
+    r.id = "sawa-gcall";
+    var top = el("div", "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 10px");
+    var hd = el("div", "min-width:0");
+    var title = el("div", "font:800 17px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
+    var sub = el("div", "font:600 12px system-ui;color:#a9c6dc;margin-top:2px");
+    hd.appendChild(title); hd.appendChild(sub);
+    var minBtn = el("button", "background:rgba(255,255,255,.14);border:0;color:#fff;border-radius:18px;padding:7px 12px;font:600 12px system-ui;cursor:pointer;flex-shrink:0", L("تصغير ▾", "Minimize ▾"));
+    minBtn.onclick = function () { gMinimize(true); };
+    top.appendChild(hd); top.appendChild(minBtn);
+    var reqs = el("div", "display:flex;flex-direction:column;gap:6px;padding:0 12px");
+    var grid = el("div", "flex:1;min-height:0;display:grid;gap:8px;padding:8px 12px;align-content:center");
+    var center = el("div", "flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:0 20px");
+    var av = el("div", "width:104px;height:104px;border-radius:50%;background:#2d6a9a;display:flex;align-items:center;justify-content:center;font:800 40px system-ui;box-shadow:0 0 0 10px rgba(45,106,154,.25)");
+    var cName = el("div", "font:800 22px system-ui"), cSt = el("div", "font:600 14px system-ui;color:#bcd6ea"), cWho = el("div", "font:500 12px system-ui;color:#8fb0c8");
+    center.appendChild(av); center.appendChild(cName); center.appendChild(cSt); center.appendChild(cWho);
+    var bar = el("div", "display:flex;justify-content:space-evenly;align-items:flex-start;padding:14px 8px calc(env(safe-area-inset-bottom,0px) + 22px);background:linear-gradient(transparent,rgba(0,0,0,.5))");
+    var audios = el("div", "display:none");
+    r.appendChild(top); r.appendChild(reqs); r.appendChild(grid); r.appendChild(center); r.appendChild(bar); r.appendChild(audios);
+    var pill = el("button", "position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:8px;background:#2d6a9a;color:#fff;border:0;border-radius:22px;padding:9px 16px;font:700 13px system-ui;box-shadow:0 4px 18px rgba(0,0,0,.35);direction:rtl;cursor:pointer");
+    pill.onclick = function () { gMinimize(false); };
+    document.body.appendChild(r); document.body.appendChild(pill);
+    gui = { root: r, title: title, sub: sub, minBtn: minBtn, reqs: reqs, grid: grid, center: center, av: av, cName: cName, cSt: cSt, cWho: cWho, bar: bar, audios: audios, pill: pill, tiles: {}, min: false };
+    return gui;
+  }
+  function gShow(g) {
+    gBuild();
+    gui.grid.innerHTML = ""; gui.audios.innerHTML = ""; gui.reqs.innerHTML = ""; gui.tiles = {};
+    gMinimize(false); gPaint(g);
+  }
+  function gHide() { if (!gui.root) return; gui.root.style.display = "none"; gui.pill.style.display = "none"; gui.min = false; gui.grid.innerHTML = ""; gui.audios.innerHTML = ""; gui.tiles = {}; }
+  function gMinimize(on) {
+    if (!gui.root) return; gui.min = !!on;
+    gui.root.style.display = on ? "none" : "flex"; gui.pill.style.display = on ? "flex" : "none";
+    gPaintHead(gc);
+  }
+  function gCount(g) { return Object.keys(g.members || {}).length; }
+  function gStatus(g) {
+    switch (g.state) {
+      case "starting": return L("جارٍ التجهيز…", "Preparing…");
+      case "incoming": return g.type === "video" ? L("مكالمة فيديو جماعيّة واردة", "Incoming group video call") : L("مكالمة صوتيّة جماعيّة واردة", "Incoming group voice call");
+      case "waiting": return L("بانتظار موافقة المضيف…", "Waiting for the host…");
+      case "joining": return L("جارٍ الانضمام…", "Joining…");
+      case "live": return (gCount(g) <= 1 ? L("بانتظار الآخرين…", "Waiting for others…") : gCount(g) + " " + L("مشاركين", "people")) + " · " + fmt(Math.floor((Date.now() - g.joinedAt) / 1000));
+      case "ended": return g.endText || "";
+    }
+    return "";
+  }
+  function gPaintHead(g) {
+    if (!g || !gui.root) return;
+    gui.title.textContent = g.title || (g.type === "video" ? L("مكالمة فيديو جماعيّة", "Group video call") : L("مكالمة جماعيّة", "Group call"));
+    gui.sub.textContent = gStatus(g);
+    if (gui.min) gui.pill.textContent = "👥 " + (g.title || "") + " · " + gStatus(g) + "  ▴";
+  }
+  function gPaint(g) {
+    if (!gui.root || !g) return;
+    gPaintHead(g);
+    var centerMode = g.state === "incoming" || g.state === "waiting" || g.state === "starting" || g.state === "ended";
+    gui.center.style.display = centerMode ? "flex" : "none";
+    gui.grid.style.display = centerMode ? "none" : "grid";
+    gui.minBtn.style.visibility = g.state === "incoming" || g.state === "ended" ? "hidden" : "visible";
+    if (centerMode) {
+      gui.av.textContent = (g.title || g.fromName || "👥").charAt(0);
+      gui.cName.textContent = g.title || g.fromName || L("مكالمة جماعيّة", "Group call");
+      gui.cSt.textContent = gStatus(g);
+      var who = Object.keys(g.members || {}).map(function (u) { return gName(g, u); });
+      gui.cWho.textContent = g.state === "incoming" ? ((g.fromName ? g.fromName + " " + L("يدعوك", "invites you") : "") + (who.length ? " · " + L("في المكالمة: ", "In call: ") + who.slice(0, 4).join("، ") + (who.length > 4 ? "…" : "") : "")) : "";
+    } else gLayout(g);
+    var bar = gui.bar; bar.innerHTML = "";
+    if (g.state === "ended") return;
+    if (g.state === "incoming") {
+      bar.appendChild(btn(g.type === "video" ? "📹" : "📞", L("انضمام", "Join"), "#21a366", groupAccept));
+      bar.appendChild(btn("✕", L("رفض", "Decline"), "#d64545", groupDecline));
+      return;
+    }
+    if (g.local) {
+      var mute = btn(g.muted ? "🔇" : "🎤", g.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), g.muted ? "#e8f5ee" : "rgba(255,255,255,.16)", gToggleMute);
+      if (g.muted) mute._b.style.color = "#123";
+      bar.appendChild(mute);
+      if (g.type === "video" && g.local.getVideoTracks().length) {
+        bar.appendChild(btn(g.camOff ? "🚫" : "📷", g.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), g.camOff ? "#e8f5ee" : "rgba(255,255,255,.16)", gToggleCam));
+        bar.appendChild(btn("🔄", L("تبديل", "Flip"), "rgba(255,255,255,.16)", gSwitchCam));
+      }
+    }
+    if (g.state === "live") bar.appendChild(btn("➕", L("إضافة", "Add"), "rgba(255,255,255,.16)", function () { pickPerson(g); }));
+    bar.appendChild(btn("📞", g.state === "waiting" ? L("إلغاء", "Cancel") : L("مغادرة", "Leave"), "#d64545", groupLeave));
+    bar.lastChild._b.style.transform = "rotate(135deg)";
+  }
+  function gPaintReqs(g) {
+    if (!gui.root) return;
+    gui.reqs.innerHTML = "";
+    Object.keys(g.reqs || {}).forEach(function (u) {
+      var row = el("div", "display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.12);border-radius:14px;padding:8px 10px");
+      row.appendChild(el("span", "flex:1;font:700 13px system-ui", ((g.reqs[u] && g.reqs[u].name) || nameOf(u) || L("عضو", "Member")) + " " + L("يطلب الانضمام", "wants to join")));
+      var ok = el("button", "background:#21a366;color:#fff;border:0;border-radius:10px;padding:6px 10px;font:700 12px system-ui", L("قبول", "Admit"));
+      var no = el("button", "background:#d64545;color:#fff;border:0;border-radius:10px;padding:6px 10px;font:700 12px system-ui", L("رفض", "Deny"));
+      ok.onclick = function () { gAdmit(u, true); }; no.onclick = function () { gAdmit(u, false); };
+      row.appendChild(ok); row.appendChild(no); gui.reqs.appendChild(row);
+    });
+  }
+  function gTileEl(uid) {
+    var t = gui.tiles[uid];
+    if (t) return t;
+    var box = el("div", "position:relative;border-radius:16px;overflow:hidden;background:#13283a;min-height:0;display:flex;align-items:center;justify-content:center");
+    var v = el("video", "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none");
+    v.autoplay = true; v.playsInline = true; v.muted = true; v.setAttribute("playsinline", "");
+    var av = el("div", "width:64px;height:64px;border-radius:50%;background:#2d6a9a;display:flex;align-items:center;justify-content:center;font:800 26px system-ui");
+    var lab = el("div", "position:absolute;bottom:6px;right:8px;left:8px;font:700 12px system-ui;text-shadow:0 1px 3px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
+    box.appendChild(v); box.appendChild(av); box.appendChild(lab);
+    var a = el("audio", ""); a.autoplay = true;
+    gui.audios.appendChild(a);
+    t = gui.tiles[uid] = { box: box, v: v, av: av, lab: lab, a: a };
+    return t;
+  }
+  function gLocalTile(g) {
+    if (!gui.root || !g.local) return;
+    var t = gTileEl("__me");
+    var hasV = g.type === "video" && g.local.getVideoTracks().length > 0 && !g.camOff;
+    t.v.srcObject = hasV ? g.local : null; t.v.style.display = hasV ? "block" : "none"; t.v.style.transform = g.facing === "environment" ? "none" : "scaleX(-1)";
+    if (hasV) try { t.v.play().catch(function () {}); } catch (e) {}
+    t.av.textContent = (myName() || "أ").charAt(0); t.av.style.display = hasV ? "none" : "flex";
+    t.lab.textContent = L("أنت", "You") + (g.muted ? " · 🔇" : "");
+    gLayout(g);
+  }
+  function gTile(g, uid) {
+    if (!gui.root || !g || g.done) return;
+    var p = g.peers[uid], inCall = g.members && g.members[uid];
+    if (!p && !inCall) {   // غادر
+      var old = gui.tiles[uid];
+      if (old) { try { old.v.srcObject = null; old.a.srcObject = null; old.box.remove(); old.a.remove(); } catch (e) {} delete gui.tiles[uid]; }
+      gLayout(g); return;
+    }
+    var t = gTileEl(uid);
+    var st = p && p.stream, hasV = !!(st && st.getVideoTracks().some(function (x) { return x.readyState === "live" && !x.muted; }));
+    if (st && t.a.srcObject !== st) { t.a.srcObject = st; try { t.a.play().catch(function () {}); } catch (e) {} }
+    if (hasV && t.v.srcObject !== st) { t.v.srcObject = st; try { t.v.play().catch(function () {}); } catch (e) {} }
+    t.v.style.display = hasV ? "block" : "none"; t.av.style.display = hasV ? "none" : "flex";
+    t.av.textContent = gName(g, uid).charAt(0);
+    var state = !p ? L("ينضمّ…", "joining…") : p.state === "connected" ? "" : p.state === "lost" ? L("انقطع", "lost") : p.state === "reconnecting" ? L("الشبكة ضعيفة…", "weak network…") : L("جارٍ الربط…", "connecting…");
+    t.lab.textContent = gName(g, uid) + (state ? " · " + state : "");
+    gLayout(g);
+  }
+  function gLayout(g) {
+    if (!gui.root || !g) return;
+    var me = myUid();
+    var ids = ["__me"].concat(Object.keys(g.members || {}).filter(function (u) { return u !== me; }));
+    ids = ids.filter(function (u) { return gui.tiles[u] || u === "__me"; });
+    var n = ids.length, cols = n <= 1 ? 1 : n <= 4 ? (n === 2 ? 1 : 2) : 3, rows = Math.ceil(n / cols);
+    gui.grid.style.gridTemplateColumns = "repeat(" + cols + ",1fr)";
+    gui.grid.style.gridTemplateRows = "repeat(" + rows + "," + (g.type === "video" ? "1fr" : "minmax(0,150px)") + ")";
+    ids.forEach(function (u) { var t = gui.tiles[u]; if (t && t.box.parentNode !== gui.grid) gui.grid.appendChild(t.box); });
+  }
+  // اختيار شخص: جهات الاتّصال (+ أعضاء المحادثة) ممّن ليسوا في المكالمة
+  function pickPerson(target) {
+    var me = myUid(), inCall = {};
+    if (target === cur && cur) inCall[cur.peer] = 1;
+    else if (gc) Object.keys(gc.members || {}).forEach(function (u) { inCall[u] = 1; });
+    var list = [];
+    try { list = C().contacts().filter(function (c) { return c.uid && c.uid !== me && !inCall[c.uid]; }); } catch (e) {}
+    var ov = el("div", "position:fixed;inset:0;z-index:2147483002;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;direction:rtl;font-family:system-ui");
+    var box = el("div", "background:#1b2633;color:#fff;border-radius:20px;width:min(92vw,380px);max-height:70vh;display:flex;flex-direction:column;overflow:hidden");
+    box.appendChild(el("div", "padding:16px 16px 4px;font:800 15px system-ui;text-align:center", L("إضافة شخص للمكالمة", "Add someone to the call")));
+    box.appendChild(el("div", "padding:0 16px 10px;font:500 11px system-ui;color:#9fb3c6;text-align:center", L("يُضاف دون قطع المكالمة", "They'll join without ending the call")));
+    var sc = el("div", "flex:1;overflow-y:auto;padding:0 10px");
+    if (!list.length) sc.appendChild(el("div", "padding:20px;text-align:center;color:#8aa0b4;font:600 12px system-ui", L("لا أحد آخر في جهات اتّصالك", "No other contacts")));
+    list.forEach(function (c) {
+      var b = el("button", "width:100%;display:flex;align-items:center;gap:10px;padding:10px 6px;background:transparent;border:0;color:#fff;font:700 13px system-ui;text-align:right;cursor:pointer");
+      var a = el("span", "width:34px;height:34px;border-radius:50%;background:#2d6a9a;display:flex;align-items:center;justify-content:center;font:800 14px system-ui;flex-shrink:0", (c.name || "؟").charAt(0));
+      b.appendChild(a); b.appendChild(el("span", "flex:1", c.name || ""));
+      if (c.online) b.appendChild(el("span", "width:8px;height:8px;border-radius:50%;background:#22c55e"));
+      b.onclick = function () { ov.remove(); if (target === cur) upgrade(cur, c.uid, c.name); else gAdd(c.uid, c.name); };
+      sc.appendChild(b);
+    });
+    box.appendChild(sc);
+    var cancel = el("button", "margin:10px 14px 14px;padding:10px;border:0;border-radius:12px;background:#2a3644;color:#e2e8f0;font:700 13px system-ui", L("إلغاء", "Cancel"));
+    cancel.onclick = function () { ov.remove(); };
+    box.appendChild(cancel); ov.appendChild(box);
+    ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+    document.body.appendChild(ov);
+  }
+
+  // ---------- مكالمةٌ جارية في محادثة جماعيّة (شريط «انضمام») ----------
+  function watchChat(cid, cb) {
+    var d = db(); if (!d || !cid || !/^(fam_|grp_)/.test(cid)) return function () {};
+    var ref = d.ref("gcur/" + cid), memRef = null, memH = null, last = null, closed = false;
+    function emit(v) { var j = JSON.stringify(v); if (j === last || closed) return; last = j; try { cb(v); } catch (e) {} }
+    function stopMem() { if (memRef && memH) try { memRef.off("value", memH); } catch (e) {} memRef = null; memH = null; }
+    var h = ref.on("value", function (s) {
+      var v = s.val(); stopMem();
+      if (!v || !v.gid) { emit(null); return; }
+      emit({ gid: v.gid, type: v.type, n: null });
+      memRef = d.ref("gcalls/" + v.gid + "/members");
+      memH = memRef.on("value", function (m) {
+        var mm = m.val() || {}, n = Object.keys(mm).length;
+        emit(n ? { gid: v.gid, type: v.type, n: n, inCall: !!mm[myUid()] } : null);
+      }, function () { /* لستُ في قائمة المدعوّين بعد — يبقى الشريط، والانضمام عبر الخادم */ });
+    }, function () { emit(null); });
+    return function () { closed = true; stopMem(); try { ref.off("value", h); } catch (e) {} };
+  }
+
+  // ============================================================
+  //  C7: المكالمات المجدولة — محفوظة في الخادم (scheds)، تذكيرٌ حقيقيّ بإشعار من الـWorker (Cron)
+  // ============================================================
+  var schedItems = [], schedAt = 0, schedBusy = false;
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+  function hhmm(ts) { var d = new Date(ts); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); }
+  function ymd(ts) { var d = new Date(ts); return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+  function schedShape(s) {
+    var me = myUid(), mine = s.by === me;
+    return { id: s.id, cloud: true, mine: mine, by: s.by, cid: s.cid || null, users: s.users || [],
+             contactName: mine ? (s.toName || s.title || L("مكالمة مجدولة", "Scheduled call")) : (s.byName || nameOf(s.by) || L("مكالمة مجدولة", "Scheduled call")),
+             description: s.title || "", date: ymd(s.at), startTime: hhmm(s.at), endTime: hhmm(s.end || s.at + 1800000),
+             callType: s.type === "video" ? "video" : "audio", requireApproval: !!s.approval, reminderMinutes: s.remind || 15, timestamp: s.at };
+  }
+  function publishSched() { if (app && app.setScheduledCalls) try { app.setScheduledCalls(schedItems.map(schedShape)); } catch (e) {} }
+  function schedRefresh(force) {
+    if (!myUid() || schedBusy || (!force && Date.now() - schedAt < 60000)) return Promise.resolve(schedItems);
+    schedBusy = true;
+    return wcall("sched.list", {}).then(function (b) { schedItems = (b && b.items) || []; schedAt = Date.now(); publishSched(); return schedItems; })
+      .catch(function (e) { log("sched.list", e && e.message); return schedItems; })
+      .then(function (r) { schedBusy = false; return r; });
+  }
+  // entry من شاشة الجدولة: { contactName, peerUid | cid, description, timestamp, endTime, callType, requireApproval, reminderMinutes }
+  function schedSave(entry) {
+    if (!enabled()) return Promise.reject(new Error("offline"));
+    var end = entry.timestamp + 30 * 60000;
+    try { var p = String(entry.endTime || "").split(":"); if (p.length === 2) { var d = new Date(entry.timestamp); d.setHours(+p[0], +p[1], 0, 0); if (d.getTime() <= entry.timestamp) d.setDate(d.getDate() + 1); end = d.getTime(); } } catch (e) {}
+    var pl = { title: entry.description || "", type: entry.callType, at: entry.timestamp, end: end, remind: entry.reminderMinutes, approval: !!entry.requireApproval, toName: entry.contactName || "" };
+    if (entry.cid) pl.cid = entry.cid; else pl.to = [entry.peerUid];
+    return wcall("sched.set", pl).then(function (b) { if (b && b.item) { schedItems = schedItems.filter(function (x) { return x.id !== b.item.id; }).concat([b.item]); publishSched(); } return b; });
+  }
+  function schedRemove(id) {
+    schedItems = schedItems.filter(function (x) { return x.id !== id; }); publishSched();
+    return wcall("sched.delete", { id: id }).catch(function (e) { log("sched.delete", e && e.message); schedRefresh(true); });
+  }
+  function schedStart(entry) {
+    if (!entry || !entry.cloud || !enabled()) return false;
+    return groupStart({ sched: entry.id }, entry.callType, entry.description || entry.contactName);
+  }
+
   // ---------- من الإشعار ----------
   function handleCallParam() {
     var id = null;
     try { id = new URLSearchParams(global.location.search).get("call"); } catch (e) {}
     if (!id) return;
     try { var u = new URL(global.location.href); u.searchParams.delete("call"); global.history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + u.hash); } catch (e) {}
-    whenUid(function () { setTimeout(function () { incoming(id); }, 300); });
+    whenUid(function () { setTimeout(function () { if (/^[gs]/.test(id)) groupIncoming(id); else incoming(id); }, 300); });
   }
   try {
     if (global.navigator && navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", function (ev) {
       var m = ev.data || {};
-      if ((m.type === "sawa-open" || m.type === "sawa-push") && m.data && m.data.t === "call" && m.data.call) whenUid(function () { incoming(m.data.call); });
+      if ((m.type === "sawa-open" || m.type === "sawa-push") && m.data && m.data.t === "call" && m.data.call)
+        whenUid(function () { if (m.data.gid) groupIncoming(m.data.gid, { from: m.data.from, fromName: m.data.fromName }); else incoming(m.data.call); });
+      if (m.type === "sawa-push" && m.data && m.data.t === "sched") schedRefresh(true);
     });
   } catch (e) {}
 
@@ -614,7 +1243,7 @@
     setInterval(function () {
       var u = myUid();
       if (u && u !== lastUid && db()) {
-        lastUid = u; watchInbox(u);
+        lastUid = u; watchInbox(u); schedRefresh(true);
         var w = uidWaiters; uidWaiters = []; w.forEach(function (f) { try { f(); } catch (e) {} });
       }
     }, 700);
@@ -625,8 +1254,18 @@
     call: startCall, accept: accept, decline: decline, hangup: hangup,
     active: function () { return cur ? { id: cur.id, peer: cur.peer, name: cur.name, type: cur.type, state: cur.state, role: cur.role, route: cur.route || null } : null; },
     _cur: function () { return cur; }, _incoming: incoming, _dev: devId,
-    _restart: function () { if (cur && cur.pc) { cur.state = "reconnecting"; iceRestart(cur); } }
+    _restart: function () { if (cur && cur.pc) { cur.state = "reconnecting"; iceRestart(cur); } },
+    // C7: الجماعيّة
+    groupCall: function (cid, type) { return groupStart({ cid: cid }, type); },
+    groupWith: function (uids, type, title) { return groupStart({ to: uids }, type, title); },
+    groupAccept: groupAccept, groupDecline: groupDecline, groupLeave: groupLeave, admit: gAdmit, addToGroup: gAdd, watchChat: watchChat,
+    group: function () { var g = gc; return g ? { gid: g.gid, type: g.type, state: g.state, role: g.role, title: g.title, members: Object.keys(g.members || {}),
+      peers: Object.keys(g.peers).map(function (u) { return { uid: u, state: g.peers[u].state }; }) } : null; },
+    // C7: المجدولة
+    schedRefresh: schedRefresh, schedSave: schedSave, schedRemove: schedRemove, schedStart: schedStart,
+    _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming
   };
+  try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") schedRefresh(false); }); } catch (e) {}
   if (global.document && document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 })(typeof window !== "undefined" ? window : this);
