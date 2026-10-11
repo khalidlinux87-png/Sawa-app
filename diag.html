@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>سوا — فحص الاتّصال</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --line:#334155; --muted:#94a3b8; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; }
+  body { margin:0; background:var(--bg); color:#e2e8f0; font:14px system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif; }
+  .wrap { max-width:560px; margin:0 auto; padding:16px; }
+  h1 { font-size:18px; margin:4px 0 2px; } p.s { color:var(--muted); margin:0 0 12px; font-size:12px; }
+  .row { display:flex; gap:10px; align-items:flex-start; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; }
+  .dot { width:10px; height:10px; border-radius:50%; margin-top:5px; flex-shrink:0; background:var(--muted); }
+  .ok .dot { background:var(--ok); } .warn .dot { background:var(--warn); } .bad .dot { background:var(--bad); }
+  .t { font-weight:700; } .d { color:var(--muted); font-size:12px; margin-top:2px; white-space:pre-wrap; word-break:break-word; direction:auto; }
+  button { width:100%; padding:12px; border:0; border-radius:12px; background:#2e7d5b; color:#fff; font:800 14px system-ui; margin-top:6px; }
+  button.sec { background:var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>فحص اتّصال سوا</h1>
+  <p class="s">يفحص الخادم وقاعدة البيانات والإشعارات من هذا الجهاز. انسخ النتيجة وأرسلها كما هي — لا تحوي أيّ سرّ.</p>
+  <div id="out"></div>
+  <button id="copy">نسخ النتائج</button>
+  <button id="again" class="sec">إعادة الفحص</button>
+</div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+(function () {
+  "use strict";
+  var CFG = {
+    apiKey: "AIzaSyBmnt6-HMdEaR7LinHWuUnnV26Xu5akkvE", authDomain: "sawa-test-9770f.firebaseapp.com", projectId: "sawa-test-9770f",
+    storageBucket: "sawa-test-9770f.firebasestorage.app", messagingSenderId: "98971055474", appId: "1:98971055474:web:806f40756a2f4cdbdb19eb",
+    databaseURL: "https://sawa-test-9770f-default-rtdb.europe-west1.firebasedatabase.app"
+  };
+  var WORKER = "https://sawa-deploy-test.khalidlinux87.workers.dev";
+  var out = document.getElementById("out"), lines = [];
+  function add(level, title, detail) {
+    var r = document.createElement("div"); r.className = "row " + level;
+    var dot = document.createElement("div"); dot.className = "dot";
+    var b = document.createElement("div"); var t = document.createElement("div"); t.className = "t"; t.textContent = title;
+    var d = document.createElement("div"); d.className = "d"; d.textContent = detail || "";
+    b.appendChild(t); b.appendChild(d); r.appendChild(dot); r.appendChild(b); out.appendChild(r);
+    lines.push((level === "ok" ? "✅ " : level === "warn" ? "⚠️ " : "❌ ") + title + (detail ? " — " + detail : ""));
+  }
+  function ms(t0) { return Math.round(performance.now() - t0) + "ms"; }
+  function timeout(p, n, what) { return Promise.race([p, new Promise(function (_, rej) { setTimeout(function () { rej(new Error("مهلة " + (n / 1000) + "ث: " + what)); }, n); })]); }
+  function lsLen(k) { try { var v = JSON.parse(localStorage.getItem(k) || "[]"); return Array.isArray(v) ? v.length : 0; } catch (e) { return "?"; } }
+
+  function worker(tok, op, payload) {
+    var t0 = performance.now();
+    return timeout(fetch(WORKER, { method: "POST", headers: { "Authorization": "Bearer " + tok, "Content-Type": "application/json" }, body: JSON.stringify({ op: op, payload: payload || {} }) }), 20000, op)
+      .then(function (r) {
+        return r.text().then(function (txt) {
+          var j = null; try { j = JSON.parse(txt); } catch (e) {}
+          return { status: r.status, ms: ms(t0), j: j, raw: j ? "" : txt.slice(0, 160) };
+        });
+      }, function (e) { return { status: 0, ms: ms(t0), err: (e && e.name === "TypeError") ? "تعذّر الوصول (شبكة أو خطأ من Cloudflare بلا CORS — مثل تجاوز الحدّ اليوميّ)" : String(e && e.message || e) }; });
+  }
+
+  function run() {
+    out.innerHTML = ""; lines = ["فحص سوا — " + new Date().toISOString(), navigator.userAgent.slice(0, 120)];
+    add(navigator.onLine ? "ok" : "bad", "الشبكة", navigator.onLine ? "متّصل" + (navigator.connection && navigator.connection.effectiveType ? " · " + navigator.connection.effectiveType + (navigator.connection.rtt ? " · rtt " + navigator.connection.rtt + "ms" : "") : "") : "غير متّصل");
+    add(lsLen("sawa_chat_outbox") ? "warn" : "ok", "رسائل عالقة في الطابور", String(lsLen("sawa_chat_outbox")));
+    var fl = lsLen("sawa_sync_failed"); if (fl) add("warn", "تعديلات رفضها الخادم سابقاً", String(fl));
+    if (!firebase.apps.length) firebase.initializeApp(CFG);
+    var un = firebase.auth().onAuthStateChanged(function (u) {
+      un();
+      if (!u) { add("bad", "الحساب", "لم يُسجَّل الدخول في هذا المتصفّح — افتح سوا من نفس المتصفّح أوّلاً"); return; }
+      add("ok", "الحساب", u.uid.slice(0, 6) + "… · " + (u.isAnonymous ? "ضيف" : (u.providerData[0] && u.providerData[0].providerId) || ""));
+      var uid = u.uid;
+      u.getIdToken().then(function (tok) {
+        // ١) الخادم
+        return worker(tok, "whoami").then(function (a) {
+          if (a.err) add("bad", "الخادم (Worker)", a.err + " · " + a.ms);
+          else if (!a.j) add("bad", "الخادم (Worker)", "ردّ غير متوقّع " + a.status + " · " + a.ms + " · " + a.raw);
+          else add(a.status === 200 ? "ok" : "bad", "الخادم (Worker)", (a.j.ver || "?") + " · " + a.status + " · " + a.ms + (a.j.error ? " · " + a.j.error : ""));
+          return worker(tok, "whoami");
+        }).then(function (a) {
+          add(a.err || !a.j ? "bad" : parseInt(a.ms) > 3000 ? "warn" : "ok", "الخادم مرّة ثانية", a.err || (a.status + " · " + a.ms));
+          return worker(tok, "people.list");
+        }).then(function (a) {
+          var ok = a.j && a.j.ok;
+          add(ok ? (parseInt(a.ms) > 5000 ? "warn" : "ok") : "bad", "قراءة جهات الاتّصال (Firestore عبر الخادم)", ok ? (a.j.people || []).length + " شخص · " + a.ms : (a.err || (a.j && a.j.error) || a.raw || a.status) + " · " + a.ms);
+          return worker(tok, "rtc.ice");
+        }).then(function (a) {
+          var ok = a.j && a.j.ok;
+          add(ok ? (a.j.turn ? "ok" : "warn") : "bad", "خوادم المكالمات (TURN)", ok ? (a.j.turn ? "الوسيط Metered مفعّل" : "STUN فقط — الوسيط غير مفعّل") + " · " + a.ms : (a.err || (a.j && a.j.error)) + " · " + a.ms);
+          return worker(tok, "sched.list");
+        }).then(function (a) {
+          var ok = a.j && a.j.ok;
+          add(ok ? "ok" : "bad", "المواعيد", ok ? (a.j.items || []).length + " موعد · " + a.ms : (a.err || (a.j && a.j.error)) + " · " + a.ms);
+        });
+      }).then(function () {
+        // ٢) Firestore مباشرةً (الحصّة اليوميّة)
+        var t0 = performance.now();
+        return timeout(firebase.firestore().collection("chats").where("members", "array-contains", uid).limit(1).get(), 15000, "firestore").then(function (s) {
+          add("ok", "Firestore مباشرة", s.size + " · " + ms(t0));
+        }, function (e) { add("bad", "Firestore مباشرة", (e && (e.code || e.message)) + " · " + ms(t0) + (e && e.code === "resource-exhausted" ? " ⇐ انتهت الحصّة اليوميّة المجّانيّة" : "")); });
+      }).then(function () {
+        // ٣) Realtime Database
+        var d = firebase.database(), t0 = performance.now();
+        return timeout(new Promise(function (res) { d.ref(".info/connected").on("value", function (s) { if (s.val() === true) res(); }); }), 15000, "RTDB").then(function () {
+          add("ok", "Realtime Database (الحضور والمكالمات)", "متّصل · " + ms(t0));
+          var t1 = performance.now();
+          return timeout(d.ref("status/" + uid).set({ state: "online", ts: firebase.database.ServerValue.TIMESTAMP }), 10000, "status").then(function () {
+            add("ok", "الكتابة في RTDB", ms(t1));
+          }, function (e) { add("bad", "الكتابة في RTDB", (e && (e.code || e.message)) + " · " + ms(t1)); });
+        }, function (e) { add("bad", "Realtime Database", e.message); }).then(function () {
+          var t2 = performance.now();
+          return timeout(d.ref("inbox/" + uid).once("value"), 10000, "inbox").then(function (s) {
+            var v = s.val() || {}, n = Object.keys(v).length;
+            add(n ? "warn" : "ok", "صندوق المكالمات الواردة", n ? n + " مكالمة لم تُعالَج" : "فارغ · " + ms(t2));
+          }, function (e) { add("bad", "صندوق المكالمات الواردة", (e && (e.code || e.message)) + " — قواعد RTDB؟"); });
+        });
+      }).then(function () {
+        // ٤) الإشعارات
+        var perm = typeof Notification !== "undefined" ? Notification.permission : "غير مدعوم";
+        add(perm === "granted" ? "ok" : "warn", "إذن الإشعارات", perm);
+        if (!navigator.serviceWorker) { add("bad", "عامل الخدمة", "غير مدعوم"); return; }
+        return navigator.serviceWorker.getRegistration().then(function (reg) {
+          if (!reg) { add("warn", "عامل الخدمة", "غير مسجَّل"); return; }
+          return fetch("./sw.js", { cache: "no-store" }).then(function (r) { return r.text(); }).then(function (t) {
+            var m = t.match(/sawa-v\d+/); add("ok", "عامل الخدمة", (m ? m[0] : "?") + (reg.active ? " · نشط" : " · غير نشط"));
+          }).then(function () { return reg.pushManager && reg.pushManager.getSubscription(); }).then(function (s) {
+            add(s ? "ok" : "warn", "اشتراك الإشعارات على هذا الجهاز", s ? "موجود" : "غير موجود — فعّل الإشعارات من الإعدادات");
+          });
+        });
+      }).catch(function (e) { add("bad", "خطأ أثناء الفحص", String(e && e.message || e)); })
+        .then(function () { add("ok", "انتهى الفحص", ""); });
+    });
+  }
+  document.getElementById("copy").onclick = function () {
+    var txt = lines.join("\n");
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(function () { alert("نُسخت النتائج"); }, function () { prompt("انسخ النتائج:", txt); });
+  };
+  document.getElementById("again").onclick = run;
+  run();
+})();
+</script>
+</body>
+</html>
