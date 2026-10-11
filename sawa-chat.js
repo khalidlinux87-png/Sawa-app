@@ -10,7 +10,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c5";
+  var VERSION = "c6";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1045,7 +1045,7 @@
   try {
     if (global.navigator && navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", function (ev) {
       var m = ev.data || {};
-      if (m.type === "sawa-push" && m.data) { if (m.data.cid !== openCid) toast((m.data.title ? m.data.title + ": " : "") + (m.data.body || "")); }
+      if (m.type === "sawa-push" && m.data) { if (m.data.t !== "call" && m.data.cid !== openCid) toast((m.data.title ? m.data.title + ": " : "") + (m.data.body || "")); }
       if (m.type === "sawa-open" && m.data) openFromPush(m.data.cid);
     });
   } catch (e) {}
@@ -1108,6 +1108,7 @@
     shareInvite: shareInvite, createInvite: createInvite, renderQr: renderQr,
     accept: accept, scanSupported: scanSupported, scanAndAdd: scanAndAdd, removeContact: removeContact,
     me: function () { return state.me; }, uid: function () { return state.uid; },
+    isBlocked: function (u) { return !!(prefs && prefs.blocked && prefs.blocked.indexOf(u) >= 0); },   // C6: المحظور لا يرنّ
     status: function () { return { loaded: state.loaded, error: state.error, count: state.people.length }; },
     // C2
     isCloud: isCloud, enabled: function () { return !!state.uid; }, openChat: openChat, closeChat: closeChat,
