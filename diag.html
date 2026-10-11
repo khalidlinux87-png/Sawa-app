@@ -22,6 +22,8 @@
   <h1>فحص اتّصال سوا</h1>
   <p class="s">يفحص الخادم وقاعدة البيانات والإشعارات من هذا الجهاز. انسخ النتيجة وأرسلها كما هي — لا تحوي أيّ سرّ.</p>
   <div id="out"></div>
+  <button id="push" style="background:#4f46e5">🔔 تفعيل الإشعارات على هذا الجهاز الآن</button>
+  <div id="pushOut" class="d" style="margin:6px 2px 4px"></div>
   <button id="copy">نسخ النتائج</button>
   <button id="again" class="sec">إعادة الفحص</button>
 </div>
@@ -29,6 +31,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script>
 (function () {
   "use strict";
@@ -139,6 +142,38 @@
     (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(function () { alert("نُسخت النتائج"); }, function () { prompt("انسخ النتائج:", txt); });
   };
   document.getElementById("again").onclick = run;
+  // تفعيل الإشعارات خطوةً خطوة — يعرض أين يتوقّف بالضبط
+  var VAPID = "BIXTjlI7zsibBBqZXkdIGu7tEnqVKf9Rf63v20ZdfNiNs6jj5olbf-a1SJ1SpnNm3OcC807QpPEUR7GrwMAuGdw";
+  document.getElementById("push").onclick = function () {
+    var po = document.getElementById("pushOut"), log = [];
+    function say(t) { log.push(t); po.textContent = log.join("\n"); lines.push("🔔 " + t); }
+    po.textContent = "";
+    if (typeof Notification === "undefined") { say("❌ المتصفّح لا يدعم الإشعارات"); return; }
+    say("الإذن قبل الطلب: " + Notification.permission);
+    var t0 = Date.now();
+    Notification.requestPermission().then(function (perm) {
+      say("نتيجة الطلب: " + perm + " (بعد " + Math.round((Date.now() - t0) / 1000) + "ث)");
+      if (perm === "default") { say("⚠️ لم تظهر نافذة السؤال أو أُغلقت — ابحث عن أيقونة جرس مشطوب 🔕 في شريط العنوان واضغطها ثمّ «سماح»"); return; }
+      if (perm === "denied") { say("❌ مرفوض — من القفل/الأيقونة بجانب العنوان ← الأذونات ← الإشعارات ← سماح، ثمّ أعد الضغط هنا"); return; }
+      var u = firebase.auth().currentUser; if (!u) { say("❌ لا حساب في هذا المتصفّح"); return; }
+      say("جارٍ تجهيز عامل الخدمة…");
+      return navigator.serviceWorker.ready.then(function (reg) {
+        say("جارٍ طلب رمز الإشعارات من Firebase…");
+        return firebase.messaging().getToken({ vapidKey: VAPID, serviceWorkerRegistration: reg });
+      }).then(function (tok) {
+        if (!tok) throw new Error("لم يُعطِ Firebase رمزاً");
+        say("✅ رمز الإشعارات جاهز (" + tok.slice(0, 8) + "…)");
+        return u.getIdToken().then(function (idt) {
+          return fetch(WORKER, { method: "POST", headers: { "Authorization": "Bearer " + idt, "Content-Type": "application/json" },
+            body: JSON.stringify({ op: "push.register", payload: { token: tok, ua: navigator.userAgent.slice(0, 150) } }) }).then(function (r) { return r.json(); });
+        }).then(function (b) {
+          if (!b || !b.ok) throw new Error("الخادم: " + (b && b.error));
+          try { localStorage.setItem("sawa_push", JSON.stringify({ token: tok, uid: u.uid, ts: Date.now() })); } catch (e) {}
+          say("✅ سُجّل هذا الجهاز للإشعارات. أغلق التطبيق وجرّب الاتّصال به من الجهاز الآخر.");
+        });
+      });
+    }).catch(function (e) { say("❌ " + (e && (e.code || "") + " " + (e.message || e))); });
+  };
   run();
 })();
 </script>
