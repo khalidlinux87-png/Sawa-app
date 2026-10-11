@@ -725,9 +725,9 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
                 React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
                     React.createElement("h3", { className: "text-base font-extrabold truncate", style: { color: colors.text } }, myDisplayName || t("mstkhdm_swa", { app: appName() })),
                     cloudMe ? (myProfile.phone
-                        ? React.createElement("p", { className: "text-xs mt-0.5 truncate", style: { color: colors.textMuted } },
-                            React.createElement("span", { dir: "ltr" }, myProfile.phone),
-                            React.createElement("span", { className: "text-[10px] font-bold", style: { color: "#B7791F" } }, " · غير موثّق"))
+                        ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-0.5 flex-wrap`, style: { color: colors.textMuted } },
+                            React.createElement("span", { className: "text-xs", dir: "ltr" }, myProfile.phone),
+                            React.createElement("span", { className: "text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0", style: { color: "#B7791F", backgroundColor: "#FEF3C7" } }, "غير موثّق"))
                         : React.createElement("button", { onClick: editMe, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, "+ أضف رقم هاتفك"))
                         : React.createElement("p", { className: "text-xs mt-0.5 truncate", style: { color: colors.textMuted }, dir: "ltr" }, "+249 9X XXX XXXX"),
                     React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-2` },
