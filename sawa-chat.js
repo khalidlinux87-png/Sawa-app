@@ -10,7 +10,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c8d";
+  var VERSION = "c9";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1114,48 +1114,138 @@
     return call("push.register", { token: tok, ua: (navigator.userAgent || "").slice(0, 150), prevUid: prev.uid && prev.uid !== state.uid ? prev.uid : null })
       .then(function () { lsSet("sawa_push", { token: tok, uid: state.uid, ts: Date.now() }); return true; });
   }
+  function isIOS() { return /iPhone|iPad|iPod/.test(navigator.userAgent || ""); }
+  function pushState() {   // "granted" | "default" | "denied" | "off" (سُمح ثمّ أوقفه المستخدم من سوا) | "unsupported"
+    if (!pushSupported()) return "unsupported";
+    var p; try { p = Notification.permission; } catch (e) { return "unsupported"; }
+    if (p === "granted" && lsGet("sawa_push_off", 0)) return "off";
+    return p;
+  }
+  function emitPush() { try { global.dispatchEvent(new CustomEvent("sawa-push-state", { detail: pushState() })); } catch (e) {} }
+  function deniedHelp() {
+    return isIOS()
+      ? L("الإشعارات محظورة لسوا. افتح «الإعدادات» ← «الإشعارات» ← «سوا» وفعّل «السماح بالإشعارات».",
+          "Notifications are blocked for Sawa. Open Settings → Notifications → Sawa and turn on Allow Notifications.")
+      : L("الإشعارات محظورة لسوا. اضغط مطوّلاً على أيقونة سوا ← «معلومات التطبيق» ← «الإشعارات» ← سماح. (أو من المتصفّح: 🔒 بجانب العنوان ← الأذونات ← الإشعارات ← سماح) ثمّ أعد فتح سوا.",
+          "Notifications are blocked for Sawa. Long-press the Sawa icon → App info → Notifications → Allow (or in the browser: 🔒 next to the address → Permissions → Notifications → Allow), then reopen Sawa.");
+  }
   function enablePush() {
     if (!VAPID_KEY) { toast(L("الإشعارات لم تُفعَّل بعد في هذا الإصدار", "Notifications aren't set up in this version yet")); return Promise.resolve(false); }
-    if (!pushSupported()) { toast(L("هذا المتصفّح لا يدعم الإشعارات" + (/iPhone|iPad/.test(navigator.userAgent || "") ? " — على آيفون ثبّت التطبيق على الشاشة الرئيسيّة أوّلاً" : ""), "This browser doesn't support notifications")); return Promise.resolve(false); }
+    if (!pushSupported()) { toast(L("هذا المتصفّح لا يدعم الإشعارات" + (isIOS() ? " — على آيفون ثبّت التطبيق على الشاشة الرئيسيّة أوّلاً" : ""), "This browser doesn't support notifications")); return Promise.resolve(false); }
+    var perm0; try { perm0 = Notification.permission; } catch (e) {}
+    if (perm0 === "denied") { hideBanner(); helpSheet(); return Promise.resolve(false); }
+    try { localStorage.removeItem("sawa_push_off"); } catch (e) {}
     return Notification.requestPermission().then(function (perm) {
-      if (perm !== "granted") { toast(L("لم يُسمح بالإشعارات — يمكنك تفعيلها من إعدادات المتصفّح", "Notifications weren't allowed — enable them in the browser settings")); return false; }
-      return pushToken().then(registerToken).then(function () { toast(L("الإشعارات مفعّلة ✓", "Notifications on ✓")); hideBanner(); return true; });
-    }).catch(function (e) { toast(L("تعذّر تفعيل الإشعارات: ", "Couldn't enable notifications: ") + ((e && e.message) || e)); return false; });
+      if (perm !== "granted") { emitPush(); if (perm === "denied") helpSheet(); else toast(L("لم تُفعَّل الإشعارات — يمكنك المحاولة لاحقاً", "Notifications weren't turned on")); return false; }
+      return pushToken().then(function (tok) { lsSet("sawa_push", {}); return registerToken(tok); })
+        .then(function () { toast(L("الإشعارات مفعّلة ✓", "Notifications on ✓")); hideBanner(); emitPush(); return true; });
+    }).catch(function (e) { toast(L("تعذّر تفعيل الإشعارات: ", "Couldn't enable notifications: ") + ((e && e.message) || e)); emitPush(); return false; });
   }
   function disablePush() {
     var prev = lsGet("sawa_push", {});
-    lsSet("sawa_push", {});
+    lsSet("sawa_push", {}); lsSet("sawa_push_off", Date.now());
     var p = prev.token ? call("push.unregister", { token: prev.token }).catch(function () {}) : Promise.resolve();
     try { firebase.messaging().deleteToken().catch(function () {}); } catch (e) {}
+    emitPush();
     return p;
   }
-  function pushEnabled() { try { return Notification.permission === "granted" && !!lsGet("sawa_push", {}).token; } catch (e) { return false; } }
-  // بعد الدخول: إن سبق السماح نجدّد الرمز بصمت (يتغيّر أحياناً، أو تغيّر الحساب)
+  function pushEnabled() { return pushState() === "granted"; }
+  // بعد الدخول: إن سبق السماح نجدّد الرمز بصمت (يتغيّر أحياناً، أو تغيّر الحساب)؛ وإلا نعرض بطاقة التفعيل
   function refreshPush() {
-    if (!pushSupported()) return;
-    try { if (Notification.permission !== "granted") return maybeBanner(); } catch (e) { return; }
+    var st = pushState();
+    emitPush();
+    if (st === "default" || st === "denied") return maybeBanner(st);
+    if (st !== "granted") return;
     pushToken().then(registerToken).catch(function (e) { log("push token:", (e && e.message) || e); });
   }
-  // دعوةٌ لطيفة مرّةً واحدة (تحتاج ضغطة المستخدم — المتصفّحات تمنع الطلب التلقائيّ)
+  // بطاقة «فعّل الإشعارات» (تحتاج ضغطة المستخدم — المتصفّحات تمنع الطلب التلقائيّ)
+  //  · لم يُسأل بعد ⇒ تظهر كلّ فتحٍ، و«لاحقاً» يؤجّلها يوماً · محظورة ⇒ تظهر أسبوعيّاً مع طريقة الفتح
   var bannerEl = null;
   function hideBanner() { try { if (bannerEl) bannerEl.remove(); } catch (e) {} bannerEl = null; }
-  function maybeBanner() {
-    if (bannerEl || lsGet("sawa_push_asked", 0) > Date.now() - 7 * 86400000) return;
-    try { if (Notification.permission !== "default") return; } catch (e) { return; }
-    if (!Object.keys(chats).length) return;
-    bannerEl = document.createElement("div");
-    bannerEl.dir = isAr() ? "rtl" : "ltr";
-    bannerEl.style.cssText = "position:fixed;left:12px;right:12px;top:12px;z-index:2147483640;background:#1f2d3a;color:#fff;border-radius:14px;padding:12px 14px;font:600 13px system-ui;box-shadow:0 6px 20px rgba(0,0,0,.3);display:flex;gap:10px;align-items:center";
+  function bannerShell() {
+    var el = document.createElement("div");
+    el.dir = isAr() ? "rtl" : "ltr"; el.id = "sawa-push-card";
+    el.style.cssText = "position:fixed;left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:2147483640;background:#1f2d3a;color:#fff;border-radius:16px;padding:12px 14px;font:600 13px/1.6 system-ui;box-shadow:0 8px 24px rgba(0,0,0,.35);display:flex;gap:10px;align-items:center;max-width:520px;margin:0 auto";
+    return el;
+  }
+  function btn(text, primary) {
+    var b = document.createElement("button"); b.textContent = text;
+    b.style.cssText = primary ? "background:#2e7d5b;color:#fff;border:0;border-radius:10px;padding:8px 12px;font:700 13px system-ui;white-space:nowrap"
+                              : "background:transparent;color:#cfd8dc;border:0;padding:8px 6px;font:600 12px system-ui;white-space:nowrap";
+    return b;
+  }
+  function maybeBanner(st) {
+    st = st || pushState();
+    if (bannerEl || !document.body) return;
+    if (st !== "default" && st !== "denied") return;
+    var snooze = st === "denied" ? 7 * 86400000 : 86400000;
+    if (lsGet("sawa_push_asked", 0) > Date.now() - snooze) return;
+    if (global.SawaRTC && ((SawaRTC.active && SawaRTC.active()) || (SawaRTC.group && SawaRTC.group()) || (SawaRTC.room && SawaRTC.room()))) return;
+    bannerEl = bannerShell();
     var txt = document.createElement("div"); txt.style.flex = "1";
-    txt.textContent = L("🔔 فعّل الإشعارات لتصلك الرسائل والمكالمات والتطبيق مغلق", "🔔 Turn on notifications to get messages and calls when the app is closed");
-    var yes = document.createElement("button"); yes.textContent = L("تفعيل", "Turn on");
-    yes.style.cssText = "background:#2e7d5b;color:#fff;border:0;border-radius:10px;padding:8px 12px;font:700 13px system-ui";
-    var no = document.createElement("button"); no.textContent = L("لاحقاً", "Later");
-    no.style.cssText = "background:transparent;color:#cfd8dc;border:0;padding:8px 6px;font:600 12px system-ui";
-    yes.onclick = function () { lsSet("sawa_push_asked", Date.now()); enablePush(); hideBanner(); };
+    txt.textContent = st === "denied"
+      ? L("🔕 الإشعارات محظورة — لن تصلك الرسائل والمكالمات والتطبيق مغلق", "🔕 Notifications are blocked — you won't get messages or calls while the app is closed")
+      : L("🔔 فعّل الإشعارات لتصلك الرسائل والمكالمات والتطبيق مغلق", "🔔 Turn on notifications to get messages and calls when the app is closed");
+    var yes = btn(st === "denied" ? L("كيف أفتحها؟", "How?") : L("تفعيل", "Turn on"), true);
+    var no = btn(L("لاحقاً", "Later"));
+    yes.onclick = function () { hideBanner(); if (st === "denied") { lsSet("sawa_push_asked", Date.now()); helpSheet(); } else enablePush(); };
     no.onclick = function () { lsSet("sawa_push_asked", Date.now()); hideBanner(); };
     bannerEl.appendChild(txt); bannerEl.appendChild(yes); bannerEl.appendChild(no); document.body.appendChild(bannerEl);
   }
+  function helpSheet() {
+    var ov = document.createElement("div");
+    ov.style.cssText = "position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center";
+    var box = document.createElement("div"); box.dir = isAr() ? "rtl" : "ltr";
+    box.style.cssText = "background:#fff;color:#1f2937;border-radius:18px 18px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));width:100%;max-width:520px;font:500 14px/1.8 system-ui";
+    var h = document.createElement("div"); h.style.cssText = "font:800 16px system-ui;margin-bottom:6px"; h.textContent = L("🔔 تفعيل الإشعارات", "🔔 Turn on notifications");
+    var p = document.createElement("div"); p.textContent = deniedHelp();
+    var ok = btn(L("حسناً", "OK"), true); ok.style.marginTop = "12px"; ok.style.width = "100%";
+    ok.onclick = function () { try { ov.remove(); } catch (e) {} };
+    ov.onclick = function (e) { if (e.target === ov) ok.onclick(); };
+    box.appendChild(h); box.appendChild(p); box.appendChild(ok); ov.appendChild(box); document.body.appendChild(ov);
+  }
+  // عند العودة للتطبيق: ربّما غيّر المستخدم الإذن من إعدادات الهاتف
+  try {
+    var lastPushSt = null;
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState !== "visible" || !state.uid) return;
+      var st = pushState(); if (st === lastPushSt) return; lastPushSt = st;
+      if (st === "granted") { hideBanner(); refreshPush(); } else emitPush();
+    });
+  } catch (e) {}
+
+  // ==================================================================
+  // C9: تحديثات التطبيق — sw.js «المخزون أوّلاً»؛ نسخةٌ جديدة ⇒ تُحمَّل في الخلفيّة ثمّ:
+  //   خلال ثوانٍ من الفتح ⇒ إعادة تحميلٍ تلقائيّة · غير ذلك ⇒ شريط «تحديث جديد» (لا نقطع مكالمةً أو كتابة)
+  // ==================================================================
+  (function swUpdates() {
+    try { if (!global.navigator || !navigator.serviceWorker) return; } catch (e) { return; }
+    var t0 = Date.now(), had = !!navigator.serviceWorker.controller, reloading = false, upEl = null, lastCheck = Date.now();
+    function inCall() { var R = global.SawaRTC; try { return !!(R && ((R.active && R.active()) || (R.group && R.group()) || (R.room && R.room()))); } catch (e) { return false; } }
+    function reload() { if (reloading) return; reloading = true; try { global.location.reload(); } catch (e) {} }
+    function bar() {
+      if (upEl || !document.body) return;
+      upEl = bannerShell(); upEl.style.bottom = ""; upEl.style.top = "calc(10px + env(safe-area-inset-top,0px))"; upEl.style.background = "#2F80C8";
+      var txt = document.createElement("div"); txt.style.flex = "1"; txt.textContent = L("✨ نسخةٌ جديدة من سوا جاهزة", "✨ A new version of Sawa is ready");
+      var yes = btn(L("تحديث", "Update"), true); yes.style.background = "#fff"; yes.style.color = "#2F80C8";
+      var no = btn(L("لاحقاً", "Later")); no.style.color = "#e3f0fb";
+      yes.onclick = function () { if (inCall() && !global.confirm(L("ستنتهي المكالمة الحاليّة. تحديث الآن؟", "This will end the current call. Update now?"))) return; reload(); };
+      no.onclick = function () { try { upEl.remove(); } catch (e) {} upEl = null; };
+      upEl.appendChild(txt); upEl.appendChild(yes); upEl.appendChild(no); document.body.appendChild(upEl);
+    }
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (!had) { had = true; return; }            // أوّل تثبيتٍ لعامل الخدمة: لا شيء تغيّر في الصفحة
+      if (Date.now() - t0 < 10000 && !inCall()) return reload();
+      bar();
+    });
+    // التطبيق المثبّت قد يبقى مفتوحاً أيّاماً في الخلفيّة دون «فتحٍ» جديد ⇒ نفحص sw.js عند العودة (مرّةً كلّ 30 دقيقة)
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState !== "visible" || Date.now() - lastCheck < 30 * 60000) return;
+      lastCheck = Date.now();
+      navigator.serviceWorker.getRegistration().then(function (r) { if (r) return r.update(); }).catch(function () {});
+    });
+  })();
+
   // عامل الخدمة → التطبيق: إشعارٌ والتطبيق أمامك (تنبيهٌ داخليّ) · ضغطٌ على إشعار (افتح المحادثة)
   function openFromPush(cid) { if (cid && isCloud(cid)) whenApp(function () { try { if (app.openChatById) app.openChatById(cid); } catch (e) {} }); }
   try {
@@ -1195,7 +1285,7 @@
     refresh();
     stopChats(); prefs = null; prefsLoaded = false; pend = {}; virtualChats = {};
     restorePending(); startChats(uid); loadPrefs(); drainOutbox();
-    setTimeout(refreshPush, 4000);
+    setTimeout(refreshPush, 3000);
     var cbs = readyCbs; readyCbs = [];
     cbs.forEach(function (f) { try { f(uid); } catch (e) {} });
   }
@@ -1233,7 +1323,7 @@
     isCloud: isCloud, enabled: function () { return !!state.uid; }, openChat: openChat, closeChat: closeChat,
     send: send, edit: edit, clearChat: clearChat,
     // C4
-    enablePush: enablePush, disablePush: disablePush, pushEnabled: pushEnabled, pushSupported: pushSupported,
+    enablePush: enablePush, disablePush: disablePush, pushEnabled: pushEnabled, pushSupported: pushSupported, pushState: pushState, pushHelp: helpSheet,
     sendMedia: sendMedia, openFile: openFile, markViewedOnce: markViewedOnce, ensureMedia: ensureMedia,
     // C3
     createGroup: createGroup, updateGroup: updateGroup, addMembers: addMembers, removeMember: removeMember, setAdmin: setAdmin,

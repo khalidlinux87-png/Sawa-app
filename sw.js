@@ -1,7 +1,10 @@
-// عامل الخدمة — يحفظ ملفّات التطبيق للعمل دون اتّصال (الشبكة أوّلاً، ثمّ المخزون).
+// عامل الخدمة — «المخزون أوّلاً» (C9): ملفّات التطبيق تُحمَّل من الهاتف فوراً بلا أيّ طلبٍ للشبكة،
+// فيفتح سوا أسرع ويقلّ استهلاك Netlify (كان كلّ فتحٍ = ~25 طلباً؛ الآن طلبٌ واحد لفحص sw.js).
+// ⛔ القاعدة: أيّ تعديلٍ في ملفّات التطبيق يُرفع معه sw.js برقم VERSION جديد — وإلا بقي المستخدمون على النسخة القديمة.
+//    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v197';
+const VERSION = 'sawa-v198';
 const ASSETS = [
   './',
   './index.html',
@@ -30,9 +33,13 @@ const ASSETS = [
 ];
 // مكتبات الواجهة من الشبكة (React · Tailwind · Firebase SDK) — تُخزَّن ليعمل التطبيق دون اتّصال
 const CDN_HOSTS = ['unpkg.com', 'cdn.tailwindcss.com', 'www.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
+// صفحاتٌ تبقى «الشبكة أوّلاً» (أدوات فحصٍ تتغيّر ويجب أن تكون حديثة دائماً)
+const NETWORK_FIRST = ['/diag.html'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION)
+    .then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -46,6 +53,26 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'sawa-version' && e.source) e.source.postMessage({ type: 'sawa-version', version: VERSION });
+});
+
+function putCache(req, res) {
+  if (res && (res.ok || res.type === 'opaque')) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(req, copy)).catch(() => {}); }
+  return res;
+}
+function networkFirst(req) {
+  return fetch(req).then((res) => putCache(req, res))
+    .catch(() => caches.match(req).then((r) => r || (req.mode === 'navigate' ? caches.match('./index.html') : undefined)));
+}
+function cacheFirst(req, key) {
+  return caches.open(VERSION).then((c) => c.match(key || req, { ignoreSearch: !!key }).then((hit) => {
+    if (hit) return hit;
+    return fetch(req).then((res) => { if (!key) putCache(req, res); return res; })
+      .catch(() => (req.mode === 'navigate' ? c.match('./index.html') : undefined));
+  }));
+}
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
@@ -54,17 +81,11 @@ self.addEventListener('fetch', (e) => {
   const cdn = CDN_HOSTS.indexOf(url.hostname) >= 0;
   if (!sameOrigin && !cdn) return;            // الخادم وFirestore والدخول: لا نتدخّل
   if (sameOrigin && url.pathname.indexOf('/__/') === 0) return; // مسارات Firebase الخاصّة
-  e.respondWith(
-    fetch(req)
-      .then((res) => {
-        if (res && (res.ok || res.type === 'opaque')) {
-          const copy = res.clone();
-          caches.open(VERSION).then((c) => c.put(req, copy));
-        }
-        return res;
-      })
-      .catch(() => caches.match(req).then((r) => r || (req.mode === 'navigate' ? caches.match('./index.html') : undefined)))
-  );
+  if (sameOrigin && url.pathname === '/sw.js') return;
+  if (sameOrigin && NETWORK_FIRST.indexOf(url.pathname) >= 0) { e.respondWith(networkFirst(req)); return; }
+  // فتح التطبيق (بأيّ ‎?chat=/‎?room=…) ⇒ index.html المخزّن
+  if (sameOrigin && req.mode === 'navigate' && (url.pathname === '/' || url.pathname === '/index.html')) { e.respondWith(cacheFirst(req, './index.html')); return; }
+  e.respondWith(cacheFirst(req));
 });
 
 // ── الإشعارات (C5): رسالة FCM «بياناتٌ فقط» — التطبيق أمامك ⇒ تنبيهٌ داخله؛ غير ذلك ⇒ إشعار ──

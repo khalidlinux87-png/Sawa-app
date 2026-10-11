@@ -2069,7 +2069,13 @@ function AppInner() {
         const found = isGroup ? groups.find((g) => g.id === cid) : conversations.find((c) => c.id === cid);
         setChatsStack([{ type: isGroup ? "group" : "chat", data: found || (isGroup ? { id: cid, name: "", members: [] } : { id: cid, name: "", cloud: true }) }]);
     };
-    useEffect(() => { if (window.SawaChat && window.SawaChat.pushEnabled && window.SawaChat.pushEnabled()) setBrowserNotifEnabled(true); }, []);
+    // C9: مفتاح الإشعارات يعكس الحالة الفعليّة (يُحدَّث عند التفعيل/الإيقاف/تغيير الإذن من إعدادات الهاتف)
+    useEffect(() => {
+        const sync = () => { const SCp = window.SawaChat; setBrowserNotifEnabled(!!(SCp && SCp.pushEnabled && SCp.pushEnabled())); };
+        sync();
+        window.addEventListener("sawa-push-state", sync);
+        return () => window.removeEventListener("sawa-push-state", sync);
+    }, []);
     // إعداداتي في المحادثات تتزامن بين أجهزتي (SawaChat يتجاهلها قبل تحميل نسخة الخادم)
     useEffect(() => { if (window.SawaChat && window.SawaChat.observePrefs) window.SawaChat.observePrefs({ archived: archivedConversations, pinned: pinnedConversations,
         muted: mutedConversations, locked: lockedConversationIds, folders: chatFolders, folderOf: folderAssignments, themes: chatThemes,
