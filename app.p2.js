@@ -682,7 +682,11 @@ function PlaceholderTab({ icon: Icon, title, note }) {
         React.createElement("h3", { className: "text-base font-extrabold mt-3", style: { color: colors.text } }, title),
         React.createElement("p", { className: "text-xs text-center mt-1", style: { color: colors.textMuted } }, note)));
 }
-function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePhoto, onLogout, onOpenLinkedDevices, onOpenWrapped, onOpenFeedback, onExportTree, onImportTree }) {
+function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePhoto, onLogout, onOpenLinkedDevices, onOpenWrapped, onOpenFeedback, onExportTree, onImportTree, myProfile = null }) {
+    // حسابي الحقيقيّ (SawaChat): اسم «سوا» + الرقم (غير موثّق)؛ زرّ التعديل يفتح نافذة الحساب
+    const cloudMe = !!(myProfile && window.SawaChat && window.SawaChat.editProfile);
+    const myDisplayName = cloudMe ? (myProfile.name || myProfile.googleName || "") : "";
+    const editMe = () => { if (cloudMe && window.SawaChat.editProfile()) return; onOpenSettings(); };
     const { colors } = useTheme();
     const statusMap = {
         online: { label: t("hala_mtsl"), color: colors.success },
@@ -717,14 +721,19 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-4` },
                 React.createElement("div", { className: "shrink-0 rounded-2xl overflow-hidden flex items-center justify-center", style: { width: 68, height: 68, backgroundColor: colors.primaryLight, border: `3px solid ${colors.primary}` } },
                     profilePhoto && React.createElement("img", { src: profilePhoto, alt: t("swrty"), className: "w-full h-full object-cover" }),
-                    !profilePhoto && React.createElement("span", { className: "text-2xl font-extrabold", style: { color: colors.primary } }, t("s"))),
+                    !profilePhoto && React.createElement("span", { className: "text-2xl font-extrabold", style: { color: colors.primary } }, myDisplayName ? myDisplayName.charAt(0) : t("s"))),
                 React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
-                    React.createElement("h3", { className: "text-base font-extrabold truncate", style: { color: colors.text } }, t("mstkhdm_swa", { app: appName() })),
-                    React.createElement("p", { className: "text-xs mt-0.5 truncate", style: { color: colors.textMuted }, dir: "ltr" }, "+249 9X XXX XXXX"),
+                    React.createElement("h3", { className: "text-base font-extrabold truncate", style: { color: colors.text } }, myDisplayName || t("mstkhdm_swa", { app: appName() })),
+                    cloudMe ? (myProfile.phone
+                        ? React.createElement("p", { className: "text-xs mt-0.5 truncate", style: { color: colors.textMuted } },
+                            React.createElement("span", { dir: "ltr" }, myProfile.phone),
+                            React.createElement("span", { className: "text-[10px] font-bold", style: { color: "#B7791F" } }, " · غير موثّق"))
+                        : React.createElement("button", { onClick: editMe, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, "+ أضف رقم هاتفك"))
+                        : React.createElement("p", { className: "text-xs mt-0.5 truncate", style: { color: colors.textMuted }, dir: "ltr" }, "+249 9X XXX XXXX"),
                     React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-2` },
                         React.createElement("span", { className: "w-2 h-2 rounded-full shrink-0", style: { backgroundColor: currentStatus.color } }),
                         React.createElement("span", { className: "text-[11px] font-bold", style: { color: currentStatus.color } }, currentStatus.label))),
-                React.createElement("button", { "aria-label": t("tadyl"), onClick: onOpenSettings, className: "shrink-0 rounded-xl flex items-center justify-center", style: { width: 36, height: 36, backgroundColor: colors.primaryLight } },
+                React.createElement("button", { "aria-label": t("tadyl"), onClick: editMe, className: "shrink-0 rounded-xl flex items-center justify-center", style: { width: 36, height: 36, backgroundColor: colors.primaryLight } },
                     React.createElement(Edit2, { size: 15, color: colors.primary })))),
         React.createElement("div", { className: "mt-4 flex flex-col", style: { backgroundColor: colors.card } }, listItems.map((item, i) => (React.createElement("button", { "aria-label": t("altaly"), key: item.key, onClick: item.onPress, className: `w-full flex ${rowStart()} items-center justify-between px-4 py-3.5`, style: { borderBottom: i < listItems.length - 1 ? `1px solid ${colors.border}` : "none" } },
             React.createElement(item.icon, { size: 18, color: item.color || colors.primary }),

@@ -2053,8 +2053,9 @@ function AppInner() {
     // ⛔ لا حضور عشوائيّ (C1): «متّصل الآن» حقيقيّ من SawaChat (Realtime Database)، وجهات الاتّصال كذلك
     const [onlineContacts, setOnlineContacts] = useState([]);
     const [people, setPeople] = useState(() => (window.SawaChat ? window.SawaChat.contacts() : []));
+    const [myProfile, setMyProfile] = useState(() => (window.SawaChat && window.SawaChat.profile && window.SawaChat.me() ? window.SawaChat.profile() : null));
     setLiveContacts(people);
-    useEffect(() => { if (window.SawaChat && window.SawaChat.bindApp) window.SawaChat.bindApp({ setPeople, setOnlineContacts,
+    useEffect(() => { if (window.SawaChat && window.SawaChat.bindApp) window.SawaChat.bindApp({ setPeople, setOnlineContacts, setMyProfile,
         // C2: المحادثات الحقيقيّة تُنشر في نفس حالات الواجهة
         setConversations, setMessagesByConversation, setGroups, setGroupMessages, setTypingConversations,
         setArchivedConversations, setPinnedConversations, setMutedConversations, setLockedConversationIds, setChatFolders,
@@ -3607,7 +3608,7 @@ function AppInner() {
                     }, scheduledCalls: scheduledCalls, onAddScheduledCall: addScheduledCall, onDeleteScheduledCall: deleteScheduledCall })),
                 tab === "contacts" && React.createElement(ContactsScreen, { onMessageContact: messageContact, onLogCall: logCall, onlineContacts: onlineContacts, people: people }),
                 tab === "discover" && discoverContent,
-                tab === "me" && (React.createElement(MeScreen, { onExportTree: exportFamilyTree, onImportTree: importFamilyTree, onOpenSettings: () => setStack(["security"]), onOpenNotifications: () => setStack(["notifications"]), onOpenLinkedDevices: () => setShowLinkedDevices(true), onOpenWrapped: () => setShowWrapped(true), onOpenFeedback: () => setShowFeedback(true), onOpenHelp: () => setShowHelp(true), statusOption: statusOption, profilePhoto: profilePhoto, onLogout: handleLogout }))))),
+                tab === "me" && (React.createElement(MeScreen, { myProfile: myProfile, onExportTree: exportFamilyTree, onImportTree: importFamilyTree, onOpenSettings: () => setStack(["security"]), onOpenNotifications: () => setStack(["notifications"]), onOpenLinkedDevices: () => setShowLinkedDevices(true), onOpenWrapped: () => setShowWrapped(true), onOpenFeedback: () => setShowFeedback(true), onOpenHelp: () => setShowHelp(true), statusOption: statusOption, profilePhoto: profilePhoto, onLogout: handleLogout }))))),
             stack.length === 0
                 && (tab !== "discover" || discoverStack.length === 0)
                 // داخل محادثة أو مجموعة يُخفى شريط التنقّل: المساحة للرسائل،

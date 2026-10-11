@@ -10,7 +10,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c8";
+  var VERSION = "c8b";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -42,7 +42,7 @@
   function decorate(p) {
     var pr = state.presence[p.uid] || null;
     return { id: p.uid, uid: p.uid, name: displayName(p), realName: p.name || null, anon: !!p.anon,
-             families: p.families || [], via: p.via || [], onSawa: true, phone: "",
+             families: p.families || [], via: p.via || [], onSawa: true, phone: p.phone || "",
              online: !!(pr && pr.state === "online"), lastSeen: pr && pr.ts ? pr.ts : null };
   }
   function contacts() {
@@ -58,6 +58,7 @@
       try { if (app.setPeople) app.setPeople(list); } catch (e) {}
       // واجهاتٌ قديمة تعرف الأسماء فقط (نقطة «متّصل» في قائمة المحادثات) — حتّى C2
       try { if (app.setOnlineContacts) app.setOnlineContacts(list.filter(function (c) { return c.online; }).map(function (c) { return c.name; })); } catch (e) {}
+      try { if (app.setMyProfile && state.me) app.setMyProfile(profile()); } catch (e) {}
     }, 60);
   }
   function refresh() {
@@ -73,6 +74,61 @@
       state.error = (e && e.message) || String(e); log("people.list:", state.error);
       return contacts();
     }).then(function (r) { state.loading = false; return r; });
+  }
+
+  // ---------- الملفّ الشخصيّ: اسم «سوا» + رقم الهاتف (غير موثّق حتّى الإطلاق) ----------
+  function profile() {
+    var m = state.me || {};
+    return { uid: state.uid, name: m.name || null, phone: m.phone || null, phoneVerified: false, googleName: m.googleName || null, anon: !!m.anon };
+  }
+  function saveProfile(patch) {
+    return call("profile.set", patch).then(function (b) {
+      state.me = Object.assign({}, state.me || {}, { name: b.profile.name, phone: b.profile.phone });
+      lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
+      publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {}
+      return profile();
+    });
+  }
+  function editProfile() {
+    if (!state.uid) return false;
+    var p = profile();
+    var ov = document.createElement("div");
+    ov.style.cssText = "position:fixed;inset:0;z-index:2147483002;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;font-family:system-ui";
+    ov.dir = isAr() ? "rtl" : "ltr";
+    var box = document.createElement("div");
+    box.style.cssText = "background:#fff;color:#1A1A2E;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 16px);box-sizing:border-box";
+    function lab(t) { var l = document.createElement("div"); l.textContent = t; l.style.cssText = "font:700 12px system-ui;color:#555;margin:10px 2px 6px"; return l; }
+    function inp(v, ph, ltr) { var i = document.createElement("input"); i.value = v || ""; i.placeholder = ph; i.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:12px;padding:11px 12px;font:600 15px system-ui;" + (ltr ? "direction:ltr;text-align:left" : ""); return i; }
+    var h = document.createElement("div"); h.textContent = L("حسابي", "My account"); h.style.cssText = "font:800 16px system-ui;text-align:center;margin-bottom:4px";
+    box.appendChild(h);
+    box.appendChild(lab(L("اسمك في سوا — يراه أهلك وجهات اتّصالك", "Your name in Sawa — shown to your family and contacts")));
+    var nIn = inp(p.name || p.googleName || "", L("مثال: خالد علي", "e.g. Khalid Ali")); box.appendChild(nIn);
+    if (p.googleName && p.googleName !== p.name) { var g = document.createElement("div"); g.textContent = L("اسم حساب Google: ", "Google name: ") + p.googleName; g.style.cssText = "font:500 11px system-ui;color:#888;margin:4px 2px 0"; box.appendChild(g); }
+    box.appendChild(lab(L("رقم هاتفك (اختياريّ)", "Your phone number (optional)")));
+    var pIn = inp(p.phone || "", "+249 9X XXX XXXX", true); pIn.type = "tel"; box.appendChild(pIn);
+    var note = document.createElement("div");
+    note.textContent = L("⚠️ «غير موثّق»: يظهر لعائلتك وجهات اتّصالك فقط، ولا يُستعمل للدخول أو البحث عنك حتّى نوثّقه برسالة SMS عند الإطلاق.", "⚠️ Unverified: visible to your family and contacts only; not used for sign-in or search until SMS verification at launch.");
+    note.style.cssText = "font:500 11px system-ui;color:#8a6d00;background:#fff7e0;border-radius:10px;padding:8px 10px;margin-top:8px;line-height:1.6";
+    box.appendChild(note);
+    var row = document.createElement("div"); row.style.cssText = "display:flex;gap:8px;margin-top:14px";
+    var ok = document.createElement("button"); ok.textContent = L("حفظ", "Save"); ok.style.cssText = "flex:1;padding:12px;border:0;border-radius:12px;background:#2e7d5b;color:#fff;font:800 14px system-ui";
+    var no = document.createElement("button"); no.textContent = L("إلغاء", "Cancel"); no.style.cssText = "flex:1;padding:12px;border:0;border-radius:12px;background:#eee;color:#333;font:700 14px system-ui";
+    row.appendChild(ok); row.appendChild(no); box.appendChild(row);
+    ov.appendChild(box); document.body.appendChild(ov);
+    var close = function () { ov.remove(); };
+    no.onclick = close; ov.onclick = function (e) { if (e.target === ov) close(); };
+    ok.onclick = function () {
+      var patch = {}, nm = nIn.value.replace(/\s+/g, " ").trim(), ph = pIn.value.trim();
+      if (nm !== (p.name || "")) patch.name = nm;
+      if (ph !== (p.phone || "")) patch.phone = ph;
+      if (!Object.keys(patch).length) { close(); return; }
+      if (patch.name !== undefined && patch.name.length < 2) { toast(L("اكتب اسماً من حرفين على الأقلّ", "Enter at least 2 letters")); return; }
+      ok.disabled = true; ok.textContent = "…";
+      saveProfile(patch).then(function () { toast(L("حُفظ ✓ — يظهر لأهلك خلال لحظات", "Saved ✓")); close(); refresh(); })
+        .catch(function (e) { ok.disabled = false; ok.textContent = L("حفظ", "Save"); toast((e && e.message) || String(e)); });
+    };
+    setTimeout(function () { try { nIn.focus(); } catch (e) {} }, 50);
+    return true;
   }
 
   // ---------- الحضور (Realtime Database) ----------
@@ -1108,6 +1164,7 @@
     shareInvite: shareInvite, createInvite: createInvite, renderQr: renderQr,
     accept: accept, scanSupported: scanSupported, scanAndAdd: scanAndAdd, removeContact: removeContact,
     me: function () { return state.me; }, uid: function () { return state.uid; },
+    profile: profile, saveProfile: saveProfile, editProfile: editProfile,   // حسابي: الاسم والرقم
     qrLib: loadQrLib,   // C8: رمز QR لروابط الغرف
     isBlocked: function (u) { return !!(prefs && prefs.blocked && prefs.blocked.indexOf(u) >= 0); },   // C6: المحظور لا يرنّ
     status: function () { return { loaded: state.loaded, error: state.error, count: state.people.length }; },
