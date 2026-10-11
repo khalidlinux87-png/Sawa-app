@@ -207,7 +207,7 @@ function VoiceMessageBubble({ url, duration, mine, transcript }) {
 // GroupInfoScreen — معلومات المجموعة وإدارة الأعضاء
 // المشرف وحده يرى أزرار التعديل والترقية والإزالة.
 // ============================================================
-function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembers, onRemoveMember, onToggleAdmin, onLeave, onBack }) {
+function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembers, onRemoveMember, onToggleAdmin, onLeave, onBack, contacts = null, onInviteLink = null, onUpdate = null }) {
     const { colors } = useTheme();
     const [editingName, setEditingName] = useState(false);
     const [nameDraft, setNameDraft] = useState(group.name);
@@ -218,6 +218,12 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
     const me = group.members.find((m) => m.id === myUserId);
     const isAdmin = !!me && me.role === "admin";
     const admins = group.members.filter((m) => m.role === "admin").length;
+    // C3: محادثة العائلة تتبع أعضاء العائلة — لا إضافة ولا إزالة ولا مغادرة من هنا
+    const isFamily = group.kind === "family";
+    const [picked, setPicked] = useState([]);
+    const [descDraft, setDescDraft] = useState(null);
+    const memberUids = group.members.map((m) => m.uid || m.id);
+    const addable = (contacts || []).filter((c) => memberUids.indexOf(c.uid) < 0);
 
     function saveName() {
         const clean = nameDraft.trim();
@@ -255,7 +261,7 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
             React.createElement("div", { className: "mt-3", style: { backgroundColor: colors.card } },
                 React.createElement("div", { className: `flex ${rowStart()} items-center justify-between px-4 pt-3 pb-1` },
                     React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.textMuted } }, t("gi_alaada")),
-                    isAdmin && React.createElement("button", { onClick: () => setShowAdd(true), className: `flex ${rowStart()} items-center gap-1` },
+                    isAdmin && !isFamily && React.createElement("button", { onClick: () => setShowAdd(true), className: `flex ${rowStart()} items-center gap-1` },
                         React.createElement(UserPlus, { size: 14, color: colors.primary }),
                         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.primary } }, t("gi_idafa")))),
                 group.members.map((m) => React.createElement("div", { key: m.id, className: `flex ${rowStart()} items-center gap-3 px-4 py-2.5` },
@@ -264,10 +270,25 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
                         React.createElement("div", { className: "text-sm truncate", style: { color: colors.text } }, m.name),
                         m.role === "admin" && React.createElement("div", { className: "text-[10px] font-bold", style: { color: colors.accent } }, t("gi_mshrf"))),
                     // المشرف لا يدير نفسه من هنا — الخروج له زر مستقل بالأسفل
-                    isAdmin && m.id !== myUserId && React.createElement("button", { "aria-label": t("gi_khyarat"), onClick: () => setMemberMenu(m), className: "w-7 h-7 flex items-center justify-center shrink-0" },
+                    isAdmin && !isFamily && m.id !== myUserId && React.createElement("button", { "aria-label": t("gi_khyarat"), onClick: () => setMemberMenu(m), className: "w-7 h-7 flex items-center justify-center shrink-0" },
                         React.createElement(MoreVertical, { size: 15, color: colors.textMuted }))))),
+            isFamily && React.createElement("p", { className: `text-[11px] px-4 py-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, t("c3_family_managed")),
+            !isFamily && onUpdate && React.createElement("div", { className: "mt-3 px-4 py-3", style: { backgroundColor: colors.card } },
+                React.createElement("div", { className: `text-xs font-extrabold mb-1.5 ${textStart()}`, style: { color: colors.textMuted } }, t("c3_desc")),
+                descDraft === null
+                    ? React.createElement("button", { onClick: () => (isAdmin || !group.infoAdminsOnly) && setDescDraft(group.desc || ""), className: `w-full ${textStart()} text-sm`, style: { color: group.desc ? colors.text : colors.textMuted } }, group.desc || t("c3_desc_ph"))
+                    : React.createElement("div", { className: `flex ${rowStart()} gap-2` },
+                        React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: descDraft, autoFocus: true, onChange: (e) => setDescDraft(e.target.value), className: "flex-1 rounded-xl border px-3 py-2 text-sm", style: { borderColor: colors.border, backgroundColor: colors.bg, color: colors.text } }),
+                        React.createElement("button", { onClick: () => { onUpdate({ desc: descDraft }); setDescDraft(null); }, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary } }, React.createElement(Check, { size: 16, color: "#fff" }))),
+                isAdmin && React.createElement("button", { onClick: () => onUpdate({ adminsOnly: !group.adminsOnly }), className: `w-full flex ${rowStart()} items-center justify-between mt-3 pt-3 border-t`, style: { borderColor: colors.border } },
+                    React.createElement("span", { className: "text-sm", style: { color: colors.text } }, t("c3_admins_only")),
+                    React.createElement("span", { className: "w-10 h-6 rounded-full relative", style: { backgroundColor: group.adminsOnly ? colors.primary : colors.border } },
+                        React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [group.adminsOnly ? "right" : "left"]: 2 } }))),
+                isAdmin && onInviteLink && React.createElement("button", { onClick: onInviteLink, className: `w-full flex ${rowStart()} items-center gap-2 mt-3 pt-3 border-t`, style: { borderColor: colors.border } },
+                    React.createElement(Share2, { size: 15, color: colors.primary }),
+                    React.createElement("span", { className: "text-sm font-bold", style: { color: colors.primary } }, t("c3_invite_link")))),
             // ── الخروج ──
-            React.createElement("div", { className: "mt-3 mb-8", style: { backgroundColor: colors.card } },
+            !isFamily && React.createElement("div", { className: "mt-3 mb-8", style: { backgroundColor: colors.card } },
                 React.createElement("button", { onClick: () => setConfirmLeave(true), className: `w-full flex ${rowStart()} items-center gap-3 px-4 py-3.5` },
                     React.createElement(LogOut, { size: 17, color: colors.danger, style: { transform: "scaleX(-1)" } }),
                     React.createElement("span", { className: "text-sm font-bold", style: { color: colors.danger } }, t("gi_mghadra"))))),
@@ -288,9 +309,16 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
             React.createElement("div", { onClick: () => setShowAdd(false), style: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", zIndex: 40 } }),
             React.createElement("div", { className: "absolute left-0 right-0 bottom-0 rounded-t-3xl pb-8 pt-5 px-6", style: { backgroundColor: colors.card, zIndex: 50 } },
                 React.createElement("div", { className: "w-10 h-1 rounded-full mx-auto mb-4", style: { backgroundColor: colors.border } }),
-                React.createElement("p", { className: `text-sm font-extrabold mb-3 ${textStart()}`, style: { color: colors.text } }, t("gi_idafa_adw")),
-                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: newMemberName, autoFocus: true, onChange: (e) => setNewMemberName(e.target.value), placeholder: t("gi_asm_aladw"), className: `w-full rounded-xl border px-3 py-2.5 text-sm mb-3 ${textStart()}`, style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
-                React.createElement("button", { onClick: confirmAdd, className: "w-full rounded-2xl py-3", style: { backgroundColor: colors.primary } },
+                React.createElement("p", { className: `text-sm font-extrabold mb-3 ${textStart()}`, style: { color: colors.text } }, contacts ? t("c3_pick_members") : t("gi_idafa_adw")),
+                contacts && React.createElement("div", { style: { maxHeight: "50vh", overflowY: "auto" } },
+                    addable.length === 0 && React.createElement("p", { className: "text-xs py-4 text-center", style: { color: colors.textMuted } }, t("c3_no_more_contacts")),
+                    addable.map((c) => React.createElement("button", { key: c.uid, onClick: () => setPicked((p) => p.indexOf(c.uid) >= 0 ? p.filter((x) => x !== c.uid) : [...p, c.uid]), className: `w-full flex ${rowStart()} items-center gap-3 py-2.5` },
+                        React.createElement("span", { className: "w-5 h-5 rounded-md border flex items-center justify-center", style: { borderColor: colors.primary, backgroundColor: picked.indexOf(c.uid) >= 0 ? colors.primary : "transparent" } }, picked.indexOf(c.uid) >= 0 && React.createElement(Check, { size: 13, color: "#fff" })),
+                        React.createElement("span", { className: `flex-1 ${textStart()} text-sm`, style: { color: colors.text } }, c.name)))),
+                contacts && React.createElement("button", { onClick: () => { if (picked.length) onAddMembers(picked); setPicked([]); setShowAdd(false); }, disabled: !picked.length, className: "w-full rounded-2xl py-3 mt-3", style: { backgroundColor: picked.length ? colors.primary : colors.border } },
+                    React.createElement("span", { className: "text-sm font-extrabold", style: { color: "#fff" } }, t("c3_add_selected"))),
+                !contacts && React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: newMemberName, autoFocus: true, onChange: (e) => setNewMemberName(e.target.value), placeholder: t("gi_asm_aladw"), className: `w-full rounded-xl border px-3 py-2.5 text-sm mb-3 ${textStart()}`, style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
+                !contacts && React.createElement("button", { onClick: confirmAdd, className: "w-full rounded-2xl py-3", style: { backgroundColor: colors.primary } },
                     React.createElement("span", { className: "text-sm font-extrabold", style: { color: "#fff" } }, t("gi_idafa_2"))))),
         // ── تأكيد المغادرة ──
         confirmLeave && React.createElement(React.Fragment, null,
@@ -1099,7 +1127,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
         forwardingText && (React.createElement(ForwardPickerScreen, { conversations: allConversations, groups: allGroups, currentConversationId: conversation.id, onForward: (destinationIds) => { onForward(forwardingText, destinationIds); setForwardingText(null); }, onClose: () => setForwardingText(null) }))));
 }
 const GROUP_ADMIN_ACTIONS = ["تسمية المجموعة", "إدارة الأعضاء"];
-function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSendVoice, onEditMessage, onCreatePoll, onEditPoll, onVotePoll, onCreateBillSplit, onPayBillSplit, onCreateFundraiser, onContributeFundraiser, onCreateTaskList, onToggleTaskStatus, onAddTaskNote, onForward, allConversations, allGroups, draft = "", onSaveDraft, unreadCount = 0, onBack, onRenameGroup, onAddGroupMembers, onRemoveGroupMember, onToggleGroupAdmin, onLeaveGroup }) {
+function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSendVoice, onEditMessage, onReact, onDeleteMessage, contacts = null, onInviteLink, onUpdateGroup, onCreatePoll, onEditPoll, onVotePoll, onCreateBillSplit, onPayBillSplit, onCreateFundraiser, onContributeFundraiser, onCreateTaskList, onToggleTaskStatus, onAddTaskNote, onForward, allConversations, allGroups, draft = "", onSaveDraft, unreadCount = 0, onBack, onRenameGroup, onAddGroupMembers, onRemoveGroupMember, onToggleGroupAdmin, onLeaveGroup }) {
     var _a, _b;
     const { colors } = useTheme();
     const { showToast } = useToast();
@@ -1191,6 +1219,8 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
     }, [messages.length]);
     const [forwardingText, setForwardingText] = useState(null);
     const [groupMsgMenu, setGroupMsgMenu] = useState(null);
+    const [gReply, setGReply] = useState(null);       // C3: ردٌّ حقيقيّ (معرّف الرسالة)
+    const [gDel, setGDel] = useState(null);           // C3: تأكيد الحذف (عندي/للجميع)
     const [showGroupInfo, setShowGroupInfo] = useState(false);
     const [voiceChatActive, setVoiceChatActive] = useState(false);
     const [voiceChatJoined, setVoiceChatJoined] = useState(false);
@@ -1277,7 +1307,9 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
     function handleSend() {
         if (!text.trim())
             return;
-        onSend(text.trim());
+        if (group.adminsOnly && !isAdmin) { showToast(t("c3_only_admins_send"), "info"); return; }
+        onSend(text.trim(), gReply);
+        setGReply(null);
         clearDraft();
     }
     function handleCreatePoll() {
@@ -1316,6 +1348,8 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
             mediaCount: (messages || []).filter((m) => m.type === "image" || m.type === "video").length,
             onRename: (n) => onRenameGroup && onRenameGroup(group.id, n),
             onAddMembers: (names) => onAddGroupMembers && onAddGroupMembers(group.id, names),
+            contacts: contacts, onInviteLink: onInviteLink ? () => onInviteLink(group.id) : null,
+            onUpdate: onUpdateGroup ? (patch) => onUpdateGroup(group.id, patch) : null,
             onRemoveMember: (id) => onRemoveGroupMember && onRemoveGroupMember(group.id, id),
             onToggleAdmin: (id) => onToggleGroupAdmin && onToggleGroupAdmin(group.id, id),
             onLeave: () => { setShowGroupInfo(false); onLeaveGroup && onLeaveGroup(group.id); },
@@ -1366,6 +1400,11 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
             var _a;
             const mine = m.senderId === myUserId;
             const sender = group.members.find((x) => x.id === m.senderId);
+            // C3: رسائل النظام (إنشاء/إضافة/مغادرة…) في وسط المحادثة
+            if (m.type === "system") {
+                return (React.createElement("div", { key: m.id, className: "flex justify-center my-2" },
+                    React.createElement("span", { className: "text-[10px] px-3 py-1 rounded-full text-center", style: { backgroundColor: colors.border + "88", color: colors.textMuted, maxWidth: "85%" } }, m.text)));
+            }
 
             if (m.type === "billSplit") {
                 const paidAmount = m.participants.filter((p) => p.paid).reduce((s, p) => s + p.share, 0);
@@ -1514,7 +1553,8 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 !mine && React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-0.5` },
                     React.createElement(SenderAvatar, { name: (sender && sender.name) || t("gc_swal"), size: 20 }),
                     React.createElement("span", { className: "text-[10px] font-bold", style: { color: senderColor((sender && sender.name) || t("gc_swal")) } }, sender === null || sender === void 0 ? void 0 : sender.name)),
-                React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["image", "video"].includes(m.type) ? "" : "px-3 py-2"}`, style: { backgroundColor: ["image", "video"].includes(m.type) ? "transparent" : mine ? colors.primary : colors.card, borderColor: ["image", "video"].includes(m.type) ? "transparent" : colors.border, cursor: "pointer" }, onContextMenu: (e) => { e.preventDefault(); setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderName: (sender && sender.name) || "" }); }, onTouchStart: (e) => { const t0 = Date.now(); const el = e.currentTarget; const onEnd = () => { if (Date.now() - t0 > 500) { setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderName: (sender && sender.name) || "" }); } el.removeEventListener("touchend", onEnd); }; el.addEventListener("touchend", onEnd); } }, m.type === "image" ? (React.createElement("button", { onClick: () => setViewingImage(m.fileUrl), className: "block -m-1" }, m.fileUrl ? React.createElement("img", { src: m.fileUrl, alt: m.text, className: "rounded-xl max-h-56 w-full object-cover", style: { minWidth: 160 } }) : React.createElement(MediaUnavailable, { label: t("swra") }))) : m.type === "video" ? (React.createElement("video", { src: m.fileUrl, controls: true, className: "rounded-xl max-h-56 w-full", style: { minWidth: 200 } })) : m.type === "file" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
+                m.replyToText && React.createElement("div", { className: "max-w-[78%] text-[10px] px-2 py-1 mb-0.5 rounded-lg border-r-2 truncate", style: { backgroundColor: colors.card, borderColor: colors.accent, color: colors.textMuted } }, "↩ " + m.replyToText),
+                React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["image", "video"].includes(m.type) ? "" : "px-3 py-2"}`, style: { backgroundColor: ["image", "video"].includes(m.type) ? "transparent" : mine ? colors.primary : colors.card, borderColor: ["image", "video"].includes(m.type) ? "transparent" : colors.border, cursor: "pointer" }, onContextMenu: (e) => { e.preventDefault(); setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "" }); }, onTouchStart: (e) => { const t0 = Date.now(); const el = e.currentTarget; const onEnd = () => { if (Date.now() - t0 > 500) { setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "" }); } el.removeEventListener("touchend", onEnd); }; el.addEventListener("touchend", onEnd); } }, m.type === "image" ? (React.createElement("button", { onClick: () => setViewingImage(m.fileUrl), className: "block -m-1" }, m.fileUrl ? React.createElement("img", { src: m.fileUrl, alt: m.text, className: "rounded-xl max-h-56 w-full object-cover", style: { minWidth: 160 } }) : React.createElement(MediaUnavailable, { label: t("swra") }))) : m.type === "video" ? (React.createElement("video", { src: m.fileUrl, controls: true, className: "rounded-xl max-h-56 w-full", style: { minWidth: 200 } })) : m.type === "file" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
                     React.createElement(FileIconLucide, { size: 18, color: mine ? "#fff" : colors.primary }),
                     React.createElement("div", null,
                         React.createElement("div", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.text } }, m.text),
@@ -1531,7 +1571,8 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 // رسالة يزدحم ويكرّر ما هو متاح أصلاً. الوقت مكانهما كما في الخاص.
                 React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-0.5` },
                     React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } },
-                        m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" }) : ""))));
+                        m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" }) : ""),
+                    m.reaction && React.createElement("span", { className: "text-xs" }, Object.keys(m.reactions || {}).length > 1 ? m.reaction + " " + Object.keys(m.reactions).length : m.reaction))));
         });
             const dividerAt = unreadDividerIndex(messages.length, initialUnreadRef.current);
             if (dividerAt > 0) {
@@ -1542,6 +1583,17 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
         showMentions && (React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 p-2 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } }, group.members.filter((m) => m.id !== myUserId).map((m) => (React.createElement("button", { key: m.id, onClick: () => insertMention(m.name), className: "text-xs rounded-full border px-2.5 py-1", style: { borderColor: colors.border, color: colors.text } },
             "@",
             m.name))))),
+        gReply && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 py-2 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } },
+            React.createElement("div", { className: `flex-1 min-w-0 ${textStart()} border-r-2 px-2`, style: { borderColor: colors.accent } },
+                React.createElement("div", { className: "text-[10px] font-bold", style: { color: colors.accent } }, t("c3_replying") + " " + (gReply.senderName || "")),
+                React.createElement("div", { className: "text-[11px] truncate", style: { color: colors.textMuted } }, gReply.text)),
+            React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => setGReply(null) }, React.createElement(X, { size: 14, color: colors.textMuted })))),
+        gDel && (React.createElement(React.Fragment, null,
+            React.createElement("div", { onClick: () => setGDel(null), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.35)" } }),
+            React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 41, backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 12 } },
+                React.createElement("button", { onClick: () => { onDeleteMessage(gDel.id, "me"); setGDel(null); }, className: `w-full ${textStart()} px-5 py-3.5 border-b text-sm font-bold`, style: { borderColor: colors.border, color: colors.text } }, t("c3_del_me")),
+                gDel.canAll && React.createElement("button", { onClick: () => { onDeleteMessage(gDel.id, "all"); setGDel(null); }, className: `w-full ${textStart()} px-5 py-3.5 border-b text-sm font-bold`, style: { borderColor: colors.border, color: colors.danger } }, t("c3_del_all")),
+                React.createElement("button", { onClick: () => setGDel(null), className: "w-full px-5 py-3 text-sm font-bold", style: { color: colors.textMuted } }, t("ilgha"))))),
         showPollForm && (React.createElement("div", { className: "p-3 border-t", style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-2` },
                 React.createElement("p", { className: "text-xs font-bold", style: { color: colors.text } }, editingPollId ? t("gc_tadyl_alastltla") : t("gc_astltla_jdyd")),
@@ -1729,11 +1781,13 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
             React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 41, backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 12, overflow: "hidden" } },
                 React.createElement("div", { className: "px-5 pt-3 pb-2 border-b", style: { borderColor: colors.border } },
                     React.createElement("span", { className: `block ${textStart()} text-[11px] truncate`, style: { color: colors.textMuted } }, groupMsgMenu.text || "")),
+                onReact && React.createElement("div", { className: `flex ${rowStart()} gap-3 px-5 py-3 border-b`, style: { borderColor: colors.border } }, QUICK_REACTIONS.map((e) => React.createElement("button", { key: e, className: "text-xl", onClick: () => { onReact(groupMsgMenu.id, e); setGroupMsgMenu(null); } }, e))),
                 [
-                    { icon: MessageCircle, label: t("rd"), act: () => setText((groupMsgMenu.senderName ? "@" + groupMsgMenu.senderName + " " : "") + "") },
+                    { icon: MessageCircle, label: t("rd"), act: () => setGReply({ id: groupMsgMenu.id, text: groupMsgMenu.text || "", senderId: groupMsgMenu.senderId, senderName: groupMsgMenu.senderName }) },
                     { icon: Share2, label: t("twjyh_2"), act: () => setForwardingText(groupMsgMenu.text) },
                     { icon: Copy, label: t("nskh"), act: () => { copyText(groupMsgMenu.text || ""); showToast(t("gc_tm_alnskh"), "success"); } },
                 ].concat(groupMsgMenu.mine && groupMsgMenu.text ? [{ icon: Edit2, label: t("tadyl"), act: () => { setEditingMessageId(groupMsgMenu.id); setEditingText(groupMsgMenu.text || ""); } }] : [])
+                .concat(onDeleteMessage ? [{ icon: Trash2, label: t("hdhf"), act: () => setGDel({ id: groupMsgMenu.id, canAll: groupMsgMenu.mine || isAdmin }) }] : [])
                 .map((item, ii) => React.createElement("button", { key: ii, onClick: () => { item.act(); setGroupMsgMenu(null); }, className: `w-full flex ${rowStart()} items-center gap-3 px-5 py-3 border-b`, style: { borderColor: colors.border } },
                     React.createElement(item.icon, { size: 16, color: colors.textMuted }),
                     React.createElement("span", { className: "text-sm font-bold", style: { color: colors.text } }, item.label))),

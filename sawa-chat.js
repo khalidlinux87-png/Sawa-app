@@ -10,7 +10,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c2";
+  var VERSION = "c3";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -382,6 +382,7 @@
     if (opts.fwd) msg.fwd = true;
     if (opts.contact) msg.contact = opts.contact;
     if (opts.mentions) msg.mentions = opts.mentions;
+    else if (opts.mentionsFrom && text) { var mn = mentionsIn(cid, String(text)); if (mn) msg.mentions = mn; }
     if (opts.extra) msg.extra = opts.extra;
     (pend[cid] = pend[cid] || []).push({ msg: msg, ts: Date.now(), status: "pending" });
     var ob = lsGet(OUTBOX, []); ob.push({ cid: cid, msg: msg }); lsSet(OUTBOX, ob);
@@ -543,8 +544,8 @@
       return { id: appId(u), uid: u, name: u === state.uid ? L("أنت", "You") : personName(u, c), role: admins.indexOf(u) >= 0 ? "admin" : "member" };
     });
     var pendList = pend[c.cid] || [], lp = pendList[pendList.length - 1];
-    var lastText = lp ? preview(lp.msg) : (l ? ((l.by && l.by !== state.uid ? personName(l.by, c) + ": " : "") + preview(l)) : "");
-    return { id: c.cid, cloud: true, kind: c.type, familyGroupId: c.familyGroupId || null,
+    var lastText = lp ? preview(lp.msg) : (l ? (l.type === "system" ? sysText({ by: l.by, extra: { ev: l.ev } }, c).replace(/«»|“”/g, "").trim() : (l.by && l.by !== state.uid ? personName(l.by, c) + ": " : "") + preview(l)) : "");
+    return { id: c.cid, cloud: true, kind: c.type, familyGroupId: c.familyGroupId || null, desc: c.desc || "", adminsOnly: !!c.adminsOnly, infoAdminsOnly: !!c.infoAdminsOnly,
       name: c.name || L("مجموعة", "Group"), members: members, lastMessage: lastText,
       unread: unreadOf(c), updatedAt: lp ? lp.ts : (c.updatedTs || 0), pinnedMessageId: c.pinned || null, disappear: c.disappear || 0 };
   }
@@ -578,7 +579,7 @@
                 forwarded: !!m.fwd, reaction: mineRe || anyRe || null, reactions: re, replyTo: m.reply || null,
                 replyToText: m.reply ? m.reply.text : null, contact: m.contact || null, extra: m.extra || null, cloud: true,
                 starred: !!(prefs && prefs.starred && prefs.starred.some(function (s) { return s.id === m.id; })) };
-      if (group) { o.senderId = appId(m.by); o.senderName = personName(m.by, c); if (o.type === undefined) o.type = "text"; }
+      if (group) { o.senderId = appId(m.by); o.senderName = personName(m.by, c); if (o.type === undefined) o.type = "text"; if (!m.del) toolShape(m, o, c); }
       else o.senderUserId = appId(m.by);
       if (mine) o.status = x.pending ? (x.pending === "failed" ? "failed" : "pending") : statusOf(c, m.ts);
       return o;
@@ -600,7 +601,7 @@
   // ---------- إعداداتي في المحادثات (بين أجهزتي) ----------
   var PREF_SETTERS = { archived: "setArchivedConversations", pinned: "setPinnedConversations", muted: "setMutedConversations",
     locked: "setLockedConversationIds", folders: "setChatFolders", folderOf: "setFolderAssignments", themes: "setChatThemes",
-    tones: "setConversationTones", starred: "setStarredMessages", blocked: "setBlockedConversations" };
+    tones: "setConversationTones", starred: "setStarredMessages", blocked: "setBlockedConversations", broadcasts: "setBroadcastLists" };
   function loadPrefs() {
     return call("chat.prefs", {}).then(function (b) {
       prefs = b.prefs || {}; prefsLoaded = true;
@@ -646,6 +647,141 @@
     if (Object.keys(diff).length) savePrefs(diff);
   }
 
+  // ==================================================================
+  // C3: المجموعات وأدواتها (استطلاع · فاتورة · تبرّعات · مهامّ) · رسائل النظام · الإشارات @ · روابط دعوة المجموعات
+  // ==================================================================
+  function createGroup(name, uids) {
+    return call("group.new", { name: name, members: (uids || []).map(realId) }).then(function (b) {
+      if (b.skipped && b.skipped.length) toast(L("لم يُضف " + b.skipped.length + " (ليسوا من جهات اتّصالك)", b.skipped.length + " not added (not your contacts)"));
+      return b.cid;
+    }).catch(function (e) { fail(e); return null; });
+  }
+  function updateGroup(cid, patch) {
+    var c = chats[cid]; if (c) { Object.assign(c, patch); publishChats(); }
+    return call("group.update", Object.assign({ cid: cid }, patch)).catch(fail);
+  }
+  function addMembers(cid, uids) { return call("group.members", { cid: cid, add: (uids || []).map(realId) }).catch(fail); }
+  function removeMember(cid, uid) { return call("group.members", { cid: cid, remove: [realId(uid)] }).catch(fail); }
+  function setAdmin(cid, uid, on) { return call("group.admin", { cid: cid, uid: realId(uid), admin: !!on }).catch(fail); }
+  function leaveGroup(cid) { closeChat(cid); return call("group.exit", { cid: cid }).catch(fail); }
+  function shareGroupInvite(cid) {
+    toast(L("جارٍ إنشاء الرابط…", "Creating link…"));
+    return call("group.invite", { cid: cid }).then(function (b) {
+      var url = global.location.origin + global.location.pathname.replace(/index\.html$/, "") + "?group=" + b.token;
+      var name = (chats[cid] && chats[cid].name) || "";
+      var text = L("انضمّ إلى مجموعة «" + name + "» في سوا (صالح أسبوعاً):", "Join the «" + name + "» group on Sawa (valid for a week):");
+      if (global.navigator && navigator.share) return navigator.share({ title: "سوا", text: text, url: url }).catch(function () {});
+      if (global.navigator && navigator.clipboard) return navigator.clipboard.writeText(text + " " + url).then(function () { toast(L("نُسخ الرابط ✓", "Link copied ✓")); });
+      global.prompt(L("انسخ الرابط:", "Copy the link:"), url);
+    }).catch(fail);
+  }
+  function joinGroup(tok) {
+    return call("group.join", { token: tok }).then(function (b) {
+      toast(b.already ? L("أنت عضوٌ في «" + (b.name || "") + "» سلفاً", "You're already in «" + (b.name || "") + "»") : L("انضممت إلى «" + (b.name || "") + "» ✓", "You joined «" + (b.name || "") + "» ✓"));
+      return b.cid;
+    }).catch(function (e) {
+      var m = (e && e.message) || String(e);
+      toast(/expired/.test(m) ? L("انتهت صلاحيّة رابط المجموعة", "The group link expired") : /not found/.test(m) ? L("رابط المجموعة غير صحيح", "Invalid group link") : L("تعذّر الانضمام: ", "Couldn't join: ") + m);
+      return null;
+    });
+  }
+  // الإشارات: @الاسم في النصّ ⇒ معرّفات الأعضاء (للإشعارات في C5)
+  function mentionsIn(cid, text) {
+    var c = chats[cid]; if (!c || !text || text.indexOf("@") < 0) return null;
+    var out = [];
+    (c.members || []).forEach(function (u) {
+      if (u === state.uid) return;
+      var n = personName(u, c);
+      if (n && text.indexOf("@" + n) >= 0) out.push(u);
+    });
+    return out.length ? out : null;
+  }
+  // أدوات المجموعة: تُرسَل رسائل بنوعٍ خاصّ، والتفاعل معها حقلٌ لكلّ شخص
+  function sendPoll(cid, question, options, deadline, anonymous) {
+    return send(cid, null, { type: "poll", extra: { question: String(question), options: (options || []).map(String), deadline: deadline || null, anonymous: !!anonymous } });
+  }
+  function toolCall(op, cid, id, extra, local) {
+    var day = local ? patchLocal(cid, id, local) : (findMsg(cid, id) || {}).day;
+    if (!day) { toast(L("لحظة — الرسالة لم تُحفظ بعد", "One moment — the message isn't saved yet")); return; }
+    call(op, Object.assign({ cid: cid, day: day, id: id }, extra)).catch(fail);
+  }
+  function vote(cid, id, idx) {
+    toolCall("chat.vote", cid, id, { option: idx }, function (m) { m.votes = Object.assign({}, m.votes); m.votes[state.uid] = idx; return m; });
+  }
+  function editPoll(cid, id, question, options) { toolCall("chat.pollEdit", cid, id, { question: question, options: options }); }
+  function sendBill(cid, description, totalAmount, participantAmounts, splitType) {
+    var c = chats[cid] || {};
+    var parts = Object.keys(participantAmounts || {}).map(function (aid) { var u = realId(aid); return { uid: u, name: personName(u, c), share: Number(participantAmounts[aid]) || 0 }; });
+    return send(cid, null, { type: "bill", extra: { description: String(description), totalAmount: Number(totalAmount) || 0, participants: parts, splitType: splitType || "equal" } });
+  }
+  function billPaid(cid, id, uid) {
+    var who = realId(uid || "u-1");
+    toolCall("chat.billPaid", cid, id, { uid: who }, function (m) { m.paid = Object.assign({}, m.paid); m.paid[who] = Date.now(); return m; });
+  }
+  function sendFund(cid, cause, goal, deadline) { return send(cid, null, { type: "fund", extra: { cause: String(cause), goal: Number(goal) || 0, deadline: deadline || null } }); }
+  function contribute(cid, id, amount) {
+    toolCall("chat.fund", cid, id, { amount: amount }, function (m) { m.contrib = Object.assign({}, m.contrib); var p = m.contrib[state.uid] || { amount: 0 }; m.contrib[state.uid] = { amount: p.amount + amount, ts: Date.now() }; return m; });
+  }
+  function sendTasks(cid, title, tasks) {
+    return send(cid, null, { type: "tasks", extra: { title: String(title), tasks: (tasks || []).map(function (t) { return { id: t.id, text: t.text, assigneeId: realId(t.assigneeId), assigneeName: t.assigneeName || "", dueAt: t.dueAt || null }; }) } });
+  }
+  function setTask(cid, id, taskId, patch) {
+    toolCall("chat.task", cid, id, Object.assign({ taskId: taskId }, patch), function (m) { m.tstate = Object.assign({}, m.tstate); m.tstate[taskId] = Object.assign({}, m.tstate[taskId], patch); return m; });
+  }
+  // نصّ رسائل النظام
+  function sysText(m, c) {
+    var ex = m.extra || {}, who = personName(m.by, c);
+    var list = (ex.who || []).map(function (u) { return personName(u, c); }).join(L("، ", ", "));
+    var T = {
+      created: L(who + " أنشأ المجموعة «" + (ex.name || "") + "»", who + " created the group “" + (ex.name || "") + "”"),
+      added: L(who + " أضاف " + list, who + " added " + list), removed: L(who + " أزال " + list, who + " removed " + list),
+      left: L(who + " غادر", who + " left"), joined: L(who + " انضمّ عبر رابط الدعوة", who + " joined via the invite link"),
+      admin: L(who + " جعل " + list + " مشرفاً", who + " made " + list + " an admin"), unadmin: L(who + " أزال إشراف " + list, who + " removed " + list + " as admin"),
+      renamed: L(who + " غيّر الاسم إلى «" + (ex.name || "") + "»", who + " renamed the group to “" + (ex.name || "") + "”"),
+      desc: L(who + " غيّر الوصف", who + " changed the description"),
+      adminsOnly: ex.on ? L(who + " جعل الإرسال للمشرفين فقط", who + " allowed only admins to send") : L(who + " سمح للجميع بالإرسال", who + " allowed everyone to send")
+    };
+    return T[ex.ev] || "";
+  }
+  // رسائل الأدوات بالشكل الذي تعرفه واجهة المجموعة
+  function toolShape(m, o, c) {
+    var ex = m.extra || {};
+    if (m.type === "system") { o.type = "system"; o.text = sysText(m, c); return o; }
+    if (m.type === "poll") {
+      var votes = m.votes || {};
+      o.type = "poll"; o.question = ex.question || ""; o.creatorId = appId(m.by); o.deadline = ex.deadline || null; o.anonymous = !!ex.anonymous; o.editedAt = ex.editedAt || null;
+      o.options = (ex.options || []).map(function (text, i) { return { text: text, votes: Object.keys(votes).filter(function (u) { return votes[u] === i; }).map(appId) }; });
+      return o;
+    }
+    if (m.type === "bill") {
+      var paid = m.paid || {};
+      o.type = "billSplit"; o.description = ex.description || ""; o.totalAmount = ex.totalAmount || 0; o.splitType = ex.splitType || "equal";
+      o.participants = (ex.participants || []).map(function (p) { return { userId: appId(p.uid), name: personName(p.uid, c), share: p.share || 0, paid: !!paid[p.uid], paidAt: paid[p.uid] || null }; });
+      return o;
+    }
+    if (m.type === "fund") {
+      var contrib = m.contrib || {}, ks = Object.keys(contrib);
+      o.type = "fundraiser"; o.cause = ex.cause || ""; o.goal = ex.goal || 0; o.deadline = ex.deadline || null;
+      o.raised = ks.reduce(function (s, u) { return s + (contrib[u].amount || 0); }, 0);
+      o.contributions = ks.map(function (u) { return { name: personName(u, c), amount: contrib[u].amount || 0, ts: contrib[u].ts || 0 }; }).sort(function (a, b) { return b.ts - a.ts; });
+      return o;
+    }
+    if (m.type === "tasks") {
+      var ts = m.tstate || {};
+      o.type = "taskList"; o.title = ex.title || "";
+      o.tasks = (ex.tasks || []).map(function (t) { var s = ts[t.id] || {}; return { id: t.id, text: t.text, assigneeId: appId(t.assigneeId), assigneeName: t.assigneeName || personName(t.assigneeId, c), dueAt: t.dueAt || null, status: s.status || "pending", note: s.note || "" }; });
+      return o;
+    }
+    return o;
+  }
+  function handleGroupParam() {
+    var tok = null;
+    try { tok = new URLSearchParams(global.location.search).get("group"); } catch (e) {}
+    if (!tok) return;
+    try { var u = new URL(global.location.href); u.searchParams.delete("group"); global.history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + u.hash); } catch (e) {}
+    whenReady(function () { joinGroup(tok); });
+  }
+
   // ---------- الإقلاع ----------
   var readyCbs = [];
   function whenReady(f) { if (state.uid) f(state.uid); else readyCbs.push(f); }
@@ -666,6 +802,7 @@
   }
   function boot() {
     handleContactParam();
+    handleGroupParam();
     var tries = 0;
     (function wait() {
       if (S() && S().onReady) {
@@ -690,7 +827,12 @@
     status: function () { return { loaded: state.loaded, error: state.error, count: state.people.length }; },
     // C2
     isCloud: isCloud, enabled: function () { return !!state.uid; }, openChat: openChat, closeChat: closeChat,
-    send: send, edit: edit, clearChat: clearChat, deleteForAll: deleteForAll, deleteForMe: deleteForMe, react: react, pin: pin,
+    send: send, edit: edit, clearChat: clearChat,
+    // C3
+    createGroup: createGroup, updateGroup: updateGroup, addMembers: addMembers, removeMember: removeMember, setAdmin: setAdmin,
+    leaveGroup: leaveGroup, shareGroupInvite: shareGroupInvite, joinGroup: joinGroup,
+    sendPoll: sendPoll, vote: vote, editPoll: editPoll, sendBill: sendBill, billPaid: billPaid, sendFund: sendFund, contribute: contribute,
+    sendTasks: sendTasks, setTask: setTask, deleteForAll: deleteForAll, deleteForMe: deleteForMe, react: react, pin: pin,
     setDisappear: setDisappear, openDm: openDm, openSaved: openSaved, dmWith: function (u) { return state.uid ? dmWith(u) : null; },
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
     _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,

@@ -1295,7 +1295,13 @@ function AppInner() {
         showToast(t("tm_albth_ila_shkhs", { length: list.recipientIds.length }), "success");
     }
     function createGroup(name, memberNames) {
-        if (window.SawaChat && window.SawaChat.enabled && window.SawaChat.enabled()) { showToast(t("c3_soon"), "info"); setChatsStack([]); return; }
+        const SCg = window.SawaChat;
+        if (SCg && SCg.enabled && SCg.enabled()) {
+            // C3: مجموعة حقيقيّة من جهات الاتّصال (الأسماء ← المعرّفات)
+            const uids = memberNames.map((n) => { const p = people.find((x) => x.name === n); return p && p.uid; }).filter(Boolean);
+            SCg.createGroup(name, uids).then((cid) => { if (cid) setChatsStack([{ type: "group", data: { id: cid, name, members: [] } }]); else setChatsStack([]); });
+            return;
+        }
         const id = `grp-${Date.now()}`;
         const members = [
             { id: myUserId, name: "أنت", role: "admin" },
@@ -1311,10 +1317,12 @@ function AppInner() {
     function renameGroup(groupId, newName) {
         const clean = (newName || "").trim();
         if (!clean) return;
+        if (cloudChat(groupId)) { cloudChat(groupId).updateGroup(groupId, { name: clean }); return; }
         setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, name: clean } : g)));
     }
     function addGroupMembers(groupId, memberNames) {
         if (!memberNames || !memberNames.length) return;
+        if (cloudChat(groupId)) { cloudChat(groupId).addMembers(groupId, memberNames); return; }   // على السحابة: معرّفات من منتقي جهات الاتّصال
         setGroups((prev) => prev.map((g) => {
             if (g.id !== groupId) return g;
             const existing = new Set(g.members.map((m) => m.name));
@@ -1326,20 +1334,23 @@ function AppInner() {
     }
     function removeGroupMember(groupId, memberId) {
         if (memberId === myUserId) return;   // الخروج له مسار منفصل
+        if (cloudChat(groupId)) { cloudChat(groupId).removeMember(groupId, memberId); return; }
         setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, members: g.members.filter((m) => m.id !== memberId) } : g)));
     }
     function toggleGroupAdmin(groupId, memberId) {
+        if (cloudChat(groupId)) { const g = groups.find((x) => x.id === groupId); const m = g && g.members.find((x) => x.id === memberId); cloudChat(groupId).setAdmin(groupId, memberId, !(m && m.role === "admin")); return; }
         setGroups((prev) => prev.map((g) => {
             if (g.id !== groupId) return g;
             return { ...g, members: g.members.map((m) => (m.id === memberId ? { ...m, role: m.role === "admin" ? "member" : "admin" } : m)) };
         }));
     }
     function leaveGroup(groupId) {
+        if (cloudChat(groupId)) { cloudChat(groupId).leaveGroup(groupId); setChatsStack([]); return; }
         setGroups((prev) => prev.filter((g) => g.id !== groupId));
         setChatsStack([]);
     }
-    function sendGroupMessage(groupId, text) {
-        if (cloudChat(groupId)) { cloudChat(groupId).send(groupId, text); return; }
+    function sendGroupMessage(groupId, text, replyTo) {
+        if (cloudChat(groupId)) { cloudChat(groupId).send(groupId, text, { reply: replyTo ? { id: replyTo.id, by: replyTo.senderId || null, text: replyTo.text } : null, mentionsFrom: true }); return; }
         const msg = { id: `gmsg-${Date.now()}`, senderId: myUserId, text, type: "text", createdAt: Date.now() };
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
     }
@@ -1363,7 +1374,7 @@ function AppInner() {
         }));
     }
     function createGroupPoll(groupId, question, optionTexts, deadlineMinutes, anonymous) {
-        if (cloudChat(arguments[0])) { showToast(t("c3_soon"), "info"); return; }
+        if (cloudChat(groupId)) { cloudChat(groupId).sendPoll(groupId, question, optionTexts, deadlineMinutes ? Date.now() + deadlineMinutes * 60000 : null, !!anonymous); return; }
         const msg = {
             id: `gpoll-${Date.now()}`,
             type: "poll",
@@ -1378,6 +1389,7 @@ function AppInner() {
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
     }
     function editGroupPoll(groupId, pollId, question, optionTexts) {
+        if (cloudChat(groupId)) { cloudChat(groupId).editPoll(groupId, pollId, question, optionTexts); showToast(t("tm_tadyl_alasttlaa"), "success"); return; }
         setGroupMessages((prev) => ({
             ...prev,
             [groupId]: (prev[groupId] || []).map((m) => {
@@ -1394,6 +1406,7 @@ function AppInner() {
         showToast(t("tm_tadyl_alasttlaa"), "success");
     }
     function voteGroupPoll(groupId, pollId, optionIndex) {
+        if (cloudChat(groupId)) { cloudChat(groupId).vote(groupId, pollId, optionIndex); return; }
         setGroupMessages((prev) => ({
             ...prev,
             [groupId]: (prev[groupId] || []).map((m) => {
@@ -1414,7 +1427,7 @@ function AppInner() {
         }));
     }
     function createGroupBillSplit(groupId, description, totalAmount, participantAmounts, splitType) {
-        if (cloudChat(arguments[0])) { showToast(t("c3_soon"), "info"); return; }
+        if (cloudChat(groupId)) { cloudChat(groupId).sendBill(groupId, description, totalAmount, participantAmounts, splitType || "equal"); return; }
         const group = groups.find((g) => g.id === groupId);
         const participants = Object.entries(participantAmounts).map(([id, share]) => {
             var _a;
@@ -1429,6 +1442,7 @@ function AppInner() {
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
     }
     function payGroupBillSplit(groupId, billId) {
+        if (cloudChat(groupId)) { cloudChat(groupId).billPaid(groupId, billId); showToast("✓", "success"); return; }
         const msg = (groupMessages[groupId] || []).find((m) => m.id === billId);
         const myShare = msg === null || msg === void 0 ? void 0 : msg.participants.find((p) => p.userId === myUserId);
         if (!myShare || myShare.paid)
@@ -1440,7 +1454,7 @@ function AppInner() {
         showToast(`تم تحديد حصتك (${myShare.share.toLocaleString(loc())} ج.س) كمدفوعة ✓`, "success");
     }
     function createGroupFundraiser(groupId, cause, goal, deadline) {
-        if (cloudChat(arguments[0])) { showToast(t("c3_soon"), "info"); return; }
+        if (cloudChat(groupId)) { cloudChat(groupId).sendFund(groupId, cause, goal, deadline ? new Date(`${deadline}T23:59:59`).getTime() : null); return; }
         const deadlineTimestamp = deadline ? new Date(`${deadline}T23:59:59`).getTime() : null;
         const msg = { id: `gfund-${Date.now()}`, type: "fundraiser", cause, goal, raised: 0, deadline: deadlineTimestamp, contributions: [], createdAt: Date.now() };
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
@@ -1458,6 +1472,13 @@ function AppInner() {
                 return;
             }
             setWalletBalance((b) => b - amount);
+        }
+        if (cloudChat(groupId)) {
+            // على السحابة: يُسجَّل تعهّدك للجميع (المحفظة محاكاة — يُخصم منها محلّياً فقط إن اخترتها)
+            cloudChat(groupId).contribute(groupId, fundraiserId, amount);
+            setPendingContributionTarget(null);
+            showToast(`تبرّعت بـ${amount.toLocaleString(loc())} ج.س ✓`, "success");
+            return;
         }
         let goalReached = false;
         setGroupMessages((prev) => ({
@@ -1480,7 +1501,14 @@ function AppInner() {
         }
     }
     function createGroupTaskList(groupId, title, taskDrafts) {
-        if (cloudChat(arguments[0])) { showToast(t("c3_soon"), "info"); return; }
+        if (cloudChat(groupId)) {
+            const g = groups.find((x) => x.id === groupId);
+            cloudChat(groupId).sendTasks(groupId, title, taskDrafts.filter((td) => td.text && td.text.trim()).map((td, i) => {
+                const m = g && g.members.find((x) => x.id === td.assigneeId);
+                return { id: "t" + i, text: td.text.trim(), assigneeId: td.assigneeId, assigneeName: (m && m.name) || "", dueAt: td.dueAt ? new Date(td.dueAt).getTime() : null };
+            }));
+            return;
+        }
         const group = groups.find((g) => g.id === groupId);
         const tasks = taskDrafts.map((td, i) => {
             var _a;
@@ -1497,6 +1525,7 @@ function AppInner() {
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
     }
     function toggleGroupTaskStatus(groupId, listId, taskId) {
+        if (cloudChat(groupId)) { const m = (groupMessages[groupId] || []).find((x) => x.id === listId); const tk = m && m.tasks && m.tasks.find((x) => x.id === taskId); cloudChat(groupId).setTask(groupId, listId, taskId, { status: tk && tk.status === "done" ? "pending" : "done" }); return; }
         setGroupMessages((prev) => ({
             ...prev,
             [groupId]: (prev[groupId] || []).map((m) => m.id === listId
@@ -1505,6 +1534,7 @@ function AppInner() {
         }));
     }
     function addGroupTaskNote(groupId, listId, taskId, note) {
+        if (cloudChat(groupId)) { cloudChat(groupId).setTask(groupId, listId, taskId, { note }); return; }
         setGroupMessages((prev) => ({
             ...prev,
             [groupId]: (prev[groupId] || []).map((m) => m.id === listId
@@ -2003,12 +2033,12 @@ function AppInner() {
         // C2: المحادثات الحقيقيّة تُنشر في نفس حالات الواجهة
         setConversations, setMessagesByConversation, setGroups, setGroupMessages, setTypingConversations,
         setArchivedConversations, setPinnedConversations, setMutedConversations, setLockedConversationIds, setChatFolders,
-        setFolderAssignments, setChatThemes, setConversationTones, setStarredMessages, setBlockedConversations }); }, []);
+        setFolderAssignments, setChatThemes, setConversationTones, setStarredMessages, setBlockedConversations, setBroadcastLists }); }, []);
     // إعداداتي في المحادثات تتزامن بين أجهزتي (SawaChat يتجاهلها قبل تحميل نسخة الخادم)
     useEffect(() => { if (window.SawaChat && window.SawaChat.observePrefs) window.SawaChat.observePrefs({ archived: archivedConversations, pinned: pinnedConversations,
         muted: mutedConversations, locked: lockedConversationIds, folders: chatFolders, folderOf: folderAssignments, themes: chatThemes,
-        tones: conversationTones, starred: starredMessages, blocked: blockedConversations }); },
-        [archivedConversations, pinnedConversations, mutedConversations, lockedConversationIds, chatFolders, folderAssignments, chatThemes, conversationTones, starredMessages, blockedConversations]);
+        tones: conversationTones, starred: starredMessages, blocked: blockedConversations, broadcasts: broadcastLists }); },
+        [archivedConversations, pinnedConversations, mutedConversations, lockedConversationIds, chatFolders, folderAssignments, chatThemes, conversationTones, starredMessages, blockedConversations, broadcastLists]);
     // المحادثة المفتوحة: تُعلَّم مقروءة وتُستمع رسائلها؛ الخروج منها يوقف «قُرئت» التلقائيّة
     useEffect(() => {
         const SC = window.SawaChat; if (!SC || !SC.openChat) return;
@@ -3462,10 +3492,17 @@ function AppInner() {
                     }
                     if (chatsTop.type === "group") {
                         const liveGroup = groups.find((g) => g.id === chatsTop.data.id) || chatsTop.data;
-                        return (React.createElement(GroupChatScreen, { group: liveGroup, messages: groupMessages[liveGroup.id] || [], myUserId: myUserId, draft: chatDrafts["g:" + liveGroup.id] || "", onSaveDraft: (v) => saveChatDraft("g:" + liveGroup.id, v), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text) => sendGroupMessage(liveGroup.id, text), onSendFile: (name, size, fileUrl, type) => sendGroupFile(liveGroup.id, name, size, fileUrl, type), onSendVoice: (url, duration) => sendGroupVoice(liveGroup.id, url, duration), onEditMessage: (messageId, newText) => editGroupMessage(liveGroup.id, messageId, newText), onCreatePoll: (q, opts, deadlineMinutes, anonymous) => createGroupPoll(liveGroup.id, q, opts, deadlineMinutes, anonymous), onEditPoll: (pollId, q, opts) => editGroupPoll(liveGroup.id, pollId, q, opts), onVotePoll: (pollId, optIdx) => voteGroupPoll(liveGroup.id, pollId, optIdx), onCreateBillSplit: (desc, total, participantAmounts, splitType) => createGroupBillSplit(liveGroup.id, desc, total, participantAmounts, splitType), onPayBillSplit: (billId) => payGroupBillSplit(liveGroup.id, billId), onCreateFundraiser: (cause, goal, deadline) => createGroupFundraiser(liveGroup.id, cause, goal, deadline), onContributeFundraiser: (fundraiserId) => contributeGroupFundraiser(liveGroup.id, fundraiserId), onCreateTaskList: (title, drafts) => createGroupTaskList(liveGroup.id, title, drafts), onToggleTaskStatus: (listId, taskId) => toggleGroupTaskStatus(liveGroup.id, listId, taskId), onAddTaskNote: (listId, taskId, note) => addGroupTaskNote(liveGroup.id, listId, taskId, note), onForward: (text, destinationIds) => forwardMessageToTargets(text, destinationIds), allConversations: conversations, allGroups: groups, onRenameGroup: renameGroup, onAddGroupMembers: addGroupMembers, onRemoveGroupMember: removeGroupMember, onToggleGroupAdmin: toggleGroupAdmin, onLeaveGroup: leaveGroup, onBack: () => setChatsStack([]) }));
+                        return (React.createElement(GroupChatScreen, { group: liveGroup, messages: groupMessages[liveGroup.id] || [], myUserId: myUserId, draft: chatDrafts["g:" + liveGroup.id] || "", onSaveDraft: (v) => saveChatDraft("g:" + liveGroup.id, v), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendGroupMessage(liveGroup.id, text, replyTo),
+                            onReact: cloudChat(liveGroup.id) ? (messageId, emoji) => cloudChat(liveGroup.id).react(liveGroup.id, messageId, emoji) : null,
+                            onDeleteMessage: cloudChat(liveGroup.id) ? (messageId, scope) => { scope === "all" ? cloudChat(liveGroup.id).deleteForAll(liveGroup.id, messageId) : cloudChat(liveGroup.id).deleteForMe(liveGroup.id, messageId); showToast(scope === "all" ? t("ai_hdhft_lljmya") : t("ai_hdhft_andk"), "success"); } : null,
+                            contacts: cloudChat(liveGroup.id) ? people : null,
+                            onInviteLink: cloudChat(liveGroup.id) ? (gid) => cloudChat(gid).shareGroupInvite(gid) : null,
+                            onUpdateGroup: cloudChat(liveGroup.id) ? (gid, patch) => cloudChat(gid).updateGroup(gid, patch) : null, onSendFile: (name, size, fileUrl, type) => sendGroupFile(liveGroup.id, name, size, fileUrl, type), onSendVoice: (url, duration) => sendGroupVoice(liveGroup.id, url, duration), onEditMessage: (messageId, newText) => editGroupMessage(liveGroup.id, messageId, newText), onCreatePoll: (q, opts, deadlineMinutes, anonymous) => createGroupPoll(liveGroup.id, q, opts, deadlineMinutes, anonymous), onEditPoll: (pollId, q, opts) => editGroupPoll(liveGroup.id, pollId, q, opts), onVotePoll: (pollId, optIdx) => voteGroupPoll(liveGroup.id, pollId, optIdx), onCreateBillSplit: (desc, total, participantAmounts, splitType) => createGroupBillSplit(liveGroup.id, desc, total, participantAmounts, splitType), onPayBillSplit: (billId) => payGroupBillSplit(liveGroup.id, billId), onCreateFundraiser: (cause, goal, deadline) => createGroupFundraiser(liveGroup.id, cause, goal, deadline), onContributeFundraiser: (fundraiserId) => contributeGroupFundraiser(liveGroup.id, fundraiserId), onCreateTaskList: (title, drafts) => createGroupTaskList(liveGroup.id, title, drafts), onToggleTaskStatus: (listId, taskId) => toggleGroupTaskStatus(liveGroup.id, listId, taskId), onAddTaskNote: (listId, taskId, note) => addGroupTaskNote(liveGroup.id, listId, taskId, note), onForward: (text, destinationIds) => forwardMessageToTargets(text, destinationIds), allConversations: conversations, allGroups: groups, onRenameGroup: renameGroup, onAddGroupMembers: addGroupMembers, onRemoveGroupMember: removeGroupMember, onToggleGroupAdmin: toggleGroupAdmin, onLeaveGroup: leaveGroup, onBack: () => setChatsStack([]) }));
                     }
                     if (chatsTop.type === "newGroup") {
                         return React.createElement(NewGroupScreen, { onCreate: createGroup, onClose: () => setChatsStack([]), contacts: (function () {
+                            // C3: على السحابة جهات الاتّصال الحقيقيّة فقط
+                            if (window.SawaChat && window.SawaChat.enabled && window.SawaChat.enabled()) return people.map((p) => ({ name: p.name, source: (p.families && p.families[0] && p.families[0].name) || "" }));
                             const seen = {}; const out = [];
                             conversations.forEach(function (c) { if (c.isSavedMessages || !c.name || seen[c.name]) return; seen[c.name] = 1; out.push({ name: c.name, source: t("ai_mhadthaty") }); });
                             Object.values(groupPersons).flat().forEach(function (p) { const nm = p.local_name; if (!nm || seen[nm]) return; seen[nm] = 1; out.push({ name: nm, source: t("ai_sla_alrhm") }); });
