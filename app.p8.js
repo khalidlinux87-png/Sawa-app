@@ -1020,6 +1020,13 @@ function AppInner() {
     }
     // يستخدم إذن الإشعارات الفعلي للمتصفح — طلب حقيقي، مو محاكاة
     function toggleBrowserNotif() {
+        // C5: على السحابة الإشعارات حقيقيّة (FCM) — التفعيل/الإيقاف عبر SawaChat
+        const SCn = window.SawaChat;
+        if (SCn && SCn.enabled && SCn.enabled() && SCn.enablePush) {
+            if (browserNotifEnabled) { SCn.disablePush(); setBrowserNotifEnabled(false); showToast("🔕", "success"); return; }
+            SCn.enablePush().then((ok) => setBrowserNotifEnabled(!!ok));
+            return;
+        }
         if (browserNotifEnabled) {
             setBrowserNotifEnabled(false);
             return;
@@ -2034,7 +2041,17 @@ function AppInner() {
         // C2: المحادثات الحقيقيّة تُنشر في نفس حالات الواجهة
         setConversations, setMessagesByConversation, setGroups, setGroupMessages, setTypingConversations,
         setArchivedConversations, setPinnedConversations, setMutedConversations, setLockedConversationIds, setChatFolders,
-        setFolderAssignments, setChatThemes, setConversationTones, setStarredMessages, setBlockedConversations, setBroadcastLists }); }, []);
+        setFolderAssignments, setChatThemes, setConversationTones, setStarredMessages, setBlockedConversations, setBroadcastLists,
+        openChatById: (cid) => openChatByIdRef.current && openChatByIdRef.current(cid) }); }, []);
+    // C5: الضغط على إشعار يفتح المحادثة نفسها (مرجعٌ حيّ لأحدث القوائم)
+    const openChatByIdRef = useRef(null);
+    openChatByIdRef.current = (cid) => {
+        setStack([]); setTab("chats");
+        const isGroup = /^(fam_|grp_)/.test(cid);
+        const found = isGroup ? groups.find((g) => g.id === cid) : conversations.find((c) => c.id === cid);
+        setChatsStack([{ type: isGroup ? "group" : "chat", data: found || (isGroup ? { id: cid, name: "", members: [] } : { id: cid, name: "", cloud: true }) }]);
+    };
+    useEffect(() => { if (window.SawaChat && window.SawaChat.pushEnabled && window.SawaChat.pushEnabled()) setBrowserNotifEnabled(true); }, []);
     // إعداداتي في المحادثات تتزامن بين أجهزتي (SawaChat يتجاهلها قبل تحميل نسخة الخادم)
     useEffect(() => { if (window.SawaChat && window.SawaChat.observePrefs) window.SawaChat.observePrefs({ archived: archivedConversations, pinned: pinnedConversations,
         muted: mutedConversations, locked: lockedConversationIds, folders: chatFolders, folderOf: folderAssignments, themes: chatThemes,

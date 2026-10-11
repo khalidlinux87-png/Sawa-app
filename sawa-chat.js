@@ -10,7 +10,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c4";
+  var VERSION = "c5";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -560,6 +560,7 @@
       var groups = list.filter(function (c) { return c.type === "family" || c.type === "group"; }).map(groupOf)
         .sort(function (a, b) { return b.updatedAt - a.updatedAt; });
       try { if (app.setConversations) app.setConversations(convs); } catch (e) {}
+      appBadge();
       try { if (app.setGroups) app.setGroups(groups); } catch (e) {}
     }, 40);
   }
@@ -568,7 +569,7 @@
     var clearedAt = (prefs && prefs.cleared && prefs.cleared[cid]) || 0;
     var dd = days[cid] || {}, arr = [];
     Object.keys(dd).forEach(function (day) { var mm = dd[day]; Object.keys(mm).forEach(function (id) { var m = mm[id]; if (m && !hidden[id] && (m.ts || 0) > clearedAt) arr.push({ m: m, day: day }); }); });
-    (pend[cid] || []).forEach(function (p) { if (!hidden[p.msg.id]) arr.push({ m: Object.assign({ by: state.uid, ts: p.ts }, p.msg), pending: p.status }); });
+    (pend[cid] || []).forEach(function (p) { if (!hidden[p.msg.id]) arr.push({ m: Object.assign({ by: state.uid, ts: p.ts }, p.msg), pending: p.status, progress: p.uploading ? (p.progress || 0) : null }); });
     arr.sort(function (a, b) { return (a.m.ts || 0) - (b.m.ts || 0); });
     var group = c.type === "family" || c.type === "group";
     return arr.map(function (x) {
@@ -583,6 +584,7 @@
       else o.senderUserId = appId(m.by);
       if (!m.del && MEDIA_TYPES.indexOf(m.type) >= 0) mediaShape(m, o, cid, mine);
       if (mine) o.status = x.pending ? (x.pending === "failed" ? "failed" : "pending") : statusOf(c, m.ts);
+      if (x.progress != null) o.uploadPct = x.progress;   // نسبة رفع الوسيط (تظهر بدل الساعة)
       return o;
     });
   }
@@ -830,9 +832,9 @@
   function prepareImage(blob) {
     if (/gif/.test(blob.type) && blob.size < 2 * 1024 * 1024) return loadImg(blob).then(function (r) { var th = smallThumb(r.img, r.img.naturalWidth, r.img.naturalHeight); URL.revokeObjectURL(r.url); return { blob: blob, thumb: th, w: r.img.naturalWidth, h: r.img.naturalHeight }; });
     return loadImg(blob).then(function (r) {
-      var w = r.img.naturalWidth, h = r.img.naturalHeight, c = drawTo(r.img, w, h, 1600), th = smallThumb(r.img, w, h);
+      var w = r.img.naturalWidth, h = r.img.naturalHeight, c = drawTo(r.img, w, h, 1280), th = smallThumb(r.img, w, h);
       URL.revokeObjectURL(r.url);
-      return canvasBlob(c, 0.82).then(function (b) { return { blob: b && b.size < blob.size ? b : blob, thumb: th, w: c.width, h: c.height }; });
+      return canvasBlob(c, 0.78).then(function (b) { return { blob: b && b.size < blob.size ? b : blob, thumb: th, w: c.width, h: c.height }; });
     });
   }
   function prepareVideo(blob) {
@@ -872,7 +874,7 @@
       extra.size = blob.size; extra.mime = blob.type || extra.mime;
       if (blob !== src) { try { URL.revokeObjectURL(localUrls[mid]); } catch (e) {} localUrls[mid] = URL.createObjectURL(blob); }
       publishMessages(cid);
-      return uploadMedia(cid, mid, blob, extra);
+      return uploadMedia(cid, mid, blob, extra, function (pct) { p.progress = pct; publishMessages(cid); });
     }).then(function () {
       p.uploading = false;
       var ob = lsGet(OUTBOX, []); ob.push({ cid: cid, msg: msg }); lsSet(OUTBOX, ob);
@@ -883,20 +885,23 @@
     });
     return id;
   }
-  function uploadMedia(cid, mid, blob, extra) {
+  function uploadMedia(cid, mid, blob, extra, onProgress) {
     var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
     var meta = d.collection("chats").doc(cid).collection("media").doc(mid);
     return blobToB64(blob).then(function (b64) {
       var n = Math.max(1, Math.ceil(b64.length / CHUNK));
       return meta.set({ by: state.uid, mime: blob.type || "application/octet-stream", size: blob.size, name: String(extra.name || "").slice(0, 200), n: n, ts: Date.now(), done: false })
         .then(function () {
-          var i = 0;
-          var next = function () {
+          // ثلاث قطعٍ في وقتٍ واحد (أسرع على الجوّال من التسلسل)، مع نسبة التقدّم
+          var i = 0, doneN = 0;
+          if (onProgress) onProgress(0);
+          var worker = function () {
             if (i >= n) return Promise.resolve();
             var k = i++;
-            return meta.collection("c").doc(String(k)).set({ d: b64.slice(k * CHUNK, (k + 1) * CHUNK) }).then(next);
+            return meta.collection("c").doc(String(k)).set({ d: b64.slice(k * CHUNK, (k + 1) * CHUNK) })
+              .then(function () { doneN++; if (onProgress) onProgress(Math.round(doneN * 100 / n)); return worker(); });
           };
-          return next();
+          return Promise.all([worker(), worker(), worker()]);
         }).then(function () { return meta.update({ done: true }); });
     });
   }
@@ -975,6 +980,90 @@
     return o;
   }
 
+  // ==================================================================
+  // C5: الإشعارات — Firebase Cloud Messaging. الرمز يُسجَّل عند الـWorker (push.register)، وعامل الخدمة (sw.js)
+  //     يُظهر الإشعار أو يمرّره للتطبيق المفتوح. الضغط على الإشعار يفتح المحادثة نفسها.
+  // ==================================================================
+  var VAPID_KEY = "";   // ← مفتاح Web Push العامّ (Firebase Console ← Cloud Messaging ← Web Push certificates)
+  function pushSupported() {
+    try { return !!(VAPID_KEY && global.navigator && navigator.serviceWorker && global.PushManager && global.Notification && firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()); }
+    catch (e) { return false; }
+  }
+  function pushToken() {
+    return navigator.serviceWorker.ready.then(function (reg) { return firebase.messaging().getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg }); });
+  }
+  function registerToken(tok) {
+    var prev = lsGet("sawa_push", {});
+    if (prev.token === tok && prev.uid === state.uid) return Promise.resolve(true);
+    return call("push.register", { token: tok, ua: (navigator.userAgent || "").slice(0, 150), prevUid: prev.uid && prev.uid !== state.uid ? prev.uid : null })
+      .then(function () { lsSet("sawa_push", { token: tok, uid: state.uid, ts: Date.now() }); return true; });
+  }
+  function enablePush() {
+    if (!VAPID_KEY) { toast(L("الإشعارات لم تُفعَّل بعد في هذا الإصدار", "Notifications aren't set up in this version yet")); return Promise.resolve(false); }
+    if (!pushSupported()) { toast(L("هذا المتصفّح لا يدعم الإشعارات" + (/iPhone|iPad/.test(navigator.userAgent || "") ? " — على آيفون ثبّت التطبيق على الشاشة الرئيسيّة أوّلاً" : ""), "This browser doesn't support notifications")); return Promise.resolve(false); }
+    return Notification.requestPermission().then(function (perm) {
+      if (perm !== "granted") { toast(L("لم يُسمح بالإشعارات — يمكنك تفعيلها من إعدادات المتصفّح", "Notifications weren't allowed — enable them in the browser settings")); return false; }
+      return pushToken().then(registerToken).then(function () { toast(L("الإشعارات مفعّلة ✓", "Notifications on ✓")); hideBanner(); return true; });
+    }).catch(function (e) { toast(L("تعذّر تفعيل الإشعارات: ", "Couldn't enable notifications: ") + ((e && e.message) || e)); return false; });
+  }
+  function disablePush() {
+    var prev = lsGet("sawa_push", {});
+    lsSet("sawa_push", {});
+    var p = prev.token ? call("push.unregister", { token: prev.token }).catch(function () {}) : Promise.resolve();
+    try { firebase.messaging().deleteToken().catch(function () {}); } catch (e) {}
+    return p;
+  }
+  function pushEnabled() { try { return Notification.permission === "granted" && !!lsGet("sawa_push", {}).token; } catch (e) { return false; } }
+  // بعد الدخول: إن سبق السماح نجدّد الرمز بصمت (يتغيّر أحياناً، أو تغيّر الحساب)
+  function refreshPush() {
+    if (!pushSupported()) return;
+    try { if (Notification.permission !== "granted") return maybeBanner(); } catch (e) { return; }
+    pushToken().then(registerToken).catch(function (e) { log("push token:", (e && e.message) || e); });
+  }
+  // دعوةٌ لطيفة مرّةً واحدة (تحتاج ضغطة المستخدم — المتصفّحات تمنع الطلب التلقائيّ)
+  var bannerEl = null;
+  function hideBanner() { try { if (bannerEl) bannerEl.remove(); } catch (e) {} bannerEl = null; }
+  function maybeBanner() {
+    if (bannerEl || lsGet("sawa_push_asked", 0) > Date.now() - 7 * 86400000) return;
+    try { if (Notification.permission !== "default") return; } catch (e) { return; }
+    if (!Object.keys(chats).length) return;
+    bannerEl = document.createElement("div");
+    bannerEl.dir = isAr() ? "rtl" : "ltr";
+    bannerEl.style.cssText = "position:fixed;left:12px;right:12px;top:12px;z-index:2147483640;background:#1f2d3a;color:#fff;border-radius:14px;padding:12px 14px;font:600 13px system-ui;box-shadow:0 6px 20px rgba(0,0,0,.3);display:flex;gap:10px;align-items:center";
+    var txt = document.createElement("div"); txt.style.flex = "1";
+    txt.textContent = L("🔔 فعّل الإشعارات ليصلك ما يكتبه أهلك والتطبيق مغلق", "🔔 Turn on notifications to get your family's messages when the app is closed");
+    var yes = document.createElement("button"); yes.textContent = L("تفعيل", "Turn on");
+    yes.style.cssText = "background:#2e7d5b;color:#fff;border:0;border-radius:10px;padding:8px 12px;font:700 13px system-ui";
+    var no = document.createElement("button"); no.textContent = L("لاحقاً", "Later");
+    no.style.cssText = "background:transparent;color:#cfd8dc;border:0;padding:8px 6px;font:600 12px system-ui";
+    yes.onclick = function () { lsSet("sawa_push_asked", Date.now()); enablePush(); hideBanner(); };
+    no.onclick = function () { lsSet("sawa_push_asked", Date.now()); hideBanner(); };
+    bannerEl.appendChild(txt); bannerEl.appendChild(yes); bannerEl.appendChild(no); document.body.appendChild(bannerEl);
+  }
+  // عامل الخدمة → التطبيق: إشعارٌ والتطبيق أمامك (تنبيهٌ داخليّ) · ضغطٌ على إشعار (افتح المحادثة)
+  function openFromPush(cid) { if (cid && isCloud(cid)) whenApp(function () { try { if (app.openChatById) app.openChatById(cid); } catch (e) {} }); }
+  try {
+    if (global.navigator && navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", function (ev) {
+      var m = ev.data || {};
+      if (m.type === "sawa-push" && m.data) { if (m.data.cid !== openCid) toast((m.data.title ? m.data.title + ": " : "") + (m.data.body || "")); }
+      if (m.type === "sawa-open" && m.data) openFromPush(m.data.cid);
+    });
+  } catch (e) {}
+  function handleChatParam() {
+    var cid = null;
+    try { cid = new URLSearchParams(global.location.search).get("chat"); } catch (e) {}
+    if (!cid) return;
+    try { var u = new URL(global.location.href); u.searchParams.delete("chat"); global.history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + u.hash); } catch (e) {}
+    whenReady(function () { setTimeout(function () { openFromPush(cid); }, 600); });
+  }
+  // عدد غير المقروء على أيقونة التطبيق (حيث يدعمه الجهاز)
+  var badgeN = -1;
+  function appBadge() {
+    var n = 0; Object.keys(chats).forEach(function (k) { n += unreadOf(chats[k]); });
+    if (n === badgeN) return; badgeN = n;
+    try { if (navigator.setAppBadge) { n ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } } catch (e) {}
+  }
+
   // ---------- الإقلاع ----------
   var readyCbs = [];
   function whenReady(f) { if (state.uid) f(state.uid); else readyCbs.push(f); }
@@ -990,12 +1079,14 @@
     refresh();
     stopChats(); prefs = null; prefsLoaded = false; pend = {}; virtualChats = {};
     restorePending(); startChats(uid); loadPrefs(); drainOutbox();
+    setTimeout(refreshPush, 4000);
     var cbs = readyCbs; readyCbs = [];
     cbs.forEach(function (f) { try { f(uid); } catch (e) {} });
   }
   function boot() {
     handleContactParam();
     handleGroupParam();
+    handleChatParam();
     var tries = 0;
     (function wait() {
       if (S() && S().onReady) {
@@ -1022,6 +1113,7 @@
     isCloud: isCloud, enabled: function () { return !!state.uid; }, openChat: openChat, closeChat: closeChat,
     send: send, edit: edit, clearChat: clearChat,
     // C4
+    enablePush: enablePush, disablePush: disablePush, pushEnabled: pushEnabled, pushSupported: pushSupported,
     sendMedia: sendMedia, openFile: openFile, markViewedOnce: markViewedOnce, ensureMedia: ensureMedia,
     // C3
     createGroup: createGroup, updateGroup: updateGroup, addMembers: addMembers, removeMember: removeMember, setAdmin: setAdmin,

@@ -1,7 +1,7 @@
 // عامل الخدمة — يحفظ ملفّات التطبيق للعمل دون اتّصال (الشبكة أوّلاً، ثمّ المخزون).
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v193';
+const VERSION = 'sawa-v194';
 const ASSETS = [
   './',
   './index.html',
@@ -64,4 +64,29 @@ self.addEventListener('fetch', (e) => {
       })
       .catch(() => caches.match(req).then((r) => r || (req.mode === 'navigate' ? caches.match('./index.html') : undefined)))
   );
+});
+
+// ── الإشعارات (C5): رسالة FCM «بياناتٌ فقط» — التطبيق أمامك ⇒ تنبيهٌ داخله؛ غير ذلك ⇒ إشعار ──
+self.addEventListener('push', (e) => {
+  let p = {};
+  try { p = e.data ? e.data.json() : {}; } catch (x) { p = {}; }
+  const d = (p && p.data) || p || {};
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
+    const vis = cs.find((c) => c.visibilityState === 'visible' && c.focused);
+    if (vis && d.t !== 'call') { vis.postMessage({ type: 'sawa-push', data: d }); return; }
+    return self.registration.showNotification(d.title || 'سوا', {
+      body: d.body || '', tag: d.cid || 'sawa', renotify: true, dir: 'auto', lang: 'ar',
+      icon: './icons/icon-192.png', badge: './icons/icon-192.png', data: d,
+      requireInteraction: d.t === 'call', vibrate: d.t === 'call' ? [300, 150, 300, 150, 300] : [120],
+    });
+  }));
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const d = e.notification.data || {};
+  const url = './?' + (d.cid ? 'chat=' + encodeURIComponent(d.cid) : '') + (d.call ? '&call=' + encodeURIComponent(d.call) : '');
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
+    for (const c of cs) { if ('focus' in c) { c.postMessage({ type: 'sawa-open', data: d }); return c.focus(); } }
+    return self.clients.openWindow(url);
+  }));
 });
