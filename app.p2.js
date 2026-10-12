@@ -691,6 +691,13 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
     const SCm = window.SawaChat;
     const myDisplayName = cloudMe ? (myProfile.name || myProfile.googleName || "") : "";
     const editMe = () => { if (cloudMe && window.SawaChat.editProfile()) return; onOpenSettings(); };
+    // C13c: لا اسمَ ولا رقمَ وهميّين — حالةٌ صادقة حتّى يصل الحساب (تحميل · تعذّر · لم يُسجَّل الدخول)
+    const [meT0] = useState(() => Date.now());
+    const [, meTick] = useState(0);
+    useEffect(() => { if (cloudMe || !SCm) return; const iv = setInterval(() => meTick((n) => n + 1), 1500); return () => clearInterval(iv); }, [cloudMe]);
+    const meState = cloudMe || !SCm ? null
+        : (SCm.uid && SCm.uid()) ? ((SCm.status && SCm.status().error) ? "err" : "loading")
+        : (Date.now() - meT0 > 8000 ? "noauth" : "loading");
     const { colors } = useTheme();
     const statusMap = {
         online: { label: t("hala_mtsl"), color: colors.success },
@@ -736,13 +743,15 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
                     profilePhoto && React.createElement("img", { src: profilePhoto, alt: t("swrty"), className: "w-full h-full object-cover" }),
                     !profilePhoto && React.createElement("span", { className: "text-2xl font-extrabold", style: { color: colors.primary } }, myDisplayName ? myDisplayName.charAt(0) : t("s"))),
                 React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
-                    React.createElement("h3", { className: "text-base font-extrabold truncate", style: { color: colors.text } }, myDisplayName || t("mstkhdm_swa", { app: appName() })),
+                    React.createElement("h3", { className: "text-base font-extrabold truncate", style: { color: colors.text } }, myDisplayName || (meState === "loading" ? tl("جارٍ تحميل حسابك…", "Loading your account…") : meState === "err" ? tl("تعذّر تحميل حسابك", "Couldn't load your account") : meState === "noauth" ? tl("لم تسجّل الدخول", "Not signed in") : t("mstkhdm_swa", { app: appName() }))),
                     cloudMe ? (myProfile.phone
                         ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-0.5 flex-wrap`, style: { color: colors.textMuted } },
                             React.createElement("span", { className: "text-xs", dir: "ltr" }, myProfile.phone),
                             React.createElement("span", { className: "text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0", style: { color: "#B7791F", backgroundColor: "#FEF3C7" } }, "غير موثّق"))
                         : React.createElement("button", { onClick: editMe, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, "+ أضف رقم هاتفك"))
-                        : React.createElement("p", { className: "text-xs mt-0.5 truncate", style: { color: colors.textMuted }, dir: "ltr" }, "+249 9X XXX XXXX"),
+                        : meState === "err" ? React.createElement("button", { onClick: () => { try { SCm.refresh(); } catch (e) {} meTick((n) => n + 1); }, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, tl("↻ إعادة المحاولة", "↻ Retry"))
+                        : meState === "noauth" ? React.createElement("button", { onClick: () => { try { SCm.startOnboarding(); } catch (e) {} }, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, tl("تسجيل الدخول ←", "Sign in →"))
+                        : React.createElement("p", { className: "text-xs mt-0.5 truncate", style: { color: colors.textMuted } }, meState === "loading" ? tl("لحظات…", "One moment…") : ""),
                     cloudMe && myProfile.code && SCm.fmtCode && React.createElement("button", { onClick: () => SCm.codeSheet(), className: `flex ${rowStart()} items-center gap-1.5 mt-1`, style: { color: colors.primary } },
                         React.createElement("span", { className: "text-[11px] font-bold" }, tl("رمزك:", "Code:")),
                         React.createElement("span", { className: "text-xs font-extrabold", dir: "ltr", style: { letterSpacing: 1, whiteSpace: "nowrap" } }, SCm.fmtCode(myProfile.code))),
