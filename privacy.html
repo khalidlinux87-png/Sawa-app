@@ -63,7 +63,8 @@
     <ul>
       <li>كلّ الاتّصالات مشفّرة أثناء النقل (HTTPS/TLS)، وتُحفظ البيانات مشفّرةً لدى Google.</li>
       <li><b>المكالمات</b> مشفّرة بين الأجهزة مباشرةً (WebRTC)، حتّى حين تمرّ عبر خادمٍ وسيط. لا نسجّل المكالمات.</li>
-      <li><b>الرسائل ليست مشفّرةً من طرفٍ إلى طرف بعد:</b> هي محفوظةٌ على خوادمنا لدى Google، وقواعد الأمان تمنع غير أطراف المحادثة من قراءتها، لكنّ نظام الخادم يستطيع الوصول إليها تقنيّاً. نعمل على التشفير الكامل لاحقاً.</li>
+      <li><b>الرسائل العاديّة ليست مشفّرةً من طرفٍ إلى طرف:</b> هي محفوظةٌ على خوادمنا لدى Google، وقواعد الأمان تمنع غير أطراف المحادثة من قراءتها، لكنّ نظام الخادم يستطيع الوصول إليها تقنيّاً.</li>
+      <li><b>المحادثات والمجموعات السرّيّة (🔒) مشفّرةٌ من طرفٍ إلى طرف:</b> نصوصها وصورها وصوتيّاتها وملفّاتها تُشفَّر على جهازك، ولا يملك مفاتيحها إلّا أجهزة أطرافها — لا نستطيع نحن قراءتها. نرى فقط ما يلزم لإيصالها: من يراسل من، ووقت الرسالة وحجمها ونوعها، والتفاعلات عليها، واسم المجموعة وأعضاءها. مفاتيحها على جهازك وحده: إن غيّرت جهازك أو مسحت بيانات التطبيق أو خرجت من حسابك لا تُستعاد رسائلها السابقة. وإن أبلغتَ عن محادثةٍ سرّيّة يُرفق جهازُك آخر رسائلها مع البلاغ.</li>
     </ul>
   </div>
 
@@ -106,7 +107,7 @@
 
   <div class="card" dir="ltr" style="text-align:left">
     <h2 style="margin-top:0">English summary</h2>
-    <p>Sawa collects only what it needs to run: your sign-in identity (Google/email/anonymous), profile (name, optional unverified phone, 10-digit Sawa code), contacts and contact requests, messages and media, family-tree data you enter (which may concern other people — add it only with their knowledge), presence, call/schedule records, and a push token. We don't sell data, show ads, or use ad trackers. Data is processed by Google Firebase, Cloudflare and Metered (call relay). Traffic is encrypted in transit and data at rest; calls are encrypted device-to-device; <b>messages are not end-to-end encrypted yet</b>. Delete your account any time at <a href="/delete-account">/delete-account</a>. Not directed to children under 13. Contact: <a href="mailto:support@sawaaap.com">support@sawaaap.com</a>.</p>
+    <p>Sawa collects only what it needs to run: your sign-in identity (Google/email/anonymous), profile (name, optional unverified phone, 10-digit Sawa code), contacts and contact requests, messages and media, family-tree data you enter (which may concern other people — add it only with their knowledge), presence, call/schedule records, and a push token. We don't sell data, show ads, or use ad trackers. Data is processed by Google Firebase, Cloudflare and Metered (call relay). Traffic is encrypted in transit and data at rest; calls are encrypted device-to-device; <b>regular messages are not end-to-end encrypted</b>; <b>secret chats and groups (🔒) are end-to-end encrypted</b> — we can't read them, only see who messages whom, when, and message sizes; their keys stay on your device, and reporting one attaches its recent messages from your device. Delete your account any time at <a href="/delete-account">/delete-account</a>. Not directed to children under 13. Contact: <a href="mailto:support@sawaaap.com">support@sawaaap.com</a>.</p>
   </div>
 
   <footer><a href="/">www.sawaaap.com</a> · <a href="/privacy">الخصوصيّة</a> · <a href="/terms">الشروط</a> · <a href="/delete-account">حذف الحساب</a></footer>

@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c21";
+  var VERSION = "c23";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -453,7 +453,7 @@
   var typingRefs = {}, typingNow = {}, openCid = null, prefs = null, prefsLoaded = false, prefsSent = "";
   var OUTBOX = "sawa_chat_outbox", DAYS_WINDOW = 7, MAX_DAY_LISTENERS = 6, savedAsked = false;
   function fsdb() { try { return firebase.firestore(); } catch (e) { return null; } }
-  function isCloud(id) { return /^(dm_|sv_|fam_|grp_)/.test(String(id || "")); }
+  function isCloud(id) { return /^(dm_|sdm_|sv_|fam_|grp_)/.test(String(id || "")); }
   function appId(u) { return u === state.uid ? "u-1" : u; }
   function realId(u) { return u === "u-1" ? state.uid : u; }
   function newMsgId() { return "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -498,8 +498,11 @@
     chatsUnsub = d.collection("chats").where("members", "array-contains", uid).onSnapshot(function (snap) {
       var next = {};
       snap.forEach(function (doc) { var x = doc.data() || {}; x.cid = doc.id; next[doc.id] = x; });
-      chats = next;
+      chats = next; chatsLoaded = true;
+      e2eWatch();
       for (var v in virtualChats) if (chats[v]) delete virtualChats[v];
+      // C23: رسالةٌ وصلت قبل أن تصلنا وثيقة المحادثة بمفتاح مرسلها ⇒ نعيد المحاولة الآن
+      if (Object.keys(plain).some(function (pk) { return plain[pk] && plain[pk].retry; })) Object.keys(days).forEach(publishMessages);
       // «وصلت»: آخر رسالةٍ من غيري أحدث ممّا سجّلتُه
       Object.keys(chats).forEach(function (cid) {
         var c = chats[cid], l = c.last;
@@ -589,6 +592,7 @@
   function send(cid, text, opts) {
     opts = opts || {};
     if (!isCloud(cid) || !state.uid) return null;
+    if (e2eOn(chats[cid]) && e2eState(chats[cid]) !== "ready") { toast(e2eUi(chats[cid]).title || ""); return null; }   // C23
     var msg = { id: newMsgId(), type: opts.type || "text" };
     if (text != null) msg.text = String(text);
     if (opts.reply && opts.reply.id) {
@@ -616,13 +620,13 @@
   function ownerOf(j) { if (j.uid) return j.uid; var c = lsGet("sawa_people_cache", null); return c && c.uid || null; }
   function myOutbox() { return lsGet(OUTBOX, []).filter(function (j) { return ownerOf(j) === state.uid; }); }
   // أخطاءٌ نهائيّة (رفضٌ صريح من الخادم) ⇒ «لم تُرسل» مع إعادة المحاولة. غيرها (شبكة/مهلة/خادم مشغول) ⇒ تبقى في الطابور
-  var PERMANENT = /bad |not a member|too large|message id taken|only |empty message|media not uploaded|media id required|chat not found|not a contact|removed|confirm required/i;
+  var PERMANENT = /bad |not a member|too large|message id taken|only |empty message|media not uploaded|media id required|chat not found|not a contact|removed|confirm required|encrypted payload|device not bound|no key on this device|secret chat|e2e key/i;
   function drainOutbox() {
     if (draining || !state.uid) return;
     var ob = myOutbox(); if (!ob.length) return;
     draining = true; drainAt = Date.now();
     var job = ob[0];
-    call("chat.send", { cid: job.cid, msg: job.msg }).then(function (b) {
+    wireOf(job).then(function (wm) { return call("chat.send", { cid: job.cid, msg: wm }); }).then(function (b) {
       setPend(job.cid, job.msg.id, b && b.blocked ? "sent" : "sent");
       shiftOutbox(job.msg.id);
     }).catch(function (e) {
@@ -681,6 +685,12 @@
   }
   function fail(e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); }
   function edit(cid, id, text) {
+    if (e2eOn(chats[cid])) {   // C23: نصٌّ مشفّرٌ جديد للرسالة نفسها (يبقى الاقتباس)
+      var f0 = findMsg(cid, id); if (!f0 || !f0.msg.enc) return;
+      var old = plain[encKey(cid, f0.msg)] || {}, np = { text: String(text) }; if (old.reply) np.reply = { id: old.reply.id, by: old.reply.by || null };
+      e2e.encrypt(chats[cid], id, np).then(function (en) { return call("chat.edit", { cid: cid, day: f0.day, id: id, enc: en }); }).catch(function (e) { toast(e2eErrText(e)); });
+      return;
+    }
     var day = patchLocal(cid, id, function (m) { m.text = text; m.edited = Date.now(); return m; });
     if (!day) return;
     call("chat.edit", { cid: cid, day: day, id: id, text: text }).catch(fail);
@@ -781,11 +791,12 @@
     var p = other && state.people.filter(function (x) { return x.uid === other; })[0];
     var pendList = pend[c.cid] || [], lp = pendList[pendList.length - 1];
     var lastMine = lp ? true : !!(l && l.by === state.uid);
+    var sec = e2eOn(c);
     return {
       id: c.cid, cloud: true, kind: c.type, peerUid: other || null,
-      name: c.type === "saved" ? L("رسائلي المحفوظة", "Saved messages") : personName(other, c),
-      isSavedMessages: c.type === "saved",
-      lastMessage: lp ? preview(lp.msg) : preview(l), lastFromMe: lastMine,
+      name: c.type === "saved" ? L("رسائلي المحفوظة", "Saved messages") : (sec ? "🔒 " : "") + personName(other, c),
+      isSavedMessages: c.type === "saved", secret: sec, e2e: sec ? e2eUi(c) : null,
+      lastMessage: lp ? preview(lp.msg) : sec ? secretPreview(c) : preview(l), lastFromMe: lastMine,
       lastStatus: lp ? lp.status : (l && l.by === state.uid ? statusOf(c, l.ts) : null),
       unread: unreadOf(c), updatedAt: lp ? lp.ts : (c.updatedTs || 0), pinnedMessageId: c.pinned || null,
       disappear: c.disappear || 0, online: !!(p && state.presence[other] && state.presence[other].state === "online")
@@ -797,9 +808,10 @@
       return { id: appId(u), uid: u, name: u === state.uid ? L("أنت", "You") : personName(u, c), role: admins.indexOf(u) >= 0 ? "admin" : "member" };
     });
     var pendList = pend[c.cid] || [], lp = pendList[pendList.length - 1];
-    var lastText = lp ? preview(lp.msg) : (l ? (l.type === "system" ? sysText({ by: l.by, extra: { ev: l.ev } }, c).replace(/«»|“”/g, "").trim() : (l.by && l.by !== state.uid ? personName(l.by, c) + ": " : "") + preview(l)) : "");
+    var sec = e2eOn(c);
+    var lastText = lp ? preview(lp.msg) : (l ? (l.type === "system" ? sysText({ by: l.by, extra: { ev: l.ev } }, c).replace(/«»|“”/g, "").trim() : (l.by && l.by !== state.uid ? personName(l.by, c) + ": " : "") + (sec ? secretPreview(c) : preview(l))) : (sec ? secretPreview(c) : ""));
     return { id: c.cid, cloud: true, kind: c.type, familyGroupId: c.familyGroupId || null, desc: c.desc || "", adminsOnly: !!c.adminsOnly, infoAdminsOnly: !!c.infoAdminsOnly,
-      name: c.name || L("مجموعة", "Group"), members: members, lastMessage: lastText,
+      name: (sec ? "🔒 " : "") + (c.name || L("مجموعة", "Group")), members: members, lastMessage: lastText, secret: sec, e2e: sec ? e2eUi(c) : null,
       unread: unreadOf(c), updatedAt: lp ? lp.ts : (c.updatedTs || 0), pinnedMessageId: c.pinned || null, disappear: c.disappear || 0 };
   }
   var pubChatsT = null;
@@ -822,11 +834,15 @@
     var clearedAt = (prefs && prefs.cleared && prefs.cleared[cid]) || 0;
     var dd = days[cid] || {}, arr = [], now = Date.now();   // C14: المؤقّتة تختفي عند انتهاء أجلها (لا تنتظر تنظيف الخادم)
     Object.keys(dd).forEach(function (day) { var mm = dd[day]; Object.keys(mm).forEach(function (id) { var m = mm[id]; if (m && !hidden[id] && (m.ts || 0) > clearedAt && !(m.exp && m.exp < now)) arr.push({ m: m, day: day }); }); });
+    if (e2eOn(c)) {
+      arr = arr.filter(function (x) { var m0 = x.m; return !(m0.type === "system" && m0.extra && m0.extra.ev === "e2e_rekey" && m0.by !== state.uid); });
+      (lsGet(NOTES, {})[cid] || []).forEach(function (n) { if (n.ts > clearedAt) arr.push({ m: { id: n.id, by: "", ts: n.ts, type: "system", extra: { ev: "local" }, text: n.text } }); });
+    }
     (pend[cid] || []).forEach(function (p) { if (!hidden[p.msg.id]) arr.push({ m: Object.assign({ by: state.uid, ts: p.ts }, p.msg), pending: p.status, progress: p.uploading ? (p.progress || 0) : null }); });
     arr.sort(function (a, b) { return (a.m.ts || 0) - (b.m.ts || 0); });
     var group = c.type === "family" || c.type === "group";
     return arr.map(function (x) {
-      var m = x.m, mine = m.by === state.uid, re = m.re || {};
+      var m = x.m.enc && !x.m.del ? plainOf(cid, x.m) : x.m, mine = m.by === state.uid, re = m.re || {};
       var mineRe = re[state.uid], anyRe = Object.keys(re).map(function (k) { return re[k]; })[0];
       var o = { id: m.id, day: x.day || null, createdAt: m.ts, text: m.del ? L("🚫 حُذفت هذه الرسالة", "🚫 This message was deleted") : (m.text || ""),
                 type: m.del ? "text" : (m.type === "text" ? undefined : m.type), deleted: !!m.del, edited: !!m.edited,
@@ -834,7 +850,8 @@
                 replyToText: m.reply ? (m.reply.missing ? L("رسالة غير متاحة", "Message unavailable") : m.reply.del ? L("🚫 رسالة محذوفة", "🚫 Deleted message") : m.reply.text) : null, contact: m.contact || null, extra: m.extra || null, cloud: true,
                 starred: !!(prefs && prefs.starred && prefs.starred.some(function (s) { return s.id === m.id; })) };
       if (group) { o.senderId = appId(m.by); o.senderName = personName(m.by, c); if (o.type === undefined) o.type = "text"; if (!m.del) toolShape(m, o, c); }
-      else o.senderUserId = appId(m.by);
+      else { o.senderUserId = appId(m.by); if (m.type === "system") { o.type = "system"; o.text = sysText(m, c); } }   // C23: إشعارات المحادثة السرّيّة في المحادثة الفرديّة
+      if (m.e2eErr) o.e2eErr = true;
       if (!m.del && MEDIA_TYPES.indexOf(m.type) >= 0) mediaShape(m, o, cid, mine);
       if (mine) o.status = x.pending ? (x.pending === "failed" ? "failed" : "pending") : statusOf(c, m.ts);
       if (x.progress != null) o.uploadPct = x.progress;   // نسبة رفع الوسيط (تظهر بدل الساعة)
@@ -876,7 +893,8 @@
     var out = {};
     Object.keys(PREF_SETTERS).forEach(function (k) {
       if (o[k] === undefined) return;
-      out[k] = k === "blocked" ? (o.blocked || []).filter(function (id) { return /^dm_/.test(id); }).map(function (id) { return id.slice(3).split("_").filter(function (u) { return u !== state.uid; })[0]; }).filter(Boolean)
+      if (k === "starred") { out[k] = (o.starred || []).map(function (x) { return x && (knownSecret(x.conversationId) || e2eOn(chats[x.conversationId])) ? Object.assign({}, x, { text: "🔒" }) : x; }); return; }
+      out[k] = k === "blocked" ? (o.blocked || []).filter(function (id) { return /^s?dm_/.test(id); }).map(function (id) { if (/^sdm_/.test(id)) { var sc = chats[id]; return sc ? others(sc)[0] : null; } return id.slice(3).split("_").filter(function (u) { return u !== state.uid; })[0]; }).filter(Boolean)
         : o[k];
     });
     return out;
@@ -1015,7 +1033,14 @@
       admin: L(who + " جعل " + list + " مشرفاً", who + " made " + list + " an admin"), unadmin: L(who + " أزال إشراف " + list, who + " removed " + list + " as admin"),
       renamed: L(who + " غيّر الاسم إلى «" + (ex.name || "") + "»", who + " renamed the group to “" + (ex.name || "") + "”"),
       desc: L(who + " غيّر الوصف", who + " changed the description"),
-      adminsOnly: ex.on ? L(who + " جعل الإرسال للمشرفين فقط", who + " allowed only admins to send") : L(who + " سمح للجميع بالإرسال", who + " allowed everyone to send")
+      adminsOnly: ex.on ? L(who + " جعل الإرسال للمشرفين فقط", who + " allowed only admins to send") : L(who + " سمح للجميع بالإرسال", who + " allowed everyone to send"),
+      // C23
+      local: m.text || "",
+      e2e_on: m.by === state.uid ? L("🔒 بدأتَ محادثةً سرّيّة — مشفّرة بين الأجهزة، ولا يقرؤها خادم سوا", "🔒 You started a secret chat — end-to-end encrypted")
+        : L("🔒 " + who + " بدأ محادثةً سرّيّة — مشفّرة بين الأجهزة، ولا يقرؤها خادم سوا", "🔒 " + who + " started a secret chat — end-to-end encrypted"),
+      e2e_join: m.by === state.uid ? L("🔒 فعّلتَ المحادثة السرّيّة على هذا الجهاز", "🔒 You turned on the secret chat on this device") : L("🔒 " + who + " فعّل المحادثة السرّيّة على جهازه", "🔒 " + who + " turned on the secret chat"),
+      e2e_rekey: m.by === state.uid ? L("🔐 نقلتَ المحادثة السرّيّة إلى جهازٍ جديد", "🔐 You moved the secret chat to a new device")
+        : L("🔐 تغيّر رمز الأمان مع " + who + " (جهازٌ جديد) — قارنه من جديد إن أردت التأكّد", "🔐 Your safety code with " + who + " changed (new device)")
     };
     return T[ex.ev] || "";
   }
@@ -1129,9 +1154,11 @@
   // kind: image | video | voice | file · src: Blob/File أو dataURL
   function sendMedia(cid, opts) {
     if (!isCloud(cid) || !state.uid) return null;
+    var secret = e2eOn(chats[cid]);
+    if (secret && e2eState(chats[cid]) !== "ready") { toast(e2eUi(chats[cid]).title || ""); return null; }   // C23
     var src = opts.blob || (opts.dataUrl ? dataUrlToBlob(opts.dataUrl) : null);
     if (!src) { toast(L("تعذّر قراءة الملفّ", "Couldn't read the file")); return null; }
-    if (src.size > MAX_MEDIA) { toast(L("الحدّ الأقصى ١٦ ميجابايت", "The limit is 16 MB")); return null; }
+    if (src.size > MAX_MEDIA - (secret ? 64 : 0)) { toast(L("الحدّ الأقصى ١٦ ميجابايت", "The limit is 16 MB")); return null; }
     var kind = opts.kind, id = newMsgId(), mid = newMediaId();
     var extra = { mid: mid, name: opts.name || src.name || null, mime: src.type || null, size: src.size };
     if (opts.viewOnce) extra.viewOnce = true;
@@ -1143,6 +1170,13 @@
     (pend[cid] = pend[cid] || []).push(p);
     publishMessages(cid); publishChats();
     var prep = kind === "image" ? prepareImage(src) : kind === "video" ? prepareVideo(src) : Promise.resolve({ blob: src });
+    // C23: في السرّيّة يُرفع الملفّ مشفّراً (مفتاحه داخل الرسالة المشفّرة) وبلا اسم
+    var encP = null;
+    var doUpload = function (blob, prog) {
+      if (!secret) return uploadMedia(cid, mid, blob, extra, prog);
+      if (!encP) encP = e2e.encFile(blob).then(function (ef) { extra.fk = ef.fk; extra.fiv = ef.fiv; return ef.blob; });
+      return encP.then(function (eb) { return uploadMedia(cid, mid, eb, { name: "" }, prog); });
+    };
     prep.then(function (r) {
       var blob = r.blob || src;
       if (r.thumb) extra.thumb = r.thumb;
@@ -1150,14 +1184,15 @@
       if (r.duration && !extra.duration) extra.duration = Math.round(r.duration);
       extra.size = blob.size; extra.mime = blob.type || extra.mime;
       if (blob !== src) { try { URL.revokeObjectURL(localUrls[mid]); } catch (e) {} localUrls[mid] = URL.createObjectURL(blob); }
+      if (secret && extra.viewOnce) delete extra.thumb;
       publishMessages(cid);
-      return uploadMedia(cid, mid, blob, extra, function (pct) { p.progress = pct; publishMessages(cid); });
+      return doUpload(blob, function (pct) { p.progress = pct; publishMessages(cid); });
     }).then(function () {
       p.uploading = false;
       var ob = lsGet(OUTBOX, []); ob.push({ uid: state.uid, cid: cid, msg: msg }); lsSet(OUTBOX, ob);
       drainOutbox();
     }).catch(function (e) {
-      p.uploading = false; p.reupload = function () { p.reupload = null; p.status = "pending"; p.uploading = true; publishMessages(cid); return prep.then(function (r) { return uploadMedia(cid, mid, r.blob || src, extra, function (pct) { p.progress = pct; publishMessages(cid); }); })
+      p.uploading = false; p.reupload = function () { p.reupload = null; p.status = "pending"; p.uploading = true; publishMessages(cid); return prep.then(function (r) { return doUpload(r.blob || src, function (pct) { p.progress = pct; publishMessages(cid); }); })
         .then(function () { p.uploading = false; var ob = lsGet(OUTBOX, []); ob.push({ uid: state.uid, cid: cid, msg: msg }); lsSet(OUTBOX, ob); drainOutbox(); })
         .catch(function (e2) { setPend(cid, id, "failed"); toast(L("تعذّر رفع الملفّ: ", "Upload failed: ") + ((e2 && e2.message) || e2)); }); };
       setPend(cid, id, "failed");
@@ -1220,10 +1255,13 @@
   }
   function ensureMedia(cid, mid, noCache) {
     if (!mid || mediaUrls[mid] || localUrls[mid] || mediaLoading[mid] || mediaFailed[mid]) return Promise.resolve(mediaUrls[mid] || localUrls[mid] || null);
+    var mk2 = mediaKeys[cid + "|" + mid], sec = e2eOn(chats[cid]) || /^sdm_/.test(String(cid));
+    if (sec && !mk2) return Promise.resolve(null);   // C23: مفتاح الوسيط داخل رسالته المشفّرة — بعد فكّها
     mediaLoading[mid] = true;
     return idbGet(mid).then(function (b) {
       var tmp = !!((chats[cid] || {}).disappear);   // C14: لا نحفظ وسائط المحادثات المؤقّتة على الجهاز
-      return b || fetchMedia(cid, mid).then(function (blob) { if (!noCache && !tmp) idbPut(mid, blob); return blob; });
+      return b || fetchMedia(cid, mid).then(function (blob) { return sec ? e2e.decFile(blob, mk2.fk, mk2.fiv, mk2.mime) : blob; })
+        .then(function (blob) { if (!noCache && !tmp) idbPut(mid, blob); return blob; });
     }).then(function (blob) {
       mediaUrls[mid] = URL.createObjectURL(blob); delete mediaLoading[mid]; publishMessages(cid); return mediaUrls[mid];
     }).catch(function (e) {
@@ -1844,7 +1882,9 @@
     go.onclick = function () {
       if (!pick) return;
       go.disabled = true; go.textContent = "…";
-      call("report.create", { cid: opts.cid || null, target: opts.target || null, reason: pick, note: ta.value }).then(function () {
+      var rp = { cid: opts.cid || null, target: opts.target || null, reason: pick, note: ta.value };
+      if (opts.cid && e2eOn(chats[opts.cid])) { try { rp.e2eSample = e2eSampleOf(opts.cid); } catch (e) {} }   // C23: السرّيّة لا يقرؤها الخادم — نرفق ما على جهازك
+      call("report.create", rp).then(function () {
         if (blk && blk.checked && opts.onBlock) { try { opts.onBlock(); } catch (e) {} }
         toast(L("وصلنا بلاغك ✓ — سنراجعه، وشكراً لك", "Report received ✓ — thank you"));
         try { if (opts.onDone) opts.onDone(); } catch (e) {}
@@ -1861,6 +1901,7 @@
       try { sessionStorage.clear(); } catch (e) {}
       try { if (global.indexedDB) indexedDB.deleteDatabase("firebaseLocalStorageDb"); } catch (e) {}
       try { if (global.indexedDB) indexedDB.deleteDatabase("sawa-media"); } catch (e) {}   // C14: الصور والصوتيّات المنزّلة أيضاً (كما تعد نافذة الحذف)
+      try { if (global.indexedDB) indexedDB.deleteDatabase("sawa-e2e"); } catch (e) {}   // C23: مفاتيح المحادثات السرّيّة
       setTimeout(function () { try { global.location.replace(global.location.pathname); } catch (e) {} }, 700);
     };
     try { firebase.auth().signOut().then(done, done); } catch (e) { done(); }
@@ -1883,6 +1924,8 @@
       "Signs out this device only: notifications stop and local data is cleared. Your account and messages stay."), "#5b6b7c", "#f5f8fb"));
     s.box.appendChild(note(L("شجرة العائلة المحفوظة على هذا الجهاز وحده تُمسح أيضاً — إن لم ترفعها إلى السحابة فصدّرها أوّلاً من «حسابي».",
       "A family tree kept only on this device is cleared too — export or upload it first."), "#9a6700", "#fdf3d8"));
+    if (Object.keys(chats).some(function (k) { return e2eOn(chats[k]); })) s.box.appendChild(note(L("🔒 مفاتيح محادثاتك السرّيّة تُمسح من هذا الجهاز — لن تُقرأ رسائلها السابقة بعد الخروج.",
+      "🔒 Your secret-chat keys are erased from this device — their earlier messages can't be read after signing out."), "#b42318", "#fdecec"));
     var ok = mkBtn(L("تسجيل الخروج", "Sign out"), "danger"); ok.style.marginTop = "6px";
     ok.onclick = function () {
       ok.disabled = true; ok.textContent = "…";
@@ -2389,6 +2432,8 @@
     startMyPresence(uid);
     refresh();
     stopChats(); prefs = null; prefsLoaded = false; pend = {}; virtualChats = {};
+    plain = {}; decQ = {}; mediaKeys = {}; chatsLoaded = false; missingSince = {}; keyFp = {}; knownSec = null; e2e.reset();   // C23
+    e2e.load().then(function () { publishChats(); Object.keys(days).forEach(publishMessages); }, function () { publishChats(); });
     restorePending(); startChats(uid); loadPrefs(); drainOutbox();
     setTimeout(refreshPush, 3000);
     setTimeout(loadRequests, 2500);
@@ -2427,6 +2472,445 @@
     })();
   }
 
+  // ==================================================================
+  // C23: المحادثات السرّيّة — تشفيرٌ بين الطرفين (WebCrypto)
+  //  - لكلّ جهازٍ مفتاح ECDH P-256 يُولَّد فيه ولا يغادره (IndexedDB «sawa-e2e»، والمفتاح الخاصّ غير قابلٍ للتصدير).
+  //  - كلّ رسالة: مفتاح AES-GCM-256 عشوائيّ يشفّر المحتوى كلّه (النصّ، الاقتباس، جهة الاتّصال، اسم الوسيط ومفتاحه وصورته المصغّرة)،
+  //    ثمّ يُغلَّف ذلك المفتاح لكلّ جهازٍ مربوط (ولجهازي) بمفتاحٍ مشترك: ECDH ⇒ HKDF-SHA256 ⇒ AES-GCM.
+  //  - AAD يربط النصّ المشفّر بالمحادثة والرسالة والمرسل وجهازه: لا يستطيع الخادم نقله إلى محادثةٍ أخرى ولا نسبته لغير صاحبه.
+  //  - الوسائط تُشفَّر بمفتاحٍ خاصّ قبل الرفع؛ الخادم يرى حجمها فقط.
+  //  - رمز الأمان: SHA-512 لمفتاحي الجهازين ⇒ ٦٠ رقماً يقارنها الطرفان. ومفتاح كلّ جهازٍ يُثبَّت عند أوّل رؤية (لا يُبدَّل بصمت).
+  //  - الحدود (نقولها بصراحة): لا «سرّيّة أماميّة» — مفاتيح الأجهزة ثابتة؛ والخادم يرى من يراسل من ومتى وحجم الرسائل والتفاعلات.
+  // ==================================================================
+  var e2e = (function () {
+    var CR = global.crypto, subtle = CR && CR.subtle;
+    var te = typeof TextEncoder !== "undefined" ? new TextEncoder() : null, td = typeof TextDecoder !== "undefined" ? new TextDecoder() : null;
+    function ok() { return !!(subtle && te && td && CR.getRandomValues && (global.__sawaE2eStore || global.indexedDB)); }
+    function b64(buf) { var b = buf instanceof Uint8Array ? buf : new Uint8Array(buf), s = ""; for (var i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); }
+    function unb64(s) { var bin = atob(String(s || "")), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+    function rnd(n) { var u = new Uint8Array(n); CR.getRandomValues(u); return u; }
+    function cat(a, b) { var x = new Uint8Array(a), y = new Uint8Array(b), u = new Uint8Array(x.length + y.length); u.set(x, 0); u.set(y, x.length); return u; }
+    function hex(u) { var s = ""; for (var i = 0; i < u.length; i++) s += (u[i] < 16 ? "0" : "") + u[i].toString(16); return s; }
+    // معرّف الجهاز = أوّل ١٢ بايت من SHA-256 لمفتاحه العامّ (الخادم يتحقّق أيضاً): لا ينتحل أحدٌ معرّف جهاز غيره
+    function devIdOf(pub) { return subtle.digest("SHA-256", unb64(pub)).then(function (h) { return hex(new Uint8Array(h).slice(0, 12)); }); }
+    var devChk = {};
+    function devMatches(d, pub) { var k = d + "|" + pub; return devChk[k] || (devChk[k] = devIdOf(pub).then(function (x) { return x === d; }, function () { return false; })); }
+    function bufOf(blob) {
+      if (blob.arrayBuffer) return blob.arrayBuffer();
+      return new Promise(function (res, rej) { var fr = new FileReader(); fr.onload = function () { res(fr.result); }; fr.onerror = function () { rej(fr.error); }; fr.readAsArrayBuffer(blob); });
+    }
+    // ---- مخزن المفاتيح (لكلّ حسابٍ على الجهاز مفتاحه) ----
+    var dbP = null;
+    function store() {
+      if (global.__sawaE2eStore) return Promise.resolve(global.__sawaE2eStore);   // للاختبار
+      if (dbP) return dbP;
+      dbP = new Promise(function (res, rej) {
+        try {
+          var r = indexedDB.open("sawa-e2e", 1);
+          r.onupgradeneeded = function () { r.result.createObjectStore("k"); };
+          r.onsuccess = function () {
+            var d = r.result;
+            res({
+              get: function (k) { return new Promise(function (y, n) { try { var q = d.transaction("k").objectStore("k").get(k); q.onsuccess = function () { y(q.result || null); }; q.onerror = function () { n(q.error); }; } catch (e) { n(e); } }); },
+              put: function (k, v) { return new Promise(function (y, n) { try { var t = d.transaction("k", "readwrite"); t.objectStore("k").put(v, k); t.oncomplete = function () { y(); }; t.onerror = function () { n(t.error); }; t.onabort = function () { n(t.error); }; } catch (e) { n(e); } }); }
+            });
+          };
+          r.onerror = function () { dbP = null; rej(new Error("e2e storage")); };
+        } catch (e) { dbP = null; rej(new Error("e2e storage")); }
+      });
+      return dbP;
+    }
+    var mine = {}, making = {}, myDev = null, loaded = false;
+    function myKey(create) {
+      var uid = state.uid;
+      if (!uid) return Promise.reject(new Error("not ready"));
+      if (!ok()) return Promise.reject(new Error("e2e unsupported"));
+      var p = mine[uid] || (mine[uid] = store().then(function (s) { return s.get("u:" + uid); }).catch(function (e) { delete mine[uid]; throw e; }));
+      return p.then(function (k) {
+        if (uid === state.uid) { myDev = k ? k.d : null; loaded = true; }
+        if (k || !create) return k;
+        if (making[uid]) return making[uid];
+        return (making[uid] = subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]).then(function (kp) {
+          return subtle.exportKey("raw", kp.publicKey).then(function (raw) { return devIdOf(b64(raw)).then(function (d) { return { raw: raw, d: d }; }); }).then(function (x) {
+            var rec = { d: x.d, priv: kp.privateKey, pub: b64(x.raw), ts: Date.now() };
+            return store().then(function (s) { return s.put("u:" + uid, rec).then(function () { return s.get("u:" + uid); }); }).then(function (back) {
+              if (!back || back.d !== rec.d) throw new Error("e2e storage");   // لم يُحفظ فعلاً (نافذة خاصّة…) ⇒ لا نربط جهازاً سيفقد مفتاحه
+              pinOk(back.d, back.pub);
+              mine[uid] = Promise.resolve(back); delete making[uid];
+              if (uid === state.uid) myDev = back.d;
+              return back;
+            });
+          });
+        }).catch(function (e) { delete making[uid]; throw e; }));
+      });
+    }
+    // ---- المفاتيح المشتركة بين جهازين ----
+    var keks = {};
+    function kek(me, dev, pub) {
+      var id = me.d + "|" + dev + "|" + pub;
+      if (!keks[id]) keks[id] = subtle.importKey("raw", unb64(pub), { name: "ECDH", namedCurve: "P-256" }, false, [])
+        .then(function (pk) { return subtle.deriveBits({ name: "ECDH", public: pk }, me.priv, 256); })
+        .then(function (bits) { return subtle.importKey("raw", bits, "HKDF", false, ["deriveKey"]); })
+        .then(function (hk) { return subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: te.encode("sawa-e2e-v1"), info: te.encode([me.d, dev].sort().join("|")) }, hk, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]); })
+        .catch(function (e) { delete keks[id]; throw e; });
+      return keks[id];
+    }
+    // مفتاح كلّ جهازٍ يُثبَّت عند أوّل رؤية: إن عرض الخادم لاحقاً مفتاحاً آخر للجهاز نفسه نرفضه
+    function pinOk(dev, pub) {
+      var p = lsGet("sawa_e2e_pins", {});
+      if (!p[dev]) { p[dev] = pub; var ks = Object.keys(p); if (ks.length > 800) delete p[ks[0]]; lsSet("sawa_e2e_pins", p); return true; }
+      return p[dev] === pub;
+    }
+    function targets(c, me) {   // Promise<[{d, k}]> لكلّ عضوٍ ربط جهازاً — وجهازي منها بمفتاحي أنا لا بنسخة الخادم
+      var e = c.e2e || {}, devs = e.devs || {}, keys = e.keys || {};
+      if (c.type === "dm" && (c.members || []).length !== 2) return Promise.reject(new Error("secret chat broken"));
+      return Promise.all((c.members || []).map(function (u) {
+        var d = devs[u], k = d && keys[d];
+        if (!k) return null;
+        if (d === me.d) return u === state.uid && k.u === u && k.k === me.pub ? { d: d, k: me.pub } : null;
+        if (u === state.uid || k.u !== u || !k.k || !pinOk(d, k.k)) return null;
+        return devMatches(d, k.k).then(function (okd) { return okd ? { d: d, k: k.k } : null; });
+      })).then(function (l) { return l.filter(Boolean); });
+    }
+    function aadMsg(cid, id, by, dev) { return te.encode(["sawa-e2e-v1", cid, id, by, dev].join("|")); }
+    function encrypt(c, id, plain) {
+      return myKey(false).then(function (me) {
+        if (!me) throw new Error("e2e: no key on this device");
+        if (!(c.e2e && c.e2e.on)) throw new Error("secret chat broken");
+        if (((c.e2e || {}).devs || {})[state.uid] !== me.d) throw new Error("e2e device not bound");
+        var ts, K = rnd(32), iv = rnd(12);
+        return targets(c, me).then(function (l) {
+          ts = l;
+          if (!ts.some(function (t) { return t.d === me.d; })) throw new Error("e2e device not bound");
+          return subtle.importKey("raw", K, "AES-GCM", false, ["encrypt"]);
+        })
+          .then(function (ck) { return subtle.encrypt({ name: "AES-GCM", iv: iv, additionalData: aadMsg(c.cid, id, state.uid, me.d) }, ck, te.encode(JSON.stringify(plain))); })
+          .then(function (ct) {
+            return Promise.all(ts.map(function (t) {
+              return kek(me, t.d, t.k).then(function (kk) {
+                var wiv = rnd(12);
+                return subtle.encrypt({ name: "AES-GCM", iv: wiv, additionalData: te.encode(c.cid + "|" + id) }, kk, K).then(function (w) { return [t.d, b64(cat(wiv, w))]; });
+              });
+            })).then(function (pairs) { var k = {}; pairs.forEach(function (x) { k[x[0]] = x[1]; }); K.fill(0); return { v: 1, d: me.d, iv: b64(iv), ct: b64(ct), k: k }; });
+          });
+      });
+    }
+    function decrypt(c, m) {
+      return myKey(false).then(function (me) {
+        if (!me) throw new Error("nokey");
+        var en = m.enc || {}, w = en.k && en.k[me.d];
+        if (!w) throw new Error("notforme");
+        var sk = en.d === me.d ? (m.by === state.uid ? { u: state.uid, k: me.pub } : null) : ((c.e2e || {}).keys || {})[en.d];
+        if (!sk || sk.u !== m.by || !pinOk(en.d, sk.k)) throw new Error("badsender");
+        var raw = unb64(w);
+        return devMatches(en.d, sk.k).then(function (okd) { if (!okd) throw new Error("badsender"); return kek(me, en.d, sk.k); })
+          .then(function (kk) { return subtle.decrypt({ name: "AES-GCM", iv: raw.slice(0, 12), additionalData: te.encode(c.cid + "|" + m.id) }, kk, raw.slice(12)); })
+          .then(function (K) { return subtle.importKey("raw", K, "AES-GCM", false, ["decrypt"]); })
+          .then(function (ck) { return subtle.decrypt({ name: "AES-GCM", iv: unb64(en.iv), additionalData: aadMsg(c.cid, m.id, m.by, en.d) }, ck, unb64(en.ct)); })
+          .then(function (pt) { var o = JSON.parse(td.decode(pt)); if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error("bad"); return o; });
+      });
+    }
+    function encFile(blob) {
+      var fk = rnd(32), fiv = rnd(12);
+      return bufOf(blob).then(function (buf) { return subtle.importKey("raw", fk, "AES-GCM", false, ["encrypt"]).then(function (k) { return subtle.encrypt({ name: "AES-GCM", iv: fiv }, k, buf); }); })
+        .then(function (ct) { return { blob: new Blob([ct], { type: "application/octet-stream" }), fk: b64(fk), fiv: b64(fiv) }; });
+    }
+    function decFile(blob, fk, fiv, mime) {
+      return bufOf(blob).then(function (buf) { return subtle.importKey("raw", unb64(fk), "AES-GCM", false, ["decrypt"]).then(function (k) { return subtle.decrypt({ name: "AES-GCM", iv: unb64(fiv) }, k, buf); }); })
+        .then(function (pt) { return new Blob([pt], { type: mime || "application/octet-stream" }); });
+    }
+    function safety(pubA, pubB) {
+      var a = [pubA, pubB].sort();
+      return subtle.digest("SHA-512", cat(unb64(a[0]), unb64(a[1]))).then(function (h) {
+        var b = new Uint8Array(h), out = [];
+        for (var i = 0; i < 12; i++) { var n = 0; for (var j = 0; j < 5; j++) n = (n * 256 + b[i * 5 + j]) % 100000; out.push(String(n).padStart(5, "0")); }
+        return out;
+      });
+    }
+    function load() { return myKey(false).catch(function (e) { loaded = true; throw e; }); }
+    return { ok: ok, myKey: myKey, load: load, devIdOf: devIdOf, myDev: function () { return myDev; }, loaded: function () { return loaded; }, encrypt: encrypt, decrypt: decrypt,
+      encFile: encFile, decFile: decFile, safety: safety, reset: function () { myDev = null; loaded = false; keks = {}; } };
+  })();
+
+  // ---- حالة المحادثة السرّيّة وواجهتها ----
+  var plain = {}, decQ = {}, mediaKeys = {}, chatsLoaded = false, missingSince = {};
+  var knownSec = null;
+  function knownSecret(cid) { if (!knownSec) knownSec = lsGet("sawa_e2e_known", {}); return /^sdm_/.test(String(cid || "")) || !!knownSec[cid]; }
+  function rememberSecret(cid) { knownSecret(cid); if (knownSec[cid]) return; knownSec[cid] = 1; lsSet("sawa_e2e_known", knownSec); }
+  function e2eOn(c) { return !!(c && ((c.e2e && c.e2e.on) || knownSecret(c.cid))); }
+  function e2eIntact(c) { return !!(c && c.e2e && c.e2e.on && (c.type !== "dm" || (c.members || []).length === 2)); }
+  function maybeSecret(cid) { return /^(sdm_|grp_)/.test(String(cid || "")); }
+  function e2eState(c) {
+    if (!e2eOn(c)) return null;
+    if (!e2eIntact(c)) return "broken";
+    if (!e2e.ok()) return "unsupported";
+    if (!e2e.loaded()) return "loading";
+    var devs = c.e2e.devs || {}, my = e2e.myDev();
+    if (!devs[state.uid]) return "join";
+    if (devs[state.uid] !== my) return "other";
+    if (!others(c).some(function (u) { return devs[u]; })) return "waiting";
+    return "ready";
+  }
+  function e2eUi(c) {
+    var st = e2eState(c), group = c.type === "group", o = { cid: c.cid, state: st };
+    if (st === "join") { o.title = group ? L("مجموعة سرّيّة", "Secret group") : L("دعوة لمحادثة سرّيّة", "Secret chat invitation");
+      o.text = L("الرسائل هنا مشفّرة بين الأجهزة ولا يقرؤها خادم سوا. فعّلها على هذا الجهاز لتقرأ ما يُرسَل من الآن وتكتب.", "Messages here are end-to-end encrypted. Turn it on for this device to read new messages and reply.");
+      o.action = L("تفعيل على هذا الجهاز", "Turn on for this device"); }
+    else if (st === "other") { o.title = L("مفعّلة على جهازٍ آخر لك", "Active on another of your devices");
+      o.text = L("هذه المحادثة السرّيّة مرتبطةٌ بجهازٍ آخر. رسائلها لا تُقرأ إلّا هناك.", "This secret chat lives on another device; its messages can only be read there.");
+      o.action = L("نقلها إلى هذا الجهاز", "Move it to this device"); }
+    else if (st === "waiting") { var os = others(c);
+      o.title = group ? L("بانتظار الأعضاء", "Waiting for members") : L("بانتظار ", "Waiting for ") + personName(os[0], c);
+      o.text = group ? L("تبدأ الكتابة حين يفعّلها عضوٌ آخر على جهازه.", "You can write once another member turns it on.") : L("تبدأ المراسلة حين يفتح الدعوة ويفعّلها على جهازه.", "You can write once they open the invitation on their device."); }
+    else if (st === "unsupported") { o.title = L("غير مدعومة هنا", "Not supported here");
+      o.text = L("هذا المتصفّح لا يتيح حفظ مفاتيح التشفير (ربّما نافذة خاصّة). افتح سوا في Chrome أو Safari العاديّ.", "This browser can't store encryption keys (private window?). Open Sawa in regular Chrome or Safari."); }
+    else if (st === "loading") { o.title = L("🔒 …", "🔒 …"); o.text = ""; }
+    else if (st === "broken") { o.title = L("⚠️ تحذير أمني", "⚠️ Security warning");
+      o.text = L("تغيّرت إعدادات التشفير في هذه المحادثة على غير المعتاد، فأوقفنا الإرسال فيها حمايةً لك. ابدأ محادثةً سرّيّة جديدة.", "This chat's encryption settings changed unexpectedly, so sending is stopped. Start a new secret chat."); }
+    return o;
+  }
+  function h32(x) { var h = 0x811c9dc5; for (var i = 0; i < x.length; i++) { h ^= x.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }
+  // مفتاح ذاكرة الفكّ: كلّ ما يدخل في التحقّق (المرسل، جهازه، النصّ المشفّر كلّه، غلاف مفتاحي) — أيّ تغييرٍ من الخادم يُعاد فحصه
+  var NOTES = "sawa_e2e_notes", SEEN = "sawa_e2e_seen", keyFp = {};
+  function e2eWatch() {
+    var seen = lsGet(SEEN, {}), notes = null, changed = false;
+    Object.keys(chats).forEach(function (cid) {
+      var c = chats[cid]; if (!(c.e2e && c.e2e.on)) return;
+      rememberSecret(cid);
+      var devs = c.e2e.devs || {}, was = seen[cid], now = {};
+      (c.members || []).forEach(function (u) { if (devs[u]) now[u] = devs[u]; });
+      if (was) Object.keys(now).forEach(function (u) {
+        if (u === state.uid || !was[u] || was[u] === now[u]) return;
+        notes = notes || lsGet(NOTES, {});
+        (notes[cid] = (notes[cid] || []).slice(-19)).push({ id: "l" + Date.now().toString(36) + u.slice(0, 4), ts: Date.now(),
+          text: L("🔐 تغيّر رمز الأمان مع " + personName(u, c) + " (جهازٌ جديد) — قارنه من جديد إن أردت التأكّد", "🔐 Your safety code with " + personName(u, c) + " changed (new device)") });
+      });
+      if (JSON.stringify(was || null) !== JSON.stringify(now)) { seen[cid] = now; changed = true; }
+      // تغيّرت مفاتيح المحادثة ⇒ نعيد فحص ما فشل لأنّ مفتاح مرسله لم يكن معروفاً
+      var fp = JSON.stringify(c.e2e.keys || {});
+      if (keyFp[cid] !== undefined && keyFp[cid] !== fp) for (var pk in plain) if (pk.indexOf(cid + "|") === 0 && plain[pk] && plain[pk].err === "badsender") plain[pk].retry = true;
+      keyFp[cid] = fp;
+    });
+    if (changed) lsSet(SEEN, seen);
+    if (notes) { lsSet(NOTES, notes); Object.keys(days).forEach(publishMessages); }
+    if (Object.keys(plain).length > 4000) plain = {};   // سقفٌ للذاكرة — يُعاد الفكّ عند الحاجة
+  }
+  function encKey(cid, m) { var en = m.enc || {}, ct = String(en.ct || ""); return [cid, m.id, m.by, en.d, en.iv, ct.length, h32(ct), h32(String((en.k || {})[e2e.myDev()] || ""))].join("|"); }
+  var PREV = "sawa_e2e_prev";
+  function notePreview(cid, m) {
+    var c = chats[cid]; if (!c || !c.last || c.last.id !== m.id || c.disappear) return;
+    var t = preview(plainOf(cid, m)); var all = lsGet(PREV, {});
+    if (all[cid] && all[cid].id === m.id && all[cid].t === t) return;
+    all[cid] = { id: m.id, t: String(t).slice(0, 120) }; var ks = Object.keys(all); if (ks.length > 300) delete all[ks[0]];
+    lsSet(PREV, all);
+  }
+  function secretPreview(c) {
+    var l = c.last, st = e2eState(c);
+    if (st === "join") return L("🔒 دعوة لمحادثة سرّيّة — افتحها لتفعيلها", "🔒 Secret chat invitation — open to turn on");
+    if (!l) return L("🔒 محادثة سرّيّة", "🔒 Secret chat");
+    var pv = lsGet(PREV, {})[c.cid];
+    if (pv && (l.del || c.disappear || pv.id !== l.id)) { var allp = lsGet(PREV, {}); delete allp[c.cid]; lsSet(PREV, allp); pv = null; }
+    if (l.del) return preview(l);
+    if (l.type === "system") return sysText({ by: l.by, extra: { ev: l.ev } }, c);
+    if (pv && pv.id === l.id) return pv.t;
+    return typeLabel(l.type) || L("🔒 رسالة مشفّرة", "🔒 Encrypted message");
+  }
+  function queueDecrypt(cid, m, k) {
+    if (decQ[k]) return;
+    var c = chats[cid]; if (!c) return;
+    decQ[k] = 1;
+    e2e.decrypt(c, m).then(function (p) { plain[k] = p; }, function (e) {
+      var s = (e && e.message) || ""; plain[k] = { err: /^(notforme|nokey|badsender)$/.test(s) ? s : "fail" }; log("e2e:", m.id, s);
+    }).then(function () { delete decQ[k]; notePreview(cid, m); publishMessages(cid); });
+  }
+  // الرسالة كما تُعرض: الحقول الموثوقة من الخادم (المعرّف، المرسل، الوقت، التفاعلات…) + المحتوى المفكوك
+  function plainOf(cid, m) {
+    var k = encKey(cid, m), p = plain[k];
+    if (p === undefined) { queueDecrypt(cid, m, k); p = { pending: true }; }
+    else if (p.retry) { p.retry = false; queueDecrypt(cid, m, k); }   // يبقى الخطأ معروضاً حتّى تنجح المحاولة (بلا وميض)
+    var o = Object.assign({}, m); delete o.enc;
+    if (p.pending || p.err) {
+      o.type = "text"; delete o.extra; delete o.reply; o.e2eErr = true;
+      o.text = p.pending ? L("🔒 جارٍ فكّ التشفير…", "🔒 Decrypting…")
+        : p.err === "notforme" || p.err === "nokey" ? L("🔒 أُرسلت قبل تفعيل المحادثة على هذا الجهاز", "🔒 Sent before this device joined")
+        : L("🔒 تعذّر فكّ تشفير هذه الرسالة", "🔒 Couldn't decrypt this message");
+      return o;
+    }
+    if (typeof p.text === "string") o.text = p.text.slice(0, 4000); else delete o.text;
+    if (p.contact && typeof p.contact === "object" && /^[A-Za-z0-9_-]{1,128}$/.test(String(p.contact.uid || ""))) o.contact = { uid: String(p.contact.uid), name: String(p.contact.name || "").slice(0, 80) };
+    else delete o.contact;
+    if (m.reply) {
+      var rt = p.reply && typeof p.reply.text === "string" ? p.reply.text : "";
+      if (!rt) { var rf = findMsg(cid, m.reply.id); var rp = rf && rf.msg.enc ? plain[encKey(cid, rf.msg)] : null; if (rp && typeof rp.text === "string") rt = rp.text; }   // الاقتباس من نسختي المفكوكة
+      o.reply = { id: m.reply.id, day: m.reply.day || null, by: p.reply && typeof p.reply.by === "string" ? p.reply.by : null, text: rt.slice(0, 200) };
+    }
+    if (MEDIA_TYPES.indexOf(m.type) >= 0) {
+      var sx = m.extra || {}, px = p.extra || {}, num = function (v) { return typeof v === "number" && isFinite(v) && v >= 0 ? v : null; };
+      if (!sx.mid || px.mid !== sx.mid) { o.type = "text"; delete o.extra; o.e2eErr = true; o.text = L("🔒 تعذّر فكّ تشفير هذه الرسالة", "🔒 Couldn't decrypt this message"); return o; }   // الخادم لا يربط الرسالة بوسيطٍ آخر
+      var ex = { mid: sx.mid, viewOnce: !!sx.viewOnce };
+      if (typeof px.name === "string") ex.name = px.name.slice(0, 200);
+      if (typeof px.mime === "string" && /^[\w.+-]+\/[\w.+-]+$/.test(px.mime)) ex.mime = px.mime.slice(0, 100);
+      ["size", "duration", "w", "h"].forEach(function (f) { var v = num(px[f]); if (v != null) ex[f] = v; });
+      if (typeof px.transcript === "string") ex.transcript = px.transcript.slice(0, 1500);
+      if (!sx.viewOnce && typeof px.thumb === "string" && px.thumb.length <= 9000 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(px.thumb)) ex.thumb = px.thumb;   // لا روابط خارجيّة (تتبّع)
+      if (typeof px.fk === "string" && typeof px.fiv === "string") mediaKeys[cid + "|" + sx.mid] = { fk: px.fk, fiv: px.fiv, mime: ex.mime || null };
+      o.extra = ex;
+    }
+    return o;
+  }
+  // ما يُرسَل للخادم: المحتوى كلّه داخل enc، وخارجه ما يحتاجه الخادم فقط (معرّف الوسيط، «مرّة واحدة»، الإشارات، يوم الاقتباس)
+  function wireOf(job) {
+    var c = chats[job.cid];
+    if (!c) {
+      if (maybeSecret(job.cid) && !virtualChats[job.cid]) {   // لا نرسل نصّاً ظاهراً قبل أن نعرف أنّ المحادثة ليست سرّيّة
+        var t0 = missingSince[job.cid] || (missingSince[job.cid] = Date.now());
+        if (chatsLoaded && Date.now() - t0 > 60000) return Promise.reject(new Error("chat not found"));
+        return Promise.reject(new Error("e2e: chat not loaded yet"));
+      }
+      return Promise.resolve(job.msg);
+    }
+    delete missingSince[job.cid];
+    if (!e2eOn(c)) return Promise.resolve(job.msg);
+    if (!e2eIntact(c)) return Promise.reject(new Error("secret chat broken"));
+    var m = job.msg, w = { id: m.id, type: m.type || "text" }, p = {};
+    if (m.text != null) p.text = m.text;
+    if (m.contact) p.contact = m.contact;
+    if (m.reply) { p.reply = { id: m.reply.id, by: m.reply.by || null, text: m.reply.text || "" }; w.reply = { id: m.reply.id, day: m.reply.day || null }; }
+    if (m.extra) { p.extra = m.extra; if (m.extra.mid) w.extra = { mid: m.extra.mid }; if (m.extra.viewOnce) (w.extra = w.extra || {}).viewOnce = true; }
+    if (m.fwd) w.fwd = true;
+    if (m.mentions) w.mentions = m.mentions;
+    return e2e.encrypt(c, m.id, p).then(function (en) { w.enc = en; return w; });
+  }
+  function e2eErrText(e) {
+    var m = (e && e.message) || String(e);
+    if (/not a contact/.test(m)) return L("لا يمكن بدء محادثة سرّيّة مع هذا الشخص — يجب أن يكون في جهات اتّصالك", "You can only start a secret chat with your contacts");
+    if (/e2e (unsupported|storage)/.test(m)) return L("هذا المتصفّح لا يتيح حفظ مفاتيح التشفير (ربّما نافذة خاصّة)", "This browser can't store encryption keys (private window?)");
+    if (/rate_limited/.test(m)) return L("محاولاتٌ كثيرة — انتظر قليلاً", "Too many attempts — wait a bit");
+    if (/unknown op|bad op/.test(m)) return L("الخادم لم يُحدَّث بعد لدعم المحادثات السرّيّة", "The server doesn't support secret chats yet");
+    if (/device not bound/.test(m)) return L("المحادثة السرّيّة ليست مفعّلة على هذا الجهاز", "This secret chat isn't active on this device");
+    return L("تعذّر: ", "Failed: ") + m;
+  }
+  function e2eNeedSupport() {
+    if (e2e.ok()) return true;
+    toast(L("هذا المتصفّح لا يدعم المحادثات السرّيّة — افتح سوا في Chrome أو Safari العاديّ", "This browser doesn't support secret chats"));
+    return false;
+  }
+  function e2eExplain(box) {
+    box.appendChild(note(L("🔒 الرسائل والصور والصوتيّات تُشفَّر على جهازك، ولا يفكّها إلّا أجهزة أطراف المحادثة. خادم سوا لا يستطيع قراءتها.",
+      "🔒 Messages, photos and voice notes are encrypted on your device and only the participants' devices can read them. Sawa's server can't.")));
+    box.appendChild(note(L("تبقى على هذا الجهاز: إن غيّرت هاتفك أو مسحت بيانات التطبيق أو خرجت من حسابك فلن تُستعاد رسائلها السابقة.",
+      "It stays on this device: if you change phones, clear app data or sign out, earlier messages can't be recovered."), "#8a5a00", "#fff7e0"));
+  }
+  function openWhenListed(cid) {
+    var n = 0;
+    (function w() {
+      if (chats[cid] || n++ > 30) { setTimeout(function () { whenApp(function () { try { if (app.openChatById) app.openChatById(cid); } catch (e) {} }); }, 350); return; }
+      setTimeout(w, 200);
+    })();
+  }
+  function e2eCreateDm(uid) {
+    return e2e.myKey(true).then(function (k) { return call("e2e.dm", { to: uid, d: k.d, k: k.pub }); }).then(function (b) { openWhenListed(b.cid); return b.cid; });
+  }
+  function e2eCreateGroup(name, ids) {
+    return e2e.myKey(true).then(function (k) { return call("e2e.group", { name: String(name || "").trim().slice(0, 80), members: ids, e2e: { d: k.d, k: k.pub } }); })
+      .then(function (b) { if (!b || !b.e2e) throw new Error("unknown op"); openWhenListed(b.cid); return b.cid; });
+  }
+  function e2eJoin(cid) {
+    return e2e.myKey(true).then(function (k) { return call("e2e.join", { cid: cid, d: k.d, k: k.pub }); }).then(function (b) { publishChats(); return b; });
+  }
+  function e2eStartDm(uid) {
+    if (!state.uid || !uid || !e2eNeedSupport()) return;
+    var s = sheet(L("محادثة سرّيّة مع ", "Secret chat with ") + personName(uid));
+    e2eExplain(s.box);
+    var go = mkBtn(L("ابدأ المحادثة السرّيّة", "Start the secret chat"), "primary"); go.style.marginTop = "8px";
+    go.onclick = function () {
+      go.disabled = true; go.textContent = "…";
+      e2eCreateDm(uid).then(function () { s.close(); }).catch(function (e) { go.disabled = false; go.textContent = L("ابدأ المحادثة السرّيّة", "Start the secret chat"); toast(e2eErrText(e)); });
+    };
+    s.box.appendChild(go);
+  }
+  function e2eNewSheet() {
+    if (!state.uid || !e2eNeedSupport()) return;
+    var s = sheet(L("محادثة سرّيّة جديدة", "New secret chat"));
+    e2eExplain(s.box);
+    var ppl = (state.people || []).filter(function (p) { return p && p.uid && p.uid !== state.uid; });
+    if (!ppl.length) { s.box.appendChild(note(L("أضف جهات اتّصال أوّلاً من «جهات الاتّصال».", "Add contacts first."))); return; }
+    s.box.appendChild(mk("div", "font:800 13px system-ui;margin:10px 2px 4px", L("اختر شخصاً لمحادثة، أو عدّة أشخاص لمجموعة", "Pick one person for a chat, or several for a group")));
+    var list = mk("div", "max-height:36vh;overflow-y:auto;margin:4px 0;border:1px solid #eef1f4;border-radius:12px"), picked = {};
+    var nameIn = mk("input", "width:100%;box-sizing:border-box;border:1.5px solid #dfe5ec;border-radius:12px;padding:11px;font:600 14px system-ui;margin:8px 0 2px;color:#1A1A2E;background:#fff;display:none");
+    nameIn.placeholder = L("اسم المجموعة السرّيّة", "Secret group name"); nameIn.maxLength = 80;
+    var go = mkBtn("", "primary"); go.style.marginTop = "8px";
+    function paint() {
+      var n = Object.keys(picked).length;
+      nameIn.style.display = n > 1 ? "" : "none";
+      go.disabled = !n || (n > 1 && !nameIn.value.trim()); go.style.opacity = go.disabled ? ".5" : "1";
+      go.textContent = n > 1 ? L("إنشاء مجموعة سرّيّة (" + n + ")", "Create secret group (" + n + ")") : L("بدء محادثة سرّيّة", "Start secret chat");
+    }
+    ppl.forEach(function (p) {
+      var row = mk("label", "display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #f1f4f7;font:600 14px system-ui;cursor:pointer");
+      var cb = mk("input"); cb.type = "checkbox"; cb.style.cssText = "width:18px;height:18px";
+      cb.onchange = function () { if (cb.checked) picked[p.uid] = 1; else delete picked[p.uid]; paint(); };
+      row.appendChild(cb); row.appendChild(mk("span", "", displayName(p))); list.appendChild(row);
+    });
+    nameIn.oninput = paint;
+    s.box.appendChild(list); s.box.appendChild(nameIn); s.box.appendChild(go); paint();
+    go.onclick = function () {
+      var ids = Object.keys(picked); if (!ids.length) return;
+      go.disabled = true; go.textContent = "…";
+      var p = ids.length === 1 ? e2eCreateDm(ids[0])
+        : e2eCreateGroup(nameIn.value, ids);
+      p.then(function () { s.close(); }).catch(function (e) { paint(); toast(e2eErrText(e)); });
+    };
+  }
+  function e2eAct(cid) {
+    var c = chats[cid]; if (!e2eOn(c)) return;
+    var st = e2eState(c);
+    if (st === "ready") return e2eSafety(cid);
+    if (st !== "join" && st !== "other") { var u = e2eUi(c); if (u.text) toast(u.text); return; }
+    if (!e2eNeedSupport()) return;
+    var s = sheet(st === "other" ? L("نقل المحادثة السرّيّة إلى هذا الجهاز", "Move the secret chat here") : L("تفعيل المحادثة السرّيّة", "Turn on the secret chat"));
+    e2eExplain(s.box);
+    if (st === "other") s.box.appendChild(note(L("بعد النقل لا تصل الرسائل الجديدة إلى جهازك الآخر، ولا تنتقل الرسائل السابقة، ويرى الآخرون أنّ رمز الأمان تغيّر.",
+      "New messages will stop reaching your other device, earlier messages won't move, and others will see your safety code changed."), "#b42318", "#fdecec"));
+    var label = st === "other" ? L("نقلها إلى هذا الجهاز", "Move to this device") : L("تفعيل على هذا الجهاز", "Turn on for this device");
+    var go = mkBtn(label, "primary"); go.style.marginTop = "8px";
+    go.onclick = function () {
+      go.disabled = true; go.textContent = "…";
+      e2eJoin(cid)
+        .then(function () { s.close(); toast(L("🔒 فُعّلت على هذا الجهاز", "🔒 Turned on for this device")); })
+        .catch(function (e) { go.disabled = false; go.textContent = label; toast(e2eErrText(e)); });
+    };
+    s.box.appendChild(go);
+  }
+  function e2eSafety(cid) {
+    var c = chats[cid]; if (!e2eOn(c)) return;
+    var s = sheet(L("رمز الأمان", "Safety code"));
+    s.box.appendChild(note(L("قارن هذه الأرقام مع الطرف الآخر وجهاً لوجه أو في مكالمة. إن تطابقت عندكما فلا أحد بينكما — ولا خادم سوا.",
+      "Compare these numbers with the other person in person or on a call. If they match, nobody is in between — not even Sawa's server.")));
+    var body = mk("div"); s.box.appendChild(body);
+    e2e.myKey(false).then(function (me) {
+      var e = c.e2e || {}, keys = e.keys || {}, devs = e.devs || {};
+      if (!me || devs[state.uid] !== me.d) { body.appendChild(note(L("فعّل المحادثة على هذا الجهاز أوّلاً.", "Turn it on for this device first."))); return; }
+      var os = others(c).filter(function (u) { var d = devs[u]; return d && keys[d] && keys[d].u === u; });
+      if (!os.length) { body.appendChild(note(L("لم يفعّلها أحدٌ غيرك بعد.", "Nobody else has turned it on yet."))); return; }
+      return Promise.all(os.map(function (u) { var k = keys[devs[u]].k; return Promise.all([e2e.safety(me.pub, k), e2e.devIdOf(k)]).then(function (x) { return { u: u, g: x[0], bad: x[1] !== devs[u] }; }); })).then(function (rows) {
+        rows.forEach(function (r) {
+          var card = mk("div", "border:1px solid #e6ebf0;border-radius:14px;padding:10px 12px;margin:8px 0");
+          card.appendChild(mk("div", "font:800 13.5px system-ui;margin-bottom:8px", L("أنت و", "You and ") + personName(r.u, c)));
+          if (r.bad) { card.appendChild(note(L("⚠️ مفتاح هذا الجهاز لا يطابق معرّفه — لا تثق بهذه المحادثة.", "⚠️ This device's key doesn't match its id — don't trust this chat."), "#b42318", "#fdecec")); body.appendChild(card); return; }
+          var grid = mk("div", "display:grid;grid-template-columns:repeat(4,1fr);gap:6px 8px;direction:ltr;font:700 15px ui-monospace,SFMono-Regular,Menlo,monospace;color:#14508c;text-align:center;letter-spacing:1px");
+          r.g.forEach(function (x) { grid.appendChild(mk("div", "", x)); });
+          card.appendChild(grid); body.appendChild(card);
+        });
+      });
+    }).catch(function (e) { body.appendChild(note(e2eErrText(e), "#b42318", "#fdecec")); });
+  }
+  function e2eSampleOf(cid) {   // للبلاغ: آخر ٢٠ رسالة مفكوكة على هذا الجهاز
+    return appMessages(cid).filter(function (o) { return o.type !== "system"; }).slice(-20).map(function (o) {
+      return { by: realId(o.senderUserId || o.senderId || "") || null, text: String(o.text || "").slice(0, 300), ts: o.createdAt || 0 };
+    });
+  }
+
   global.SawaChat = {
     version: VERSION,
     bindApp: bindApp, refresh: refresh, contacts: contacts,
@@ -2458,6 +2942,9 @@
     retryFailed: retryFailed, discardFailed: discardFailed, failedSheet: failedSheet,   // C14
     retryMedia: retryMedia,   // C18
     scanAny: scanAny, routeScanned: routeScanned, signOutSheet: signOutSheet,   // C20
+    e2eSupported: function () { return e2e.ok(); }, e2eStartDm: e2eStartDm, e2eNewSheet: e2eNewSheet, e2eAct: e2eAct, e2eSafety: e2eSafety,   // C23
+    e2eCreateDm: e2eCreateDm, e2eCreateGroup: e2eCreateGroup, e2eJoin: e2eJoin, e2eState: function (cid) { return e2eState(chats[cid]); },
+    _e2e: e2e, _plain: function () { return plain; },
     onboarding: function () { return onb ? onb.step : null; }, startOnboarding: function () { try { localStorage.removeItem("sawa_onboarded"); } catch (e) {} onbStart(); },
     _state: state, _onUid: onUid, _tokenFrom: tokenFrom
   };

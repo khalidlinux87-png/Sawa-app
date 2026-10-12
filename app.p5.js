@@ -830,6 +830,22 @@ function MediaLightbox({ items, startIndex = 0, onClose, onForward }) {
                 React.createElement("span", { className: "text-[10px]", style: { color: "#fff" } }, "توجيه")))));
 }
 
+// C23: المحادثات السرّيّة — فوق مربّع الكتابة شريطٌ «مشفّرة بين الطرفين · رمز الأمان»، أو بوّابة التفعيل بدل الكتابة
+function E2eBar({ e2e }) {
+    const { colors } = useTheme();
+    if (!e2e) return null;
+    const C = window.SawaChat;
+    if (e2e.state === "ready")
+        return (React.createElement("button", { onClick: () => C && C.e2eSafety && C.e2eSafety(e2e.cid), className: "w-full flex flex-row items-center justify-center gap-1.5 py-1.5 border-t", style: { borderColor: colors.border, backgroundColor: colors.card } },
+            React.createElement(Lock, { size: 11, color: "#16a34a" }),
+            React.createElement("span", { className: "text-[10.5px] font-bold", style: { color: colors.textMuted } }, tl("مشفّرة بين الطرفين — اضغط لرمز الأمان", "End-to-end encrypted — tap for the safety code"))));
+    return (React.createElement("div", { className: "px-4 py-3 border-t text-center", style: { borderColor: colors.border, backgroundColor: colors.card } },
+        React.createElement("div", { className: "flex flex-row items-center justify-center gap-1.5 mb-1" },
+            React.createElement(Lock, { size: 14, color: colors.primary }),
+            React.createElement("span", { className: "text-sm font-extrabold", style: { color: colors.text } }, e2e.title || "")),
+        e2e.text ? React.createElement("p", { className: "text-[11.5px] leading-5", style: { color: colors.textMuted } }, e2e.text) : null,
+        e2e.action ? React.createElement("button", { onClick: () => C && C.e2eAct && C.e2eAct(e2e.cid), className: "mt-2 px-5 py-2 rounded-xl text-xs font-extrabold text-white", style: { backgroundColor: colors.primary } }, e2e.action) : null));
+}
 function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSendSticker, onSendFile, onSendVoice, onEditMessage, onMarkViewedOnce, onTogglePin, onToggleStar, onOpenInfo, disappearing, setDisappearing, background, onBack, myUserId, isBlocked, allConversations, allGroups, isTyping, onLogCall, isOnline, callSettings, groupPersons = {}, onDeleteMessage, onOpenFamilyProfile, draft = "", onSaveDraft, unreadCount = 0, }) {
     var _a, _b;
     const { colors } = useTheme();
@@ -971,6 +987,8 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                 messages.length === 0 && !isTyping && React.createElement(EmptyChatState, { icon: MessageCircle }),
                 messages.map((m, mi) => {
                     const mine = m.senderUserId === myUserId;
+                    if (m.type === "system") return (React.createElement("div", { key: m.id, className: "flex justify-center my-2" },
+                        React.createElement("span", { className: "text-[10.5px] px-3 py-1 rounded-2xl text-center leading-5", style: { backgroundColor: colors.border + "88", color: colors.textMuted, maxWidth: "88%" } }, m.text)));
                     // فقاعات الصور والفيديو والملصقات خلفيتها شفافة لا ملوّنة،
                     // فالنص الأبيض عليها غير مقروء.
                     const onTint = mine && !(["sticker", "image", "video"].includes(m.type) && !m.viewOnce);
@@ -1025,9 +1043,10 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                 t("ch_alrd_ala"),
                 replyTo.text))),
         showStickerPicker && (React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 p-2 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } }, STICKER_SET.map((s) => (React.createElement("button", { key: s, onClick: () => { onSendSticker(s); setShowStickerPicker(false); }, className: "w-10 h-10 rounded-xl flex items-center justify-center text-xl", style: { backgroundColor: colors.bg } }, s))))),
+        conversation.e2e ? React.createElement(E2eBar, { e2e: conversation.e2e }) : null,
         isBlocked ? (React.createElement("div", { className: `flex ${rowStart()} items-center justify-center gap-2 p-3 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement(Ban, { size: 14, color: colors.danger }),
-            React.createElement("span", { className: "text-xs font-bold", style: { color: colors.danger } }, t("hzrt_hdha_alshkhs_algh")))) : (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-2 border-t relative`, style: { borderColor: colors.border, backgroundColor: colors.card } },
+            React.createElement("span", { className: "text-xs font-bold", style: { color: colors.danger } }, t("hzrt_hdha_alshkhs_algh")))) : (conversation.e2e && conversation.e2e.state !== "ready") ? null : (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-2 border-t relative`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement("input", { ref: mediaInputRef, type: "file", accept: "image/*,video/*", multiple: !viewOnceNext, onChange: (e) => {
                     const files = Array.from(e.target.files || []);
                     e.target.value = "";
@@ -1749,7 +1768,8 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                         vcSecs)),
                 React.createElement("button", { onClick: endVoiceChatForAll, className: "w-full py-2.5 rounded-xl text-sm font-extrabold text-white mb-2", style: { backgroundColor: colors.danger } }, t("inha_lljmya")),
                 React.createElement("button", { onClick: () => setConfirmEndAll(false), className: "w-full py-2.5 rounded-xl text-sm font-bold", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}`, color: colors.textMuted } }, t("ilgha"))))),
-        React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-2 border-t relative`, style: { borderColor: colors.border, backgroundColor: colors.card } },
+        group.e2e ? React.createElement(E2eBar, { e2e: group.e2e }) : null,
+        (group.e2e && group.e2e.state !== "ready") ? null : React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-2 border-t relative`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement("input", { ref: mediaInputRef, type: "file", accept: "image/*,video/*", onChange: (e) => {
                     var _a;
                     const file = (_a = e.target.files) === null || _a === void 0 ? void 0 : _a[0];
@@ -1813,7 +1833,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                     React.createElement("div", { className: `${textStart()}` },
                         React.createElement("span", { className: "text-xs font-bold block", style: { color: colors.text } }, t("bd_mhadtha_swtya")),
                         React.createElement("span", { className: "text-[9px]", style: { color: colors.textMuted } }, t("ghrfa_mftwha_bla_rnyn"))))))),
-            React.createElement("button", { "aria-label": t("idafa"), onClick: () => { setShowAttachMenu(false); setShowToolsMenu(!showToolsMenu); }, className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: showToolsMenu ? colors.primary : colors.bg } },
+            !group.secret && React.createElement("button", { "aria-label": t("idafa"), onClick: () => { setShowAttachMenu(false); setShowToolsMenu(!showToolsMenu); }, className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: showToolsMenu ? colors.primary : colors.bg } },
                 React.createElement(Plus, { size: 16, color: showToolsMenu ? "#fff" : colors.textMuted })),
             React.createElement("button", { onClick: () => handleTextChange(text + "@"), className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: colors.bg } },
                 React.createElement(AtSign, { size: 16, color: colors.textMuted })),
