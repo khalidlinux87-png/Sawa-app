@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c13c";
+  var VERSION = "c14";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -359,7 +359,51 @@
       var u = new URL(global.location.href); u.searchParams.delete("contact");
       global.history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + u.hash);
     } catch (e) {}
-    whenReady(function () { accept(tok); });
+    whenReady(function () { afterOnb(function () { linkConfirm("contact", tok); }); });
+  }
+  // C14: الروابط لا تُنفَّذ وحدها — رابطٌ من غريب كان يضيفه إلى جهاتك (فيرى حالتك) أو يضمّك إلى مجموعته بلا سؤال
+  function afterOnb(f) { (function w() { if (onbActive()) return setTimeout(w, 800); f(); })(); }
+  function linkConfirm(kind, tok) {
+    var contact = kind === "contact";
+    var s = sheet(contact ? L("إضافة جهة اتّصال", "Add a contact") : L("الانضمام إلى مجموعة", "Join a group"));
+    var body = mk("div", "text-align:center;margin:6px 0 4px"); s.box.appendChild(body);
+    body.appendChild(note(L("جارٍ التحميل…", "Loading…")));
+    function draw(b) {
+      body.innerHTML = "";
+      var nm = (b && b.name) || (contact ? L("مستخدم سوا", "Sawa user") : L("مجموعة", "Group"));
+      var av = avatar(nm, 64); av.style.margin = "4px auto 8px"; body.appendChild(av);
+      body.appendChild(mk("div", "font:800 18px system-ui", nm));
+      if (!contact && b && b.count) body.appendChild(mk("div", "font:600 12.5px system-ui;color:#8796a5;margin-top:2px", L(b.count + " عضو", b.count + " members")));
+      body.appendChild(note(contact
+        ? L("فتحت رابطاً شخصيّاً. إن أضفته صار جهة اتّصال: يرى أنّك متّصل وآخر ظهورك، ويستطيع مراسلتك والاتّصال بك. أضِف من تعرفه فقط.",
+            "You opened a personal link. Adding them lets them see when you're online and message or call you. Only add people you know.")
+        : L("عند الانضمام يرى أعضاء المجموعة اسمك، ويصلك ما يُكتب فيها. انضمّ إلى المجموعات التي تعرف أصحابها فقط.",
+            "Members will see your name and you'll get the group's messages. Only join groups you trust."), "#5b6b7c", "#f5f8fb"));
+      var row = mk("div", "display:flex;gap:8px;margin-top:10px");
+      var ok = mkBtn(contact ? L("أضِفه", "Add") : L("انضمّ", "Join"), "primary"), no = mkBtn(L("إلغاء", "Cancel"));
+      ok.className = "sawa-link-ok";
+      ok.onclick = function () {
+        ok.disabled = true; ok.textContent = "…";
+        (contact ? accept(tok) : joinGroup(tok).then(function (cid) { if (cid) whenApp(function () { setTimeout(function () { try { if (app.openChatById) app.openChatById(cid); } catch (e) {} }, 600); }); return cid; }))
+          .then(function () { s.close(); });
+      };
+      no.onclick = function () { s.close(); };
+      row.appendChild(ok); row.appendChild(no); s.box.appendChild(row);
+    }
+    call(contact ? "people.peek" : "group.peek", { token: tok }).then(function (b) {
+      if (b.self) { s.close(); toast(L("هذا رابطك أنت 🙂", "That's your own link 🙂")); return; }
+      if (b.already) { s.close(); toast(contact ? L("«" + (b.name || "") + "» في جهات اتّصالك سلفاً", "Already in your contacts") : L("أنت عضوٌ في «" + (b.name || "") + "» سلفاً", "You're already in this group"));
+        if (!contact && b.cid) whenApp(function () { try { if (app.openChatById) app.openChatById(b.cid); } catch (e) {} }); return; }
+      draw(b);
+    }).catch(function (e) {
+      var m = (e && e.message) || String(e);
+      if (/unknown op|bad op/i.test(m)) { draw(null); return; }   // خادمٌ أقدم بلا معاينة: نسأل بلا اسم
+      body.innerHTML = "";
+      body.appendChild(note(/expired/.test(m) ? L("انتهت صلاحيّة هذا الرابط — اطلب رابطاً جديداً.", "This link has expired.")
+        : /removed/.test(m) ? L("أزالك مشرفٌ من هذه المجموعة — لا تعود إلّا بإضافته.", "An admin removed you from this group.")
+        : L("الرابط غير صحيح أو لم يعد صالحاً.", "This link is invalid."), "#b42318", "#fdecec"));
+      var c = mkBtn(L("حسناً", "OK")); c.onclick = function () { s.close(); }; s.box.appendChild(c);
+    });
   }
 
   // ==================================================================
@@ -476,6 +520,7 @@
 
   // ---------- وصلت/قُرئت (مجمَّعة) ----------
   var markQ = {}, markTimer = null;
+  var markFails = 0;
   function queueMark(cid, m) {
     var q = markQ[cid] || (markQ[cid] = { cid: cid });
     for (var k in m) if (m[k] != null) q[k] = Math.max(q[k] || 0, m[k]);
@@ -485,7 +530,10 @@
     markTimer = null;
     var list = Object.keys(markQ).map(function (k) { return markQ[k]; }); markQ = {};
     if (!list.length || !state.uid) return;
-    call("chat.mark", { marks: list }).catch(function (e) { log("chat.mark:", (e && e.message) || e); });
+    call("chat.mark", { marks: list }).then(function () { markFails = 0; }).catch(function (e) {   // C14: تُعاد (حتّى ٣ مرّات) بعد ٢٠ ثانية — كانت تضيع فلا تزرقّ علامات المرسل
+      log("chat.mark:", (e && e.message) || e);
+      if (++markFails <= 3) setTimeout(function () { list.forEach(function (x) { queueMark(x.cid, { r: x.r, rc: x.rc, d: x.d }); }); }, 20000);
+    });
   }
   function markRead(cid) {
     var c = chats[cid];
@@ -504,14 +552,17 @@
     if (!isCloud(cid) || !state.uid) return null;
     var msg = { id: newMsgId(), type: opts.type || "text" };
     if (text != null) msg.text = String(text);
-    if (opts.reply && opts.reply.id) msg.reply = { id: opts.reply.id, by: realId(opts.reply.by || null), text: String(opts.reply.text || "").slice(0, 200) };
+    if (opts.reply && opts.reply.id) {
+      msg.reply = { id: opts.reply.id, by: realId(opts.reply.by || null), text: String(opts.reply.text || "").slice(0, 200) };
+      var rf = findMsg(cid, opts.reply.id); if (rf) msg.reply.day = rf.day;   // C14: الخادم يأخذ نصّ الاقتباس من الأصل في ذلك اليوم
+    }
     if (opts.fwd) msg.fwd = true;
     if (opts.contact) msg.contact = opts.contact;
     if (opts.mentions) msg.mentions = opts.mentions;
     else if (opts.mentionsFrom && text) { var mn = mentionsIn(cid, String(text)); if (mn) msg.mentions = mn; }
     if (opts.extra) msg.extra = opts.extra;
     (pend[cid] = pend[cid] || []).push({ msg: msg, ts: Date.now(), status: "pending" });
-    var ob = lsGet(OUTBOX, []); ob.push({ cid: cid, msg: msg }); lsSet(OUTBOX, ob);
+    var ob = lsGet(OUTBOX, []); ob.push({ uid: state.uid, cid: cid, msg: msg }); lsSet(OUTBOX, ob);
     publishMessages(cid); publishChats();
     drainOutbox();
     return msg.id;
@@ -520,10 +571,16 @@
   // حارس: إن علق طلبٌ (رغم المهلة) لا يبقى الطابور كلّه معلّقاً
   var drainAt = 0;
   function unstickOutbox() { if (draining && Date.now() - drainAt > 35000) { log("outbox: unstick"); draining = false; } }
-  setInterval(function () { unstickOutbox(); if (!draining && lsGet(OUTBOX, []).length) drainOutbox(); }, 15000);
+  setInterval(function () { unstickOutbox(); if (!draining && myOutbox().length) drainOutbox(); }, 15000);
+  // C14: الطابور لكلّ حساب — رسائل حسابٍ سابق على الجهاز لا تُرسل باسم الحساب الجديد. القديم بلا uid يُنسب لصاحب الجهاز الأخير.
+  var FAILED = "sawa_chat_failed";
+  function ownerOf(j) { if (j.uid) return j.uid; var c = lsGet("sawa_people_cache", null); return c && c.uid || null; }
+  function myOutbox() { return lsGet(OUTBOX, []).filter(function (j) { return ownerOf(j) === state.uid; }); }
+  // أخطاءٌ نهائيّة (رفضٌ صريح من الخادم) ⇒ «لم تُرسل» مع إعادة المحاولة. غيرها (شبكة/مهلة/خادم مشغول) ⇒ تبقى في الطابور
+  var PERMANENT = /bad |not a member|too large|message id taken|only |empty message|media not uploaded|media id required|chat not found|not a contact|removed|confirm required/i;
   function drainOutbox() {
     if (draining || !state.uid) return;
-    var ob = lsGet(OUTBOX, []); if (!ob.length) return;
+    var ob = myOutbox(); if (!ob.length) return;
     draining = true; drainAt = Date.now();
     var job = ob[0];
     call("chat.send", { cid: job.cid, msg: job.msg }).then(function (b) {
@@ -531,13 +588,15 @@
       shiftOutbox(job.msg.id);
     }).catch(function (e) {
       var m = (e && e.message) || String(e);
-      if (e instanceof TypeError || /fetch|network|rate|timeout/i.test(m)) {        // الشبكة: نعيد لاحقاً (أسرع في المحاولة الأولى)
+      if (!PERMANENT.test(m)) {        // الشبكة أو الخادم مؤقّتاً: نعيد لاحقاً (أسرع في المحاولة الأولى)
         draining = false;
         if (!retryT) retryT = setTimeout(function () { retryT = null; drainOutbox(); }, 4000);
         return "stop";
       }
       setPend(job.cid, job.msg.id, "failed"); shiftOutbox(job.msg.id);
-      toast(L("تعذّر إرسال رسالة: ", "A message couldn't be sent: ") + m);
+      var fl = lsGet(FAILED, []).filter(function (x) { return x.msg.id !== job.msg.id; });
+      fl.push({ uid: state.uid, cid: job.cid, msg: job.msg, err: m.slice(0, 120), ts: Date.now() }); lsSet(FAILED, fl.slice(-50));
+      toast(L("لم تُرسل رسالة: ", "A message wasn't sent: ") + m + L(" — اضغط ⚠ عليها لإعادة المحاولة", " — tap ⚠ to retry"));
     }).then(function (r) { if (r === "stop") return; draining = false; drainOutbox(); });
   }
   function shiftOutbox(id) { lsSet(OUTBOX, lsGet(OUTBOX, []).filter(function (x) { return x.msg.id !== id; })); }
@@ -546,8 +605,32 @@
     publishMessages(cid);
   }
   try { global.addEventListener("online", drainOutbox); } catch (e) {}
-  function restorePending() {   // بعد إعادة الفتح: ما بقي في الطابور يظهر «قيد الإرسال»
-    lsGet(OUTBOX, []).forEach(function (j) { if (!(pend[j.cid] || []).some(function (p) { return p.msg.id === j.msg.id; })) (pend[j.cid] = pend[j.cid] || []).push({ msg: j.msg, ts: Date.now(), status: "pending" }); });
+  function restorePending() {   // بعد إعادة الفتح: ما بقي في الطابور يظهر «قيد الإرسال»، وما رُفض «لم تُرسل» (C14: كان يختفي)
+    var add = function (j, st) { if (ownerOf(j) !== state.uid) return; if (!(pend[j.cid] || []).some(function (p) { return p.msg.id === j.msg.id; })) (pend[j.cid] = pend[j.cid] || []).push({ msg: j.msg, ts: j.ts || Date.now(), status: st }); };
+    lsGet(OUTBOX, []).forEach(function (j) { add(j, "pending"); });
+    lsGet(FAILED, []).forEach(function (j) { add(j, "failed"); });
+  }
+  // C14: «لم تُرسل» ⇒ إعادة المحاولة أو الحذف
+  function retryFailed(id) {
+    var fl = lsGet(FAILED, []), j = fl.filter(function (x) { return x.msg.id === id && ownerOf(x) === state.uid; })[0];
+    if (!j) { for (var cid in pend) (pend[cid] || []).forEach(function (p) { if (p.msg.id === id && p.status === "failed") j = { cid: cid, msg: p.msg }; }); }
+    if (!j) return false;
+    lsSet(FAILED, fl.filter(function (x) { return x.msg.id !== id; }));
+    var ob = lsGet(OUTBOX, []); if (!ob.some(function (x) { return x.msg.id === id; })) { ob.push({ uid: state.uid, cid: j.cid, msg: j.msg }); lsSet(OUTBOX, ob); }
+    setPend(j.cid, id, "pending"); drainOutbox();
+    return true;
+  }
+  function discardFailed(id) {
+    lsSet(FAILED, lsGet(FAILED, []).filter(function (x) { return x.msg.id !== id; }));
+    for (var cid in pend) { var n = (pend[cid] || []).length; pend[cid] = (pend[cid] || []).filter(function (p) { return p.msg.id !== id; }); if (pend[cid].length !== n) publishMessages(cid); }
+  }
+  function failedSheet(id) {
+    var s = sheet(L("لم تُرسل هذه الرسالة", "This message wasn't sent"));
+    var j = lsGet(FAILED, []).filter(function (x) { return x.msg.id === id; })[0];
+    if (j && j.err) s.box.appendChild(note(L("السبب: ", "Reason: ") + j.err, "#b42318", "#fdecec"));
+    var a = mkBtn(L("إعادة الإرسال", "Send again"), "primary"); a.onclick = function () { s.close(); retryFailed(id); };
+    var b = mkBtn(L("حذفها", "Delete it"), "danger"); b.style.marginTop = "8px"; b.onclick = function () { s.close(); discardFailed(id); };
+    s.box.appendChild(a); s.box.appendChild(b);
   }
 
   // ---------- أفعال الرسالة ----------
@@ -663,7 +746,7 @@
       name: c.type === "saved" ? L("رسائلي المحفوظة", "Saved messages") : personName(other, c),
       isSavedMessages: c.type === "saved",
       lastMessage: lp ? preview(lp.msg) : preview(l), lastFromMe: lastMine,
-      lastStatus: lp ? (lp.status === "pending" ? "sent" : lp.status) : (l && l.by === state.uid ? statusOf(c, l.ts) : null),
+      lastStatus: lp ? lp.status : (l && l.by === state.uid ? statusOf(c, l.ts) : null),
       unread: unreadOf(c), updatedAt: lp ? lp.ts : (c.updatedTs || 0), pinnedMessageId: c.pinned || null,
       disappear: c.disappear || 0, online: !!(p && state.presence[other] && state.presence[other].state === "online")
     };
@@ -697,8 +780,8 @@
   function appMessages(cid) {
     var c = chats[cid] || virtualChats[cid] || { members: [] }, hidden = (prefs && prefs.hidden) || {};
     var clearedAt = (prefs && prefs.cleared && prefs.cleared[cid]) || 0;
-    var dd = days[cid] || {}, arr = [];
-    Object.keys(dd).forEach(function (day) { var mm = dd[day]; Object.keys(mm).forEach(function (id) { var m = mm[id]; if (m && !hidden[id] && (m.ts || 0) > clearedAt) arr.push({ m: m, day: day }); }); });
+    var dd = days[cid] || {}, arr = [], now = Date.now();   // C14: المؤقّتة تختفي عند انتهاء أجلها (لا تنتظر تنظيف الخادم)
+    Object.keys(dd).forEach(function (day) { var mm = dd[day]; Object.keys(mm).forEach(function (id) { var m = mm[id]; if (m && !hidden[id] && (m.ts || 0) > clearedAt && !(m.exp && m.exp < now)) arr.push({ m: m, day: day }); }); });
     (pend[cid] || []).forEach(function (p) { if (!hidden[p.msg.id]) arr.push({ m: Object.assign({ by: state.uid, ts: p.ts }, p.msg), pending: p.status, progress: p.uploading ? (p.progress || 0) : null }); });
     arr.sort(function (a, b) { return (a.m.ts || 0) - (b.m.ts || 0); });
     var group = c.type === "family" || c.type === "group";
@@ -708,7 +791,7 @@
       var o = { id: m.id, day: x.day || null, createdAt: m.ts, text: m.del ? L("🚫 حُذفت هذه الرسالة", "🚫 This message was deleted") : (m.text || ""),
                 type: m.del ? "text" : (m.type === "text" ? undefined : m.type), deleted: !!m.del, edited: !!m.edited,
                 forwarded: !!m.fwd, reaction: mineRe || anyRe || null, reactions: re, replyTo: m.reply || null,
-                replyToText: m.reply ? m.reply.text : null, contact: m.contact || null, extra: m.extra || null, cloud: true,
+                replyToText: m.reply ? (m.reply.missing ? L("رسالة غير متاحة", "Message unavailable") : m.reply.del ? L("🚫 رسالة محذوفة", "🚫 Deleted message") : m.reply.text) : null, contact: m.contact || null, extra: m.extra || null, cloud: true,
                 starred: !!(prefs && prefs.starred && prefs.starred.some(function (s) { return s.id === m.id; })) };
       if (group) { o.senderId = appId(m.by); o.senderName = personName(m.by, c); if (o.type === undefined) o.type = "text"; if (!m.del) toolShape(m, o, c); }
       else o.senderUserId = appId(m.by);
@@ -912,7 +995,7 @@
     try { tok = new URLSearchParams(global.location.search).get("group"); } catch (e) {}
     if (!tok) return;
     try { var u = new URL(global.location.href); u.searchParams.delete("group"); global.history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + u.hash); } catch (e) {}
-    whenReady(function () { joinGroup(tok); });
+    whenReady(function () { afterOnb(function () { linkConfirm("group", tok); }); });
   }
 
   // ==================================================================
@@ -1007,7 +1090,7 @@
       return uploadMedia(cid, mid, blob, extra, function (pct) { p.progress = pct; publishMessages(cid); });
     }).then(function () {
       p.uploading = false;
-      var ob = lsGet(OUTBOX, []); ob.push({ cid: cid, msg: msg }); lsSet(OUTBOX, ob);
+      var ob = lsGet(OUTBOX, []); ob.push({ uid: state.uid, cid: cid, msg: msg }); lsSet(OUTBOX, ob);
       drainOutbox();
     }).catch(function (e) {
       setPend(cid, id, "failed");
@@ -1066,7 +1149,8 @@
     if (!mid || mediaUrls[mid] || localUrls[mid] || mediaLoading[mid] || mediaFailed[mid]) return Promise.resolve(mediaUrls[mid] || localUrls[mid] || null);
     mediaLoading[mid] = true;
     return idbGet(mid).then(function (b) {
-      return b || fetchMedia(cid, mid).then(function (blob) { if (!noCache) idbPut(mid, blob); return blob; });
+      var tmp = !!((chats[cid] || {}).disappear);   // C14: لا نحفظ وسائط المحادثات المؤقّتة على الجهاز
+      return b || fetchMedia(cid, mid).then(function (blob) { if (!noCache && !tmp) idbPut(mid, blob); return blob; });
     }).then(function (blob) {
       mediaUrls[mid] = URL.createObjectURL(blob); delete mediaLoading[mid]; publishMessages(cid); return mediaUrls[mid];
     }).catch(function (e) { delete mediaLoading[mid]; mediaFailed[mid] = (e && e.message) || "x"; publishMessages(cid); return null; });
@@ -1694,6 +1778,7 @@
       try { localStorage.clear(); } catch (e) {}
       try { sessionStorage.clear(); } catch (e) {}
       try { if (global.indexedDB) indexedDB.deleteDatabase("firebaseLocalStorageDb"); } catch (e) {}
+      try { if (global.indexedDB) indexedDB.deleteDatabase("sawa-media"); } catch (e) {}   // C14: الصور والصوتيّات المنزّلة أيضاً (كما تعد نافذة الحذف)
       setTimeout(function () { try { global.location.replace(global.location.pathname); } catch (e) {} }, 700);
     };
     try { firebase.auth().signOut().then(done, done); } catch (e) { done(); }
@@ -1982,7 +2067,9 @@
     state.uid = uid;
     var c = lsGet("sawa_people_cache", null);
     if (c && c.uid === uid) { state.me = c.me; state.people = c.people || []; publish(); }
-    else { state.me = null; try { if (app && app.setMyProfile) app.setMyProfile(null); if (app && app.setPeople) app.setPeople([]); } catch (e) {} }
+    else { state.me = null; try { if (app && app.setMyProfile) app.setMyProfile(null); if (app && app.setPeople) app.setPeople([]); } catch (e) {}
+      // C14: حسابٌ آخر على هذا الجهاز ⇒ وسائط الحساب السابق المنزّلة تُمسح
+      if (c && c.uid) { try { idbP = null; if (global.indexedDB) indexedDB.deleteDatabase("sawa-media"); } catch (e) {} } }
     state.cachedUid = null;
     startMyPresence(uid);
     refresh();
@@ -2053,6 +2140,7 @@
     // C10
     codeSheet: codeSheet, findSheet: findSheet, requestsSheet: requestsSheet, emailSheet: emailSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, reportSheet: reportSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },
     requestCount: function () { return reqs.incoming.length; }, fmtCode: fmtCode, codeValid: codeValid,
+    retryFailed: retryFailed, discardFailed: discardFailed, failedSheet: failedSheet,   // C14
     onboarding: function () { return onb ? onb.step : null; }, startOnboarding: function () { try { localStorage.removeItem("sawa_onboarded"); } catch (e) {} onbStart(); },
     _state: state, _onUid: onUid, _tokenFrom: tokenFrom
   };

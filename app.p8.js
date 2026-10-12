@@ -1484,7 +1484,7 @@ function AppInner() {
             // على السحابة: يُسجَّل تعهّدك للجميع (المحفظة محاكاة — يُخصم منها محلّياً فقط إن اخترتها)
             cloudChat(groupId).contribute(groupId, fundraiserId, amount);
             setPendingContributionTarget(null);
-            showToast(`تبرّعت بـ${amount.toLocaleString(loc())} ج.س ✓`, "success");
+            showToast(`سجّلت تعهّداً بـ${amount.toLocaleString(loc())} ج.س ✓`, "success");
             return;
         }
         let goalReached = false;
@@ -1501,10 +1501,10 @@ function AppInner() {
         }));
         setPendingContributionTarget(null);
         if (goalReached) {
-            showToast(`🎉 اكتمل الهدف! تبرّعت بـ${amount.toLocaleString(loc())} ج.س ✓`, "success");
+            showToast(`🎉 اكتمل الهدف! سجّلت تعهّداً بـ${amount.toLocaleString(loc())} ج.س ✓`, "success");
         }
         else {
-            showToast(`تبرّعت بـ${amount.toLocaleString(loc())} ج.س ✓`, "success");
+            showToast(`سجّلت تعهّداً بـ${amount.toLocaleString(loc())} ج.س ✓`, "success");
         }
     }
     function createGroupTaskList(groupId, title, taskDrafts) {

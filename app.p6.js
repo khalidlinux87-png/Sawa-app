@@ -199,6 +199,7 @@ function CallsScreen({ groups = [], callLog, favoriteContacts, onToggleFavorite,
         if (v && v.room && window.SawaRTC && window.SawaRTC.enabled() && window.SawaRTC.roomJoin(v.room)) return;   // C8: سجلّ غرفة
         if (v && v.cid && window.SawaRTC && window.SawaRTC.enabled() && window.SawaRTC.groupCall(v.cid, v.callType)) return;   // C7: سجلّ مكالمة جماعيّة
         if (v && cloudCallTo(v.peerUid ? { uid: v.peerUid, name: v.name } : v.name, v.callType)) return;
+        if (v && (v.peerUid || v.uid)) { showToast(CALL_FAIL_MSG(), "error"); return; }   // C14: جهة اتّصالٍ على سوا ⇒ لا شاشة مكالمةٍ وهميّة
         setActiveCallRaw(v);
     };
     const [subScreen, setSubScreen] = useState(null); // null | "settings" | "speedDial"
@@ -322,6 +323,13 @@ let DEFAULT_CONTACTS = [];
 function setLiveContacts(list) { DEFAULT_CONTACTS = Array.isArray(list) ? list : []; }
 // C6: مكالمةٌ حقيقيّة (SawaRTC) لجهة اتّصالٍ على سوا — بالكائن {uid,name} أو بالاسم. تُرجع false إن لم تكن ممكنة
 // (غير مسجّل / رقمٌ من لوحة الأرقام / اسمٌ ليس في جهات الاتّصال) فتبقى الواجهة القديمة.
+// C14: تعذّرت المكالمة الحقيقيّة ⇒ نقول ذلك (كانت تظهر شاشة «مكالمة مشفّرة… متّصل» وتُسجَّل في السجلّ دون اتّصال)
+function CALL_FAIL_MSG() {
+    const R = window.SawaRTC;
+    if (R && R.busy && R.busy()) return tl("أنت في مكالمة الآن", "You're already in a call");
+    if (!(window.RTCPeerConnection && navigator.mediaDevices)) return tl("هذا المتصفّح لا يدعم المكالمات", "This browser doesn't support calls");
+    return tl("تعذّر بدء المكالمة الآن — تأكّد من الاتّصال بالإنترنت وأعد المحاولة", "Couldn't start the call — check your connection and try again");
+}
 function cloudCallTo(who, callType) {
     const R = window.SawaRTC;
     if (!R || !R.enabled || !R.enabled()) return false;
