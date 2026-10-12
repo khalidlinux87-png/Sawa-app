@@ -159,7 +159,8 @@ function GroupCallOverlay({ groupName, members, callType, onEnd }) {
             React.createElement("button", { onClick: () => setSpeakerOn(!speakerOn), className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: speakerOn ? colors.primary : "#262B33" } },
                 React.createElement(Volume2, { size: 20, color: "#fff" })))));
 }
-function VoiceMessageBubble({ url, duration, mine, transcript }) {
+function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, failed = false, cid = null, mid = null }) {
+    const { showToast } = useToast();
     const { colors } = useTheme();
     const [playing, setPlaying] = useState(false);
     const [showTranscript, setShowTranscript] = useState(false);
@@ -187,18 +188,24 @@ function VoiceMessageBubble({ url, duration, mine, transcript }) {
                         setPlaying(false);
                         if (window.__sawaActiveAudio === stopSelfRef) window.__sawaActiveAudio = null;
                     }
+                    else if (!url) {   // C18: لم يُنزَّل بعد ⇒ تنزيل الآن بدل زرٍّ صامت
+                        if (cid && mid && window.SawaChat && window.SawaChat.retryMedia) window.SawaChat.retryMedia(cid, mid);
+                        showToast(tl("جارٍ تنزيل التسجيل…", "Downloading the voice note…"), "info");
+                    }
                     else {
                         // أوقف أي رسالة صوتية أخرى تعمل الآن
                         if (window.__sawaActiveAudio && window.__sawaActiveAudio !== stopSelfRef) {
                             try { window.__sawaActiveAudio.current(); } catch (e) { }
                         }
                         window.__sawaActiveAudio = stopSelfRef;
-                        (_b = audioRef.current) === null || _b === void 0 ? void 0 : _b.play();
+                        const pr = (_b = audioRef.current) === null || _b === void 0 ? void 0 : _b.play();
                         setPlaying(true);
+                        // C18: الصيغة غير مدعومة على هذا الجهاز (مثلاً webm على آيفون قديم) ⇒ نقول ذلك بدل زرٍّ عالق
+                        if (pr && pr.catch) pr.catch((e) => { setPlaying(false); showToast(tl("تعذّر تشغيل التسجيل على هذا الجهاز", "Can't play this voice note on this device") + (e && e.name === "NotSupportedError" ? tl(" (صيغة غير مدعومة)", " (unsupported format)") : ""), "error"); });
                     }
                 }, className: "w-8 h-8 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: mine ? "rgba(255,255,255,0.25)" : colors.primaryLight } }, playing ? React.createElement(Pause, { size: 14, color: mine ? "#fff" : colors.primary }) : React.createElement(Play, { size: 14, color: mine ? "#fff" : colors.primary })),
             React.createElement("div", { className: "flex-1 h-1 rounded-full", style: { backgroundColor: mine ? "rgba(255,255,255,0.3)" : colors.border } }),
-            React.createElement("span", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, duration)),
+            React.createElement("span", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, !url && loading ? "⏳ " + duration : !url && failed ? "↻ " + tl("أعد التنزيل", "Retry") : duration)),
         transcript && (React.createElement("button", { onClick: () => setShowTranscript(!showTranscript), className: "mt-1.5" },
             React.createElement("span", { className: "text-[10px] font-bold underline", style: { color: mine ? "#ffffffdd" : colors.primary } }, showTranscript ? "إخفاء النص" : "عرض النص"))),
         transcript && showTranscript && (React.createElement("p", { className: "text-xs mt-1", style: { color: mine ? "#fff" : colors.text } }, transcript))));
@@ -411,6 +418,32 @@ function useChatDraft(draft, onSaveDraft) {
 // تسجيل صوتي — كان مكرّراً في الشاشتين بعلّة واحدة:
 // دالة onstop كانت تلتقط recordSeconds من لحظة بدء التسجيل، فتخرج
 // المدة "0:00" دائماً مهما طال التسجيل. المرجع أدناه يحمل القيمة الحيّة.
+// C18: المحادثة تُفتح عند آخر رسالة وتبقى في الأسفل ما لم يصعد المستخدم — كانت تُفتح من الأعلى لأنّ الرسائل تصل بعد فتح الشاشة
+//      (والصور تكبر بعد تحميلها)، وشرط «قريبٌ من الأسفل» كان يُقرأ والصفحة في أعلاها.
+function useStickToBottom(ref, dep) {
+    const stick = useRef(true);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const toEnd = () => { el.scrollTop = el.scrollHeight; };
+        const onScroll = () => { stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; };
+        const onLoad = () => { if (stick.current) toEnd(); };   // صورة/فيديو اكتمل تحميله فطال المحتوى
+        el.addEventListener("scroll", onScroll, { passive: true });
+        el.addEventListener("load", onLoad, true);
+        el.addEventListener("loadedmetadata", onLoad, true);
+        toEnd();
+        const t0 = Date.now();
+        const iv = setInterval(() => { if (stick.current) toEnd(); if (Date.now() - t0 > 5000) clearInterval(iv); }, 200);
+        return () => { el.removeEventListener("scroll", onScroll); el.removeEventListener("load", onLoad, true); el.removeEventListener("loadedmetadata", onLoad, true); clearInterval(iv); };
+    }, []);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el || !stick.current) return;
+        el.scrollTop = el.scrollHeight;
+        requestAnimationFrame(() => { if (stick.current) el.scrollTop = el.scrollHeight; });
+    }, [dep]);
+    return stick;
+}
 function useVoiceRecorder({ onComplete, transcribe }) {
     const [isRecording, setIsRecording] = useState(false);
     const [seconds, setSeconds] = useState(0);
@@ -492,19 +525,21 @@ function useVoiceRecorder({ onComplete, transcribe }) {
                 ? new MediaRecorder(stream, { mimeType: mimeType })
                 : new MediaRecorder(stream);
             const chunks = [];
-            recorder.ondataavailable = function (e) { chunks.push(e.data); };
+            recorder.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
             recorder.onstop = function () {
                 const total = secondsRef.current;
                 const discarded = discardRef.current;
                 teardown();
                 if (discarded || total < MIN_SECONDS) return;   // إلغاء أو نقرة عابرة
                 const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "audio/webm" });
+                // C18: تسجيلٌ فارغ (الميكروفون مشغول أو انقطع) ⇒ نقول ذلك بدل إرسال رسالةٍ صامتة
+                if (blob.size < 800) { if (window.SawaChat && window.SawaSync && window.SawaSync.toast) window.SawaSync.toast(tl("لم يُلتقط صوت — تأكّد أنّ الميكروفون غير مستخدم في تطبيقٍ آخر وأعد المحاولة", "No audio was captured — try again")); flashError(); return; }
                 const url = URL.createObjectURL(blob);
                 const duration = Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
                 const text = transcriptRef.current.trim();
                 if (onCompleteRef.current) onCompleteRef.current(url, duration, text || null, blob, total);
             };
-            recorder.start();
+            recorder.start(1000);   // C18: دفعاتٌ كلّ ثانية — لا يضيع التسجيل كلّه إن تعثّر الإيقاف
             recorderRef.current = recorder;
             secondsRef.current = 0;
             setSeconds(0);
@@ -519,7 +554,9 @@ function useVoiceRecorder({ onComplete, transcribe }) {
             // فتُشغَّل بالتوازي مع التسجيل لا بعده
             transcriptRef.current = "";
             const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (transcribe && SpeechRec) {
+            // C18: على الهاتف يستولي التعرّف على الكلام على الميكروفون فيُسجَّل صمتٌ أو لا شيء — التفريغ الحيّ على الحاسوب فقط
+            const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+            if (transcribe && SpeechRec && !mobile) {
                 const recognizer = new SpeechRec();
                 recognizer.lang = "ar-SA";
                 recognizer.continuous = true;
@@ -810,14 +847,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
     const [showCallChoice, setShowCallChoice] = useState(false);
     const [showScrollBtn, setShowScrollBtn] = useState(false);
     const scrollContainerRef = useRef(null);
-    useEffect(() => {
-        const el = scrollContainerRef.current;
-        if (!el)
-            return;
-        const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-        if (nearBottom)
-            el.scrollTop = el.scrollHeight;
-    }, [messages.length, isTyping]);
+    useStickToBottom(scrollContainerRef, messages.length + ":" + (isTyping ? 1 : 0));
     const [viewingImage, setViewingImage] = useState(null);
     // كل صور وفيديوهات المحادثة بالترتيب — تُمرَّر للمعاينة لتمكين التنقّل
     const mediaItems = useMemo(() => (messages || [])
@@ -959,7 +989,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                                     React.createElement("div", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.text } }, m.text),
                                     React.createElement("div", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } },
                                         (m.fileSize / 1024).toFixed(0),
-                                        t("ch_kylwbayt"))))) : m.type === "voice" ? (React.createElement(VoiceMessageBubble, { url: m.audioUrl, duration: m.duration, mine: mine, transcript: m.transcript })) : editingMessageId === m.id ? (React.createElement("div", { className: "flex flex-col gap-1.5" },
+                                        t("ch_kylwbayt"))))) : m.type === "voice" ? (React.createElement(VoiceMessageBubble, { loading: !!m.mediaLoading, failed: !!m.mediaFailed, cid: m.cloudCid || null, mid: m.cloudMid || null, url: m.audioUrl, duration: m.duration, mine: mine, transcript: m.transcript })) : editingMessageId === m.id ? (React.createElement("div", { className: "flex flex-col gap-1.5" },
                                 React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: editingText, onChange: (e) => setEditingText(e.target.value), className: "text-sm rounded px-2 py-1", style: { backgroundColor: mine ? "rgba(255,255,255,0.15)" : colors.bg, color: mine ? "#fff" : colors.text, border: `1px solid ${mine ? "#ffffff55" : colors.border}` }, autoFocus: true }),
                                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                                     React.createElement("button", { onClick: () => { onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); }, className: "text-[10px] font-bold", style: { color: mine ? "#fff" : colors.primary } }, t("hfz")),
@@ -1219,14 +1249,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
     const [liveGroupCall, setLiveGroupCall] = useState(null);
     useEffect(() => { if (!cloudGroup || !window.SawaRTC.watchChat) return; return window.SawaRTC.watchChat(group.id, setLiveGroupCall); }, [group.id, cloudGroup]);
     const scrollContainerRef = useRef(null);
-    useEffect(() => {
-        const el = scrollContainerRef.current;
-        if (!el)
-            return;
-        const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-        if (nearBottom)
-            el.scrollTop = el.scrollHeight;
-    }, [messages.length]);
+    useStickToBottom(scrollContainerRef, messages.length);
     const [forwardingText, setForwardingText] = useState(null);
     const [groupMsgMenu, setGroupMsgMenu] = useState(null);
     const [gReply, setGReply] = useState(null);       // C3: ردٌّ حقيقيّ (معرّف الرسالة)
@@ -1574,7 +1597,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                         React.createElement("div", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.text } }, m.text),
                         React.createElement("div", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } },
                             (m.fileSize / 1024).toFixed(0),
-                            t("gc_kylwbayt"))))) : m.type === "voice" ? (React.createElement(VoiceMessageBubble, { url: m.audioUrl, duration: m.duration, mine: mine })) : editingMessageId === m.id ? (React.createElement("div", { className: "flex flex-col gap-1.5" },
+                            t("gc_kylwbayt"))))) : m.type === "voice" ? (React.createElement(VoiceMessageBubble, { loading: !!m.mediaLoading, failed: !!m.mediaFailed, cid: m.cloudCid || null, mid: m.cloudMid || null, url: m.audioUrl, duration: m.duration, mine: mine, transcript: m.transcript })) : editingMessageId === m.id ? (React.createElement("div", { className: "flex flex-col gap-1.5" },
                     React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: editingText, onChange: (e) => setEditingText(e.target.value), className: "text-sm rounded px-2 py-1", style: { backgroundColor: mine ? "rgba(255,255,255,0.15)" : colors.bg, color: mine ? "#fff" : colors.text, border: `1px solid ${mine ? "#ffffff55" : colors.border}` }, autoFocus: true }),
                     React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                         React.createElement("button", { onClick: () => { onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); }, className: "text-[10px] font-bold", style: { color: mine ? "#fff" : colors.primary } }, t("hfz")),

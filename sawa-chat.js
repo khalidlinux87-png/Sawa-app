@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c16";
+  var VERSION = "c18";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -612,6 +612,7 @@
   }
   // C14: «لم تُرسل» ⇒ إعادة المحاولة أو الحذف
   function retryFailed(id) {
+    for (var c0 in pend) { var pp = (pend[c0] || []).filter(function (p) { return p.msg.id === id && p.reupload; })[0]; if (pp) { pp.reupload(); return true; } }   // C18: وسيطٌ لم يُرفع ⇒ يُعاد رفعه
     var fl = lsGet(FAILED, []), j = fl.filter(function (x) { return x.msg.id === id && ownerOf(x) === state.uid; })[0];
     if (!j) { for (var cid in pend) (pend[cid] || []).forEach(function (p) { if (p.msg.id === id && p.status === "failed") j = { cid: cid, msg: p.msg }; }); }
     if (!j) return false;
@@ -1117,8 +1118,11 @@
       var ob = lsGet(OUTBOX, []); ob.push({ uid: state.uid, cid: cid, msg: msg }); lsSet(OUTBOX, ob);
       drainOutbox();
     }).catch(function (e) {
+      p.uploading = false; p.reupload = function () { p.reupload = null; p.status = "pending"; p.uploading = true; publishMessages(cid); return prep.then(function (r) { return uploadMedia(cid, mid, r.blob || src, extra, function (pct) { p.progress = pct; publishMessages(cid); }); })
+        .then(function () { p.uploading = false; var ob = lsGet(OUTBOX, []); ob.push({ uid: state.uid, cid: cid, msg: msg }); lsSet(OUTBOX, ob); drainOutbox(); })
+        .catch(function (e2) { setPend(cid, id, "failed"); toast(L("تعذّر رفع الملفّ: ", "Upload failed: ") + ((e2 && e2.message) || e2)); }); };
       setPend(cid, id, "failed");
-      toast(L("تعذّر رفع الملفّ: ", "Upload failed: ") + ((e && e.message) || e));
+      toast(L("تعذّر رفع الملفّ: ", "Upload failed: ") + ((e && e.message) || e) + L(" — اضغط ⚠ لإعادة المحاولة", " — tap ⚠ to retry"));
     });
     return id;
   }
@@ -1183,8 +1187,16 @@
       return b || fetchMedia(cid, mid).then(function (blob) { if (!noCache && !tmp) idbPut(mid, blob); return blob; });
     }).then(function (blob) {
       mediaUrls[mid] = URL.createObjectURL(blob); delete mediaLoading[mid]; publishMessages(cid); return mediaUrls[mid];
-    }).catch(function (e) { delete mediaLoading[mid]; mediaFailed[mid] = (e && e.message) || "x"; publishMessages(cid); return null; });
+    }).catch(function (e) {
+      delete mediaLoading[mid]; mediaFailed[mid] = (e && e.message) || "x"; publishMessages(cid);
+      // C18: تعثّر التنزيل (شبكة ضعيفة) ⇒ إعادة تلقائيّة بعد ٥ ثم ٢٠ ثم ٦٠ ثانية — كان يبقى «لم يصل» حتّى إعادة فتح التطبيق
+      var n = (mediaTries[mid] = (mediaTries[mid] || 0) + 1);
+      if (!/gone/.test(mediaFailed[mid]) && n <= 3) setTimeout(function () { if (mediaFailed[mid] && !mediaUrls[mid]) { delete mediaFailed[mid]; ensureMedia(cid, mid, noCache); } }, [5000, 20000, 60000][n - 1]);
+      return null;
+    });
   }
+  var mediaTries = {};
+  function retryMedia(cid, mid) { if (!mid) return; delete mediaFailed[mid]; mediaTries[mid] = 0; publishMessages(cid); return ensureMedia(cid, mid); }
   // ملفٌّ عامّ: يُنزَّل ثمّ يُفتح/يُحفظ
   function openFile(m) {
     if (!m || !m.cloudMid) return;
@@ -1217,6 +1229,7 @@
     } else if (m.type === "voice") {
       o.audioUrl = url; o.duration = typeof ex.duration === "number" ? (Math.floor(ex.duration / 60) + ":" + String(ex.duration % 60).padStart(2, "0")) : (ex.duration || "0:00");
       o.transcript = ex.transcript || null;
+      o.mediaLoading = !url && !mediaFailed[mid]; o.mediaFailed = !url && !!mediaFailed[mid];   // C18: الفقاعة تعرض «يُنزَّل…» أو «اضغط لإعادة التنزيل»
     } else { o.text = ex.name || L("ملفّ", "File"); o.fileUrl = url; }
     var auto = cid === openCid && !url && !mediaFailed[mid] && !(ex.viewOnce && (mine || viewedByMe || m.gone))
       && (m.type !== "file") && (m.type !== "video" || (ex.size || 0) <= AUTO_DL);
@@ -2171,6 +2184,7 @@
     codeSheet: codeSheet, findSheet: findSheet, requestsSheet: requestsSheet, emailSheet: emailSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, reportSheet: reportSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },
     requestCount: function () { return reqs.incoming.length; }, fmtCode: fmtCode, codeValid: codeValid,
     retryFailed: retryFailed, discardFailed: discardFailed, failedSheet: failedSheet,   // C14
+    retryMedia: retryMedia,   // C18
     onboarding: function () { return onb ? onb.step : null; }, startOnboarding: function () { try { localStorage.removeItem("sawa_onboarded"); } catch (e) {} onbStart(); },
     _state: state, _onUid: onUid, _tokenFrom: tokenFrom
   };
