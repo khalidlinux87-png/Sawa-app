@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c20";
+  var VERSION = "c21";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1801,7 +1801,7 @@
         function (x) { msg.style.color = "#b42318"; msg.textContent = emailErr(x); });
     };
     paint();
-    return { focus: function () { try { em.focus(); } catch (e) {} } };
+    return { go: go, focus: function () { try { em.focus(); } catch (e) {} } };
   }
   function emailSheet() {
     var a = S() && S().authInfo ? S().authInfo() : null;
@@ -1943,61 +1943,242 @@
     return true;
   }
   function authNow() { try { return S() && S().authInfo ? S().authInfo() : null; } catch (e) { return null; } }
+  // c21: تصميمٌ حديث — خلفيّة متدرّجة بأضواءٍ ناعمة، أيقونات زجاجيّة، شريط تقدّم مع رجوع، حركةٌ هادئة (تُلغى مع «تقليل الحركة»)
+  var ONB_ICON = {
+    lock: '<rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1.1"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
+    hash: '<path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16"/>',
+    bell: '<path d="M6 16v-5a6 6 0 1 1 12 0v5l1.5 2h-15L6 16z"/><path d="M10 21a2 2 0 0 0 4 0"/>',
+    users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.3c2.1.7 3.5 2.8 3.5 5.7"/>',
+    chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.8A8 8 0 1 1 21 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/>',
+    phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>',
+    room: '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10.5" r="2"/><circle cx="15" cy="10.5" r="2"/><path d="M5.8 17c.6-1.5 1.8-2.3 3.2-2.3s2.6.8 3 2.3c.4-1.5 1.6-2.3 3-2.3s2.6.8 3.2 2.3"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7 8.5 6 8.5-6"/>',
+    arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    back: '<path d="m9 6 6 6-6 6"/>',
+    chev: '<path d="m15 6-6 6 6 6"/>',
+    copy: '<rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+    share: '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4"/>',
+    check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+    send: '<path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/>',
+    cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 8.5a4.5 4.5 0 0 1-.5 9.5H7z"/>',
+    devices: '<rect x="2" y="5" width="13" height="10" rx="2"/><path d="M5 19h7"/><rect x="17" y="8" width="5" height="11" rx="1.5"/>'
+  };
+  var ONB_G = '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
+  var ONB_CSS = [
+    "#sawa-onb{position:fixed;inset:0;z-index:2147483000;color:#fff;display:flex;flex-direction:column;font-family:system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;overflow-y:auto;overflow-x:hidden;background:#0f3561;-webkit-tap-highlight-color:transparent}",
+    "#sawa-onb *{box-sizing:border-box}",
+    "#sawa-onb .ob-bg{position:fixed;inset:0;pointer-events:none;overflow:hidden;background:radial-gradient(130% 75% at 50% -12%,#4aa3ea 0%,#2a78c0 32%,#185392 62%,#0d3260 100%)}",
+    "#sawa-onb .ob-bg::after{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.10) 1px,transparent 1.2px);background-size:22px 22px;-webkit-mask-image:linear-gradient(to bottom,#000,transparent 55%);mask-image:linear-gradient(to bottom,#000,transparent 55%)}",
+    "#sawa-onb .ob-blob{position:absolute;border-radius:50%;filter:blur(46px);opacity:.5;animation:ob-float 16s ease-in-out infinite}",
+    "#sawa-onb .ob-b1{width:300px;height:300px;background:#6cc0ff;top:-90px;inset-inline-start:-110px}",
+    "#sawa-onb .ob-b2{width:280px;height:280px;background:#6d72ff;bottom:6%;inset-inline-end:-130px;opacity:.38;animation-delay:-5s}",
+    "#sawa-onb .ob-b3{width:220px;height:220px;background:#22c7b4;bottom:-110px;inset-inline-start:12%;opacity:.3;animation-delay:-10s}",
+    "#sawa-onb .ob-top,#sawa-onb .ob-body,#sawa-onb .ob-foot{position:relative;z-index:1;width:100%;max-width:460px;margin:0 auto}",
+    "#sawa-onb .ob-top{display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top,0px) + 14px) 18px 0;min-height:56px}",
+    "#sawa-onb .ob-bar{flex:1;display:flex;gap:5px}",
+    "#sawa-onb .ob-seg{flex:1;height:4px;border-radius:4px;background:rgba(255,255,255,.22);overflow:hidden}",
+    "#sawa-onb .ob-seg i{display:block;height:100%;width:0;background:#fff;border-radius:4px}",
+    "#sawa-onb .ob-seg.done i{width:100%}",
+    "#sawa-onb .ob-seg.cur i{width:100%;animation:ob-fill .6s cubic-bezier(.2,.8,.2,1) both}",
+    "#sawa-onb .ob-count{font:700 12px system-ui;color:rgba(255,255,255,.75);min-width:34px;text-align:end}",
+    "#sawa-onb .ob-back{width:40px;height:40px;flex:none;border-radius:14px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.1);color:#fff;display:grid;place-items:center;cursor:pointer;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}",
+    "#sawa-onb .ob-back.ob-hide{visibility:hidden}",
+    "#sawa-onb[dir=ltr] .ob-back svg,#sawa-onb[dir=rtl] .ob-fwd svg{transform:scaleX(-1)}",
+    "#sawa-onb .ob-body{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:14px 24px 8px}",
+    "#sawa-onb .ob-foot{padding:10px 20px calc(env(safe-area-inset-bottom,0px) + 22px);display:flex;flex-direction:column;gap:10px}",
+    "#sawa-onb .ob-body>*,#sawa-onb .ob-foot>*{animation:ob-in .55s cubic-bezier(.2,.8,.2,1) both}",
+    "#sawa-onb .ob-body>:nth-child(2){animation-delay:.06s}#sawa-onb .ob-body>:nth-child(3){animation-delay:.12s}#sawa-onb .ob-body>:nth-child(4){animation-delay:.18s}#sawa-onb .ob-body>:nth-child(n+5){animation-delay:.24s}",
+    "#sawa-onb .ob-foot>*{animation-delay:.2s}#sawa-onb .ob-foot>:nth-child(2){animation-delay:.26s}#sawa-onb .ob-foot>:nth-child(n+3){animation-delay:.32s}",
+    "#sawa-onb .ob-tile{position:relative;width:92px;height:92px;border-radius:30px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(255,255,255,.3),rgba(255,255,255,.07));border:1px solid rgba(255,255,255,.38);box-shadow:0 22px 44px -14px rgba(3,20,45,.6),inset 0 1px 0 rgba(255,255,255,.45);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}",
+    "#sawa-onb .ob-tile::before{content:'';position:absolute;inset:-12px;border-radius:40px;border:1px solid rgba(255,255,255,.16);animation:ob-ring 3.2s ease-out infinite}",
+    "#sawa-onb .ob-tile svg{width:44px;height:44px}",
+    "#sawa-onb .ob-ring svg{animation:ob-ring-bell 2.6s ease-in-out 1s infinite;transform-origin:50% 15%}",
+    "#sawa-onb .ob-h{font:800 26px/1.35 system-ui;margin:24px 0 8px;letter-spacing:-.2px;text-wrap:balance}",
+    "#sawa-onb .ob-p{font:500 15px/1.85 system-ui;color:rgba(255,255,255,.8);max-width:340px;text-wrap:pretty}",
+    "#sawa-onb .ob-grad{background:linear-gradient(90deg,#fff,#a8dbff);-webkit-background-clip:text;background-clip:text;color:transparent}",
+    "#sawa-onb .ob-logo{width:108px;height:108px;border-radius:32px;box-shadow:0 0 0 8px rgba(255,255,255,.08),0 0 0 18px rgba(255,255,255,.04),0 26px 50px -12px rgba(3,20,45,.7);animation:ob-bob 6s ease-in-out infinite}",
+    "#sawa-onb .ob-feats{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;margin-top:26px}",
+    "#sawa-onb .ob-feat{display:flex;align-items:center;gap:10px;padding:12px;border-radius:18px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);text-align:start;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}",
+    "#sawa-onb .ob-feat b{display:block;font:800 13.5px/1.3 system-ui}",
+    "#sawa-onb .ob-feat small{display:block;font:500 11.5px/1.5 system-ui;color:rgba(255,255,255,.7);margin-top:2px}",
+    "#sawa-onb .ob-fi{width:36px;height:36px;flex:none;border-radius:12px;display:grid;place-items:center;background:rgba(255,255,255,.16)}",
+    "#sawa-onb .ob-fi svg{width:19px;height:19px}",
+    "#sawa-onb .ob-btn{width:100%;border:0;border-radius:16px;padding:15px 16px;font:800 16px system-ui;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;transition:transform .15s,box-shadow .2s,background .2s;-webkit-user-select:none;user-select:none}",
+    "#sawa-onb .ob-btn:active{transform:scale(.975)}",
+    "#sawa-onb .ob-btn:disabled{opacity:.7;cursor:default}",
+    "#sawa-onb .ob-btn:focus-visible,#sawa-onb .ob-back:focus-visible,#sawa-onb .ob-opt:focus-visible{outline:3px solid rgba(255,255,255,.75);outline-offset:2px}",
+    "#sawa-onb .ob-btn svg{width:20px;height:20px;flex:none}",
+    "#sawa-onb .ob-primary{background:#fff;color:#14508c;box-shadow:0 14px 28px -10px rgba(3,20,45,.6)}",
+    "#sawa-onb .ob-glass{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.28);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}",
+    "#sawa-onb .ob-link{background:transparent;color:rgba(255,255,255,.85);font-weight:700;font-size:15px;padding:10px}",
+    "#sawa-onb .ob-or{display:flex;align-items:center;gap:12px;font:600 12px system-ui;color:rgba(255,255,255,.6)}",
+    "#sawa-onb .ob-or::before,#sawa-onb .ob-or::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.2)}",
+    "#sawa-onb .ob-perks{display:flex;flex-direction:column;gap:8px;width:100%;max-width:330px;margin-top:22px}",
+    "#sawa-onb .ob-perk{display:flex;align-items:center;gap:10px;font:600 14px/1.5 system-ui;color:rgba(255,255,255,.9);text-align:start}",
+    "#sawa-onb .ob-perk span{width:28px;height:28px;flex:none;border-radius:10px;display:grid;place-items:center;background:rgba(255,255,255,.14)}",
+    "#sawa-onb .ob-perk svg{width:16px;height:16px}",
+    "#sawa-onb .ob-legal{font:500 12px/1.8 system-ui;color:rgba(255,255,255,.7);text-align:center;margin-top:2px}",
+    "#sawa-onb .ob-legal a{color:#fff;font-weight:700;text-decoration:underline;text-underline-offset:3px;text-decoration-color:rgba(255,255,255,.4)}",
+    "#sawa-onb .ob-card{background:#fff;color:#1A1A2E;border-radius:26px;padding:20px 18px 14px;width:100%;text-align:start;box-shadow:0 30px 60px -20px rgba(3,20,45,.7)}",
+    "#sawa-onb .ob-card-h{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:6px;text-align:center}",
+    "#sawa-onb .ob-card-h span{width:52px;height:52px;border-radius:18px;display:grid;place-items:center;background:linear-gradient(145deg,#3d93dc,#1d5f9e);color:#fff;box-shadow:0 10px 20px -8px rgba(29,95,158,.7)}",
+    "#sawa-onb .ob-card-h svg{width:26px;height:26px}",
+    "#sawa-onb .ob-card-h b{font:800 19px system-ui}",
+    "#sawa-onb .ob-card-h small{font:500 13px/1.6 system-ui;color:#5b6b7b}",
+    "#sawa-onb .ob-card input:focus{border-color:#2F80C8!important;box-shadow:0 0 0 4px rgba(47,128,200,.15)}",
+    "#sawa-onb .ob-av{width:104px;height:104px;border-radius:50%;display:grid;place-items:center;font:800 38px system-ui;background:linear-gradient(145deg,#6cc0ff,#2F80C8 55%,#1d5f9e);border:3px solid rgba(255,255,255,.85);box-shadow:0 0 0 8px rgba(255,255,255,.08),0 24px 44px -14px rgba(3,20,45,.7);transition:transform .25s}",
+    "#sawa-onb .ob-av svg{width:48px;height:48px}",
+    "#sawa-onb .ob-av.pop{transform:scale(1.06)}",
+    "#sawa-onb .ob-input{width:100%;margin-top:24px;border:2px solid transparent;border-radius:18px;padding:16px;font:700 19px system-ui;text-align:center;outline:none;color:#1A1A2E;background:#fff;caret-color:#2F80C8;box-shadow:0 14px 30px -14px rgba(3,20,45,.6);transition:border-color .2s,box-shadow .2s}",
+    "#sawa-onb .ob-input:focus{border-color:#9fd2ff;box-shadow:0 0 0 5px rgba(255,255,255,.18),0 14px 30px -14px rgba(3,20,45,.6)}",
+    "#sawa-onb .ob-input::placeholder{color:#9aa7b4;font-weight:600}",
+    "#sawa-onb .ob-err{font:700 13px system-ui;color:#ffd2d2;min-height:20px;margin-top:10px}",
+    "#sawa-onb .ob-code{width:100%;margin:24px 0 16px;background:#fff;color:#14508c;border-radius:24px;padding:16px 12px 18px;box-shadow:0 26px 50px -18px rgba(3,20,45,.7)}",
+    "#sawa-onb .ob-code small{display:block;font:800 11.5px system-ui;letter-spacing:.6px;color:#6b8db0;margin-bottom:6px}",
+    "#sawa-onb .ob-code div{font:800 32px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:2px;word-spacing:6px;direction:ltr}",
+    "#sawa-onb .ob-row{display:flex;gap:10px;width:100%;margin-top:18px}",
+    "#sawa-onb .ob-row .ob-btn{font-size:15px;padding:13px}",
+    "#sawa-onb .ob-notif{display:flex;align-items:center;gap:12px;width:100%;max-width:340px;margin-top:24px;padding:12px 14px;border-radius:20px;background:rgba(255,255,255,.94);color:#1A1A2E;text-align:start;box-shadow:0 20px 40px -16px rgba(3,20,45,.7)}",
+    "#sawa-onb .ob-body>.ob-notif{animation:ob-drop .7s cubic-bezier(.2,.9,.25,1.2) .35s both}",
+    "#sawa-onb .ob-notif img{width:38px;height:38px;border-radius:11px;flex:none}",
+    "#sawa-onb .ob-notif b{display:flex;justify-content:space-between;font:800 13px system-ui}",
+    "#sawa-onb .ob-notif b em{font:500 11.5px system-ui;color:#7b8794;font-style:normal}",
+    "#sawa-onb .ob-notif span{display:block;font:500 13px/1.5 system-ui;color:#3c4a57;margin-top:2px}",
+    "#sawa-onb .ob-opt{width:100%;display:flex;align-items:center;gap:12px;padding:14px;border-radius:18px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.24);color:#fff;text-align:start;cursor:pointer;transition:transform .15s,background .2s;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}",
+    "#sawa-onb .ob-opt:active{transform:scale(.98);background:rgba(255,255,255,.18)}",
+    "#sawa-onb .ob-opt .ob-fi{width:42px;height:42px;border-radius:14px;background:rgba(255,255,255,.18)}",
+    "#sawa-onb .ob-opt .ob-fi svg{width:21px;height:21px}",
+    "#sawa-onb .ob-opt b{display:block;font:800 15px system-ui}",
+    "#sawa-onb .ob-opt small{display:block;font:500 12.5px/1.5 system-ui;color:rgba(255,255,255,.72);margin-top:2px}",
+    "#sawa-onb .ob-opt .ob-txt{flex:1}",
+    "#sawa-onb .ob-opt .ob-fwd svg{width:18px;height:18px;opacity:.7}",
+    "#sawa-onb .ob-opts{display:flex;flex-direction:column;gap:10px;width:100%;margin-top:24px}",
+    "@keyframes ob-in{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}",
+    "@keyframes ob-fill{from{width:0}to{width:100%}}",
+    "@keyframes ob-float{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(24px,30px) scale(1.12)}}",
+    "@keyframes ob-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}",
+    "@keyframes ob-ring{0%{transform:scale(.92);opacity:.9}100%{transform:scale(1.18);opacity:0}}",
+    "@keyframes ob-ring-bell{0%,60%,100%{transform:rotate(0)}65%{transform:rotate(14deg)}72%{transform:rotate(-12deg)}79%{transform:rotate(8deg)}86%{transform:rotate(-5deg)}}",
+    "@keyframes ob-drop{from{opacity:0;transform:translateY(-22px) scale(.96)}to{opacity:1;transform:none}}",
+    "@media (max-height:640px){#sawa-onb .ob-tile{width:76px;height:76px;border-radius:24px}#sawa-onb .ob-tile svg{width:36px;height:36px}#sawa-onb .ob-h{font-size:23px;margin-top:16px}#sawa-onb .ob-logo{width:88px;height:88px;border-radius:26px}#sawa-onb .ob-feats{margin-top:18px}}",
+    "@media (prefers-reduced-motion:reduce){#sawa-onb *,#sawa-onb *::before{animation:none!important;transition:none!important}}"
+  ].join("\n");
+  function onbCss() {
+    if (document.getElementById("sawa-onb-css")) return;
+    var s = document.createElement("style"); s.id = "sawa-onb-css"; s.textContent = ONB_CSS;
+    (document.head || document.body).appendChild(s);
+  }
+  function oi(name) { var s = mk("span"); s.style.display = "contents"; s.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ONB_ICON[name] || "") + "</svg>"; return s; }
+  function oc(tag, cls, text) { var e = mk(tag, "", text); e.className = cls; return e; }
+  function arNum(n) { return isAr() ? String(n).replace(/\d/g, function (d) { return "٠١٢٣٤٥٦٧٨٩"[d]; }) : String(n); }
   function onbStart() {
     if (onb || !document.body) return;
-    var el = mk("div", "position:fixed;inset:0;z-index:2147483000;background:linear-gradient(170deg,#2F80C8 0%,#1d5f9e 55%,#174a7c 100%);color:#fff;display:flex;flex-direction:column;font-family:system-ui;overflow-y:auto");
-    el.id = "sawa-onb"; el.dir = isAr() ? "rtl" : "ltr";
+    onbCss();
+    var el = mk("div"); el.id = "sawa-onb"; el.dir = isAr() ? "rtl" : "ltr";
+    el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); el.setAttribute("aria-label", L("البدء في سوا", "Getting started with Sawa"));
     document.body.appendChild(el);
     onb = { el: el, step: null, timer: null };
     onbGo(lsGet("sawa_onb_step", "welcome"));
   }
+  function onbBackOf(step) {
+    if (step === "email") return "login";
+    if (step === "name") { var a = authNow(); return a && !a.anon ? null : "login"; }
+    if (step === "code") return "name";
+    if (step === "notify") return "code";
+    if (step === "find") return pushState() === "default" ? "notify" : "code";
+    return null;
+  }
   function onbFrame(step) {
     var el = onb.el; el.innerHTML = "";
     if (onb.timer) { clearInterval(onb.timer); onb.timer = null; }
-    var i = ONB_STEPS.indexOf(step);
-    var top = mk("div", "display:flex;justify-content:center;gap:6px;padding:calc(env(safe-area-inset-top,0px) + 18px) 0 4px;min-height:10px");
-    if (i >= 0) ONB_STEPS.forEach(function (_, k) { top.appendChild(mk("div", "height:6px;border-radius:3px;background:" + (k <= i ? "#fff" : "rgba(255,255,255,.3)") + ";width:" + (k === i ? "22px" : "6px"))); });
+    var bg = oc("div", "ob-bg"); ["ob-b1", "ob-b2", "ob-b3"].forEach(function (c) { bg.appendChild(oc("div", "ob-blob " + c)); }); el.appendChild(bg);
+    var i = ONB_STEPS.indexOf(step === "email" ? "login" : step);
+    var top = oc("div", "ob-top");
+    if (i >= 0) {
+      var prev = onbBackOf(step);
+      var bk = oc("button", "ob-back" + (prev ? "" : " ob-hide")); bk.type = "button"; bk.setAttribute("aria-label", L("رجوع", "Back")); bk.appendChild(oi("back"));
+      if (prev) bk.onclick = function () { onbGo(prev); };
+      var bar = oc("div", "ob-bar"); bar.setAttribute("role", "progressbar"); bar.setAttribute("aria-valuemin", "1"); bar.setAttribute("aria-valuemax", String(ONB_STEPS.length)); bar.setAttribute("aria-valuenow", String(i + 1));
+      ONB_STEPS.forEach(function (_, k) { var sg = oc("div", "ob-seg" + (k < i ? " done" : k === i ? " cur" : "")); sg.appendChild(mk("i")); bar.appendChild(sg); });
+      top.appendChild(bk); top.appendChild(bar); top.appendChild(oc("div", "ob-count", arNum(i + 1) + "/" + arNum(ONB_STEPS.length)));
+    }
     el.appendChild(top);
-    var body = mk("div", "flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:12px 24px;max-width:460px;width:100%;box-sizing:border-box;margin:0 auto");
-    var foot = mk("div", "padding:12px 20px calc(env(safe-area-inset-bottom,0px) + 22px);max-width:460px;width:100%;box-sizing:border-box;margin:0 auto;display:flex;flex-direction:column;gap:10px");
+    var body = oc("div", "ob-body"), foot = oc("div", "ob-foot");
     el.appendChild(body); el.appendChild(foot);
+    try { el.scrollTop = 0; } catch (e) {}
     return { body: body, foot: foot };
   }
-  function bigBtn(text, kind) {
-    var css = kind === "white" ? "background:#fff;color:#1d5f9e;border:0" : kind === "link" ? "background:transparent;color:rgba(255,255,255,.85);border:0;font-weight:700" : "background:rgba(255,255,255,.14);color:#fff;border:1.5px solid rgba(255,255,255,.35)";
-    return mk("button", css + ";border-radius:14px;padding:14px;font:800 15px system-ui;width:100%;cursor:pointer", text);
+  function bigBtn(text, kind, icon) {
+    var b = oc("button", "ob-btn " + (kind === "white" ? "ob-primary" : kind === "link" ? "ob-link" : "ob-glass")); b.type = "button";
+    if (icon) b.appendChild(oi(icon));
+    b.appendChild(mk("span", "", text));
+    return b;
   }
-  function hTitle(t) { return mk("div", "font:800 24px/1.4 system-ui;margin:10px 0 6px", t); }
-  function hSub(t) { return mk("div", "font:500 15px/1.8 system-ui;color:rgba(255,255,255,.85)", t); }
+  function btnText(b, t) { var s = b.querySelector("span:last-child"); if (s && s.parentNode === b) s.textContent = t; else b.textContent = t; }
+  function hTitle(t) { return oc("div", "ob-h", t); }
+  function hSub(t) { return oc("div", "ob-p", t); }
+  function oTile(icon, extra) { var t = oc("div", "ob-tile" + (extra ? " " + extra : "")); t.appendChild(oi(icon)); return t; }
+  function oOpt(icon, title, sub) {
+    var o = oc("button", "ob-opt"); o.type = "button";
+    var fi = oc("span", "ob-fi"); fi.appendChild(oi(icon)); o.appendChild(fi);
+    var tx = oc("span", "ob-txt"); tx.appendChild(mk("b", "", title)); tx.appendChild(mk("small", "", sub)); o.appendChild(tx);
+    var fw = oc("span", "ob-fwd"); fw.appendChild(oi("chev")); o.appendChild(fw);
+    return o;
+  }
+  function initials(nm) {
+    var w = String(nm || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+    if (!w.length) return "";
+    var a = Array.from(w[0])[0] || "", z = w.length > 1 ? (Array.from(w[w.length - 1])[0] || "") : "";
+    return z ? a + (/[\u0600-\u06FF]/.test(a + z) ? "\u200C" : "") + z : a;   // حرفان عربيّان منفصلان لا متّصلان
+  }
   function onbGo(step) {
     if (!onb) return;
     onb.step = step; lsSet("sawa_onb_step", step);
     var f = onbFrame(step), b = f.body, ft = f.foot;
     if (step === "welcome") {
-      var logo = mk("img", "width:96px;height:96px;border-radius:24px;box-shadow:0 10px 30px rgba(0,0,0,.25)"); logo.src = "./icons/icon-192.png"; logo.alt = "سوا";
+      var logo = mk("img"); logo.className = "ob-logo"; logo.src = "./icons/icon-192.png"; logo.alt = "سوا";
       b.appendChild(logo);
-      b.appendChild(hTitle(L("أهلاً بك في سوا", "Welcome to Sawa")));
-      b.appendChild(hSub(L("محادثات ومكالمات، غرف اجتماعات، وصلة رحم — في تطبيقٍ واحد.", "Chats and calls, meeting rooms, and family ties — in one app.")));
-      var st = bigBtn(L("ابدأ", "Get started"), "white"); st.onclick = function () { onbGo("login"); }; ft.appendChild(st);
+      var h = hTitle(L("أهلاً بك في ", "Welcome to ")); h.appendChild(oc("span", "ob-grad", L("سوا", "Sawa"))); b.appendChild(h);
+      b.appendChild(hSub(L("محادثاتك ومكالماتك وغرف اجتماعاتك — في تطبيقٍ واحدٍ بسيط.", "Your chats, calls and meeting rooms — in one simple app.")));
+      var feats = oc("div", "ob-feats");
+      [["chat", L("محادثات", "Chats"), L("نصّ وصوت وصور", "Text, voice, photos")],
+       ["phone", L("مكالمات", "Calls"), L("صوت وفيديو", "Voice & video")],
+       ["room", L("غرف", "Rooms"), L("اجتماعات فوريّة ومجدولة", "Live & scheduled")],
+       ["hash", L("رمزٌ خاصّ", "Private code"), L("تواصل دون رقم هاتف", "No phone number needed")]].forEach(function (x) {
+        var c = oc("div", "ob-feat"), fi = oc("span", "ob-fi"); fi.appendChild(oi(x[0])); c.appendChild(fi);
+        var t = mk("div"); t.appendChild(mk("b", "", x[1])); t.appendChild(mk("small", "", x[2])); c.appendChild(t); feats.appendChild(c);
+      });
+      b.appendChild(feats);
+      var st = bigBtn(L("ابدأ", "Get started"), "white"); st.appendChild(oc("span", "ob-fwd", "")).appendChild(oi("arrow"));
+      st.onclick = function () { onbGo("login"); }; ft.appendChild(st);
       return;
     }
     if (step === "login") {
       var a = authNow();
       if (a && !a.anon) return onbDeleteMode ? onbDone() : onbGo("name");
-      b.appendChild(mk("div", "font-size:54px", "🔐"));
+      b.appendChild(oTile("lock"));
       b.appendChild(hTitle(L("أنشئ حسابك", "Create your account")));
       b.appendChild(hSub(L("حسابك يحفظ محادثاتك وجهات اتّصالك، وتدخل به من أيّ جهاز.", "Your account keeps your chats and contacts, on any device.")));
+      if (onbDeleteMode) { b.appendChild(mk("div", "font:700 14px/1.8 system-ui;color:#ffe08a;margin-top:14px", L("لحذف حسابك: ادخل بالحساب نفسه الذي تريد حذفه.", "To delete your account, sign in with that account."))); }
+      else {
+        var perks = oc("div", "ob-perks");
+        [["cloud", L("محادثاتك محفوظة ولا تضيع بتغيير الهاتف", "Your chats are kept, even if you change phones")],
+         ["devices", L("ادخل من هاتفك أو حاسوبك", "Use it on your phone or computer")]].forEach(function (x) {
+          var r = oc("div", "ob-perk"), ic = mk("span"); ic.appendChild(oi(x[0])); r.appendChild(ic); r.appendChild(mk("div", "", x[1])); perks.appendChild(r);
+        });
+        b.appendChild(perks);
+      }
       var g = bigBtn(L("المتابعة بحساب Google", "Continue with Google"), "white");
-      g.insertBefore(mk("span", "font:900 16px system-ui;color:#4285F4;margin-inline-end:8px", "G"), g.firstChild);
-      var em = bigBtn(L("✉️  المتابعة بالبريد الإلكتروني", "✉️  Continue with email"));
+      var gi = mk("span"); gi.style.cssText = "display:grid;place-items:center"; gi.innerHTML = ONB_G; g.insertBefore(gi, g.firstChild);
+      var em = bigBtn(L("المتابعة بالبريد الإلكتروني", "Continue with email"), null, "mail");
       var gu = bigBtn(L("جرّب بدون حساب", "Try without an account"), "link");
       ft.appendChild(g); ft.appendChild(em);
-      if (onbDeleteMode) { b.appendChild(mk("div", "font:700 14px/1.8 system-ui;color:#ffe08a;margin-top:12px", L("لحذف حسابك: ادخل بالحساب نفسه الذي تريد حذفه.", "To delete your account, sign in with that account."))); }
-      else ft.appendChild(gu);
-      var legal = mk("div", "font:500 12px/1.8 system-ui;color:rgba(255,255,255,.75);text-align:center;margin-top:2px");
+      if (!onbDeleteMode) { ft.appendChild(oc("div", "ob-or", L("أو", "or"))); ft.appendChild(gu); }
+      var legal = oc("div", "ob-legal");
       legal.appendChild(document.createTextNode(L("بالمتابعة توافق على ", "By continuing you agree to the ")));
-      var lt = mk("a", "color:#fff;font-weight:700", L("شروط الاستخدام", "Terms")); lt.href = "/terms"; lt.target = "_blank"; lt.rel = "noopener";
-      var lp = mk("a", "color:#fff;font-weight:700", L("سياسة الخصوصيّة", "Privacy Policy")); lp.href = "/privacy"; lp.target = "_blank"; lp.rel = "noopener";
+      var lt = mk("a", "", L("شروط الاستخدام", "Terms")); lt.href = "/terms"; lt.target = "_blank"; lt.rel = "noopener";
+      var lp = mk("a", "", L("سياسة الخصوصيّة", "Privacy Policy")); lp.href = "/privacy"; lp.target = "_blank"; lp.rel = "noopener";
       legal.appendChild(lt); legal.appendChild(document.createTextNode(L(" و", " and "))); legal.appendChild(lp);
       ft.appendChild(legal);
       g.onclick = function () {
@@ -2019,34 +2200,46 @@
       return;
     }
     if (step === "email") {
-      var card = mk("div", "background:#fff;color:#1A1A2E;border-radius:20px;padding:16px;width:100%;box-sizing:border-box;text-align:start");
+      var card = oc("div", "ob-card");
       card.dir = isAr() ? "rtl" : "ltr";
-      card.appendChild(mk("div", "font:800 18px system-ui;text-align:center;margin-bottom:4px", L("البريد الإلكتروني", "Email")));
+      var ch = oc("div", "ob-card-h"), cic = mk("span"); cic.appendChild(oi("mail")); ch.appendChild(cic);
+      ch.appendChild(mk("b", "", L("البريد الإلكتروني", "Email")));
+      ch.appendChild(mk("small", "", L("أنشئ حساباً جديداً أو ادخل بحسابك الحاليّ.", "Create a new account or use your existing one.")));
+      card.appendChild(ch);
       b.appendChild(card);
       var form = emailForm(card, function () { if (onbDeleteMode) onbDone(); else onbGo("name"); });
-      var back = bigBtn(L("رجوع", "Back"), "link"); back.onclick = function () { onbGo("login"); }; ft.appendChild(back);
+      if (form.go) { form.go.style.background = "linear-gradient(135deg,#3d93dc,#1d5f9e)"; form.go.style.padding = "14px"; form.go.style.borderRadius = "14px"; form.go.style.fontSize = "15px"; form.go.style.boxShadow = "0 10px 22px -10px rgba(29,95,158,.8)"; }
       setTimeout(form.focus, 80);
       return;
     }
     if (step === "name") {
-      b.appendChild(mk("div", "font-size:54px", "👤"));
+      var av = oc("div", "ob-av"); b.appendChild(av);
       b.appendChild(hTitle(L("ما اسمك؟", "What's your name?")));
       b.appendChild(hSub(L("يظهر لمن تتواصل معهم.", "Shown to the people you talk to.")));
-      var inp = mk("input", "width:100%;box-sizing:border-box;margin-top:18px;border:0;border-radius:14px;padding:14px;font:700 18px system-ui;text-align:center;outline:none;color:#1A1A2E;background:#fff;caret-color:#2F80C8");
-      inp.placeholder = L("مثال: خالد علي", "e.g. Khalid Ali"); inp.maxLength = 40; inp.autocomplete = "name";
-      var err = mk("div", "font:700 13px system-ui;color:#ffd7d7;min-height:20px;margin-top:8px");
+      var inp = oc("input", "ob-input");
+      inp.placeholder = L("مثال: خالد علي", "e.g. Khalid Ali"); inp.maxLength = 40; inp.autocomplete = "name"; inp.enterKeyHint = "next";
+      inp.setAttribute("aria-label", L("اسمك", "Your name"));
+      var err = oc("div", "ob-err"); err.setAttribute("aria-live", "polite");
       b.appendChild(inp); b.appendChild(err);
-      var fillName = function () { if (inp.value) return; var a2 = authNow(); inp.value = (state.me && state.me.name) || (state.me && state.me.googleName) || (a2 && a2.name) || ""; };
-      fillName(); whenReady(function () { refresh().then(fillName); });
+      var lastIni = null;
+      var paintAv = function () {
+        var ini = initials(inp.value);
+        if (ini === lastIni) return; lastIni = ini;
+        av.innerHTML = ""; if (ini) av.textContent = ini; else av.appendChild(oi("user"));
+        av.classList.add("pop"); setTimeout(function () { av.classList.remove("pop"); }, 180);
+      };
+      var fillName = function () { if (inp.value) return; var a2 = authNow(); inp.value = (state.me && state.me.name) || (state.me && state.me.googleName) || (a2 && a2.name) || ""; paintAv(); };
+      paintAv(); fillName(); whenReady(function () { refresh().then(fillName); });
+      inp.oninput = function () { err.textContent = ""; paintAv(); };
       var nx = bigBtn(L("التالي", "Next"), "white"); ft.appendChild(nx);
       nx.onclick = function () {
         var nm = inp.value.replace(/\s+/g, " ").trim();
         if (nm.length < 2) { err.textContent = L("اكتب اسماً من حرفين على الأقلّ", "At least 2 letters"); return; }
-        nx.disabled = true; nx.textContent = "…";
+        nx.disabled = true; btnText(nx, "…");
         whenReady(function () {
           var p = nm === ((state.me && state.me.name) || "") ? Promise.resolve() : saveProfile({ name: nm });
           p.then(function () { lsSet("sawa_name_asked", Date.now()); onbGo("code"); })
-            .catch(function (e) { err.textContent = codeErr(e); nx.disabled = false; nx.textContent = L("التالي", "Next"); });
+            .catch(function (e) { err.textContent = codeErr(e); nx.disabled = false; btnText(nx, L("التالي", "Next")); });
         });
       };
       inp.onkeydown = function (e) { if (e.key === "Enter") nx.onclick(); };
@@ -2054,20 +2247,25 @@
       return;
     }
     if (step === "code") {
-      b.appendChild(mk("div", "font-size:54px", "🔢"));
+      b.appendChild(oTile("hash"));
       b.appendChild(hTitle(L("هذا رمزك في سوا", "This is your Sawa code")));
-      var big = mk("div", "font:800 32px/1.3 ui-monospace,Menlo,monospace;letter-spacing:2px;direction:ltr;background:#fff;color:#1d5f9e;border-radius:18px;padding:16px 10px;margin:12px 0;width:100%;box-sizing:border-box", "… … …");
-      b.appendChild(big);
+      var box = oc("div", "ob-code"); box.appendChild(mk("small", "", L("رمزك", "YOUR CODE")));
+      var big = mk("div", "", "… … …"); box.appendChild(big);
+      b.appendChild(box);
       b.appendChild(hSub(L("أعطه لمن تريد أن يتواصل معك. يرى اسمك فقط، ويرسل لك طلباً لا يُقبَل إلا بموافقتك.", "Give it to people you want to hear from. They see your name only and send a request you approve.")));
-      var row = mk("div", "display:flex;gap:10px;width:100%;margin-top:14px");
-      var cp = bigBtn(L("نسخ", "Copy")), sh = bigBtn(L("مشاركة", "Share"));
+      var row = oc("div", "ob-row");
+      var cp = bigBtn(L("نسخ", "Copy"), null, "copy"), sh = bigBtn(L("مشاركة", "Share"), null, "share");
       row.appendChild(cp); row.appendChild(sh); b.appendChild(row);
       var nx2 = bigBtn(L("التالي", "Next"), "white"); ft.appendChild(nx2);
       nx2.onclick = function () { onbGo("notify"); };
       whenReady(function () {
         loadCode().then(function (r) {
           big.textContent = fmtCode(r.code);
-          cp.onclick = function () { copyText(fmtCode(r.code)); };
+          cp.onclick = function () {
+            copyText(fmtCode(r.code));
+            cp.innerHTML = ""; cp.appendChild(oi("check")); cp.appendChild(mk("span", "", L("نُسخ", "Copied")));
+            setTimeout(function () { cp.innerHTML = ""; cp.appendChild(oi("copy")); cp.appendChild(mk("span", "", L("نسخ", "Copy"))); }, 1600);
+          };
           sh.onclick = function () { shareText(codeShareText(r.code)); };
         }).catch(function (e) { big.textContent = "—"; toast(codeErr(e)); });
       });
@@ -2075,10 +2273,15 @@
     }
     if (step === "notify") {
       if (pushState() !== "default") return onbGo("find");
-      b.appendChild(mk("div", "font-size:54px", "🔔"));
+      b.appendChild(oTile("bell", "ob-ring"));
       b.appendChild(hTitle(L("لا تفوّتك رسالةٌ أو مكالمة", "Don't miss a message or call")));
       b.appendChild(hSub(L("نُعلمك حين تصلك رسالة أو مكالمة أو طلب تواصل — حتّى والتطبيق مغلق.", "We'll tell you about messages, calls and requests — even when the app is closed.")));
-      var on = bigBtn(L("تفعيل الإشعارات", "Turn on notifications"), "white");
+      var nt = oc("div", "ob-notif"); nt.setAttribute("aria-hidden", "true");
+      var ni = mk("img"); ni.src = "./icons/icon-192.png"; ni.alt = ""; nt.appendChild(ni);
+      var nb = mk("div", "flex:1;min-width:0"), nh = mk("b", "", L("سوا", "Sawa")); nh.appendChild(mk("em", "", L("الآن", "now")));
+      nb.appendChild(nh); nb.appendChild(mk("span", "", L("سارة: وصلتُ، أين أنت؟", "Sara: I'm here, where are you?"))); nt.appendChild(nb);
+      b.appendChild(nt);
+      var on = bigBtn(L("تفعيل الإشعارات", "Turn on notifications"), "white", "bell");
       var later = bigBtn(L("ليس الآن", "Not now"), "link");
       ft.appendChild(on); ft.appendChild(later);
       on.onclick = function () { on.disabled = true; enablePush().then(function () { onbGo("find"); }); };
@@ -2086,13 +2289,15 @@
       return;
     }
     if (step === "find") {
-      b.appendChild(mk("div", "font-size:54px", "🤝"));
+      b.appendChild(oTile("users"));
       b.appendChild(hTitle(L("تواصل مع من تعرف", "Connect with people you know")));
       b.appendChild(hSub(L("أدخل رمز صديقٍ أو زميل، أو أرسل له رمزك ليضيفك.", "Enter a friend's code, or send them yours.")));
-      var fc = bigBtn(L("🔢  أدخل رمز شخص", "🔢  Enter someone's code"));
-      var inv = bigBtn(L("📤  أرسل رمزي لصديق", "📤  Send my code to a friend"));
-      var done = bigBtn(L("ابدأ استخدام سوا", "Start using Sawa"), "white");
-      ft.appendChild(fc); ft.appendChild(inv); ft.appendChild(done);
+      var opts = oc("div", "ob-opts");
+      var fc = oOpt("hash", L("أدخل رمز شخص", "Enter someone's code"), L("لديك رمز صديق؟ أضفه من هنا", "Got a friend's code? Add it here"));
+      var inv = oOpt("send", L("أرسل رمزي لصديق", "Send my code to a friend"), L("عبر واتساب أو أيّ تطبيق", "Via WhatsApp or any app"));
+      opts.appendChild(fc); opts.appendChild(inv); b.appendChild(opts);
+      var done = bigBtn(L("ابدأ استخدام سوا", "Start using Sawa"), "white"); done.appendChild(oc("span", "ob-fwd", "")).appendChild(oi("arrow"));
+      ft.appendChild(done);
       fc.onclick = function () { findSheet(); };
       inv.onclick = function () { loadCode().then(function (r) { shareText(codeShareText(r.code)); }, function (e) { toast(codeErr(e)); }); };
       done.onclick = onbDone;
