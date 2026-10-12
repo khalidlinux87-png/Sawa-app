@@ -1,0 +1,64 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function uid()      { return request.auth.uid; }
+    function isMember(g) {
+      return signedIn() &&
+        exists(/databases/$(db)/documents/groups/$(g)/members/$(uid()));
+    }
+    function shortStr(d, k, n) { return !(k in d) || (d[k] is string && d[k].size() <= n); }
+    function inChat(cid) {
+      return signedIn() && uid() in get(/databases/$(db)/documents/chats/$(cid)).data.members;
+    }
+
+    match /accounts/{u} {
+      allow read:  if signedIn() && uid() == u;
+      allow write: if false;
+    }
+
+    match /groups/{g} {
+      allow read:  if isMember(g);
+      allow write: if false;
+      match /{document=**} {
+        allow read:  if isMember(g);
+        allow write: if false;
+      }
+    }
+
+    match /chats/{cid} {
+      allow read:  if signedIn() && uid() in resource.data.members;
+      allow write: if false;
+      match /{document=**} {
+        allow read:  if inChat(cid);
+        allow write: if false;
+      }
+      match /media/{mid} {
+        allow create: if inChat(cid) && request.resource.data.by == uid()
+          && request.resource.data.keys().hasOnly(['by', 'mime', 'size', 'name', 'n', 'ts', 'done'])
+          && request.resource.data.done == false
+          && request.resource.data.size is int && request.resource.data.size <= 16777216
+          && request.resource.data.n is int && request.resource.data.n >= 1 && request.resource.data.n <= 33
+          && request.resource.data.mime is string && request.resource.data.mime.size() <= 100
+          && request.resource.data.name is string && request.resource.data.name.size() <= 200;
+        allow update: if signedIn() && resource.data.by == uid()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['done'])
+          && request.resource.data.done == true;
+        match /c/{i} {
+          allow create: if inChat(cid)
+            && get(/databases/$(db)/documents/chats/$(cid)/media/$(mid)).data.by == uid()
+            && get(/databases/$(db)/documents/chats/$(cid)/media/$(mid)).data.done == false
+            && i.matches('^[0-9]{1,2}$')
+            && int(i) < get(/databases/$(db)/documents/chats/$(cid)/media/$(mid)).data.n
+            && request.resource.data.keys().hasOnly(['d'])
+            && request.resource.data.d is string && request.resource.data.d.size() <= 750000;
+        }
+      }
+    }
+
+    match /invites/{token} {
+      allow read, write: if false;
+    }
+  }
+}

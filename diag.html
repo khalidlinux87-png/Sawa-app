@@ -15,6 +15,14 @@
   .t { font-weight:700; } .d { color:var(--muted); font-size:12px; margin-top:2px; white-space:pre-wrap; word-break:break-word; direction:auto; }
   button { width:100%; padding:12px; border:0; border-radius:12px; background:#2e7d5b; color:#fff; font:800 14px system-ui; margin-top:6px; }
   button.sec { background:var(--line); }
+  table.st { width:100%; border-collapse:collapse; font-size:12px; margin-top:6px; }
+  table.st th, table.st td { border-bottom:1px solid var(--line); padding:5px 4px; text-align:center; }
+  table.st th { color:var(--muted); font-weight:700; }
+  .kpi { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin:6px 0; }
+  .kpi div { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; }
+  .kpi b { display:block; font-size:20px; } .kpi span { color:var(--muted); font-size:12px; }
+  .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:3px; } .bar i { display:block; height:100%; background:var(--ok); }
+  a { color:#93c5fd; }
 </style>
 </head>
 <body>
@@ -26,6 +34,8 @@
   <div id="pushOut" class="d" style="margin:6px 2px 4px"></div>
   <button id="msg" style="background:#0e7490">📨 اختبار سرعة الرسائل (يرسل رسالة فحص إلى «رسائلي المحفوظة»)</button>
   <div id="msgOut" class="d" style="margin:6px 2px 4px"></div>
+  <button id="stats" style="background:#7c3aed">📊 لوحة الاستهلاك (لمدير التطبيق)</button>
+  <div id="statsOut" style="margin:6px 0 4px"></div>
   <button id="copy">نسخ النتائج</button>
   <button id="again" class="sec">إعادة الفحص</button>
   <button id="back" class="sec">↩ رجوع إلى سوا</button>
@@ -208,6 +218,41 @@
         });
       });
     }).catch(function (e) { say("❌ " + (e && (e.code || "") + " " + (e.message || e))); });
+  };
+  // لوحة الاستهلاك — الـWorker يجيب للمدير وحده (السرّ ADMIN_EMAIL)
+  document.getElementById("stats").onclick = function () {
+    var so = document.getElementById("statsOut"); so.textContent = "…";
+    var u = firebase.auth().currentUser; if (!u) { so.textContent = "لا حساب في هذا المتصفّح"; return; }
+    u.getIdToken().then(function (tok) { return worker(tok, "admin.stats"); }).then(function (a) {
+      var j = a.j || {};
+      if (!j.ok) { so.textContent = "❌ " + (a.err || j.error || a.status); return; }
+      if (!j.admin) { so.textContent = "هذه اللوحة لمدير التطبيق فقط (يُضبط بريده في سرّ الـWorker ‏ADMIN_EMAIL)."; return; }
+      var n = function (v) { return v == null ? "—" : Number(v).toLocaleString("ar"); };
+      var sum = function (o) { var t = 0; for (var k in (o || {})) t += Number(o[k]) || 0; return t; };
+      var T = j.totals || {}, html = "";
+      html += '<div class="kpi"><div><b>' + n(T.accounts) + '</b><span>حساب</span></div><div><b>' + n(T.chats) + '</b><span>محادثة</span></div>' +
+              '<div><b>' + n(T.groups) + '</b><span>عائلة</span></div><div><b>' + n(T.purgePending) + '</b><span>حذفٌ قيد الإكمال</span></div></div>';
+      html += '<table class="st"><tr><th>اليوم</th><th>طلبات الخادم</th><th>رسائل</th><th>مكالمات</th><th>إشعارات</th><th>أخطاء</th><th>TURN</th></tr>';
+      (j.days || []).forEach(function (d) {
+        var v = d.v || {}, ops = v.ops || {}, req = Number(v.req) || 0, pct = Math.min(100, Math.round(req / 1000));
+        var calls = (Number(ops["call.ring"]) || 0) + (Number(ops["gcall.start"]) || 0);
+        var turn = v.turn || {};
+        html += "<tr><td>" + d.day.slice(6) + "/" + d.day.slice(4, 6) + "</td><td>" + n(req) + '<div class="bar"><i style="width:' + pct + '%;background:' + (pct > 80 ? "var(--bad)" : pct > 50 ? "var(--warn)" : "var(--ok)") + '"></i></div></td><td>' +
+          n(ops["chat.send"] || 0) + "</td><td>" + n(calls) + "</td><td>" + n(v.push || 0) + "</td><td>" + n(sum(v.err)) + "</td><td>" + n(sum(turn)) + "</td></tr>";
+      });
+      html += "</table>";
+      var today = (j.days || [])[0];
+      if (today && today.v && today.v.ops) {
+        var top = Object.keys(today.v.ops).map(function (k) { return [k, Number(today.v.ops[k]) || 0]; }).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 8);
+        html += '<div class="d" style="margin-top:8px">أكثر العمليّات اليوم: ' + top.map(function (x) { return x[0] + " " + n(x[1]); }).join(" · ") + "</div>";
+      }
+      html += '<div class="d" style="margin-top:8px">الشريط = نسبة طلبات اليوم من حدّ Cloudflare المجّانيّ (١٠٠٬٠٠٠ يوميّاً). العدّادات تقريبيّة (تُجمَع على دفعات).<br>' +
+        'قراءات/كتابات Firestore والتخزين: <a href="https://console.firebase.google.com/project/sawa-test-9770f/usage" target="_blank">لوحة Firebase</a> · ' +
+        'طلبات الـWorker: <a href="https://dash.cloudflare.com/?to=/:account/workers-and-pages" target="_blank">Cloudflare</a> · ' +
+        'استهلاك TURN: <a href="https://dash.cloudflare.com/?to=/:account/calls" target="_blank">Realtime</a></div>';
+      so.innerHTML = html;
+      lines.push("📊 حسابات " + T.accounts + " · محادثات " + T.chats + " · عائلات " + T.groups + (today ? " · طلبات اليوم " + (today.v.req || 0) : ""));
+    });
   };
   run();
 })();
