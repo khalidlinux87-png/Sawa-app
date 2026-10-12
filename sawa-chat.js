@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c10c";
+  var VERSION = "c11";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1644,9 +1644,56 @@
     return true;
   }
 
+  // ---------- حذف الحساب (شرط Google Play) ----------
+  function wipeLocal() {
+    var done = function () {
+      try { localStorage.clear(); } catch (e) {}
+      try { sessionStorage.clear(); } catch (e) {}
+      try { if (global.indexedDB) indexedDB.deleteDatabase("firebaseLocalStorageDb"); } catch (e) {}
+      setTimeout(function () { try { global.location.replace(global.location.pathname); } catch (e) {} }, 700);
+    };
+    try { firebase.auth().signOut().then(done, done); } catch (e) { done(); }
+  }
+  function deleteAccountSheet() {
+    if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
+    var s = sheet(L("حذف الحساب نهائيّاً", "Delete account permanently"));
+    var a = authNow(), me = state.me || {};
+    s.box.appendChild(note((me.name || L("حسابك", "Your account")) + (a && a.email ? " · " + a.email : "") + (myCode() ? " · " + fmtCode(myCode()) : ""), "#1A1A2E", "#f3f7fb"));
+    var ul = mk("ul", "font:500 13.5px/1.9 system-ui;color:#3b4652;padding-inline-start:20px;margin:8px 0");
+    [L("يُحذف: اسمك ورقمك ورمزك في سوا، وجهات اتّصالك وطلبات التواصل، ورسائلك المحفوظة، وإعداداتك، وأجهزتك المسجّلة للإشعارات.", "Deleted: your name, number and code, contacts and requests, saved messages, settings and notification devices."),
+     L("تخرج من كلّ المحادثات والمجموعات. رسائلك عند الآخرين تبقى عندهم باسم «حساب محذوف».", "You leave all chats and groups. Messages others received stay with them under «Deleted account»."),
+     L("العائلات التي تملكها: تنتقل ملكيّتها لأقدم محرّرٍ فيها، وتُحذف كاملةً إن كنت وحدك فيها (خلال دقائق).", "Families you own pass to their senior editor, or are fully deleted if you're the only member (within minutes)."),
+     L("تُمسح بيانات سوا من هذا الجهاز أيضاً. لا يمكن التراجع.", "Sawa data on this device is wiped too. This can't be undone.")
+    ].forEach(function (t) { ul.appendChild(mk("li", "", t)); });
+    s.box.appendChild(ul);
+    s.box.appendChild(mk("div", "font:700 13px system-ui;color:#5b6b7c;margin:6px 2px", L("للتأكيد اكتب: حذف", "To confirm, type: DELETE")));
+    var inp = mk("input", "width:100%;box-sizing:border-box;border:1.5px solid #dfe5ec;border-radius:12px;padding:12px;font:700 16px system-ui;text-align:center;outline:none");
+    inp.autocomplete = "off"; s.box.appendChild(inp);
+    var go = mkBtn(L("حذف حسابي نهائيّاً", "Delete my account"), "danger"); go.style.marginTop = "10px"; go.disabled = true; go.style.opacity = ".5";
+    var cancel = mkBtn(L("إلغاء", "Cancel")); cancel.style.marginTop = "8px";
+    s.box.appendChild(go); s.box.appendChild(cancel);
+    var ok = function () { var v = inp.value.trim(); return v === "حذف" || v.toUpperCase() === "DELETE"; };
+    inp.oninput = function () { go.disabled = !ok(); go.style.opacity = ok() ? "1" : ".5"; };
+    cancel.onclick = s.close;
+    go.onclick = function () {
+      if (!ok()) return;
+      go.disabled = true; cancel.disabled = true; go.textContent = L("جارٍ الحذف…", "Deleting…");
+      call("account.delete", { confirm: "DELETE" }).then(function () {
+        s.box.innerHTML = "";
+        s.box.appendChild(mk("div", "font:800 17px system-ui;text-align:center;margin:18px 0 6px", L("حُذف حسابك ✓", "Your account was deleted ✓")));
+        s.box.appendChild(note(L("شكراً لاستعمالك سوا. يُعاد تشغيل التطبيق الآن.", "Thanks for using Sawa. Restarting…")));
+        wipeLocal();
+      }).catch(function (e) {
+        go.disabled = false; cancel.disabled = false; go.textContent = L("حذف حسابي نهائيّاً", "Delete my account");
+        toast(L("تعذّر الحذف: ", "Couldn't delete: ") + codeErr(e));
+      });
+    };
+    return true;
+  }
+
   // ---------- شاشات البداية (المستخدم الجديد) ----------
   //  ترحيب ← الدخول (Google · البريد · بدون حساب) ← الاسم ← رمزك ← الإشعارات ← تواصل مع أحد ← المحادثات
-  var onb = null, pendingCode = null;
+  var onb = null, pendingCode = null, pendingDelete = false, onbDeleteMode = false;
   var ONB_STEPS = ["login", "name", "code", "notify", "find"];
   function onbActive() { return !!onb; }
   function onbNeeded() {
@@ -1697,7 +1744,7 @@
     }
     if (step === "login") {
       var a = authNow();
-      if (a && !a.anon) return onbGo("name");
+      if (a && !a.anon) return onbDeleteMode ? onbDone() : onbGo("name");
       b.appendChild(mk("div", "font-size:54px", "🔐"));
       b.appendChild(hTitle(L("أنشئ حسابك", "Create your account")));
       b.appendChild(hSub(L("حسابك يحفظ محادثاتك وجهات اتّصالك، وتدخل به من أيّ جهاز.", "Your account keeps your chats and contacts, on any device.")));
@@ -1705,7 +1752,9 @@
       g.insertBefore(mk("span", "font:900 16px system-ui;color:#4285F4;margin-inline-end:8px", "G"), g.firstChild);
       var em = bigBtn(L("✉️  المتابعة بالبريد الإلكتروني", "✉️  Continue with email"));
       var gu = bigBtn(L("جرّب بدون حساب", "Try without an account"), "link");
-      ft.appendChild(g); ft.appendChild(em); ft.appendChild(gu);
+      ft.appendChild(g); ft.appendChild(em);
+      if (onbDeleteMode) { b.appendChild(mk("div", "font:700 14px/1.8 system-ui;color:#ffe08a;margin-top:12px", L("لحذف حسابك: ادخل بالحساب نفسه الذي تريد حذفه.", "To delete your account, sign in with that account."))); }
+      else ft.appendChild(gu);
       g.onclick = function () {
         if (!state.uid || !S() || !S().linkGoogle) { toast(L("جارٍ الاتّصال بالخادم… حاول بعد لحظة", "Connecting… try again in a moment")); return; }
         try { Promise.resolve(S().linkGoogle()).catch(function () {}); } catch (e) {}
@@ -1721,7 +1770,7 @@
         s.box.appendChild(n); s.box.appendChild(y);
       };
       // ربط Google (نافذةً منبثقة أو إعادة توجيه): نلاحظ تغيّر الهويّة ونتقدّم
-      onb.timer = setInterval(function () { var x = authNow(); if (x && !x.anon && onb && onb.step === "login") onbGo("name"); }, 700);
+      onb.timer = setInterval(function () { var x = authNow(); if (x && !x.anon && onb && onb.step === "login") { if (onbDeleteMode) onbDone(); else onbGo("name"); } }, 700);
       return;
     }
     if (step === "email") {
@@ -1729,7 +1778,7 @@
       card.dir = isAr() ? "rtl" : "ltr";
       card.appendChild(mk("div", "font:800 18px system-ui;text-align:center;margin-bottom:4px", L("البريد الإلكتروني", "Email")));
       b.appendChild(card);
-      var form = emailForm(card, function () { onbGo("name"); });
+      var form = emailForm(card, function () { if (onbDeleteMode) onbDone(); else onbGo("name"); });
       var back = bigBtn(L("رجوع", "Back"), "link"); back.onclick = function () { onbGo("login"); }; ft.appendChild(back);
       setTimeout(form.focus, 80);
       return;
@@ -1815,6 +1864,7 @@
     onb = null;
     whenApp(function () { try { if (app.goTab) app.goTab("chats"); } catch (e) {} });
     if (pendingCode) { var c = pendingCode; pendingCode = null; whenReady(function () { findSheet(c); }); }
+    if (pendingDelete) { pendingDelete = false; onbDeleteMode = false; whenReady(function () { setTimeout(deleteAccountSheet, 600); }); }
   }
   // ?code=… (رابط «رمزي») و ?requests=1 (إشعار طلب تواصل)
   function handleCodeParams() {
@@ -1851,6 +1901,15 @@
     cbs.forEach(function (f) { try { f(uid); } catch (e) {} });
   }
   function boot() {
+    // ?delete=1 (رابط «حذف الحساب» لـGoogle Play): جهازٌ جديد ⇒ شاشة الدخول وحدها ثمّ نافذة الحذف
+    try {
+      if (/[?&]delete=1(&|$)/.test(global.location.search)) {
+        var du = new URL(global.location.href); du.searchParams.delete("delete"); global.history.replaceState(null, "", du.pathname + (du.search ? du.search : "") + du.hash);
+        pendingDelete = true;
+        if (onbNeeded()) { onbDeleteMode = true; lsSet("sawa_onb_step", "login"); }
+        else whenReady(function () { setTimeout(function () { if (pendingDelete) { pendingDelete = false; deleteAccountSheet(); } }, 900); });
+      }
+    } catch (e) {}
     try { if (onbNeeded()) onbStart(); } catch (e) { log("onboarding:", e && e.message); }
     handleCodeParams();
     handleContactParam();
@@ -1897,7 +1956,7 @@
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
     _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,
     // C10
-    codeSheet: codeSheet, findSheet: findSheet, requestsSheet: requestsSheet, emailSheet: emailSheet, loadRequests: loadRequests,
+    codeSheet: codeSheet, findSheet: findSheet, requestsSheet: requestsSheet, emailSheet: emailSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet,
     requestCount: function () { return reqs.incoming.length; }, fmtCode: fmtCode, codeValid: codeValid,
     onboarding: function () { return onb ? onb.step : null; }, startOnboarding: function () { try { localStorage.removeItem("sawa_onboarded"); } catch (e) {} onbStart(); },
     _state: state, _onUid: onUid, _tokenFrom: tokenFrom

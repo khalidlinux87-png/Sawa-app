@@ -563,3 +563,17 @@ Workers Free: ١٠٠ ألف طلب/يوم (يتصفّر منتصف الليل UT
   وإعادته لطلب تنقّل ⇒ **ERR_FAILED** بعد أوّل فتح. الإصلاح: مفتاح الصفحة الرئيسيّة `./`، و`clean()` ينسخ أيّ ردٍّ محوَّل،
   والصفحات الأخرى (diag ⇒ /diag) بالشبكة. اختبار: `swt9/pserver.js` (يحاكي Pages) + `ptest.js`. عامل خدمةٍ معطوبٌ مثبَّت لا يتعافى وحده ⇒
   مسح بيانات الموقع يدويّاً مرّة. حزمة الانتقال صارت v204 (`sw.p2fix.js`).
+
+## 🗑 C11 — حذف الحساب (شرط Google Play) (١٢ أكتوبر)
+**الملفّات:** `worker-3.js` (VER `v29-delete`) · `sawa-chat.js` (c11) · `sw.js` (v205) · `app.p2.js` · `delete-account.html` (جديد) · BUILD.md.
+- **`account.delete` {confirm:"DELETE"}:** فوراً — accounts/{uid} وكلّ مجموعاته الفرعيّة، روابط people وطلبات creq/creqout في الاتّجاهين،
+  codes/{code}، الأجهزة، chatprefs، المواعيد scheds (by) ودعوات pinvites، عضويّة العائلات غير المملوكة، المحادثات: يخرج منها
+  (dm/group/family) واسمه فيها «حساب محذوف» والرسائل تبقى عند الآخرين؛ المجموعة التي يبقى فيها وحده ⇒ deleted. RTDB: status/acl/inbox
+  و acl/*/{uid} و chatm/*/{uid}. ثمّ هويّة Firebase Auth (identitytoolkit accounts:delete — أُضيف نطاق identitytoolkit للرمز).
+- **الـCron (الشريحة ٢ — كانت فارغة):** `purgeWork(env, 40)` يكمل `purge/{id}`: family ⇒ نقل الملكيّة (محرّر قبل مشاهد، الأقدم أوّلاً)
+  أو حذف الشجرة كاملةً إن كان وحده (persons/relations/events/changelog/photos/members + fam_ chat) · chat ⇒ المحفوظة: days + media + قطعها.
+  ≤ ٤١ طلباً فرعيّاً لكلّ تشغيل، والمهمّة تبقى حتّى تكتمل.
+- **التطبيق:** «حسابي» ← «حذف حسابي» (أسفل تسجيل الخروج) ⇒ نافذة تشرح ما يُحذف وما يبقى + كتابة «حذف» ⇒ بعد النجاح: تسجيل خروج،
+  مسح localStorage/sessionStorage/IndexedDB، إعادة تشغيل (⇒ شاشات البداية). `?delete=1`: جهازٌ جديد ⇒ شاشة الدخول وحدها ثمّ نافذة الحذف.
+- **رابط Google Play:** https://www.sawaaap.com/delete-account (صفحة ثابتة عربيّ/إنجليزيّ + زرّ ‎/?delete=1‎).
+- الاختبارات: `wtest/deltest.mjs` (١٨، شجرة ٩٠٠٠ شخص على ٣ تشغيلات Cron) · `ptest/deltest-ui.js` (١١) · ptest.js (Pages) · كلّ السابق ✓.

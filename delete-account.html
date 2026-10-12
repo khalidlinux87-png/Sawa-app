@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>حذف حساب سوا</title>
+<meta name="description" content="كيف تحذف حسابك في تطبيق سوا وبياناته">
+<link rel="icon" href="./icons/favicon.png">
+<style>
+  :root { --bg:#f4f7fb; --card:#fff; --text:#1A1A2E; --muted:#5b6b7c; --line:#e6ebf0; --primary:#2F80C8; --danger:#b42318; --ok:#2e7d5b; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1720; --card:#17212b; --text:#e8eef4; --muted:#9fb0c0; --line:#26323e; --primary:#5aa2e0; --danger:#f0857a; --ok:#6cc59a; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:500 16px/1.85 system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif; }
+  main { max-width:640px; margin:0 auto; padding:28px 16px 48px; }
+  header { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
+  header img { width:48px; height:48px; border-radius:12px; }
+  h1 { font-size:22px; margin:0; }
+  h2 { font-size:17px; margin:22px 0 8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 18px; margin:12px 0; }
+  ol, ul { padding-inline-start:22px; margin:6px 0; }
+  li { margin:4px 0; }
+  .btn { display:block; text-align:center; text-decoration:none; background:var(--danger); color:#fff; font-weight:800; border-radius:14px; padding:14px; margin-top:14px; }
+  .muted { color:var(--muted); font-size:14px; }
+  .ok { color:var(--ok); } .no { color:var(--danger); }
+  footer { margin-top:28px; font-size:13px; color:var(--muted); text-align:center; }
+  footer a { color:var(--primary); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="./icons/icon-192.png" alt="">
+    <div><h1>حذف حسابك في سوا</h1><div class="muted">Delete your Sawa account</div></div>
+  </header>
+
+  <div class="card">
+    <h2 style="margin-top:0">الطريقة الأسرع</h2>
+    <p>اضغط الزرّ، ثمّ ادخل بالحساب الذي تريد حذفه (Google أو البريد)، واتبع نافذة التأكيد.</p>
+    <a class="btn" href="/?delete=1">افتح سوا لحذف حسابي</a>
+    <p class="muted" style="margin-bottom:0">يعمل من المتصفّح مباشرةً — لا تحتاج تثبيت التطبيق.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">أو من داخل التطبيق</h2>
+    <ol>
+      <li>افتح سوا ← تبويب <b>«حسابي»</b>.</li>
+      <li>في أسفل الصفحة اضغط <b>«حذف حسابي»</b>.</li>
+      <li>اكتب <b>حذف</b> للتأكيد، ثمّ اضغط «حذف حسابي نهائيّاً».</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">ما الذي يُحذف؟</h2>
+    <ul>
+      <li class="no">اسمك ورقم هاتفك ورمزك في سوا وحساب الدخول نفسه.</li>
+      <li class="no">جهات اتّصالك وطلبات التواصل (المرسلة والواردة).</li>
+      <li class="no">رسائلك المحفوظة ووسائطها، وإعداداتك، وأجهزتك المسجّلة للإشعارات.</li>
+      <li class="no">المواعيد التي أنشأتها، وعضويّتك في المحادثات والمجموعات والعائلات.</li>
+      <li class="no">شجرة العائلة التي تملكها وحدك — تُحذف كاملةً.</li>
+    </ul>
+    <h2>ما الذي يبقى؟</h2>
+    <ul>
+      <li class="ok">الرسائل التي أرسلتها إلى آخرين تبقى في محادثاتهم، ويظهر اسمك فيها «حساب محذوف».</li>
+      <li class="ok">العائلة التي تملكها ومعك فيها أعضاء آخرون تبقى لهم، وتنتقل ملكيّتها إلى أقدم محرّرٍ فيها.</li>
+    </ul>
+    <p class="muted" style="margin-bottom:0">يُنفَّذ الحذف فوراً، وما يحتاج وقتاً أطول (الأشجار الكبيرة والوسائط) يكتمل تلقائيّاً خلال دقائق. لا نحتفظ بنسخةٍ من بياناتك المحذوفة.</p>
+  </div>
+
+  <div class="card" dir="ltr" style="text-align:left">
+    <h2 style="margin-top:0">English</h2>
+    <p>Open <a href="/?delete=1">sawaaap.com/?delete=1</a>, sign in with the account you want to delete, and confirm. Or in the app: <b>Me → Delete my account</b>.</p>
+    <p class="muted" style="margin-bottom:0">Deleted: your profile, phone, Sawa code, sign-in identity, contacts and requests, saved messages, settings, devices, schedules, memberships, and family trees you alone own. Kept: messages you sent to others (shown as “Deleted account”) and shared family trees, which pass to their senior editor.</p>
+  </div>
+
+  <footer><a href="/">www.sawaaap.com</a></footer>
+</main>
+</body>
+</html>
