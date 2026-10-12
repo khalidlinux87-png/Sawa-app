@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c16";
+  var VERSION = "c17";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -1239,7 +1239,7 @@
     if (app && app.setScheduledCalls) try { app.setScheduledCalls(schedItems.filter(function (s) { return !s.room; }).map(schedShape)); } catch (e) {}
     // C8: الغرف المجدولة تُعرض في قائمة المحادثات
     if (app && app.setScheduledRooms) try { app.setScheduledRooms(schedItems.filter(function (s) { return s.room; }).map(function (s) {
-      return { id: s.id, code: s.room, link: roomLink(s.room), title: s.title || L("غرفة سوا", "Sawa room"), at: s.at, cloud: true, mine: s.by === myUid() }; }).sort(function (a, b) { return a.at - b.at; })); } catch (e) {}
+      return { id: s.id, code: s.room, link: roomLink(s.room), title: s.title || L("غرفة سوا", "Sawa room"), at: s.at, end: s.end || null, cloud: true, mine: s.by === myUid() }; }).sort(function (a, b) { return a.at - b.at; })); } catch (e) {}
   }
   function schedRefresh(force) {
     if (!myUid() || schedBusy || (!force && Date.now() - schedAt < 60000)) return Promise.resolve(schedItems);

@@ -138,6 +138,61 @@ function ScheduledCallsScreen({ scheduledCalls, onDelete, onJoinNow, onNewSchedu
                     React.createElement("button", { "aria-label": t("hdhf"), onClick: () => onDelete(s.id), className: "rounded-xl py-2 px-3 border", style: { borderColor: colors.danger } },
                         React.createElement(Trash2, { size: 13, color: colors.danger })))))))));
 }
+// C17: جدول الغرف المجدولة — كلّ غرفة: عنوانها، موعدها، الوقت المتبقّي (يتحدّث كلّ ثانية)، رابطها (نسخ/مشاركة)، دخول، إلغاء
+function roomLeftText(ms) {
+    const m = Math.ceil(ms / 60000);
+    if (m <= 1) return tl("تبدأ خلال دقيقة", "Starts within a minute");
+    if (m < 60) return tl("تبدأ بعد " + m + " دقيقة", "Starts in " + m + " min");
+    const h = Math.floor(m / 60), mm = m % 60;
+    if (h < 24) return tl("تبدأ بعد " + h + " س" + (mm ? " و" + mm + " د" : ""), "Starts in " + h + "h" + (mm ? " " + mm + "m" : ""));
+    const d = Math.floor(h / 24), hh = h % 24;
+    return tl("تبدأ بعد " + (d === 1 ? "يوم" : d === 2 ? "يومين" : d + (d <= 10 ? " أيّام" : " يوماً")) + (hh ? " و" + hh + " س" : ""), "Starts in " + d + "d" + (hh ? " " + hh + "h" : ""));
+}
+function roomStatus(r, now) {
+    const end = r.end || (r.at + 3600000);
+    if (now < r.at) return { k: "soon", text: roomLeftText(r.at - now), live: r.at - now <= 15 * 60000 };
+    if (now < end) return { k: "live", text: tl("🟢 جارية الآن", "🟢 Happening now") };
+    return { k: "past", text: tl("انتهى موعدها", "Ended") };
+}
+function ScheduledRoomsScreen({ rooms = [], onJoin, onCancel, onNew, onBack }) {
+    const { colors } = useTheme();
+    const { showToast } = useToast();
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => { const iv = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(iv); }, []);
+    useEffect(() => { try { if (window.SawaRTC && window.SawaRTC.schedRefresh) window.SawaRTC.schedRefresh(true); } catch (e) { } }, []);
+    const list = [...rooms].map((r) => ({ r, st: roomStatus(r, now) })).filter((x) => x.st.k !== "past" || now - (x.r.end || x.r.at + 3600000) < 6 * 3600000)
+        .sort((a, b) => (a.st.k === "past") - (b.st.k === "past") || a.r.at - b.r.at);
+    const linkOf = (r) => r.link || (window.SawaRTC && window.SawaRTC.roomLink ? window.SawaRTC.roomLink(r.code) : "?room=" + r.code);
+    const copy = (r) => { const l = linkOf(r); try { navigator.clipboard.writeText(l).then(() => showToast(tl("نُسخ الرابط ✓", "Link copied ✓"), "success"), () => window.prompt(tl("انسخ الرابط:", "Copy:"), l)); } catch (e) { window.prompt(tl("انسخ الرابط:", "Copy:"), l); } };
+    const share = (r) => { const l = linkOf(r), txt = tl("أدعوك إلى غرفة سوا «" + r.title + "» — ", "Join my Sawa room «" + r.title + "» — ") + new Date(r.at).toLocaleString(loc(), { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+        try { if (navigator.share) { navigator.share({ title: r.title, text: txt, url: l }).catch(() => { }); return; } } catch (e) { } copy(r); };
+    return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col" },
+        React.createElement(TopBar, { title: tl("الغرف المجدولة", "Scheduled rooms"), onBack: onBack, actions: React.createElement("button", { "aria-label": tl("جدولة غرفة", "Schedule a room"), onClick: onNew, className: `${ms("2")}` },
+                React.createElement(Plus, { size: 18, color: "#fff" })) }),
+        React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
+            list.length === 0 && React.createElement("div", { className: "flex flex-col items-center gap-3 mt-8" },
+                React.createElement(EmptyState, { icon: CalendarDays, label: tl("لا غرف مجدولة بعد", "No scheduled rooms yet") }),
+                React.createElement("button", { onClick: onNew, className: `flex ${rowStart()} items-center gap-2 px-4 py-2.5 rounded-2xl`, style: { backgroundColor: colors.primary } },
+                    React.createElement(Plus, { size: 16, color: "#fff" }),
+                    React.createElement("span", { className: "text-sm font-bold text-white" }, tl("جدولة غرفة", "Schedule a room")))),
+            list.map(({ r, st }) => (React.createElement(Card, { key: r.id, className: "mb-2.5", style: { opacity: st.k === "past" ? 0.6 : 1, border: st.k === "live" ? "2px solid #22c55e" : undefined } },
+                React.createElement("div", { className: `flex ${rowStart()} items-start justify-between gap-2` },
+                    React.createElement("div", { style: { minWidth: 0, flex: 1 } },
+                        React.createElement("p", { className: "text-sm font-extrabold truncate", style: { color: colors.text } }, r.title),
+                        React.createElement("p", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } },
+                            new Date(r.at).toLocaleString(loc(), { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }))),
+                    React.createElement("span", { className: "text-[11px] font-extrabold px-2 py-1 rounded-lg shrink-0", style: { color: st.k === "live" ? "#15803d" : st.k === "past" ? colors.textMuted : st.live ? "#b45309" : colors.primary, backgroundColor: st.k === "live" ? "#dcfce7" : st.k === "past" ? colors.bg : st.live ? "#fef3c7" : colors.primaryLight } }, st.text)),
+                React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mt-2.5 rounded-xl px-2.5 py-2`, style: { backgroundColor: colors.bg } },
+                    React.createElement(Link2, { size: 14, color: colors.textMuted, className: "shrink-0" }),
+                    React.createElement("span", { className: "text-[11px] font-bold flex-1 truncate", dir: "ltr", style: { color: colors.text, textAlign: "left" } }, linkOf(r).replace(/^https?:\/\//, "")),
+                    React.createElement("button", { "aria-label": tl("نسخ الرابط", "Copy link"), onClick: () => copy(r), className: "shrink-0 p-1" }, React.createElement(Copy, { size: 15, color: colors.primary })),
+                    React.createElement("button", { "aria-label": tl("مشاركة الرابط", "Share link"), onClick: () => share(r), className: "shrink-0 p-1" }, React.createElement(Share2, { size: 15, color: colors.primary }))),
+                st.k !== "past" && React.createElement("div", { className: `flex ${rowStart()} gap-2 mt-2.5` },
+                    React.createElement("button", { onClick: () => onJoin(r.code), className: "flex-1 rounded-xl py-2.5", style: { backgroundColor: st.k === "live" || st.live ? "#16a34a" : colors.primary } },
+                        React.createElement("span", { className: "text-xs font-extrabold text-white" }, st.k === "live" ? tl("ادخل الآن", "Join now") : tl("دخول الغرفة", "Enter room"))),
+                    (r.mine !== false) && React.createElement("button", { "aria-label": tl("إلغاء الموعد", "Cancel"), onClick: () => { if (window.confirm(tl("إلغاء موعد «" + r.title + "»؟", "Cancel «" + r.title + "»?"))) onCancel(r.id); }, className: "rounded-xl py-2 px-3 border", style: { borderColor: colors.danger } },
+                        React.createElement(Trash2, { size: 14, color: colors.danger })))))))));
+}
 function SpeedDialScreen({ speedDialContacts, onUpdate, onCall, onBack }) {
     const { colors } = useTheme();
     const [showAdd, setShowAdd] = useState(false);
@@ -191,7 +246,7 @@ function callTimeLabel(ts) {
 const initialCallLog = [];
 const callTypeIcons = { incoming: PhoneIncoming, outgoing: PhoneOutgoing, missed: PhoneMissed };
 const callTypeColors = { incoming: "success", outgoing: "success", missed: "danger" };
-function CallsScreen({ groups = [], callLog, favoriteContacts, onToggleFavorite, onLogCall, callSettings, onUpdateCallSettings, speedDialContacts, onUpdateSpeedDial, onClearCallLog, scheduledCalls, onAddScheduledCall, onDeleteScheduledCall, onDeleteCallEntry, }) {
+function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteContacts, onToggleFavorite, onLogCall, callSettings, onUpdateCallSettings, speedDialContacts, onUpdateSpeedDial, onClearCallLog, scheduledCalls, onAddScheduledCall, onDeleteScheduledCall, onDeleteCallEntry, }) {
     const { colors } = useTheme();
     const [activeCall, setActiveCallRaw] = useState(null); // null | { name, callType }
     // C6: جهة اتّصالٍ على سوا ⇒ مكالمةٌ حقيقيّة؛ غير ذلك (لوحة الأرقام…) الواجهة التجريبيّة
@@ -248,6 +303,8 @@ function CallsScreen({ groups = [], callLog, favoriteContacts, onToggleFavorite,
                     React.createElement("span", { className: "text-sm", style: { color: colors.text } }, t("msh_sjl_almkalmat"))),
                 React.createElement("button", { onClick: () => { setSubScreen("scheduledList"); setShowMenu(false); }, className: `w-full ${textStart()} px-4 py-3.5 border-b`, style: { borderColor: colors.border } },
                     React.createElement("span", { className: "text-sm", style: { color: colors.text } }, t("mkalmat_mjdwla"))),
+                onOpenScheduledRooms && React.createElement("button", { onClick: () => { setShowMenu(false); onOpenScheduledRooms(); }, className: `w-full ${textStart()} px-4 py-3.5 border-b`, style: { borderColor: colors.border } },
+                    React.createElement("span", { className: "text-sm", style: { color: colors.text } }, tl("الغرف المجدولة", "Scheduled rooms"))),
                 React.createElement("button", { onClick: () => { setSubScreen("settings"); setShowMenu(false); }, className: `w-full ${textStart()} px-4 py-3.5` },
                     React.createElement("span", { className: "text-sm", style: { color: colors.text } }, t("aliadadat")))))),
         showClearConfirm && (React.createElement(React.Fragment, null,
