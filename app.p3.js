@@ -103,6 +103,10 @@ const RELIGIOUS_OCCASIONS = [
 // ============================================================================
 function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOpenMoments, onOpenErsal, onOpenTaxi, onOpenWallet }) {
     const { colors } = useTheme();
+    const { showToast } = useToast();
+    // الخدمات غير الجاهزة: «قريباً» بدل شاشاتٍ تجريبيّة توهم بأنها تعمل — صلة الرحم وحدها مفعّلة
+    const soon = () => showToast(tl("قريباً في سوا ✨", "Coming soon to Sawa ✨"));
+    const soonBadge = () => React.createElement("span", { className: "absolute top-2 text-[9px] font-extrabold px-2 py-0.5 rounded-full", style: { insetInlineEnd: 8, backgroundColor: colors.border, color: colors.textMuted } }, tl("قريباً", "Soon"));
     const [loading, setLoading] = useState(true);
     // معلومة حيّة تُغني عن عدّاد ساكن: الأقرب استحقاقاً للتواصل أو أقرب مناسبة
     const familyHint = useMemo(function () {
@@ -168,23 +172,27 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
                     React.createElement("span", { className: "text-[11px] font-bold", style: { color: familyHint.urgent ? "#fca5a5" : "rgba(255,255,255,0.9)" } }, familyHint.text)))),
             React.createElement("div", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("alkhdmat")),
             React.createElement("div", { className: "grid grid-cols-2 gap-3" },
-                React.createElement("button", { onClick: () => onOpenWallet && onOpenWallet(), className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { backgroundColor: colors.card, borderColor: colors.border, minHeight: 138, justifyContent: "center" } },
+                React.createElement("button", { onClick: soon, "aria-disabled": true, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { position: "relative", opacity: 0.55, backgroundColor: colors.card, borderColor: colors.border, minHeight: 138, justifyContent: "center" } },
+                    soonBadge(),
                     React.createElement("div", { className: "w-14 h-14 rounded-xl flex items-center justify-center", style: { backgroundColor: colors.primaryLight } },
                         React.createElement(Wallet, { size: 26, color: colors.primary })),
                     React.createElement("div", { className: "text-xs font-extrabold", style: { color: colors.text } }, t("almhfza")),
                     React.createElement("div", { className: "text-[10px] leading-snug", style: { color: colors.textMuted } }, t("rsydk_wkhdmatk"))),
-                React.createElement("button", { onClick: onOpenMoments, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { backgroundColor: colors.card, borderColor: colors.border, minHeight: 138, justifyContent: "center" } },
+                React.createElement("button", { onClick: soon, "aria-disabled": true, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { position: "relative", opacity: 0.55, backgroundColor: colors.card, borderColor: colors.border, minHeight: 138, justifyContent: "center" } },
+                    soonBadge(),
                     React.createElement("div", { className: "w-14 h-14 rounded-xl flex items-center justify-center", style: { backgroundColor: "#F3E5F5" } },
                         React.createElement(Image, { size: 26, color: "#7B1FA2" })),
                     React.createElement("div", { className: "text-xs font-extrabold", style: { color: colors.text } }, t("lhzat_alasdqa")),
                     React.createElement("div", { className: "text-[10px] leading-snug", style: { color: colors.textMuted } }, t("shark_swra_aw_khatra")))),
                 React.createElement("div", { className: "grid grid-cols-2 gap-3 mt-3" },
-                    React.createElement("button", { onClick: () => onOpenErsal && onOpenErsal(), className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { backgroundColor: colors.card, borderColor: colors.border } },
+                    React.createElement("button", { onClick: soon, "aria-disabled": true, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { position: "relative", opacity: 0.55, backgroundColor: colors.card, borderColor: colors.border } },
+                    soonBadge(),
                         React.createElement("div", { className: "w-14 h-14 rounded-xl flex items-center justify-center", style: { backgroundColor: "#E0F2F1" } },
                             React.createElement(Truck, { size: 26, color: "#00695C" })),
                         React.createElement("div", { className: "text-xs font-extrabold", style: { color: colors.text } }, t("irsal_iksbrys")),
                         React.createElement("div", { className: "text-[10px] leading-snug", style: { color: colors.textMuted } }, t("dsc_irsal_wsf"))),
-                    React.createElement("button", { onClick: () => onOpenTaxi && onOpenTaxi(), className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { backgroundColor: colors.card, borderColor: colors.border } },
+                    React.createElement("button", { onClick: soon, "aria-disabled": true, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { position: "relative", opacity: 0.55, backgroundColor: colors.card, borderColor: colors.border } },
+                    soonBadge(),
                         React.createElement("div", { className: "w-14 h-14 rounded-xl flex items-center justify-center", style: { backgroundColor: "#FFF3E0" } },
                             React.createElement(Car, { size: 26, color: "#E65100" })),
                         React.createElement("div", { className: "text-xs font-extrabold", style: { color: colors.text } }, t("taksy_swa")),

@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c8";
+  var VERSION = "c13";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -1726,10 +1726,9 @@
     var mic = rb(r.mic ? "🎤" : "🔇", r.mic ? L("كتم", "Mute") : L("الميكروفون", "Unmute"), function () { rToggleMic(r); }, { bg: r.mic ? LINE : "#ef4444" });
     bar.appendChild(mic);
     bar.appendChild(rb(r.camOn ? "📷" : "🚫", r.camOn ? L("الكاميرا", "Camera") : L("الكاميرا", "Camera"), function () { rToggleCam(r); }, { bg: r.camOn ? PRI : LINE }));
-    bar.appendChild(rb("✋", r.hand ? L("أنزل يدك", "Lower") : L("ارفع يدك", "Raise"), function () { rToggleHand(r); }, { bg: r.hand ? "#f59e0b" : LINE }));
-    bar.appendChild(rb("😊", L("تفاعل", "React"), function () { rReactBar(); }));
+    // خمسة أزرار فقط تتّسع لأصغر شاشة — «ارفع يدك» و«تفاعل» في «المزيد» (الزرّ يتلوّن حين تكون يدك مرفوعة)
     bar.appendChild(rb("💬", L("دردشة", "Chat"), function () { rOpenPanel(r.panel === "chat" ? null : "chat"); }, { bg: r.panel === "chat" ? PRI : LINE, badge: r.unread }));
-    bar.appendChild(rb("⋯", L("المزيد", "More"), function () { rMore(); }));
+    bar.appendChild(rb(r.hand ? "✋" : "⋯", r.hand ? L("يدك مرفوعة", "Hand up") : L("المزيد", "More"), function () { rMore(); }, { bg: r.hand ? "#f59e0b" : LINE }));
     bar.appendChild(rb("📞", L("مغادرة", "Leave"), function () { rLeaveConfirm(); }, { bg: "#ef4444" }));
     bar.lastChild._b.style.transform = "rotate(135deg)";
   }
@@ -1850,6 +1849,8 @@
   function rMore() {
     var r = rm; if (!r) return;
     sheet(null, function (body, close) {
+      item(body, "✋", r.hand ? L("أنزل يدك", "Lower hand") : L("ارفع يدك", "Raise hand"), function () { close(); rToggleHand(r); });
+      item(body, "😊", L("تفاعل", "React"), function () { close(); rReactBar(); });
       item(body, "➕", L("دعوة من جهات الاتّصال", "Invite contacts"), function () { close(); rInvite(); });
       item(body, "📝", L("المحضر: قرارات · مهامّ · نقاط", "Minutes: decisions · tasks · points"), function () { close(); rOpenPanel("notes"); });
       item(body, r.low ? "🎥" : "📶", r.low ? L("إعادة الفيديو", "Video back on") : L("بيانات قليلة (صوتٌ فقط)", "Low data (audio only)"), function () { close(); rToggleLow(r); });
