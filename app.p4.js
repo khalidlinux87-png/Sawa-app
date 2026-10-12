@@ -2218,7 +2218,7 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                             React.createElement("span", { className: "text-xs font-bold text-white" }, t("nam_ahzr"))),
                         React.createElement("button", { onClick: () => setConfirmingBlock(false), className: "flex-1 rounded-xl py-2 border", style: { borderColor: colors.border } },
                             React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("ilgha")))))),
-                !reported ? (React.createElement("button", { onClick: () => { setReported(true); onReport(); }, className: `w-full flex ${rowStart()} items-center justify-center gap-2 rounded-xl p-3 border mt-2`, style: { borderColor: colors.danger, backgroundColor: colors.card } },
+                !reported ? (React.createElement("button", { onClick: () => { onReport(() => setReported(true)); }, className: `w-full flex ${rowStart()} items-center justify-center gap-2 rounded-xl p-3 border mt-2`, style: { borderColor: colors.danger, backgroundColor: colors.card } },
                     React.createElement(Flag, { size: 15, color: colors.danger }),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.danger } }, t("iblagh_an_mshkla")))) : (React.createElement("p", { className: "text-xs text-center mt-2", style: { color: colors.textMuted } }, t("tm_irsal_blaghk_snrajah")))),
             viewingMediaUrl && (React.createElement(MediaLightbox, { items: infoMediaItems, startIndex: Math.max(0, infoMediaItems.findIndex((it) => it.url === viewingMediaUrl)), onClose: () => setViewingMediaUrl(null) }))))); 

@@ -1,11 +1,11 @@
 {
   "id": "./",
-  "name": "سوا — تواصل عائلي",
+  "name": "سوا — محادثات ومكالمات وصلة رحم",
   "short_name": "سوا",
-  "description": "تطبيق التواصل العائلي وصلة الرحم",
+  "description": "محادثات ومكالمات وغرف اجتماعات، ومعها صلة الرحم وشجرة العائلة — في تطبيقٍ واحد.",
   "lang": "ar",
   "dir": "rtl",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
@@ -36,5 +36,11 @@
       "type": "image/png",
       "purpose": "any"
     }
-  ]
+  ],
+  "categories": [
+    "social",
+    "communication",
+    "lifestyle"
+  ],
+  "prefer_related_applications": false
 }

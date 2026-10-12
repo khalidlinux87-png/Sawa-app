@@ -291,7 +291,11 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
             !isFamily && React.createElement("div", { className: "mt-3 mb-8", style: { backgroundColor: colors.card } },
                 React.createElement("button", { onClick: () => setConfirmLeave(true), className: `w-full flex ${rowStart()} items-center gap-3 px-4 py-3.5` },
                     React.createElement(LogOut, { size: 17, color: colors.danger, style: { transform: "scaleX(-1)" } }),
-                    React.createElement("span", { className: "text-sm font-bold", style: { color: colors.danger } }, t("gi_mghadra"))))),
+                    React.createElement("span", { className: "text-sm font-bold", style: { color: colors.danger } }, t("gi_mghadra"))),
+                // C13: إبلاغ حقيقيّ عن المجموعة (يصل لفريق سوا مع آخر الرسائل)
+                window.SawaChat && window.SawaChat.reportSheet && group && group.id && /^grp_/.test(group.id) && React.createElement("button", { onClick: () => window.SawaChat.reportSheet({ cid: group.id, name: group.name, kind: "group" }), className: `w-full flex ${rowStart()} items-center gap-3 px-4 py-3`, style: { borderTop: `1px solid ${colors.border}` } },
+                    React.createElement(Flag, { size: 16, color: colors.textMuted }),
+                    React.createElement("span", { className: "text-xs font-bold", style: { color: colors.textMuted } }, tl("الإبلاغ عن المجموعة", "Report group"))))),
         // ── قائمة خيارات العضو ──
         memberMenu && React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setMemberMenu(null), style: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", zIndex: 40 } }),

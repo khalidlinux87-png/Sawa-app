@@ -611,3 +611,14 @@ Workers Free: ١٠٠ ألف طلب/يوم (يتصفّر منتصف الليل UT
 - **diag.html:** زرّ «📊 لوحة الاستهلاك» — بطاقات الإجماليّات، جدول الأيّام (طلبات الخادم مع شريط نسبتها من ١٠٠٬٠٠٠/يوم، رسائل، مكالمات، إشعارات،
   أخطاء، TURN)، أكثر العمليّات اليوم، وروابط لوحات Firebase (قراءات/كتابات/تخزين) و Cloudflare (Worker و Realtime).
 - اختبار: `wtest/statstest.mjs` (٦) · `diagstats.js` (عرض) · run/codetest/blktest/deltest/turntest ✓.
+
+## 🚩 C13 — بلاغاتٌ حقيقيّة + جاهزيّة Google Play (١٢ أكتوبر) · Worker v32-reports
+- **كان زرّ «إبلاغ عن مشكلة» شكليّاً** (يُظهر «تم إرسال بلاغك» ولا يرسل شيئاً). الآن: `report.create` {cid, target, reason, note} — المبلِّغ عضوٌ
+  في المحادثة، يُرفق آخر ٢٠ رسالة (نصوصٌ ≤٣٠٠ حرف)، ١٠ بلاغات/ساعة، `reports/{id}` للخادم وحده. للمدير: `admin.reports` و`admin.reportClose`
+  + عدد البلاغات المفتوحة في `admin.stats`. diag.html: «🚩 عرض البلاغات» مع السبب والملاحظة وآخر الرسائل (⚠ = رسائل المُبلَّغ عنه) و«إغلاق».
+- **sawa-chat c13:** `reportSheet` — ٨ أسباب، ملاحظة اختياريّة، «احظره أيضاً» (مفعّل افتراضيّاً في الثنائيّة)، نصٌّ صريح بأنّ آخر ٢٠ رسالة تُرفق.
+  التطبيق: معلومات المحادثة ⇒ البلاغ الحقيقيّ (و«تمّ» يظهر بعد النجاح فقط) · معلومات المجموعة ⇒ «الإبلاغ عن المجموعة».
+- **manifest.json:** الاسم العامّ «سوا — محادثات ومكالمات وصلة رحم»، وصفٌ عامّ، `start_url: "./"`، فئات social/communication. sw v208.
+- **Google Play:** وثيقة «سوا — ملف النشر على Google Play» (Claude Docs) + `play-icon-512.png` و`feature-graphic-1024x500.png`.
+  الإيقاف اليدويّ لحسابٍ مخالف: Firebase Console ← Authentication ← Users ← Disable account.
+- اختبارات: `wtest/reptest.mjs` (٩) · `ptest/reporttest.js` (٥) · كلّ السابق ✓.
