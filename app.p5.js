@@ -161,6 +161,7 @@ function GroupCallOverlay({ groupName, members, callType, onEnd }) {
 }
 function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, failed = false, cid = null, mid = null }) {
     const { showToast } = useToast();
+    const [prog, setProg] = useState(0), [elapsed, setElapsed] = useState(0);   // C19: شريط التقدّم والوقت المنقضي
     const { colors } = useTheme();
     const [playing, setPlaying] = useState(false);
     const [showTranscript, setShowTranscript] = useState(false);
@@ -180,13 +181,17 @@ function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, 
     }, []);
     return (React.createElement("div", { style: { minWidth: 160 } },
         React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
-            React.createElement("audio", { ref: audioRef, src: url, onEnded: () => { setPlaying(false); if (window.__sawaActiveAudio === stopSelfRef) window.__sawaActiveAudio = null; }, className: "hidden" }),
+            React.createElement("audio", { ref: audioRef, src: url, onEnded: () => { setPlaying(false); setProg(0); setElapsed(0); if (window.__sawaActiveAudio === stopSelfRef) window.__sawaActiveAudio = null; }, onPause: () => setPlaying(false),
+                onTimeUpdate: (e) => { const a = e.currentTarget; setElapsed(Math.floor(a.currentTime || 0)); if (a.duration && isFinite(a.duration)) setProg(Math.min(1, a.currentTime / a.duration)); }, className: "hidden" }),
             React.createElement("button", { onClick: () => {
                     var _a, _b;
                     if (playing) {
                         (_a = audioRef.current) === null || _a === void 0 ? void 0 : _a.pause();
                         setPlaying(false);
                         if (window.__sawaActiveAudio === stopSelfRef) window.__sawaActiveAudio = null;
+                    }
+                    else if (window.__sawaActiveRecorder) {   // C19: لا تشغيل أثناء التسجيل
+                        showToast(tl("أنهِ التسجيل أوّلاً", "Finish recording first"), "info");
                     }
                     else if (!url) {   // C18: لم يُنزَّل بعد ⇒ تنزيل الآن بدل زرٍّ صامت
                         if (cid && mid && window.SawaChat && window.SawaChat.retryMedia) window.SawaChat.retryMedia(cid, mid);
@@ -204,8 +209,9 @@ function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, 
                         if (pr && pr.catch) pr.catch((e) => { setPlaying(false); showToast(tl("تعذّر تشغيل التسجيل على هذا الجهاز", "Can't play this voice note on this device") + (e && e.name === "NotSupportedError" ? tl(" (صيغة غير مدعومة)", " (unsupported format)") : ""), "error"); });
                     }
                 }, className: "w-8 h-8 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: mine ? "rgba(255,255,255,0.25)" : colors.primaryLight } }, playing ? React.createElement(Pause, { size: 14, color: mine ? "#fff" : colors.primary }) : React.createElement(Play, { size: 14, color: mine ? "#fff" : colors.primary })),
-            React.createElement("div", { className: "flex-1 h-1 rounded-full", style: { backgroundColor: mine ? "rgba(255,255,255,0.3)" : colors.border } }),
-            React.createElement("span", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, !url && loading ? "⏳ " + duration : !url && failed ? "↻ " + tl("أعد التنزيل", "Retry") : duration)),
+            React.createElement("div", { className: "flex-1 h-1 rounded-full overflow-hidden", style: { backgroundColor: mine ? "rgba(255,255,255,0.3)" : colors.border } },
+                React.createElement("div", { style: { height: "100%", width: Math.round(prog * 100) + "%", backgroundColor: mine ? "#fff" : colors.primary, transition: "width .25s linear" } })),
+            React.createElement("span", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, !url && loading ? "⏳ " + duration : !url && failed ? "↻ " + tl("أعد التنزيل", "Retry") : (playing || elapsed) ? Math.floor(elapsed / 60) + ":" + String(elapsed % 60).padStart(2, "0") : duration)),
         transcript && (React.createElement("button", { onClick: () => setShowTranscript(!showTranscript), className: "mt-1.5" },
             React.createElement("span", { className: "text-[10px] font-bold underline", style: { color: mine ? "#ffffffdd" : colors.primary } }, showTranscript ? "إخفاء النص" : "عرض النص"))),
         transcript && showTranscript && (React.createElement("p", { className: "text-xs mt-1", style: { color: mine ? "#fff" : colors.text } }, transcript))));
@@ -516,6 +522,10 @@ function useVoiceRecorder({ onComplete, transcribe }) {
             try { window.__sawaActiveRecorder.cancel(); } catch (e) { }
         }
         window.__sawaActiveRecorder = selfRef.current;
+        // C19: بدء التسجيل يوقف أيّ رسالةٍ صوتيّة تعمل (كانت تستمرّ فيُسجَّل صوتها مع صوتك)
+        try { if (window.__sawaActiveAudio && window.__sawaActiveAudio.current) window.__sawaActiveAudio.current(); } catch (e) { }
+        window.__sawaActiveAudio = null;
+        try { document.querySelectorAll("audio").forEach(function (a) { if (!a.paused && !a.srcObject) a.pause(); }); } catch (e) { }
         discardRef.current = false;
         navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
             streamRef.current = stream;
@@ -569,7 +579,7 @@ function useVoiceRecorder({ onComplete, transcribe }) {
                 recognizer.onerror = function () { };
                 try { recognizer.start(); speechRef.current = recognizer; } catch (err) { }
             }
-        }).catch(function () { flashError(); });
+        }).catch(function () { if (window.__sawaActiveRecorder === selfRef.current) window.__sawaActiveRecorder = null; flashError(); });   // C19: لا يبقى «يسجّل» عالقاً
     }
 
     function stop() {
