@@ -867,7 +867,7 @@ function FeedbackSheet({ onClose, currentScreen = "" }) {
         ];
         if (f)
             lines.push("", t("an_tdhkyrat_sla_alrhm", { label: f.label }));
-        lines.push("", "───────────", t("alnskha", { APP_VERSION }), currentScreen ? t("alshasha", { currentScreen }) : null, `التاريخ: ${new Date().toLocaleDateString(loc())}`);
+        lines.push("", "───────────", t("alnskha", { APP_VERSION: (function () { try { return (localStorage.getItem("sawa_build") || SAWA_BUILD) + (window.SawaChat && window.SawaChat.version ? " · " + window.SawaChat.version : ""); } catch (e) { return APP_VERSION; } })() }), currentScreen ? t("alshasha", { currentScreen }) : null, `التاريخ: ${new Date().toLocaleDateString(loc())}`);
         return lines.filter((l) => l !== null).join("\n");
     }
     function send() {
@@ -1551,8 +1551,9 @@ function AppInner() {
         }));
     }
     function scanQrContact() {
-        const name = QR_SCAN_CONTACT_POOL[Math.floor(Math.random() * QR_SCAN_CONTACT_POOL.length)];
-        createConversation(name);
+        // C20: مسحٌ حقيقيّ (كان ينشئ محادثةً مع اسمٍ عشوائيّ وهميّ)
+        if (window.SawaChat && window.SawaChat.scanAny) { window.SawaChat.scanAny(); return; }
+        showToast(tl("المسح غير متاح الآن", "Scanning isn't available right now"), "error");
     }
     function createConversation(name) {
         const id = `conv-${Date.now()}`;
@@ -2199,6 +2200,8 @@ function AppInner() {
         showToast(`تم إنشاء "${name}" ✓`, "success");
     }
     function handleLogout() {
+        // C20: خروجٌ حقيقيّ (Firebase + الإشعارات + البيانات المحلّيّة) بنافذة تأكيد — كان يقفل الشاشة برمزٍ لم يُضبط
+        if (window.SawaChat && window.SawaChat.signOutSheet && window.SawaChat.signOutSheet()) return;
         if (window.confirm(t("tsjyl_alkhrwj_sthtaj_ila"))) {
             setStack([]);
             setTab("me");

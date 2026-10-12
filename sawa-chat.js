@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c18";
+  var VERSION = "c20";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -307,23 +307,41 @@
     return call("people.remove", { uid: uid }).then(function () { return refresh(); })
       .catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
   }
-  // مسح QR بالكاميرا (BarcodeDetector — كروم أندرويد). يعيد النصّ المقروء أو null
-  function scanSupported() { return !!(global.BarcodeDetector && global.navigator && navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
+  // C20: مسح QR بالكاميرا — BarcodeDetector إن وُجد وعمل، وإلّا مكتبة jsQR (تُحمَّل عند الحاجة) تقرأ إطارات الكاميرا.
+  //      كان يعتمد على BarcodeDetector وحده: غير موجود في متصفّحات كثيرة، وفي بعض أجهزة أندرويد موجودٌ لكنّه يفشل بصمت فلا يُقرأ شيء.
+  var jsqrP = null;
+  function loadJsQr() {
+    if (global.jsQR) return Promise.resolve(global.jsQR);
+    if (jsqrP) return jsqrP;
+    jsqrP = new Promise(function (res, rej) {
+      var sc = document.createElement("script");
+      sc.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
+      sc.onload = function () { global.jsQR ? res(global.jsQR) : rej(new Error("jsQR")); };
+      sc.onerror = function () { jsqrP = null; rej(new Error(L("تعذّر تحميل قارئ QR — تحقّق من الاتّصال", "Couldn't load the QR reader — check your connection"))); };
+      document.head.appendChild(sc);
+    });
+    return jsqrP;
+  }
+  function scanSupported() { return !!(global.navigator && navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
   function scanQr() {
-    if (!scanSupported()) return Promise.reject(new Error(L("المسح غير مدعوم في هذا المتصفّح — الصق الرابط بدلاً منه", "Scanning isn't supported here — paste the link instead")));
+    if (!scanSupported()) return Promise.reject(new Error(L("الكاميرا غير متاحة في هذا المتصفّح — الصق الرابط بدلاً منه", "Camera isn't available here — paste the link instead")));
     return new Promise(function (resolve, reject) {
-      var det, stream, done = false;
+      var stream, done = false, det = null, detFails = 0, canvas = null, ctx = null;
       var wrap = document.createElement("div");
       wrap.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center";
-      var vid = document.createElement("video"); vid.setAttribute("playsinline", ""); vid.muted = true;
-      vid.style.cssText = "width:100%;max-height:80vh;object-fit:cover";
+      var box = document.createElement("div"); box.style.cssText = "position:relative;width:100%;max-width:520px";
+      var vid = document.createElement("video"); vid.setAttribute("playsinline", ""); vid.muted = true; vid.autoplay = true;
+      vid.style.cssText = "width:100%;max-height:75vh;object-fit:cover;display:block";
+      var frame = document.createElement("div");
+      frame.style.cssText = "position:absolute;left:50%;top:50%;width:62%;aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid rgba(255,255,255,.9);border-radius:18px;box-shadow:0 0 0 2000px rgba(0,0,0,.35)";
+      box.appendChild(vid); box.appendChild(frame);
       var hint = document.createElement("div");
-      hint.textContent = L("وجّه الكاميرا إلى رمز QR", "Point the camera at a QR code");
-      hint.style.cssText = "color:#fff;font:700 15px system-ui;margin:14px";
+      hint.textContent = L("وجّه الكاميرا إلى رمز QR من سوا", "Point the camera at a Sawa QR code");
+      hint.style.cssText = "color:#fff;font:700 15px system-ui;margin:14px;text-align:center";
       var btn = document.createElement("button");
       btn.textContent = L("إلغاء", "Cancel");
       btn.style.cssText = "color:#fff;background:rgba(255,255,255,.18);border:0;border-radius:12px;padding:10px 22px;font:700 14px system-ui";
-      wrap.appendChild(vid); wrap.appendChild(hint); wrap.appendChild(btn); document.body.appendChild(wrap);
+      wrap.appendChild(box); wrap.appendChild(hint); wrap.appendChild(btn); document.body.appendChild(wrap);
       function finish(val, err) {
         if (done) return; done = true;
         try { stream && stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
@@ -331,24 +349,45 @@
         err ? reject(err) : resolve(val);
       }
       btn.onclick = function () { finish(null); };
-      try { det = new global.BarcodeDetector({ formats: ["qr_code"] }); } catch (e) { return finish(null, e); }
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(function (s) {
+      try { if (global.BarcodeDetector) det = new global.BarcodeDetector({ formats: ["qr_code"] }); } catch (e) { det = null; }
+      function viaJsQr() {
+        if (!global.jsQR || !vid.videoWidth) return null;
+        var w = Math.min(640, vid.videoWidth), h = Math.round(vid.videoHeight * w / vid.videoWidth);
+        if (!canvas) { canvas = document.createElement("canvas"); ctx = canvas.getContext("2d", { willReadFrequently: true }); }
+        canvas.width = w; canvas.height = h; ctx.drawImage(vid, 0, 0, w, h);
+        var r = global.jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: "dontInvert" });
+        return r && r.data ? r.data : null;
+      }
+      var jsq = loadJsQr().catch(function (e) { if (!det) finish(null, e); return null; });
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }).then(function (s) {
+        if (done) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
         stream = s; vid.srcObject = s; return vid.play();
       }).then(function () {
         (function tick() {
           if (done) return;
-          det.detect(vid).then(function (codes) {
-            if (codes && codes.length && codes[0].rawValue) return finish(codes[0].rawValue);
-            setTimeout(tick, 250);
-          }).catch(function () { setTimeout(tick, 400); });
+          var useDet = det && detFails < 4;
+          var p = useDet ? det.detect(vid).then(function (codes) { detFails = 0; return codes && codes.length && codes[0].rawValue ? codes[0].rawValue : null; }, function () { detFails++; return null; })
+                         : jsq.then(function () { try { return viaJsQr(); } catch (e) { return null; } });
+          p.then(function (v) { if (v) return finish(v); setTimeout(tick, useDet ? 250 : 180); });
         })();
-      }).catch(function (e) { finish(null, new Error(L("لا إذن للكاميرا", "No camera permission"))); });
+      }).catch(function (e) { finish(null, new Error(e && e.name === "NotAllowedError" ? L("لا إذن للكاميرا — اسمح بها من إعدادات المتصفّح", "No camera permission") : L("تعذّر فتح الكاميرا", "Couldn't open the camera"))); });
     });
   }
-  function scanAndAdd() {
-    return scanQr().then(function (txt) { return txt ? accept(txt) : null; })
+  // C20: ما يُمسح يُوجَّه بحسب نوعه — رابط شخص · رابط مجموعة · رابط غرفة · رمز سوا (١٠ أرقام). وكلّها تسأل قبل التنفيذ.
+  function routeScanned(txt) {
+    var t = String(txt || "").trim(), m;
+    if ((m = t.match(/[?&]group=([A-Za-z0-9-]{8,80})/))) { whenReady(function () { linkConfirm("group", m[1]); }); return "group"; }
+    if ((m = t.match(/[?&]room=([A-Za-z0-9]{8})/i))) { var R = global.SawaRTC, f = R && (R.prejoin || (R._r && R._r.prejoin)); if (f) f(m[1].toUpperCase()); else toast(L("الغرف غير متاحة الآن", "Rooms unavailable")); return "room"; }
+    if ((m = t.match(/[?&]code=(\d{10})/)) || (m = t.replace(/[\s-]/g, "").match(/^(\d{10})$/))) { findSheet(m[1]); return "code"; }
+    var tok = tokenFrom(t);
+    if (tok) { whenReady(function () { linkConfirm("contact", tok); }); return "contact"; }
+    toast(L("هذا الرمز ليس من سوا", "That isn't a Sawa code")); return null;
+  }
+  function scanAny() {
+    return scanQr().then(function (txt) { return txt ? routeScanned(txt) : null; })
       .catch(function (e) { toast((e && e.message) || String(e)); return null; });
   }
+  function scanAndAdd() { return scanAny(); }
 
   // رابط ?contact= في عنوان الصفحة: يُقبل بعد الدخول ثمّ يُحذف من العنوان
   function handleContactParam() {
@@ -1826,6 +1865,34 @@
     };
     try { firebase.auth().signOut().then(done, done); } catch (e) { done(); }
   }
+  // C20: تسجيل الخروج حقّاً — كان «تسجيل الخروج» يقفل الشاشة برمزٍ لم يُضبط أصلاً ويبقى الحساب مفتوحاً
+  function signOutSheet() {
+    var a = authNow() || {}, me = state.me || {};
+    var s = sheet(L("تسجيل الخروج", "Sign out"));
+    s.box.appendChild(note((me.name || L("حسابك", "Your account")) + (a.email ? " · " + a.email : "") + (myCode() ? " · " + fmtCode(myCode()) : ""), "#1A1A2E", "#f3f7fb"));
+    if (a.anon || !a.uid) {
+      s.box.appendChild(note(L("حسابك «ضيف» غير مربوط بـGoogle أو بالبريد — إن خرجت فلن تستطيع العودة إليه أبداً، وتضيع محادثاتك ورمزك.",
+        "Your guest account isn't linked to Google or email — signing out loses it forever."), "#b42318", "#fdecec"));
+      var lk = mkBtn(L("اربط حسابك أوّلاً", "Link your account first"), "primary");
+      lk.onclick = function () { s.close(); emailSheet(); };
+      s.box.appendChild(lk);
+      var c0 = mkBtn(L("إلغاء", "Cancel")); c0.style.marginTop = "8px"; c0.onclick = function () { s.close(); }; s.box.appendChild(c0);
+      return true;
+    }
+    s.box.appendChild(note(L("تخرج من هذا الجهاز فقط: تتوقّف إشعاراته، وتُمسح منه المحادثات المخزّنة والإعدادات. حسابك ورسائلك باقية، وتعود إليها بالدخول من جديد.",
+      "Signs out this device only: notifications stop and local data is cleared. Your account and messages stay."), "#5b6b7c", "#f5f8fb"));
+    s.box.appendChild(note(L("شجرة العائلة المحفوظة على هذا الجهاز وحده تُمسح أيضاً — إن لم ترفعها إلى السحابة فصدّرها أوّلاً من «حسابي».",
+      "A family tree kept only on this device is cleared too — export or upload it first."), "#9a6700", "#fdf3d8"));
+    var ok = mkBtn(L("تسجيل الخروج", "Sign out"), "danger"); ok.style.marginTop = "6px";
+    ok.onclick = function () {
+      ok.disabled = true; ok.textContent = "…";
+      var stop = function () { try { stopMyPresence(); } catch (e) {} wipeLocal(); };
+      Promise.race([disablePush().catch(function () {}), new Promise(function (r) { setTimeout(r, 4000); })]).then(stop, stop);
+    };
+    var no = mkBtn(L("إلغاء", "Cancel")); no.style.marginTop = "8px"; no.onclick = function () { s.close(); };
+    s.box.appendChild(ok); s.box.appendChild(no);
+    return true;
+  }
   function deleteAccountSheet() {
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
     var s = sheet(L("حذف الحساب نهائيّاً", "Delete account permanently"));
@@ -2185,6 +2252,7 @@
     requestCount: function () { return reqs.incoming.length; }, fmtCode: fmtCode, codeValid: codeValid,
     retryFailed: retryFailed, discardFailed: discardFailed, failedSheet: failedSheet,   // C14
     retryMedia: retryMedia,   // C18
+    scanAny: scanAny, routeScanned: routeScanned, signOutSheet: signOutSheet,   // C20
     onboarding: function () { return onb ? onb.step : null; }, startOnboarding: function () { try { localStorage.removeItem("sawa_onboarded"); } catch (e) {} onbStart(); },
     _state: state, _onUid: onUid, _tokenFrom: tokenFrom
   };
