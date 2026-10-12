@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c11";
+  var VERSION = "c12";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1620,7 +1620,7 @@
       if (p.length < 6) { msg.textContent = L("كلمة المرور قصيرة — ٦ أحرف على الأقلّ", "Password too short — at least 6 characters"); return; }
       if (!S() || !S().linkEmail) { msg.textContent = emailErr({ code: "sawa/no-server" }); return; }
       go.disabled = true; go.textContent = "…"; msg.textContent = "";
-      S().linkEmail(e, p, mode).then(function () { onDone && onDone(); }).catch(function (x) {
+      S().linkEmail(e, p, mode).then(function () { if (mode === "create") sendVerify(true); onDone && onDone(); }).catch(function (x) {
         msg.textContent = emailErr(x);
         if (x && (x.code === "auth/email-already-in-use" || x.code === "auth/credential-already-in-use")) { mode = "signin"; paint(); msg.textContent = emailErr(x); }
       }).then(function () { go.disabled = false; go.textContent = mode === "create" ? L("إنشاء الحساب", "Create account") : L("دخول", "Sign in"); });
@@ -1755,6 +1755,12 @@
       ft.appendChild(g); ft.appendChild(em);
       if (onbDeleteMode) { b.appendChild(mk("div", "font:700 14px/1.8 system-ui;color:#ffe08a;margin-top:12px", L("لحذف حسابك: ادخل بالحساب نفسه الذي تريد حذفه.", "To delete your account, sign in with that account."))); }
       else ft.appendChild(gu);
+      var legal = mk("div", "font:500 12px/1.8 system-ui;color:rgba(255,255,255,.75);text-align:center;margin-top:2px");
+      legal.appendChild(document.createTextNode(L("بالمتابعة توافق على ", "By continuing you agree to the ")));
+      var lt = mk("a", "color:#fff;font-weight:700", L("شروط الاستخدام", "Terms")); lt.href = "/terms"; lt.target = "_blank"; lt.rel = "noopener";
+      var lp = mk("a", "color:#fff;font-weight:700", L("سياسة الخصوصيّة", "Privacy Policy")); lp.href = "/privacy"; lp.target = "_blank"; lp.rel = "noopener";
+      legal.appendChild(lt); legal.appendChild(document.createTextNode(L(" و", " and "))); legal.appendChild(lp);
+      ft.appendChild(legal);
       g.onclick = function () {
         if (!state.uid || !S() || !S().linkGoogle) { toast(L("جارٍ الاتّصال بالخادم… حاول بعد لحظة", "Connecting… try again in a moment")); return; }
         try { Promise.resolve(S().linkGoogle()).catch(function () {}); } catch (e) {}
@@ -1867,6 +1873,47 @@
     if (pendingDelete) { pendingDelete = false; onbDeleteMode = false; whenReady(function () { setTimeout(deleteAccountSheet, 600); }); }
   }
   // ?code=… (رابط «رمزي») و ?requests=1 (إشعار طلب تواصل)
+  // ---------- تأكيد البريد (حسابات البريد وكلمة المرور) ----------
+  //  بعد إنشاء الحساب تُرسَل رسالة تأكيد · شريطٌ يوميّ لطيف حتّى يؤكَّد · العودة من الرابط (?verified=1) ⇒ تحديث الحالة
+  function emailUser() {
+    try { var u = firebase.auth().currentUser; if (!u || u.isAnonymous || !u.email) return null;
+      return (u.providerData || []).some(function (p) { return p && p.providerId === "password"; }) ? u : null; } catch (e) { return null; }
+  }
+  function sendVerify(silent) {
+    var u = emailUser(); if (!u) return Promise.resolve(false);
+    return u.sendEmailVerification({ url: global.location.origin + "/?verified=1" }).then(function () {
+      lsSet("sawa_verify_sent", Date.now());
+      toast(L("أرسلنا رابط تأكيدٍ إلى ", "We sent a confirmation link to ") + u.email + L(" — تفقّد الرسائل غير المرغوبة أيضاً", " — check spam too"));
+      return true;
+    }).catch(function (e) {
+      if (!silent) toast(e && e.code === "auth/too-many-requests" ? L("أُرسل رابطٌ قبل قليل — انتظر ثمّ أعد المحاولة", "A link was sent recently — try again later") : L("تعذّر الإرسال: ", "Couldn't send: ") + ((e && (e.code || e.message)) || e));
+      return false;
+    });
+  }
+  var verifyEl = null;
+  function maybeVerifyBanner() {
+    var u = emailUser();
+    if (!u || u.emailVerified || verifyEl || onbActive() || !document.body) return;
+    if (lsGet("sawa_verify_asked", 0) > Date.now() - 86400000) return;
+    verifyEl = bannerShell(); verifyEl.style.bottom = ""; verifyEl.style.top = "calc(10px + env(safe-area-inset-top,0px))"; verifyEl.style.background = "#8a5a00";
+    var txt = mk("div", "flex:1", L("📧 أكّد بريدك ", "📧 Confirm ") + u.email + L(" لتستطيع استعادة حسابك", " so you can recover your account"));
+    var yes = btn(L("إرسال الرابط", "Send link"), true), no = btn(L("لاحقاً", "Later"));
+    var close = function () { lsSet("sawa_verify_asked", Date.now()); try { verifyEl.remove(); } catch (e) {} verifyEl = null; };
+    yes.onclick = function () { close(); sendVerify(false); };
+    no.onclick = close;
+    verifyEl.appendChild(txt); verifyEl.appendChild(yes); verifyEl.appendChild(no); document.body.appendChild(verifyEl);
+  }
+  function handleVerifiedParam() {
+    if (!/[?&]verified=1(&|$)/.test(global.location.search)) return;
+    try { var u0 = new URL(global.location.href); u0.searchParams.delete("verified"); global.history.replaceState(null, "", u0.pathname + (u0.search ? u0.search : "") + u0.hash); } catch (e) {}
+    whenReady(function () {
+      var u = emailUser(); if (!u) return;
+      u.reload().then(function () {
+        var v = firebase.auth().currentUser;
+        toast(v && v.emailVerified ? L("تمّ تأكيد بريدك ✓", "Email confirmed ✓") : L("لم يُؤكَّد البريد بعد — افتح الرابط من رسالة التأكيد", "Not confirmed yet — open the link in the email"));
+      }).catch(function () {});
+    });
+  }
   function handleCodeParams() {
     var q; try { q = new URLSearchParams(global.location.search); } catch (e) { return; }
     var code = q.get("code"), rq = q.get("requests");
@@ -1897,6 +1944,7 @@
     restorePending(); startChats(uid); loadPrefs(); drainOutbox();
     setTimeout(refreshPush, 3000);
     setTimeout(loadRequests, 2500);
+    setTimeout(maybeVerifyBanner, 6000);
     var cbs = readyCbs; readyCbs = [];
     cbs.forEach(function (f) { try { f(uid); } catch (e) {} });
   }
@@ -1912,6 +1960,7 @@
     } catch (e) {}
     try { if (onbNeeded()) onbStart(); } catch (e) { log("onboarding:", e && e.message); }
     handleCodeParams();
+    handleVerifiedParam();
     handleContactParam();
     handleGroupParam();
     handleChatParam();
@@ -1956,7 +2005,7 @@
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
     _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,
     // C10
-    codeSheet: codeSheet, findSheet: findSheet, requestsSheet: requestsSheet, emailSheet: emailSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet,
+    codeSheet: codeSheet, findSheet: findSheet, requestsSheet: requestsSheet, emailSheet: emailSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },
     requestCount: function () { return reqs.incoming.length; }, fmtCode: fmtCode, codeValid: codeValid,
     onboarding: function () { return onb ? onb.step : null; }, startOnboarding: function () { try { localStorage.removeItem("sawa_onboarded"); } catch (e) {} onbStart(); },
     _state: state, _onUid: onUid, _tokenFrom: tokenFrom

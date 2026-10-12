@@ -719,6 +719,8 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         // الجسر (B5): لوحة السحابة والمشاركة (رفع، Google، روابط، استعادة) — sawa-sync.js
         // فحص الاتّصال (diag.html): يعمل داخل التطبيق المثبّت أيضاً — زرّ «رجوع إلى سوا» في أسفله
         { key: "diag", label: "فحص الاتّصال", icon: Wifi, onPress: () => { location.href = "./diag.html"; }, color: "#64748B" },
+        // C11: صفحاتٌ عامّة على الموقع (Google Play يطلب رابطيها)
+        { key: "legal", label: tl("الخصوصيّة والشروط", "Privacy & terms"), icon: ShieldCheck, onPress: () => { location.href = "/privacy"; }, color: "#64748B" },
         { key: "cloud", label: t("me_rfa_alshjra"), icon: Cloud, onPress: () => { if (window.SawaSync) (window.SawaSync.openPanel ? window.SawaSync.openPanel() : window.SawaSync.uploadCurrent()); }, color: "#187854" },
         // في مرحلة التجربة: الوصول للملاحظات من مكان ثابت يعرفه المجرِّب
     ];
