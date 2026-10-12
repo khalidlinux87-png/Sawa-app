@@ -4,15 +4,9 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v202';
-// P2: على العناوين القديمة/البديلة (Netlify · sawaap.pages.dev · sawaaap.com بلا www) يصير عامل الخدمة «مُخلياً»:
-//     يمسح المخزون، يحوّل الصفحات المفتوحة إلى العنوان الرسميّ، ثمّ يلغي نفسه. على www.sawaaap.com يعمل كالمعتاد.
-//     (لا يُحذف هذا قبل أن ينتقل كلّ المستخدمين.)
-const MOVED_TO = 'https://www.sawaaap.com';
-const MOVED = /\.netlify\.app$/i.test(self.location.hostname) || /^sawaap\.pages\.dev$/i.test(self.location.hostname) || /^sawaaap\.com$/i.test(self.location.hostname);
+const VERSION = 'sawa-v203';
 const ASSETS = [
   './',
-  './index.html',
   './manifest.json',
   './daily.json',
   './duaa.json',
@@ -39,25 +33,15 @@ const ASSETS = [
 // مكتبات الواجهة من الشبكة (React · Tailwind · Firebase SDK) — تُخزَّن ليعمل التطبيق دون اتّصال
 const CDN_HOSTS = ['unpkg.com', 'cdn.tailwindcss.com', 'www.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 // صفحاتٌ تبقى «الشبكة أوّلاً» (أدوات فحصٍ تتغيّر ويجب أن تكون حديثة دائماً)
-const NETWORK_FIRST = ['/diag.html'];
+const NETWORK_FIRST = ['/diag.html', '/diag'];
 
 self.addEventListener('install', (e) => {
-  if (MOVED) { self.skipWaiting(); return; }
   e.waitUntil(caches.open(VERSION)
     .then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' }))))
     .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
-  if (MOVED) {
-    e.waitUntil(caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.indexOf('sawa-') === 0).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
-      .then(() => self.clients.matchAll({ type: 'window' }))
-      .then((cs) => Promise.all(cs.map((c) => { try { const u = new URL(c.url); return c.navigate(MOVED_TO + u.pathname + u.search + u.hash).catch(() => null); } catch (x) { return null; } })))
-      .then(() => self.registration.unregister()));
-    return;
-  }
   e.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys
@@ -72,24 +56,30 @@ self.addEventListener('message', (e) => {
   if (e.data && e.data.type === 'sawa-version' && e.source) e.source.postMessage({ type: 'sawa-version', version: VERSION });
 });
 
+// ⛔ Cloudflare Pages يحوّل ‎/x.html‎ إلى ‎/x‎ (308). ردٌّ «محوَّل» (redirected) يُعاد لطلب تنقّل ⇒ المتصفّح يرفضه: ERR_FAILED.
+//    لذا: الصفحة الرئيسيّة تُخزَّن بمفتاح «./» لا «./index.html»، وكلّ ردٍّ محوَّل يُنسخ ردّاً نظيفاً قبل إعادته.
+function clean(r) {
+  if (!r || !r.redirected) return r;
+  return r.blob().then((b) => new Response(b, { status: r.status, statusText: r.statusText, headers: r.headers }));
+}
 function putCache(req, res) {
   if (res && (res.ok || res.type === 'opaque')) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(req, copy)).catch(() => {}); }
   return res;
 }
 function networkFirst(req) {
   return fetch(req).then((res) => putCache(req, res))
-    .catch(() => caches.match(req).then((r) => r || (req.mode === 'navigate' ? caches.match('./index.html') : undefined)));
+    .catch(() => caches.match(req).then((r) => r || (req.mode === 'navigate' ? caches.match('./') : undefined)))
+    .then(clean);
 }
 function cacheFirst(req, key) {
   return caches.open(VERSION).then((c) => c.match(key || req, { ignoreSearch: !!key }).then((hit) => {
     if (hit) return hit;
     return fetch(req).then((res) => { if (!key) putCache(req, res); return res; })
-      .catch(() => (req.mode === 'navigate' ? c.match('./index.html') : undefined));
-  }));
+      .catch(() => (req.mode === 'navigate' ? c.match('./') : undefined));
+  })).then(clean);
 }
 
 self.addEventListener('fetch', (e) => {
-  if (MOVED) return;
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
@@ -99,8 +89,10 @@ self.addEventListener('fetch', (e) => {
   if (sameOrigin && url.pathname.indexOf('/__/') === 0) return; // مسارات Firebase الخاصّة
   if (sameOrigin && url.pathname === '/sw.js') return;
   if (sameOrigin && NETWORK_FIRST.indexOf(url.pathname) >= 0) { e.respondWith(networkFirst(req)); return; }
-  // فتح التطبيق (بأيّ ‎?chat=/‎?room=…) ⇒ index.html المخزّن
-  if (sameOrigin && req.mode === 'navigate' && (url.pathname === '/' || url.pathname === '/index.html')) { e.respondWith(cacheFirst(req, './index.html')); return; }
+  // فتح التطبيق (بأيّ ‎?chat=/‎?room=…) ⇒ الصفحة الرئيسيّة المخزّنة (مفتاحها «./»)
+  if (sameOrigin && req.mode === 'navigate' && (url.pathname === '/' || url.pathname === '/index.html')) { e.respondWith(cacheFirst(req, './')); return; }
+  // صفحاتٌ أخرى (diag…) قد يحوّلها Pages: الشبكة مباشرةً
+  if (sameOrigin && req.mode === 'navigate') { e.respondWith(networkFirst(req)); return; }
   e.respondWith(cacheFirst(req));
 });
 
