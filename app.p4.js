@@ -1494,8 +1494,17 @@ function ConversationsListScreen({ chatDrafts = {}, conversations, groups, broad
     const tabGroups = useMemo(() => {
         if (activeTab !== "all" && activeTab !== "groups")
             return [];
-        return [...groups].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    }, [groups, activeTab]);
+        const q = searchQuery.trim().toLowerCase();
+        return [...groups].filter((g) => !q || (g.name || "").toLowerCase().indexOf(q) !== -1 || (g.lastMessage || "").toLowerCase().indexOf(q) !== -1)
+            .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    }, [groups, activeTab, searchQuery]);
+    // C13e: قائمةٌ واحدة — «رسائلي المحفوظة» أوّلاً، ثمّ المثبَّت، ثمّ الأحدث نشاطاً (محادثةً كانت أو مجموعة)
+    const mergedRows = useMemo(() => {
+        const pin = (id) => (pinnedConversations.includes(id) ? 1 : 0);
+        const rows = tabConversations.map((c) => ({ c, id: c.id, saved: c.isSavedMessages ? 1 : 0, ts: c.updatedAt || 0 }))
+            .concat(tabGroups.map((g) => ({ g, id: g.id, saved: 0, ts: g.updatedAt || 0 })));
+        return rows.sort((a, b) => (b.saved - a.saved) || (pin(b.id) - pin(a.id)) || (b.ts - a.ts));
+    }, [tabConversations, tabGroups, pinnedConversations]);
     const tabBroadcasts = activeTab === "all" ? broadcastLists : [];
     // بادج عدد المتأخرين في صلة الرحم
     const overdueCount = useMemo(() => getOverduePersons(groupPersons).length, [groupPersons]);
@@ -1669,19 +1678,6 @@ function ConversationsListScreen({ chatDrafts = {}, conversations, groups, broad
                                 b.recipientIds.length,
                                 " \u0645\u0633\u062A\u0644\u0645 \u00B7 \u0642\u0627\u0626\u0645\u0629 \u0628\u062B")),
                         React.createElement(isRTL() ? ChevronLeft : ChevronRight, { size: 16, color: colors.textMuted }))))),
-                tabGroups.map((g) => (React.createElement(Card, { key: g.id, className: `flex ${rowStart()} items-center cursor-pointer`, style: { cursor: "pointer" } },
-                    React.createElement("button", { onClick: () => onOpenGroup(g), /* flex-row صريحة لا rowStart(): ترميز هذا الصف مرتّب من اليمين
-                               (صورة ← نص ← عدّاد ← سهم) فلا يحتاج عكساً */
-                            className: `w-full flex flex-row items-center ${textStart()}` },
-                        React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${ms("3")} shrink-0`, style: { backgroundColor: colors.primaryLight } },
-                            React.createElement(Users2, { size: 20, color: colors.primaryDark })),
-                        React.createElement("div", { className: "flex-1", style: { minWidth: 0 } },
-                            React.createElement("div", { style: { display: "flex", flexDirection: "row", direction: "ltr", alignItems: "center", justifyContent: "space-between" } },
-                                React.createElement("span", { className: "text-[10px] shrink-0", style: { color: colors.textMuted } }, formatChatTime(g.updatedAt)),
-                                React.createElement("span", { className: "font-bold text-sm truncate", style: { color: colors.text, direction: "rtl" } }, g.name)),
-                            React.createElement("div", { className: "text-xs mt-0.5 truncate", style: { color: colors.textMuted, direction: "rtl", textAlign: "right" } }, chatDrafts && chatDrafts["g:" + g.id] ? React.createElement(React.Fragment, null, React.createElement("span", { style: { color: colors.danger, fontWeight: 700 } }, "مسودّة: "), chatDrafts["g:" + g.id]) : (g.lastMessage || t("aada_mjmwaa", { length: g.members.length })))),
-                        g.unread > 0 && (React.createElement("span", { className: `w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${ms("1.5")}`, style: { backgroundColor: colors.primary } }, g.unread)),
-                        React.createElement(isRTL() ? ChevronLeft : ChevronRight, { size: 16, color: colors.textMuted, className: `shrink-0 ${ms("1")}` }))))),
                 activeTab === "all" && scheduledRooms.filter((r) => r.at > Date.now()).slice(0, 2).map((r) => (React.createElement("div", { key: r.id, className: `rounded-xl px-3 py-2.5 mb-1.5 flex ${rowStart()} items-center gap-3`, style: { backgroundColor: colors.accent + "12", border: `1px solid ${colors.accent}40` } },
                     React.createElement(CalendarDays, { size: 17, color: colors.accent, className: "shrink-0" }),
                     React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
@@ -1695,7 +1691,19 @@ function ConversationsListScreen({ chatDrafts = {}, conversations, groups, broad
                     React.createElement("span", { className: `flex-1 ${textStart()} text-sm font-bold`, style: { color: colors.text } }, t("almwrshfa")),
                     archivedUnreadCount > 0 && (React.createElement("span", { className: "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold text-white shrink-0", style: { backgroundColor: colors.primary } }, archivedUnreadCount)),
                     React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.textMuted } }, archivedCount))),
-                tabConversations.map((c) => (React.createElement(SwipeableConvCard, { key: c.id, isMuted: mutedConversations.includes(c.id), isPinned: pinnedConversations.includes(c.id), onArchive: () => handleArchive(c.id, c.name), onMute: () => onMuteConv === null || onMuteConv === void 0 ? void 0 : onMuteConv(c.id), onPin: () => onPinConv === null || onPinConv === void 0 ? void 0 : onPinConv(c.id), onDelete: () => setConfirmDeleteId(c.id) },
+                (() => { /* C13e: المحادثات والمجموعات معاً بحسب آخر نشاط — لا مجموعاتٍ ثابتةً في الأعلى */ const rowG = (g) => (React.createElement(Card, { key: g.id, className: `flex ${rowStart()} items-center cursor-pointer`, style: { cursor: "pointer" } },
+                    React.createElement("button", { onClick: () => onOpenGroup(g), /* flex-row صريحة لا rowStart(): ترميز هذا الصف مرتّب من اليمين
+                               (صورة ← نص ← عدّاد ← سهم) فلا يحتاج عكساً */
+                            className: `w-full flex flex-row items-center ${textStart()}` },
+                        React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${ms("3")} shrink-0`, style: { backgroundColor: colors.primaryLight } },
+                            React.createElement(Users2, { size: 20, color: colors.primaryDark })),
+                        React.createElement("div", { className: "flex-1", style: { minWidth: 0 } },
+                            React.createElement("div", { style: { display: "flex", flexDirection: "row", direction: "ltr", alignItems: "center", justifyContent: "space-between" } },
+                                React.createElement("span", { className: "text-[10px] shrink-0", style: { color: colors.textMuted } }, formatChatTime(g.updatedAt)),
+                                React.createElement("span", { className: "font-bold text-sm truncate", style: { color: colors.text, direction: "rtl" } }, g.name)),
+                            React.createElement("div", { className: "text-xs mt-0.5 truncate", style: { color: colors.textMuted, direction: "rtl", textAlign: "right" } }, chatDrafts && chatDrafts["g:" + g.id] ? React.createElement(React.Fragment, null, React.createElement("span", { style: { color: colors.danger, fontWeight: 700 } }, "مسودّة: "), chatDrafts["g:" + g.id]) : (g.lastMessage || t("aada_mjmwaa", { length: g.members.length })))),
+                        g.unread > 0 && (React.createElement("span", { className: `w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${ms("1.5")}`, style: { backgroundColor: colors.primary } }, g.unread)),
+                        React.createElement(isRTL() ? ChevronLeft : ChevronRight, { size: 16, color: colors.textMuted, className: `shrink-0 ${ms("1")}` })))); const rowC = (c) => (React.createElement(SwipeableConvCard, { key: c.id, isMuted: mutedConversations.includes(c.id), isPinned: pinnedConversations.includes(c.id), onArchive: () => handleArchive(c.id, c.name), onMute: () => onMuteConv === null || onMuteConv === void 0 ? void 0 : onMuteConv(c.id), onPin: () => onPinConv === null || onPinConv === void 0 ? void 0 : onPinConv(c.id), onDelete: () => setConfirmDeleteId(c.id) },
                     React.createElement(Card, { className: `flex ${rowStart()} items-center cursor-pointer`, style: { cursor: "pointer" } },
                         React.createElement("button", { onClick: () => { if (selectionMode) {
                                 if (!c.isSavedMessages)
@@ -1749,7 +1757,7 @@ function ConversationsListScreen({ chatDrafts = {}, conversations, groups, broad
                             mutedConversations.includes(c.id) && (React.createElement(BellOff, { size: 13, color: colors.textMuted, className: `shrink-0 ${ms("1.5")}` })),
                             !c.isSavedMessages && c.unread > 0 && (React.createElement("span", { className: `w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${ms("1.5")}`, style: { backgroundColor: mutedConversations.includes(c.id) ? colors.textMuted : colors.primary } }, c.unread)),
                             React.createElement(isRTL() ? ChevronLeft : ChevronRight, { size: 16, color: colors.textMuted, className: `shrink-0 ${ms("1")}` }),
-))))))),
+)))); return mergedRows.map((it) => it.g ? rowG(it.g) : rowC(it.c)); })())),
         ctxMenu && (React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setCtxMenu(null), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.35)" } }),
             React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 41, backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 12 } },

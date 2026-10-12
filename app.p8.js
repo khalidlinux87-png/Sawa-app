@@ -1045,7 +1045,7 @@ function AppInner() {
         });
     }
     const [autoLockDelay, setAutoLockDelay] = useState(0);
-    const [tab, setTab] = useState(IS_RAHIM ? "discover" : "me");
+    const [tab, setTab] = useState(IS_RAHIM ? "discover" : "chats");   // C13e: التطبيق يفتح على المحادثات
     const [stack, setStack] = useState([]); // 'security' | 'demo' | 'sessions' | 'wallet' | 'stats' | 'notifications'
     const [notes, setNotes] = useState([]);
     // ⛔ كانت ثلاثة إشعارات مكتوبةً في الكود: «أشار لك خالد» و«ذكرى ميلاد
