@@ -4,7 +4,7 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v209';
+const VERSION = 'sawa-v210';
 // P2: على العناوين القديمة/البديلة (Netlify · sawaap.pages.dev · sawaaap.com بلا www) يصير عامل الخدمة «مُخلياً»:
 //     يمسح المخزون، يحوّل الصفحات المفتوحة إلى العنوان الرسميّ، ثمّ يلغي نفسه. على www.sawaaap.com يعمل كالمعتاد.
 //     (لا يُحذف هذا قبل أن ينتقل كلّ المستخدمين.)
@@ -42,8 +42,10 @@ const NETWORK_FIRST = ['/diag.html', '/diag'];
 
 self.addEventListener('install', (e) => {
   if (MOVED) { self.skipWaiting(); return; }
+  // ⛔ كلّ ملفٍّ على حدة: ملفٌّ واحد مفقود أو انقطاعٌ لحظيّ لا يُفشل التحديث كلّه (كان addAll يُبقي النسخة القديمة عالقة).
+  //    ما لم يُخزَّن يُجلب من الشبكة عند أوّل طلبٍ له (cacheFirst) ثمّ يُخزَّن.
   e.waitUntil(caches.open(VERSION)
-    .then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' }))))
+    .then((c) => Promise.all(ASSETS.map((u) => c.add(new Request(u, { cache: 'reload' })).catch((err) => console.warn('precache miss', u, err && err.message)))))
     .then(() => self.skipWaiting()));
 });
 
@@ -68,7 +70,10 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('message', (e) => {
-  if (e.data && e.data.type === 'sawa-version' && e.source) e.source.postMessage({ type: 'sawa-version', version: VERSION });
+  if (e.data && e.data.type === 'sawa-version' && e.source) {
+    caches.open(VERSION).then((c) => c.keys()).then((k) => e.source.postMessage({ type: 'sawa-version', version: VERSION, cached: k.length, assets: ASSETS.length }))
+      .catch(() => e.source.postMessage({ type: 'sawa-version', version: VERSION }));
+  }
 });
 
 // ⛔ Cloudflare Pages يحوّل ‎/x.html‎ إلى ‎/x‎ (308). ردٌّ «محوَّل» (redirected) يُعاد لطلب تنقّل ⇒ المتصفّح يرفضه: ERR_FAILED.

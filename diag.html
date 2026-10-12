@@ -36,6 +36,7 @@
   <div id="msgOut" class="d" style="margin:6px 2px 4px"></div>
   <button id="stats" style="background:#7c3aed">📊 لوحة الاستهلاك (لمدير التطبيق)</button>
   <div id="statsOut" style="margin:6px 0 4px"></div>
+  <button id="force" style="background:#b45309">🔄 تحديث قسري للتطبيق (يمسح النسخة المخزّنة ويجلب الأحدث)</button>
   <button id="copy">نسخ النتائج</button>
   <button id="again" class="sec">إعادة الفحص</button>
   <button id="back" class="sec">↩ رجوع إلى سوا</button>
@@ -78,11 +79,38 @@
       }, function (e) { return { status: 0, ms: ms(t0), err: (e && e.name === "TypeError") ? "تعذّر الوصول (شبكة أو خطأ من Cloudflare بلا CORS — مثل تجاوز الحدّ اليوميّ)" : String(e && e.message || e) }; });
   }
 
+  // نسخة الخادم مقابل النسخة النشطة فعلاً على هذا الجهاز — تعمل أوّلاً، بلا حسابٍ ولا Firebase
+  function swCheck() {
+    if (!navigator.serviceWorker) { add("bad", "نسخة التطبيق", "عامل الخدمة غير مدعوم"); return Promise.resolve(); }
+    return navigator.serviceWorker.getRegistration().then(function (reg) {
+      if (!reg) { add("warn", "نسخة التطبيق", "لا عامل خدمة مسجَّل — افتح سوا مرّةً من هذا المتصفّح"); return; }
+      var activeV = new Promise(function (res) {
+        if (!reg.active) return res(null);
+        var done = false, on = function (ev) { var d = ev.data || {}; if (d.type === "sawa-version" && !done) { done = true; navigator.serviceWorker.removeEventListener("message", on); res(d); } };
+        navigator.serviceWorker.addEventListener("message", on);
+        try { reg.active.postMessage({ type: "sawa-version" }); } catch (e) {}
+        setTimeout(function () { if (!done) { done = true; navigator.serviceWorker.removeEventListener("message", on); res({ version: "قديم جدّاً (لا يجيب)" }); } }, 2500);
+      });
+      return Promise.all([fetch("/sw.js?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.text(); }).catch(function () { return ""; }), activeV]).then(function (x) {
+        var m = x[0].match(/sawa-v\d+/), server = m ? m[0] : "?", act = x[1];
+        var same = act && act.version === server;
+        add(same ? "ok" : "warn", "نسخة التطبيق", "على الخادم: " + server + " · على جهازك: " + (act ? act.version : "لا عامل خدمة") +
+          (act && act.cached != null ? " (" + act.cached + "/" + act.assets + " ملفّاً مخزَّناً)" : "") +
+          (same ? "" : "\n⇐ جهازك يعرض نسخةً أقدم. اضغط «🔄 تحديث قسري» أسفل الصفحة."));
+        if (reg.waiting) add("warn", "تحديثٌ ينتظر", "نسخةٌ جديدة نزلت ولم تُفعَّل بعد — «تحديث قسري» يفعّلها");
+      });
+    }).catch(function (e) { add("warn", "نسخة التطبيق", String(e && e.message || e)); });
+  }
+
   function run() {
     out.innerHTML = ""; lines = ["فحص سوا — " + new Date().toISOString(), navigator.userAgent.slice(0, 120)];
     add(navigator.onLine ? "ok" : "bad", "الشبكة", navigator.onLine ? "متّصل" + (navigator.connection && navigator.connection.effectiveType ? " · " + navigator.connection.effectiveType + (navigator.connection.rtt ? " · rtt " + navigator.connection.rtt + "ms" : "") : "") : "غير متّصل");
     add(lsLen("sawa_chat_outbox") ? "warn" : "ok", "رسائل عالقة في الطابور", String(lsLen("sawa_chat_outbox")));
     var fl = lsLen("sawa_sync_failed"); if (fl) add("warn", "تعديلات رفضها الخادم سابقاً", String(fl));
+    swCheck().then(authChecks);
+  }
+  function authChecks() {
+    if (typeof firebase === "undefined") { add("bad", "Firebase", "لم تُحمَّل مكتبات Firebase — تحقّق من الشبكة"); return; }
     if (!firebase.apps.length) firebase.initializeApp(CFG);
     var un = firebase.auth().onAuthStateChanged(function (u) {
       un();
@@ -140,9 +168,7 @@
         if (!navigator.serviceWorker) { add("bad", "عامل الخدمة", "غير مدعوم"); return; }
         return navigator.serviceWorker.getRegistration().then(function (reg) {
           if (!reg) { add("warn", "عامل الخدمة", "غير مسجَّل"); return; }
-          return fetch("./sw.js", { cache: "no-store" }).then(function (r) { return r.text(); }).then(function (t) {
-            var m = t.match(/sawa-v\d+/); add("ok", "عامل الخدمة", (m ? m[0] : "?") + (reg.active ? " · نشط" : " · غير نشط"));
-          }).then(function () { return reg.pushManager && reg.pushManager.getSubscription(); }).then(function (s) {
+          return Promise.resolve().then(function () { return reg.pushManager && reg.pushManager.getSubscription(); }).then(function (s) {
             add(s ? "ok" : "warn", "اشتراك الإشعارات على هذا الجهاز", s ? "موجود" : "غير موجود — فعّل الإشعارات من الإعدادات");
           });
         });
@@ -218,6 +244,16 @@
         });
       });
     }).catch(function (e) { say("❌ " + (e && (e.code || "") + " " + (e.message || e))); });
+  };
+  // تحديث قسري: إلغاء عامل الخدمة ومسح مخازن «سوا» ثمّ فتح التطبيق من الخادم — لا يمسّ الحساب ولا البيانات المحفوظة
+  document.getElementById("force").onclick = function () {
+    var b = this; b.disabled = true; b.textContent = "…";
+    var jobs = [];
+    try {
+      if (window.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k.indexOf("sawa-") === 0; }).map(function (k) { return caches.delete(k); })); }));
+      if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+    } catch (e) {}
+    Promise.all(jobs).catch(function () {}).then(function () { location.replace("/?fresh=" + Date.now()); });
   };
   // البلاغات (للمدير): السبب، المبلِّغ، الملاحظة، آخر الرسائل — و«إغلاق» بعد المراجعة
   var REASON = { spam: "رسائل مزعجة", harassment: "مضايقة", hate: "كراهية", scam: "احتيال", sexual: "غير لائق", violence: "عنف", impersonation: "انتحال", other: "آخر" };
