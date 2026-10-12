@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c15";
+  var VERSION = "c16";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -1316,7 +1316,7 @@
       var m = s.val();
       if (!m) {
         if (!opts.create) throw Object.assign(new Error("gone"), { ui: L("الغرفة غير موجودة أو انتهت", "This room doesn't exist or has ended") });
-        m = { host: me, owner: me, title: String(r.title).slice(0, 80), ts: TS(), locked: false, lobby: false };   // C14: المالك لا يُطرد ويستعيد الاستضافة
+        m = { host: me, owner: me, title: String(r.title).slice(0, 80), ts: TS(), gc: Date.now() + 3 * 3600000, locked: false, lobby: false };   // C16: gc = متى يجوز حذفها فارغةً   // C14: المالك لا يُطرد ويستعيد الاستضافة
         return rRef(r, "meta").set(m).then(function () { return rRef(r, "meta").once("value"); }).then(function (x) { return x.val(); });
       }
       return m;
@@ -1659,7 +1659,11 @@
           // آخر من يغادر (وهو المضيف): يحذف الغرفة — وتبقى «بطاقتها» إن كانت مجدولة لموعدٍ قادم
           if (wasHost && (!others.length || reason === "ended")) {
             var keep = meta && meta.sched && meta.sched > Date.now() - 3600000 && reason !== "ended";
-            setTimeout(function () { ref.set(keep ? { meta: { host: me, title: meta.title || "", ts: meta.ts || Date.now(), sched: meta.sched, locked: false, lobby: !!meta.lobby } } : null).catch(function () {}); }, reason === "ended" ? 2500 : 0);
+            // C16: البطاقة المحفوظة تحتفظ بمالكها وموعد تنظيفها (القواعد ترفض حذف المالك)
+            var card = keep ? { host: meta.owner || me, title: meta.title || "", ts: meta.ts || Date.now(), sched: meta.sched, locked: false, lobby: !!meta.lobby } : null;
+            if (card && meta.owner) card.owner = meta.owner;
+            if (card && meta.gc) card.gc = meta.gc;
+            setTimeout(function () { ref.set(card ? { meta: card } : null).catch(function () {}); }, reason === "ended" ? 2500 : 0);
           }
         }).catch(function () {});
       }

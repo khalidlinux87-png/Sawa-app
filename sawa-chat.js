@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c14";
+  var VERSION = "c16";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -921,8 +921,28 @@
     if (!day) { toast(L("لحظة — الرسالة لم تُحفظ بعد", "One moment — the message isn't saved yet")); return; }
     call(op, Object.assign({ cid: cid, day: day, id: id }, extra)).catch(fail);
   }
+  // C16: الاستطلاع المجهول — صوتي مخزَّنٌ تحت مفتاحٍ لا يعرفه غيري؛ أعرف مفتاحي من الخادم (يُحفظ على الجهاز)
+  var PKEYS = "sawa_poll_keys", pkWant = {}, pkT = null;
+  function pollKey(id) { var k = lsGet(PKEYS, {}); return k[state.uid + ":" + id] || null; }
+  function savePollKey(id, key) { var k = lsGet(PKEYS, {}); k[state.uid + ":" + id] = key; var ks = Object.keys(k); if (ks.length > 400) delete k[ks[0]]; lsSet(PKEYS, k); }
+  function wantPollKey(cid, id) {
+    if (pollKey(id) || pkWant[id]) return;
+    pkWant[id] = cid;
+    if (!pkT) pkT = setTimeout(function () {
+      pkT = null; var by = {};
+      Object.keys(pkWant).forEach(function (i) { if (pkWant[i] !== true) { (by[pkWant[i]] = by[pkWant[i]] || []).push(i); pkWant[i] = true; } });
+      Object.keys(by).forEach(function (c) {
+        call("chat.pollKeys", { cid: c, ids: by[c].slice(0, 50) }).then(function (b) {
+          Object.keys((b && b.keys) || {}).forEach(function (i) { savePollKey(i, b.keys[i]); }); publishMessages(c);
+        }).catch(function () {});
+      });
+    }, 300);
+  }
   function vote(cid, id, idx) {
-    toolCall("chat.vote", cid, id, { option: idx }, function (m) { m.votes = Object.assign({}, m.votes); m.votes[state.uid] = idx; return m; });
+    var f = findMsg(cid, id), anon = !!(f && f.msg.extra && f.msg.extra.anonymous), key = anon ? pollKey(id) : state.uid;
+    var day = key ? patchLocal(cid, id, function (m) { m.votes = Object.assign({}, m.votes); if (anon) delete m.votes[state.uid]; m.votes[key] = idx; return m; }) : (f || {}).day;
+    if (!day) { toast(L("لحظة — الرسالة لم تُحفظ بعد", "One moment — the message isn't saved yet")); return; }
+    call("chat.vote", { cid: cid, day: day, id: id, option: idx }).then(function (b) { if (b && b.key) { savePollKey(id, b.key); publishMessages(cid); } }).catch(fail);
   }
   function editPoll(cid, id, question, options) { toolCall("chat.pollEdit", cid, id, { question: question, options: options }); }
   function sendBill(cid, description, totalAmount, participantAmounts, splitType) {
@@ -966,7 +986,11 @@
     if (m.type === "poll") {
       var votes = m.votes || {};
       o.type = "poll"; o.question = ex.question || ""; o.creatorId = appId(m.by); o.deadline = ex.deadline || null; o.anonymous = !!ex.anonymous; o.editedAt = ex.editedAt || null;
-      o.options = (ex.options || []).map(function (text, i) { return { text: text, votes: Object.keys(votes).filter(function (u) { return votes[u] === i; }).map(appId) }; });
+      var mine = ex.anonymous ? pollKey(m.id) : null;
+      if (ex.anonymous && !mine && c && c.cid) wantPollKey(c.cid, m.id);
+      // المجهول: لا هويّات — «أنا» إن كان المفتاح مفتاحي، والبقيّة معرّفاتٌ صمّاء للعدّ فقط
+      var who = function (u) { return !ex.anonymous ? appId(u) : (u === mine || u === state.uid) ? appId(state.uid) : "anon:" + u.slice(-6); };
+      o.options = (ex.options || []).map(function (text, i) { return { text: text, votes: Object.keys(votes).filter(function (u) { return votes[u] === i; }).map(who) }; });
       return o;
     }
     if (m.type === "bill") {
@@ -1101,7 +1125,13 @@
   function uploadMedia(cid, mid, blob, extra, onProgress) {
     var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
     var meta = d.collection("chats").doc(cid).collection("media").doc(mid);
-    return blobToB64(blob).then(function (b64) {
+    // C16: حجز الرفع من الخادم أوّلاً (القواعد تطلبه) — حدٌّ يوميّ، وما لم يُرسل يُحذف بعد ٢٤ ساعة
+    return call("media.begin", { cid: cid, mid: mid, size: blob.size }).catch(function (e) {
+      var m = (e && e.message) || String(e);
+      if (/quota/.test(m)) throw new Error(L("تجاوزت حدّ الرفع اليوميّ (٣٠٠ ميغابايت) — جرّب غداً", "Daily upload limit reached (300 MB)"));
+      if (/unknown op/.test(m)) return null;   // خادمٌ أقدم
+      throw e;
+    }).then(function () { return blobToB64(blob); }).then(function (b64) {
       var n = Math.max(1, Math.ceil(b64.length / CHUNK));
       return meta.set({ by: state.uid, mime: blob.type || "application/octet-stream", size: blob.size, name: String(extra.name || "").slice(0, 200), n: n, ts: Date.now(), done: false })
         .then(function () {
