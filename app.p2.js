@@ -689,6 +689,9 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
     const reqCount = useSawaRequests();
     const cloudMe = !!(myProfile && window.SawaChat && window.SawaChat.editProfile);
     const SCm = window.SawaChat;
+    // C24: «فحص الاتّصال» لمدير التطبيق وحده (الخادم يقرّر)
+    const [isAdm, setIsAdm] = useState(() => !!(SCm && SCm.adminCached && SCm.adminCached()));
+    useEffect(() => { let on = true; if (SCm && SCm.checkAdmin) SCm.checkAdmin().then((v) => { if (on) setIsAdm(!!v); }); return () => { on = false; }; }, [myProfile && myProfile.uid]);
     const myDisplayName = cloudMe ? (myProfile.name || myProfile.googleName || "") : "";
     const editMe = () => { if (cloudMe && window.SawaChat.editProfile()) return; onOpenSettings(); };
     // C13c: لا اسمَ ولا رقمَ وهميّين — حالةٌ صادقة حتّى يصل الحساب (تحميل · تعذّر · لم يُسجَّل الدخول)
@@ -725,7 +728,7 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         { key: "import", label: t("me_astyrad_alshjra"), icon: Upload, onPress: onImportTree, color: "#8B5CF6" },
         // الجسر (B5): لوحة السحابة والمشاركة (رفع، Google، روابط، استعادة) — sawa-sync.js
         // فحص الاتّصال (diag.html): يعمل داخل التطبيق المثبّت أيضاً — زرّ «رجوع إلى سوا» في أسفله
-        { key: "diag", label: "فحص الاتّصال", icon: Wifi, onPress: () => { location.href = "./diag.html"; }, color: "#64748B" },
+        ...(isAdm ? [{ key: "diag", label: tl("فحص الاتّصال (للمدير)", "Connection check (admin)"), icon: Wifi, onPress: () => { location.href = "./diag.html"; }, color: "#64748B" }] : []),
         // C11: صفحاتٌ عامّة على الموقع (Google Play يطلب رابطيها)
         { key: "legal", label: tl("الخصوصيّة والشروط", "Privacy & terms"), icon: ShieldCheck, onPress: () => { location.href = "/privacy"; }, color: "#64748B" },
         { key: "cloud", label: t("me_rfa_alshjra"), icon: Cloud, onPress: () => { if (window.SawaSync) (window.SawaSync.openPanel ? window.SawaSync.openPanel() : window.SawaSync.uploadCurrent()); }, color: "#187854" },

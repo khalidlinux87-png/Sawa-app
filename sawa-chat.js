@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c23";
+  var VERSION = "c24";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -302,6 +302,18 @@
       else if (/not found/.test(m)) m = L("الرابط غير صحيح", "Invalid link");
       toast(m); return null;
     });
+  }
+  // C24: حظر/إلغاء حظر من جهات الاتّصال — نفس قائمة الحظر في الإعدادات (تتزامن بين أجهزتي، والخادم يمنع الرسائل والمكالمات)
+  function setBlocked(uid, on) {
+    if (!state.uid || !uid) return false;
+    prefs = prefs || {};
+    var l = (prefs.blocked || []).filter(function (u) { return u !== uid; });
+    if (on) l.push(uid);
+    prefs.blocked = l;
+    try { if (app && app.setBlockedConversations) app.setBlockedConversations(l.map(dmWith)); } catch (e) {}
+    savePrefs({ blocked: l });
+    publish();
+    return true;
   }
   function removeContact(uid) {
     return call("people.remove", { uid: uid }).then(function () { return refresh(); })
@@ -1034,6 +1046,7 @@
       renamed: L(who + " غيّر الاسم إلى «" + (ex.name || "") + "»", who + " renamed the group to “" + (ex.name || "") + "”"),
       desc: L(who + " غيّر الوصف", who + " changed the description"),
       adminsOnly: ex.on ? L(who + " جعل الإرسال للمشرفين فقط", who + " allowed only admins to send") : L(who + " سمح للجميع بالإرسال", who + " allowed everyone to send"),
+      vc_on: m.by === state.uid ? L("🎙 بدأتَ دردشةً صوتيّة", "🎙 You started a voice chat") : L("🎙 " + who + " بدأ دردشةً صوتيّة — انضمّ من الشريط أعلى المحادثة", "🎙 " + who + " started a voice chat — join from the bar at the top"),
       // C23
       local: m.text || "",
       e2e_on: m.by === state.uid ? L("🔒 بدأتَ محادثةً سرّيّة — مشفّرة بين الأجهزة، ولا يقرؤها خادم سوا", "🔒 You started a secret chat — end-to-end encrypted")
@@ -2432,6 +2445,7 @@
     startMyPresence(uid);
     refresh();
     stopChats(); prefs = null; prefsLoaded = false; pend = {}; virtualChats = {};
+    adminP = null;
     plain = {}; decQ = {}; mediaKeys = {}; chatsLoaded = false; missingSince = {}; keyFp = {}; knownSec = null; e2e.reset();   // C23
     e2e.load().then(function () { publishChats(); Object.keys(days).forEach(publishMessages); }, function () { publishChats(); });
     restorePending(); startChats(uid); loadPrefs(); drainOutbox();
@@ -2637,6 +2651,15 @@
   var knownSec = null;
   function knownSecret(cid) { if (!knownSec) knownSec = lsGet("sawa_e2e_known", {}); return /^sdm_/.test(String(cid || "")) || !!knownSec[cid]; }
   function rememberSecret(cid) { knownSecret(cid); if (knownSec[cid]) return; knownSec[cid] = 1; lsSet("sawa_e2e_known", knownSec); }
+  // C24: مدير التطبيق (الخادم يقرّر بـADMIN_EMAIL) — لإظهار «فحص الاتّصال» له وحده
+  var adminP = null;
+  function adminCached() { var a = lsGet("sawa_admin", null); return !!(a && a.uid === state.uid && a.v); }
+  function checkAdmin() {
+    if (!state.uid) return new Promise(function (res) { whenReady(function () { checkAdmin().then(res); }); });
+    if (!adminP) adminP = call("whoami", {}).then(function (b) { var v = !!(b && b.admin === true); lsSet("sawa_admin", { uid: state.uid, v: v }); return v; },
+      function () { adminP = null; return adminCached(); });
+    return adminP;
+  }
   function e2eOn(c) { return !!(c && ((c.e2e && c.e2e.on) || knownSecret(c.cid))); }
   function e2eIntact(c) { return !!(c && c.e2e && c.e2e.on && (c.type !== "dm" || (c.members || []).length === 2)); }
   function maybeSecret(cid) { return /^(sdm_|grp_)/.test(String(cid || "")); }
@@ -2943,6 +2966,8 @@
     retryMedia: retryMedia,   // C18
     scanAny: scanAny, routeScanned: routeScanned, signOutSheet: signOutSheet,   // C20
     e2eSupported: function () { return e2e.ok(); }, e2eStartDm: e2eStartDm, e2eNewSheet: e2eNewSheet, e2eAct: e2eAct, e2eSafety: e2eSafety,   // C23
+    adminCached: adminCached, checkAdmin: checkAdmin,   // C24
+    setBlocked: setBlocked,
     e2eCreateDm: e2eCreateDm, e2eCreateGroup: e2eCreateGroup, e2eJoin: e2eJoin, e2eState: function (cid) { return e2eState(chats[cid]); },
     _e2e: e2e, _plain: function () { return plain; },
     onboarding: function () { return onb ? onb.step : null; }, startOnboarding: function () { try { localStorage.removeItem("sawa_onboarded"); } catch (e) {} onbStart(); },

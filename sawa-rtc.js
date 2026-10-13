@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c20";
+  var VERSION = "c24";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -664,13 +664,13 @@
     if (gc && gc.state === "incoming" && opts.cid && gc.cid === opts.cid) { groupAccept(); return true; }
     if (busy()) { if (gc && gui.min) gMinimize(false); else if (cur && ui.min) minimize(false); toast(L("أنت في مكالمة الآن", "You're already in a call")); return true; }
     type = type === "video" ? "video" : "audio";
-    var g = gc = gcNew({ gid: null, type: type, title: title || "", state: "starting", role: "starter" });
+    var g = gc = gcNew({ gid: null, type: type, title: title || "", state: "starting", role: "starter", vc: !!opts.vc });
     gShow(g);
     var p = { type: type };
-    if (opts.cid) p.cid = opts.cid; else if (opts.sched) p.sched = opts.sched; else { p.to = opts.to; if (opts.quiet) p.quiet = opts.quiet; }
+    if (opts.cid) { p.cid = opts.cid; if (opts.vc) p.vc = true; } else if (opts.sched) p.sched = opts.sched; else { p.to = opts.to; if (opts.quiet) p.quiet = opts.quiet; }
     wcall("gcall.start", p).then(function (r) {
       if (g.done) return;
-      g.gid = r.gid; g.type = r.type || type; g.title = r.title || g.title; g.cid = r.cid || null; g.by = r.by; g.approval = !!r.approval;
+      g.gid = r.gid; g.type = r.type || type; g.title = r.title || g.title; g.cid = r.cid || null; g.by = r.by; g.approval = !!r.approval; if (r.vc) g.vc = true;
       if (r.joined) g.role = "joiner";
       seen[g.gid] = 1;
       gJoin(g);
@@ -784,7 +784,7 @@
       try { g.ref.child("members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
       g.joinedAt = Date.now(); g.state = "live"; wakeOn(); gPaint(g);
       if (!g.tick) g.tick = setInterval(function () { gPaintHead(g); }, 1000);
-      if (g.role === "starter") playTone("back");   // نغمة «يرنّ» حتّى ينضمّ أوّل شخص
+      if (g.role === "starter" && !g.vc) playTone("back");   // نغمة «يرنّ» حتّى ينضمّ أوّل شخص (لا رنين في الدردشة الصوتيّة)
       var first = true;
       gListen(g, mine, "child_added", function (s) { onGSig(g, s.val() || {}); });
       gListen(g, g.ref.child("members"), "value", function (s) {
@@ -825,7 +825,8 @@
     });
     var others = Object.keys(m).filter(function (u) { return u !== me; });
     // وحدك: انتظر قليلاً ثمّ أنهِ (لا يبقى أحدٌ في مكالمةٍ فارغة)
-    if (!others.length) { if (!g.timers.alone) g.timers.alone = setTimeout(function () { gFinish(g, Object.keys(g.met).length ? "everyoneLeft" : "nobody"); }, ALONE_MS); }
+    // C24: الدردشة الصوتيّة غرفةٌ مفتوحة — تنتظر وحدك حتّى ١٥ دقيقة
+    if (!others.length) { if (!g.timers.alone) g.timers.alone = setTimeout(function () { gFinish(g, Object.keys(g.met).length ? "everyoneLeft" : "nobody"); }, g.vc ? Math.max(ALONE_MS, 15 * 60000) : ALONE_MS); }
     else { clearTimeout(g.timers.alone); delete g.timers.alone; stopTone(); }
     gPaint(g);
   }
@@ -1064,14 +1065,14 @@
       case "incoming": return g.type === "video" ? L("مكالمة فيديو جماعيّة واردة", "Incoming group video call") : L("مكالمة صوتيّة جماعيّة واردة", "Incoming group voice call");
       case "waiting": return L("بانتظار موافقة المضيف…", "Waiting for the host…");
       case "joining": return L("جارٍ الانضمام…", "Joining…");
-      case "live": return (gCount(g) <= 1 ? L("بانتظار الآخرين…", "Waiting for others…") : gCount(g) + " " + L("مشاركين", "people")) + " · " + fmt(Math.floor((Date.now() - g.joinedAt) / 1000));
+      case "live": return (gCount(g) <= 1 ? (g.vc ? L("دردشة صوتيّة — بانتظار من ينضمّ", "Voice chat — waiting for people") : L("بانتظار الآخرين…", "Waiting for others…")) : gCount(g) + " " + L("مشاركين", "people")) + " · " + fmt(Math.floor((Date.now() - g.joinedAt) / 1000));
       case "ended": return g.endText || "";
     }
     return "";
   }
   function gPaintHead(g) {
     if (!g || !gui.root) return;
-    gui.title.textContent = g.title || (g.type === "video" ? L("مكالمة فيديو جماعيّة", "Group video call") : L("مكالمة جماعيّة", "Group call"));
+    gui.title.textContent = (g.vc ? "🎙 " : "") + (g.title || (g.type === "video" ? L("مكالمة فيديو جماعيّة", "Group video call") : L("مكالمة جماعيّة", "Group call")));
     gui.sub.textContent = gStatus(g);
     if (gui.min) gui.pill.textContent = "👥 " + (g.title || "") + " · " + gStatus(g) + "  ▴";
   }
@@ -1211,11 +1212,11 @@
     var h = ref.on("value", function (s) {
       var v = s.val(); stopMem();
       if (!v || !v.gid) { emit(null); return; }
-      emit({ gid: v.gid, type: v.type, n: null });
+      emit({ gid: v.gid, type: v.type, n: null, vc: !!v.vc });
       memRef = d.ref("gcalls/" + v.gid + "/members");
       memH = memRef.on("value", function (m) {
         var mm = m.val() || {}, n = Object.keys(mm).length;
-        emit(n ? { gid: v.gid, type: v.type, n: n, inCall: !!mm[myUid()] } : null);
+        emit(n ? { gid: v.gid, type: v.type, n: n, inCall: !!mm[myUid()], vc: !!v.vc } : null);
       }, function () { /* لستُ في قائمة المدعوّين بعد — يبقى الشريط، والانضمام عبر الخادم */ });
     }, function () { emit(null); });
     return function () { closed = true; stopMem(); try { ref.off("value", h); } catch (e) {} };
@@ -2171,10 +2172,10 @@
     _cur: function () { return cur; }, _incoming: incoming, _dev: devId,
     _restart: function () { if (cur && cur.pc) { cur.state = "reconnecting"; iceRestart(cur); } },
     // C7: الجماعيّة
-    groupCall: function (cid, type) { return groupStart({ cid: cid }, type); },
+    groupCall: function (cid, type, o) { return groupStart({ cid: cid, vc: !!(o && o.vc) }, o && o.vc ? "audio" : type); },   // C24: o.vc = دردشة صوتيّة بلا رنين
     groupWith: function (uids, type, title) { return groupStart({ to: uids }, type, title); },
     groupAccept: groupAccept, groupDecline: groupDecline, groupLeave: groupLeave, admit: gAdmit, addToGroup: gAdd, watchChat: watchChat,
-    group: function () { var g = gc; return g ? { gid: g.gid, type: g.type, state: g.state, role: g.role, title: g.title, members: Object.keys(g.members || {}),
+    group: function () { var g = gc; return g ? { gid: g.gid, type: g.type, vc: !!g.vc, state: g.state, role: g.role, title: g.title, members: Object.keys(g.members || {}),
       peers: Object.keys(g.peers).map(function (u) { return { uid: u, state: g.peers[u].state }; }) } : null; },
     // C7: المجدولة
     schedRefresh: schedRefresh, schedSave: schedSave, schedRemove: schedRemove, schedStart: schedStart,

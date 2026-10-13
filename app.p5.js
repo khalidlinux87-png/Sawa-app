@@ -1190,6 +1190,29 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
         forwardingText && (React.createElement(ForwardPickerScreen, { conversations: allConversations, groups: allGroups, currentConversationId: conversation.id, onForward: (destinationIds) => { onForward(forwardingText, destinationIds); setForwardingText(null); }, onClose: () => setForwardingText(null) }))));
 }
 const GROUP_ADMIN_ACTIONS = ["تسمية المجموعة", "إدارة الأعضاء"];
+// C24: نافذة أدوات المجموعة (استطلاع · فاتورة · تبرّعات · مهامّ) — من الأسفل، بعنوانٍ وزرّ إغلاق، وتُغلق بالضغط خارجها أو بزرّ الرجوع
+function ToolSheet({ title, onClose, children }) {
+    const { colors } = useTheme();
+    useEffect(() => {
+        const k = (e) => { if (e.key === "Escape") onClose(); };
+        window.addEventListener("keydown", k);
+        // زرّ الرجوع في أندرويد يغلق النافذة بدل أن يخرج من المحادثة
+        let popped = false;
+        const pop = () => { popped = true; onClose(); };
+        try { history.pushState({ sawaSheet: 1 }, ""); window.addEventListener("popstate", pop); } catch (e) { }
+        return () => { window.removeEventListener("keydown", k); window.removeEventListener("popstate", pop); if (!popped) { try { if (history.state && history.state.sawaSheet) history.back(); } catch (e) { } } };
+    }, []);
+    return (React.createElement(React.Fragment, null,
+        React.createElement("div", { onClick: onClose, className: "sawa-fade-in", style: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.42)", zIndex: 40 } }),
+        React.createElement("div", { role: "dialog", "aria-modal": "true", "aria-label": title, className: "sawa-pop-in", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 41, backgroundColor: colors.card, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: "86vh", display: "flex", flexDirection: "column", paddingBottom: "env(safe-area-inset-bottom, 0px)", boxShadow: "0 -8px 30px rgba(0,0,0,0.18)" } },
+            React.createElement("div", { className: "flex justify-center pt-2" },
+                React.createElement("div", { style: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border } })),
+            React.createElement("div", { className: "flex flex-row items-center justify-between px-4 pt-1 pb-2 border-b", style: { borderColor: colors.border } },
+                React.createElement("p", { className: "text-sm font-extrabold", style: { color: colors.text } }, title),
+                React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: onClose, className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: colors.bg } },
+                    React.createElement(X, { size: 17, color: colors.text }))),
+            React.createElement("div", { className: "px-4 pt-3 pb-4 overflow-y-auto", style: { flex: 1, minHeight: 0 } }, children))));
+}
 function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSendVoice, onEditMessage, onReact, onDeleteMessage, contacts = null, onInviteLink, onUpdateGroup, onCreatePoll, onEditPoll, onVotePoll, onCreateBillSplit, onPayBillSplit, onCreateFundraiser, onContributeFundraiser, onCreateTaskList, onToggleTaskStatus, onAddTaskNote, onForward, allConversations, allGroups, draft = "", onSaveDraft, unreadCount = 0, onBack, onRenameGroup, onAddGroupMembers, onRemoveGroupMember, onToggleGroupAdmin, onLeaveGroup }) {
     var _a, _b;
     const { colors } = useTheme();
@@ -1255,6 +1278,9 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
     const [taskListTitle, setTaskListTitle] = useState("");
     const [taskDrafts, setTaskDrafts] = useState([{ text: "", assigneeId: (_a = group.members[0]) === null || _a === void 0 ? void 0 : _a.id, dueAt: "" }]);
     const [memberSearch, setMemberSearch] = useState("");
+    // C24: أداةٌ واحدة مفتوحة في كلّ مرّة
+    const openTool = (k) => { setShowPollForm(k === "poll"); setShowBillForm(k === "bill"); setShowFundraiserForm(k === "fund"); setShowTaskForm(k === "tasks"); setShowToolsMenu(false); setShowAttachMenu(false); };
+    const closePollForm = () => { setShowPollForm(false); setEditingPollId(null); setPollQuestion(""); setPollOptions(["", ""]); setPollDeadlineMinutes(null); setPollAnonymous(false); };
     const [showAttachMenu, setShowAttachMenu] = useState(false);
     const [viewingImage, setViewingImage] = useState(null);
     // كل صور وفيديوهات المحادثة بالترتيب — تُمرَّر للمعاينة لتمكين التنقّل
@@ -1337,11 +1363,12 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
     const amVoiceHost = voiceChatHost === myUserId;
     const vcMins = String(Math.floor(voiceChatElapsed / 60)).padStart(2, "0");
     const vcSecs = String(voiceChatElapsed % 60).padStart(2, "0");
+    // C24: الدردشة الصوتيّة حقيقيّة — مكالمةٌ صوتيّة جماعيّة بلا رنين (SawaRTC)، يظهر للأعضاء شريط «انضمام».
+    //      (كانت محاكاةً: مؤقّتٌ وأسماءٌ تنضمّ وحدها كلّ ثانيتين ونصف بلا صوت)
     function startVoiceChat() {
-        setVoiceChatActive(true);
-        setVoiceChatJoined(true);
-        setVoiceChatHost(myUserId);
-        setVoiceChatElapsed(0);
+        if (liveGroupCall && !liveGroupCall.inCall) { window.SawaRTC.groupCall(group.id, liveGroupCall.type, liveGroupCall.vc ? { vc: true } : undefined); return; }
+        if (cloudGroup && window.SawaRTC.groupCall(group.id, "audio", { vc: true })) return;
+        showToast(CALL_FAIL_MSG(), "error");
     }
     function leaveVoiceChat() {
         var _a;
@@ -1437,10 +1464,10 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 React.createElement(Phone, { size: 17, color: colors.textMuted })),
             React.createElement("button", { "aria-label": t("bhth"), onClick: () => setShowSearch(!showSearch) },
                 React.createElement(Search, { size: 17, color: colors.textMuted }))),
-        liveGroupCall && !liveGroupCall.inCall && (React.createElement("button", { onClick: () => window.SawaRTC.groupCall(group.id, liveGroupCall.type), className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2`, style: { backgroundColor: "#E6F4EC", borderBottom: `1px solid ${colors.border}` } },
-            liveGroupCall.type === "video" ? React.createElement(Video, { size: 15, color: "#1E7A4C" }) : React.createElement(Phone, { size: 15, color: "#1E7A4C" }),
-            React.createElement("span", { className: `flex-1 ${textStart()} text-xs font-bold`, style: { color: "#1E7A4C" } }, (liveGroupCall.type === "video" ? "مكالمة فيديو جارية" : "مكالمة صوتيّة جارية") + (liveGroupCall.n ? " · " + liveGroupCall.n + " في المكالمة" : "")),
-            React.createElement("span", { className: "text-[11px] font-extrabold text-white rounded-full px-3 py-1", style: { backgroundColor: "#21A366" } }, "انضمام"))),
+        liveGroupCall && !liveGroupCall.inCall && (React.createElement("button", { onClick: () => window.SawaRTC.groupCall(group.id, liveGroupCall.type, liveGroupCall.vc ? { vc: true } : undefined), className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2`, style: { backgroundColor: "#E6F4EC", borderBottom: `1px solid ${colors.border}` } },
+            liveGroupCall.vc ? React.createElement(Radio, { size: 15, color: "#1E7A4C" }) : liveGroupCall.type === "video" ? React.createElement(Video, { size: 15, color: "#1E7A4C" }) : React.createElement(Phone, { size: 15, color: "#1E7A4C" }),
+            React.createElement("span", { className: `flex-1 ${textStart()} text-xs font-bold`, style: { color: "#1E7A4C" } }, (liveGroupCall.vc ? tl("دردشة صوتيّة جارية", "Voice chat live") : liveGroupCall.type === "video" ? tl("مكالمة فيديو جارية", "Video call in progress") : tl("مكالمة صوتيّة جارية", "Voice call in progress")) + (liveGroupCall.n ? " · " + tl(liveGroupCall.n + " فيها", liveGroupCall.n + " in") : "")),
+            React.createElement("span", { className: "text-[11px] font-extrabold text-white rounded-full px-3 py-1", style: { backgroundColor: "#21A366" } }, tl("انضمام", "Join")))),
         false && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-2 border-b`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: searchQuery, onChange: (e) => { setSearchQuery(e.target.value); setSearchMatchIndex(0); }, placeholder: t("bhth_balmhadtha"), className: "flex-1 border rounded-full px-3 py-1.5 text-xs", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg }, autoFocus: true }),
             searchQuery.trim() && (React.createElement("span", { className: "text-[10px] shrink-0", style: { color: colors.textMuted } }, searchMatches.length > 0 ? `${searchMatchIndex + 1}/${searchMatches.length}` : t("gc_0_ntyja"))),
@@ -1588,7 +1615,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                         React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5` },
                             React.createElement(BarChart3, { size: 14, color: colors.primary }),
                             React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, m.question)),
-                        canEdit && (React.createElement("button", { onClick: () => { setEditingPollId(m.id); setPollQuestion(m.question); setPollOptions(m.options.map((o) => o.text)); setShowPollForm(true); } },
+                        canEdit && (React.createElement("button", { onClick: () => { setEditingPollId(m.id); setPollQuestion(m.question); setPollOptions(m.options.map((o) => o.text)); openTool("poll"); } },
                             React.createElement(Edit3, { size: 12, color: colors.textMuted })))),
                     (m.deadline || m.editedAt) && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-2` },
                         m.deadline && (React.createElement("span", { className: "text-[10px] font-bold", style: { color: isExpired ? colors.danger : colors.textMuted } }, isExpired ? t("gc_anthat_almhla") : `تنتهي ${new Date(m.deadline).toLocaleString(loc(), { day: "numeric", month: "short", hour: "numeric", minute: "numeric" })}`)),
@@ -1662,11 +1689,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 React.createElement("button", { onClick: () => { onDeleteMessage(gDel.id, "me"); setGDel(null); }, className: `w-full ${textStart()} px-5 py-3.5 border-b text-sm font-bold`, style: { borderColor: colors.border, color: colors.text } }, t("c3_del_me")),
                 gDel.canAll && React.createElement("button", { onClick: () => { onDeleteMessage(gDel.id, "all"); setGDel(null); }, className: `w-full ${textStart()} px-5 py-3.5 border-b text-sm font-bold`, style: { borderColor: colors.border, color: colors.danger } }, t("c3_del_all")),
                 React.createElement("button", { onClick: () => setGDel(null), className: "w-full px-5 py-3 text-sm font-bold", style: { color: colors.textMuted } }, t("ilgha"))))),
-        showPollForm && (React.createElement("div", { className: "p-3 border-t", style: { borderColor: colors.border, backgroundColor: colors.card } },
-            React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-2` },
-                React.createElement("p", { className: "text-xs font-bold", style: { color: colors.text } }, editingPollId ? t("gc_tadyl_alastltla") : t("gc_astltla_jdyd")),
-                React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => { setShowPollForm(false); setEditingPollId(null); setPollQuestion(""); setPollOptions(["", ""]); setPollDeadlineMinutes(null); setPollAnonymous(false); }, className: "w-7 h-7 rounded-full flex items-center justify-center", style: { backgroundColor: colors.bg } },
-                    React.createElement(X, { size: 14, color: colors.textMuted }))),
+        showPollForm && (React.createElement(ToolSheet, { title: editingPollId ? t("gc_tadyl_alastltla") : t("gc_astltla_jdyd"), onClose: closePollForm },
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: pollQuestion, onChange: (e) => setPollQuestion(e.target.value), placeholder: t("swal_alasttlaa"), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             pollOptions.map((opt, i) => (React.createElement("input", { key: i, value: opt, onChange: (e) => setPollOptions((prev) => prev.map((o, idx) => (idx === i ? e.target.value : o))), dir: isRTL() ? "rtl" : "ltr", placeholder: t("gc_khyar", { i: i + 1 }), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }))),
             React.createElement("button", { onClick: () => setPollOptions((prev) => [...prev, ""]), className: "text-[11px] mb-2 block", style: { color: colors.primary } }, t("khyar")),
@@ -1679,9 +1702,8 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                         React.createElement("span", { className: "absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white", style: { [pollAnonymous ? "right" : "left"]: 2 } }))))),
             React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                 editingPollId && (React.createElement("button", { onClick: () => { setEditingPollId(null); setPollQuestion(""); setPollOptions(["", ""]); setShowPollForm(false); }, className: "text-[11px]", style: { color: colors.textMuted } }, t("ilgha"))),
-                React.createElement("button", { onClick: handleCreatePoll, className: "text-[11px] font-bold mr-auto", style: { color: colors.primary } }, editingPollId ? t("gc_hfz_altadyl") : t("gc_nshr"))))),
-        showBillForm && (React.createElement("div", { className: "p-3 border-t", style: { borderColor: colors.border, backgroundColor: colors.card } },
-            React.createElement("p", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("aqtsam_fatwra")),
+                React.createElement("button", { onClick: handleCreatePoll, className: "flex-1 py-3 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary } }, editingPollId ? t("gc_hfz_altadyl") : t("gc_nshr"))))),
+        showBillForm && (React.createElement(ToolSheet, { title: t("aqtsam_fatwra"), onClose: () => setShowBillForm(false) },
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: billDescription, onChange: (e) => setBillDescription(e.target.value), placeholder: t("wsf_alfatwra_mthal_asha"), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             React.createElement(NumericAmountInput, { value: billTotal, onChange: setBillTotal, placeholder: t("almblgh_alijmaly_j_s"), className: `w-full border rounded-xl px-3 py-2 text-xs mb-2 ${textStart()}`, style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             React.createElement("div", { className: `flex ${rowStart()} gap-1.5 mb-2` }, BILL_SPLIT_TYPES.map((btype) => (React.createElement("button", { key: btype.key, onClick: () => setBillSplitType(btype.key), className: "flex-1 rounded-xl border py-1.5 text-center", style: { borderColor: billSplitType === btype.key ? colors.primary : colors.border, backgroundColor: billSplitType === btype.key ? colors.primary : "transparent" } },
@@ -1697,15 +1719,13 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                     " \u0645\u0646 ",
                     (Number(billTotal) || 0).toLocaleString(loc()),
                     " \u062C.\u0633")))),
-            React.createElement("button", { onClick: handleCreateBillSplit, disabled: !canCreateBillSplit, className: "text-[11px] font-bold", style: { color: colors.primary } }, t("insha_aqtsam_alfatwra")))),
-        showFundraiserForm && (React.createElement("div", { className: "p-3 border-t", style: { borderColor: colors.border, backgroundColor: colors.card } },
-            React.createElement("p", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("jma_tbraat")),
+            React.createElement("button", { onClick: handleCreateBillSplit, disabled: !canCreateBillSplit, className: "w-full mt-2 py-3 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary, opacity: canCreateBillSplit ? 1 : 0.5 } }, t("insha_aqtsam_alfatwra")))),
+        showFundraiserForm && (React.createElement(ToolSheet, { title: t("jma_tbraat"), onClose: () => setShowFundraiserForm(false) },
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: fundCause, onChange: (e) => setFundCause(e.target.value), placeholder: t("alsbb_mthal_msaada_asra"), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             React.createElement(NumericAmountInput, { value: fundGoal, onChange: setFundGoal, placeholder: t("alhdf_j_s"), className: `w-full border rounded-xl px-3 py-2 text-xs mb-2 ${textStart()}`, style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             React.createElement("input", { dir: "ltr", type: "date", value: fundDeadline, onChange: (e) => setFundDeadline(e.target.value), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
-            React.createElement("button", { onClick: () => { onCreateFundraiser(fundCause.trim(), Number(fundGoal), fundDeadline || null); setShowFundraiserForm(false); setFundCause(""); setFundGoal(""); setFundDeadline(""); }, disabled: !fundCause.trim() || !fundGoal, className: "text-[11px] font-bold", style: { color: colors.primary } }, t("bd_jma_altbraat")))),
-        showTaskForm && (React.createElement("div", { className: "p-3 border-t", style: { borderColor: colors.border, backgroundColor: colors.card } },
-            React.createElement("p", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("qayma_mham")),
+            React.createElement("button", { onClick: () => { onCreateFundraiser(fundCause.trim(), Number(fundGoal), fundDeadline || null); setShowFundraiserForm(false); setFundCause(""); setFundGoal(""); setFundDeadline(""); }, disabled: !fundCause.trim() || !fundGoal, className: "w-full mt-2 py-3 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary, opacity: (!fundCause.trim() || !fundGoal) ? 0.5 : 1 } }, t("bd_jma_altbraat")))),
+        showTaskForm && (React.createElement(ToolSheet, { title: t("qayma_mham"), onClose: () => setShowTaskForm(false) },
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: taskListTitle, onChange: (e) => setTaskListTitle(e.target.value), placeholder: t("anwan_alqayma_mthal_thdyr"), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             taskDrafts.map((td, i) => {
                 var _a;
@@ -1732,8 +1752,8 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                         setShowTaskForm(false);
                         setTaskListTitle("");
                         setTaskDrafts([{ text: "", assigneeId: (_a = group.members[0]) === null || _a === void 0 ? void 0 : _a.id, dueAt: "" }]);
-                    }, className: "text-[11px] font-bold mr-auto", style: { color: colors.primary } }, t("nshr_qayma_almham"))))),
-        voiceChatActive && (React.createElement("div", { style: { borderTop: `1px solid ${colors.border}`, backgroundColor: colors.primaryLight } },
+                    }, className: "flex-1 py-3 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary } }, t("nshr_qayma_almham"))))),
+        false && (React.createElement("div", { style: { borderTop: `1px solid ${colors.border}`, backgroundColor: colors.primaryLight } },
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 py-1.5` },
                 React.createElement("div", { className: "w-7 h-7 rounded-full flex items-center justify-center animate-pulse shrink-0", style: { backgroundColor: colors.primary } },
                     React.createElement(Radio, { size: 12, color: "#fff" })),
@@ -1799,6 +1819,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                     }
                     onSendFile(file.name, file.size, null, "file", file);
                 }, className: "hidden" }),
+            showAttachMenu && React.createElement("div", { onClick: () => setShowAttachMenu(false), style: { position: "fixed", inset: 0, zIndex: 9 } }),
             showAttachMenu && (React.createElement("div", { className: "absolute bottom-14 right-2 rounded-2xl border shadow-lg overflow-hidden z-10 backdrop-blur-md sawa-pop-in", style: { backgroundColor: colors.card + "ee", borderColor: colors.border } },
                 React.createElement("button", { onClick: () => { var _a; return (_a = mediaInputRef.current) === null || _a === void 0 ? void 0 : _a.click(); }, className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border, minWidth: 180 } },
                     React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: colors.accent + "22" } },
@@ -1810,24 +1831,25 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("mstnd"))))),
             React.createElement("button", { "aria-label": t("irfaq"), onClick: () => { setShowToolsMenu(false); setShowAttachMenu(!showAttachMenu); }, className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: showAttachMenu ? colors.primary : colors.bg } },
                 React.createElement(Paperclip, { size: 16, color: showAttachMenu ? "#fff" : colors.textMuted })),
+            showToolsMenu && React.createElement("div", { onClick: () => setShowToolsMenu(false), style: { position: "fixed", inset: 0, zIndex: 9 } }),
             showToolsMenu && (React.createElement("div", { className: "absolute bottom-14 right-16 rounded-2xl border shadow-lg overflow-hidden z-10 backdrop-blur-md sawa-pop-in", style: { backgroundColor: colors.card + "ee", borderColor: colors.border } },
-                React.createElement("button", { onClick: () => { setShowPollForm(true); setShowToolsMenu(false); }, className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border, minWidth: 190 } },
+                React.createElement("button", { onClick: () => openTool("poll"), className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border, minWidth: 190 } },
                     React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: colors.textMuted + "22" } },
                         React.createElement(BarChart3, { size: 15, color: colors.textMuted })),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("asttlaa"))),
-                React.createElement("button", { onClick: () => { setShowBillForm(true); setShowToolsMenu(false); }, className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border, minWidth: 190 } },
+                React.createElement("button", { onClick: () => openTool("bill"), className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border, minWidth: 190 } },
                     React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary + "22" } },
                         React.createElement(Banknote, { size: 15, color: colors.primary })),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("aqtsam_fatwra"))),
-                React.createElement("button", { onClick: () => { setShowFundraiserForm(true); setShowToolsMenu(false); }, className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border } },
+                React.createElement("button", { onClick: () => openTool("fund"), className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border } },
                     React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: colors.accent + "22" } },
                         React.createElement(Gift, { size: 15, color: colors.accent })),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("jma_tbraat"))),
-                React.createElement("button", { onClick: () => { setShowTaskForm(true); setShowToolsMenu(false); }, className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border } },
+                React.createElement("button", { onClick: () => openTool("tasks"), className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border } },
                     React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: colors.success + "22" } },
                         React.createElement(CheckCircle2, { size: 15, color: colors.success })),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("qayma_mham"))),
-                !voiceChatActive && (React.createElement("button", { onClick: () => { startVoiceChat(); setShowToolsMenu(false); }, className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3` },
+                !group.secret && !(liveGroupCall && liveGroupCall.inCall) && (React.createElement("button", { onClick: () => { startVoiceChat(); setShowToolsMenu(false); }, className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3` },
                     React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary + "22" } },
                         React.createElement(Radio, { size: 15, color: colors.primary })),
                     React.createElement("div", { className: `${textStart()}` },

@@ -26,7 +26,8 @@
 </style>
 </head>
 <body>
-<div class="wrap">
+<div id="gate" class="wrap" style="text-align:center;padding-top:60px"><h1>فحص اتّصال سوا</h1><p class="s" id="gateMsg">جارٍ التحقّق من الحساب…</p><button id="gateBack" class="sec">↩ رجوع إلى سوا</button></div>
+<div class="wrap" id="main" style="display:none">
   <h1>فحص اتّصال سوا</h1>
   <p class="s">يفحص الخادم وقاعدة البيانات والإشعارات من هذا الجهاز. انسخ النتيجة وأرسلها كما هي — لا تحوي أيّ سرّ.</p>
   <div id="out"></div>
@@ -313,7 +314,22 @@
       lines.push("📊 حسابات " + T.accounts + " · محادثات " + T.chats + " · عائلات " + T.groups + (today ? " · طلبات اليوم " + (today.v.req || 0) : ""));
     });
   };
-  run();
+  // C24: الصفحة لمدير التطبيق وحده (الخادم يتحقّق: ADMIN_EMAIL) — المستخدمون يرون رسالةً ورجوعاً فقط
+  document.getElementById("gateBack").onclick = function () { location.href = "./"; };
+  (function gate() {
+    var gm = document.getElementById("gateMsg");
+    if (typeof firebase === "undefined") { gm.textContent = "تعذّر التحميل — تحقّق من الشبكة."; return; }
+    if (!firebase.apps.length) firebase.initializeApp(CFG);
+    var un = firebase.auth().onAuthStateChanged(function (u) {
+      un();
+      if (!u || u.isAnonymous) { gm.textContent = "هذه الصفحة لمدير التطبيق فقط."; return; }
+      u.getIdToken().then(function (tok) { return worker(tok, "whoami"); }).then(function (a) {
+        if (a && a.j && a.j.admin === true) { document.getElementById("gate").style.display = "none"; document.getElementById("main").style.display = ""; run(); }
+        else if (a && (a.err || !a.j)) gm.textContent = "تعذّر الوصول إلى الخادم للتحقّق — حاول بعد قليل.";
+        else gm.textContent = "هذه الصفحة لمدير التطبيق فقط.";
+      }, function () { gm.textContent = "تعذّر التحقّق — حاول بعد قليل."; });
+    });
+  })();
 })();
 </script>
 </body>
