@@ -3079,6 +3079,7 @@ function AppInner() {
     }
     // ── C37: منازل الأقارب وتنبيه القرب ──
     const [proxEnabled, setProxEnabled] = usePersistedState("ui.proxAlerts", false, 50);
+    const [proxRadius, setProxRadius] = usePersistedState("ui.proxRadius", 1000, 50);   // C37b: النطاق العامّ لكلّ الأقارب
     const [proxAlert, setProxAlert] = useState(null);     // { person, gid, dist }
     const [homeSave, setHomeSave] = useState(null);       // { lat, lng, label } من رسالة موقع في المحادثة
     useProximityWatch(proxEnabled && flow === "app", familyGroups, groupPersons, (a) => {
@@ -3088,7 +3089,7 @@ function AppInner() {
     });
     useEffect(() => { const h = (e) => setHomeSave(e.detail || null); window.addEventListener("sawa-save-home", h); return () => window.removeEventListener("sawa-save-home", h); }, []);
     function setPersonHome(gid, p, c, label) {
-        const loc = { type: "home", lat: Number(Number(c.lat).toFixed(6)), lng: Number(Number(c.lng).toFixed(6)), radius_meters: 500, address_text: String(label || "").slice(0, 120) };
+        const loc = { type: "home", lat: Number(Number(c.lat).toFixed(6)), lng: Number(Number(c.lng).toFixed(6)), radius_meters: 0, address_text: String(label || "").slice(0, 120) };
         setGroupPersons((prev) => ({ ...prev, [gid]: (prev[gid] || []).map((x) => (x.id === p.id ? { ...x, locations: [loc] } : x)) }));
         logActivity(gid, tl("حُدّد منزل " + p.local_name, "Set home of " + p.local_name));
         showToast(tl("حُفظ منزل " + p.local_name.split(" ")[0] + " ✓", "Saved " + p.local_name + "'s home ✓"), "success");
@@ -3257,7 +3258,7 @@ function AppInner() {
         discoverContent = (React.createElement(TaxiScreen, { ride: taxiRide, tripsHistory: taxiTripsHistory, scheduledRides: scheduledTaxiRides, onRequestRide: requestTaxiRide, onScheduleRide: scheduleRide, onCancelScheduledRide: cancelScheduledRide, onTriggerScheduledRide: triggerScheduledRide, onCancelRide: cancelTaxiRide, onNewRide: () => setTaxiRide(null), onRateDriver: rateDriverTrip, onBack: () => setDiscoverStack([]) }));
     }
     else if (discoverTop.type === "groups") {
-        discoverContent = (React.createElement(FamilyGroupsScreen, { groups: familyGroups, groupPersons: groupPersons, currentGroupId: currentGroupId, onSetCurrent: setCurrentGroupId, proxEnabled: proxEnabled, onEnableProx: enableProx, onDisableProx: () => setProxEnabled(false), // ⛔ قائمة ← تفصيل ← رجوعٌ إلى القائمة. كان الاختيار يُفرغ المكدّس في
+        discoverContent = (React.createElement(FamilyGroupsScreen, { groups: familyGroups, groupPersons: groupPersons, currentGroupId: currentGroupId, onSetCurrent: setCurrentGroupId, proxEnabled: proxEnabled, onEnableProx: enableProx, onDisableProx: () => setProxEnabled(false), proxRadius: proxRadius, onSetProxRadius: (r) => { setProxRadius(r); try { localStorage.setItem(SAWA_STORE_PREFIX + "ui.proxRadius", JSON.stringify(r)); } catch (e) { } }, // ⛔ قائمة ← تفصيل ← رجوعٌ إلى القائمة. كان الاختيار يُفرغ المكدّس في
             // أرحام ظنّاً أنّه «تبديل»، فينقطع الطريق ويرجع السهم إلى الجذر.
             onOpenGroup: (g) => {
                 if (IS_RAHIM)

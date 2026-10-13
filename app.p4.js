@@ -443,7 +443,9 @@ function geoDist(a, b) {   // هافرساين بالأمتار
     return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 function geoValid(lat, lng) { return typeof lat === "number" && typeof lng === "number" && isFinite(lat) && isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && !(lat === 0 && lng === 0); }
-function homeOf(p) { const l = (p && p.locations || []).find((x) => x && geoValid(Number(x.lat), Number(x.lng))); return l ? { lat: Number(l.lat), lng: Number(l.lng), radius: Number(l.radius_meters) || 500, label: l.address_text || "", type: l.type || "home" } : null; }
+// C37b: نطاق التنبيه العامّ (إعداد المستخدم، ١ كم افتراضاً) — يُطبَّق على كلّ قريبٍ لم يُحدَّد له نطاقٌ خاصّ
+function proxDefaultRadius() { try { const v = Number(JSON.parse(localStorage.getItem(SAWA_STORE_PREFIX + "ui.proxRadius"))); return v >= 100 && v <= 5000 ? v : 1000; } catch (e) { return 1000; } }
+function homeOf(p) { const l = (p && p.locations || []).find((x) => x && geoValid(Number(x.lat), Number(x.lng))); return l ? { lat: Number(l.lat), lng: Number(l.lng), radius: Number(l.radius_meters) > 0 ? Number(l.radius_meters) : proxDefaultRadius(), own: Number(l.radius_meters) > 0, label: l.address_text || "", type: l.type || "home" } : null; }
 function fmtDist(m) { const n = Math.round(m); return n < 1000 ? tl(n.toLocaleString(loc()) + " م", n + " m") : tl((n / 1000).toLocaleString(loc(), { maximumFractionDigits: 1 }) + " كم", (n / 1000).toFixed(1) + " km"); }
 // رابط خرائط Google (الطويل): @lat,lng · q=lat,lng · query=lat,lng · !3dLAT!4dLNG · ll=lat,lng · geo:lat,lng
 function parseMapsUrl(s) {
@@ -458,7 +460,7 @@ function geoNow(opts) {
         navigator.geolocation.getCurrentPosition((p) => res({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, ts: Date.now() }), rej, Object.assign({ enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }, opts || {}));
     });
 }
-const PROX_RADII = [300, 500, 1000, 2000];
+const PROX_RADII = [300, 500, 1000, 2000, 3000];
 // محرّر منزل القريب داخل نموذج الشخص: «أنا الآن في منزله» · لصق رابط خرائط · وصف · نطاق التنبيه
 function HomeEditor({ value, onChange, personName }) {
     const { colors } = useTheme();
@@ -467,7 +469,7 @@ function HomeEditor({ value, onChange, personName }) {
     const [pasteOpen, setPasteOpen] = useState(false);
     const [pasted, setPasted] = useState("");
     const v = value || null;
-    const set = (patch) => onChange(Object.assign({ type: "home", radius_meters: 500, address_text: "" }, v || {}, patch));
+    const set = (patch) => onChange(Object.assign({ type: "home", radius_meters: 0, address_text: "" }, v || {}, patch));
     const useGps = async () => {
         setBusy(true); setErr("");
         try { const p = await geoNow({ enableHighAccuracy: true, maximumAge: 0 }); set({ lat: Number(p.lat.toFixed(6)), lng: Number(p.lng.toFixed(6)) }); }
@@ -499,7 +501,7 @@ function HomeEditor({ value, onChange, personName }) {
                 React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: v.address_text || "", onChange: (e) => set({ address_text: e.target.value.slice(0, 120) }), placeholder: tl("وصف: حي العمارات، الخرطوم (اختياري)", "Description: neighborhood, city (optional)"), className: `fam-in w-full rounded-xl px-3 py-2.5 text-[12px] mt-2 ${textStart()}`, style: { backgroundColor: colors.card, color: colors.text, border: "1.5px solid transparent" } }),
                 React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mt-2` },
                     React.createElement("span", { className: "text-[10.5px] font-bold shrink-0", style: { color: colors.textMuted } }, tl("نبّهني ضمن", "Alert within")),
-                    React.createElement("div", { className: "flex-1" }, React.createElement(FamSeg, { value: Number(v.radius_meters) || 500, onChange: (r) => set({ radius_meters: r }), options: PROX_RADII.map((r) => ({ k: r, l: fmtDist(r) })) }))))));
+                    React.createElement("div", { className: "flex-1" }, React.createElement(FamSeg, { value: Number(v.radius_meters) > 0 ? Number(v.radius_meters) : 0, onChange: (r) => set({ radius_meters: r }), options: [{ k: 0, l: tl("العامّ", "Default") + " " + fmtDist(proxDefaultRadius()) }].concat([300, 500, 1000, 2000].map((r) => ({ k: r, l: fmtDist(r) }))) }))))));
 }
 // ورقة اختيار القريب الذي تُحفظ له رسالة موقعٍ منزلاً (من المحادثة)
 function HomePickerSheet({ coords, label, groups, groupPersons, onPick, onClose }) {
@@ -837,7 +839,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
     const [birthYear, setBirthYear] = useState((person === null || person === void 0 ? void 0 : person.birthYear) || "");
     const [statusDetail, setStatusDetail] = useState((person === null || person === void 0 ? void 0 : person.status_detail) || "");
     const [notes, setNotes] = useState((person === null || person === void 0 ? void 0 : person.notes) || "");
-    const [home, setHome] = useState(() => { const h = person && (person.locations || [])[0]; return h && geoValid(Number(h.lat), Number(h.lng)) ? Object.assign({ type: "home", radius_meters: 500, address_text: "" }, h) : null; });   // C37
+    const [home, setHome] = useState(() => { const h = person && (person.locations || [])[0]; return h && geoValid(Number(h.lat), Number(h.lng)) ? Object.assign({ type: "home", radius_meters: 0, address_text: "" }, h) : null; });   // C37 (0 = النطاق العامّ)
     const [photo, setPhoto] = useState((person === null || person === void 0 ? void 0 : person.photo) || null);
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [contactImportError, setContactImportError] = useState(false);
@@ -897,7 +899,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
             notes: notes.trim(),
             photo,
             // C37: منزله — موقعٌ واحد (الأوّل) يُستعمل لتنبيه القرب، ويُزامَن مع العائلة
-            locations: home && geoValid(Number(home.lat), Number(home.lng)) ? [{ type: "home", lat: Number(home.lat), lng: Number(home.lng), radius_meters: Number(home.radius_meters) || 500, address_text: String(home.address_text || "").slice(0, 120) }] : [],
+            locations: home && geoValid(Number(home.lat), Number(home.lng)) ? [{ type: "home", lat: Number(home.lat), lng: Number(home.lng), radius_meters: Number(home.radius_meters) > 0 ? Number(home.radius_meters) : 0, address_text: String(home.address_text || "").slice(0, 120) }] : [],
             alive: !isDeceased,
             death_date: isDeceased ? (deathDate || null) : null,
             relation: !isEdit && linkEnabled && relatedToId ? { relatedToId, relationType } : null,

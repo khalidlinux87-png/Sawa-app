@@ -198,7 +198,7 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
                         React.createElement("div", { className: "text-xs font-extrabold", style: { color: colors.text } }, t("taksy_swa")),
                         React.createElement("div", { className: "text-[10px] leading-snug", style: { color: colors.textMuted } }, t("dsc_taksy_wsf")))))));
 }
-function FamilyGroupsScreen({ groups, groupPersons, currentGroupId, onSetCurrent, onOpenGroup, onOpenGroupOverdue, onCreateGroup, onRenameGroup, onDeleteGroup, onBack, proxEnabled, onEnableProx, onDisableProx }) {
+function FamilyGroupsScreen({ groups, groupPersons, currentGroupId, onSetCurrent, onOpenGroup, onOpenGroupOverdue, onCreateGroup, onRenameGroup, onDeleteGroup, onBack, proxEnabled, onEnableProx, onDisableProx, proxRadius = 1000, onSetProxRadius }) {
     // C34: الرئيسية بالنمط الحديث — رأس متدرّج بإحصاءات، بطاقات العائلات، المناسبات القريبة، ومن ينتظر تواصلك
     const { colors, isDark } = useTheme();
     const [showCreate, setShowCreate] = useState(false);
@@ -206,6 +206,8 @@ function FamilyGroupsScreen({ groups, groupPersons, currentGroupId, onSetCurrent
     const [menuFor, setMenuFor] = useState(null); // المجموعة المفتوحة ورقتها (تسمية/حذف/تعيين)
     const [renameText, setRenameText] = useState("");
     const [confirming, setConfirming] = useState(false);
+    const [showRadius, setShowRadius] = useState(false);   // C37b: ورقة نطاق التنبيه العامّ
+    const [customR, setCustomR] = useState("");
     const allPersons = useMemo(() => groups.flatMap((g) => (groupPersons[g.id] || []).map((p) => Object.assign({ __g: g }, p))), [groups, groupPersons]);
     const overdueAll = useMemo(() => allPersons.filter(isContactOverdue), [allPersons]);
     // مناسبات الثلاثين يوماً القادمة (أعياد الميلاد) — منتصف الليل المحلّيّ كما في C33
@@ -241,12 +243,18 @@ function FamilyGroupsScreen({ groups, groupPersons, currentGroupId, onSetCurrent
                     React.createElement("div", { className: "w-11 h-11 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "#22C55E18" } }, React.createElement(MapPin, { size: 20, color: "#16a34a" })),
                     React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
                         React.createElement("div", { className: "text-[13.5px] font-extrabold", style: { color: colors.text } }, tl("تنبيهات القرب", "Nearby alerts")),
-                        React.createElement("div", { className: "text-[11px] leading-relaxed", style: { color: colors.textMuted } }, tl("حين تمرّ قرب منزل قريبٍ أذكّرك: زيارةٌ أو اتّصال. حدّد منازلهم من ملفّاتهم.", "When you pass near a relative's home, I'll suggest a visit or a call."))),
+                        React.createElement("div", { className: "text-[11px] leading-relaxed", style: { color: colors.textMuted } }, tl("حين تمرّ ضمن " + fmtDist(proxRadius) + " من منزل قريبٍ أذكّرك: زيارةٌ أو اتّصال. حدّد منازلهم من ملفّاتهم، والمسافة تُضبط بعد التفعيل.", "When you pass within " + fmtDist(proxRadius) + " of a relative's home, I'll suggest a visit or a call."))),
                     React.createElement("button", { onClick: onEnableProx, className: "shrink-0 rounded-full px-3.5 py-2 text-[12px] font-extrabold text-white", style: { background: famGrad(colors) } }, tl("تفعيل", "Enable"))))
-                : React.createElement("div", { className: `px-5 pt-3 flex ${rowStart()} items-center gap-2 text-[11px] font-bold`, style: { color: colors.textMuted } },
+                : React.createElement("div", { className: `px-5 pt-3 flex ${rowStart()} items-center gap-2 text-[11px] font-bold flex-wrap`, style: { color: colors.textMuted } },
                     React.createElement(MapPin, { size: 12, color: "#16a34a" }),
-                    React.createElement("span", { className: "flex-1" }, tl("تنبيهات القرب مفعّلة · " + n(allPersons.filter(homeOf).length) + " منزلاً محدَّداً", "Nearby alerts on · " + n(allPersons.filter(homeOf).length) + " homes set")),
+                    React.createElement("span", { className: "flex-1" }, tl("تنبيهات القرب مفعّلة · " + n(allPersons.filter(homeOf).length) + " منزلاً", "Nearby alerts on · " + n(allPersons.filter(homeOf).length) + " homes")),
+                    React.createElement("button", { onClick: () => setShowRadius(true), className: "rounded-full px-2.5 py-1", style: { color: colors.primary, backgroundColor: colors.primary + "12" } }, tl("النطاق: ", "Within: ") + fmtDist(proxRadius)),
                     React.createElement("button", { onClick: onDisableProx, style: { color: colors.primary } }, tl("إيقاف", "Turn off")))),
+            showRadius && React.createElement(FamSheet, { title: tl("نطاق التنبيه لكلّ الأقارب", "Alert distance for all relatives"), subtitle: tl("كم تكون المسافة من منزل القريب ليُنبّهك؟ يمكن تخصيصها لقريبٍ بعينه من نموذجه.", "How close to a relative's home before alerting? Per-relative override in their form."), onClose: () => setShowRadius(false), maxHeight: "72%" },
+                PROX_RADII.map((r, i) => React.createElement(FamRow, { key: r, icon: MapPin, title: fmtDist(r), sub: r <= 500 ? tl("مشياً في الحيّ", "Walking distance") : r <= 1000 ? tl("الحيّ وما حوله", "The neighborhood") : tl("بالسيّارة", "By car"), onPress: () => { onSetProxRadius(r); setShowRadius(false); }, right: proxRadius === r ? React.createElement(Check, { size: 17, color: colors.primary }) : React.createElement("span", null) })),
+                React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 pt-3` },
+                    React.createElement("input", { dir: "ltr", inputMode: "numeric", value: customR, onChange: (e) => setCustomR(e.target.value.replace(/\D/g, "").slice(0, 4)), placeholder: tl("مسافة أخرى بالمتر (١٠٠–٥٠٠٠)", "Other, meters (100–5000)"), className: "fam-in flex-1 min-w-0 px-3.5 py-3 text-sm", style: famInput(colors) }),
+                    React.createElement("button", { disabled: !(Number(customR) >= 100 && Number(customR) <= 5000), onClick: () => { onSetProxRadius(Number(customR)); setCustomR(""); setShowRadius(false); }, className: "rounded-2xl px-4 py-3 text-sm font-bold text-white", style: { background: famGrad(colors), opacity: (Number(customR) >= 100 && Number(customR) <= 5000) ? 1 : 0.4 } }, t("takyd")))),
             React.createElement(FamSection, { title: tl("عائلاتي", "My families"), action: tl("+ عائلة جديدة", "+ New family"), onAction: () => setShowCreate(true) },
                 groups.length === 0 && React.createElement(FamCard, { className: "text-center", style: { padding: 24 } },
                     React.createElement("div", { className: "mx-auto mb-3 rounded-full flex items-center justify-center", style: { width: 64, height: 64, background: famGrad(colors) } }, React.createElement(UsersRound, { size: 30, color: "#fff" })),
