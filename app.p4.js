@@ -33,13 +33,13 @@ function FamilySuggestionsScreen({ groupId, persons, relations, events, dismisse
         }
         // اقتراح عيد ميلاد قريب (خلال 7 أيام القادمة) — يقارن الشهر واليوم بس، بغض النظر عن السنة
         if (p.birthday && p.alive) {
-            const [bMonth, bDay] = p.birthday.split("-").map(Number);
-            const today = new Date();
+            const [bMonth, bDay] = String(p.birthday).split("-").map(Number);
+            const now0 = new Date(), today = new Date(now0.getFullYear(), now0.getMonth(), now0.getDate());   // C33
             const thisYearBday = new Date(today.getFullYear(), bMonth - 1, bDay);
             if (thisYearBday < today)
                 thisYearBday.setFullYear(today.getFullYear() + 1);
-            const daysUntil = Math.ceil((thisYearBday - today) / (1000 * 60 * 60 * 24));
-            if (daysUntil <= 7) {
+            const daysUntil = Math.round((thisYearBday - today) / (1000 * 60 * 60 * 24));
+            if (bMonth >= 1 && bMonth <= 12 && bDay >= 1 && bDay <= 31 && daysUntil <= 7) {
                 suggestions.push({
                     id: `sugg-bday-${p.id}`,
                     title: daysUntil === 0 ? t("ayd_mylad_alywm", { local_name: p.local_name }) : t("ayd_mylad_bad_ywm", { local_name: p.local_name, daysUntil }),
@@ -62,14 +62,13 @@ function FamilySuggestionsScreen({ groupId, persons, relations, events, dismisse
             }
         }
         // اقتراح t("ma_twaslt_mn_mda") — حسب عتبة الأيام المسموحة لدرجة القرب
-        if (p.alive && p.lastContactDate && p.proximity) {
-            const daysSinceContact = Math.floor((Date.now() - p.lastContactDate) / (1000 * 60 * 60 * 24));
-            const threshold = proximityContactDays[p.proximity] || 30;
-            if (daysSinceContact > threshold) {
+        if (isContactOverdue(p)) {   // C33: المعيار نفسه الذي تستعمله الشارات والعدّادات (كان يختلف فتتناقض الأرقام)
+            const daysSinceContact = daysSinceContact_(p.lastContactDate);
+            if (true) {
                 suggestions.push({
                     id: `sugg-contact-${p.id}`,
-                    title: t("ma_twaslt_ma_mn", { local_name: p.local_name, daysSinceContact }),
-                    reason: t("fs_tjawzt_almda", { level: proximityLabels[p.proximity], days: threshold }),
+                    title: p.lastContactDate ? t("ma_twaslt_ma_mn", { local_name: p.local_name, daysSinceContact }) : tl("لم تسجّل تواصلاً مع " + p.local_name + " بعد", "No contact recorded with " + p.local_name + " yet"),
+                    reason: t("fs_tjawzt_almda", { level: proximityLabels[p.proximity], days: proximityContactDays[p.proximity] || 30 }),
                 });
             }
         }
@@ -129,7 +128,9 @@ function FamilySuggestionsScreen({ groupId, persons, relations, events, dismisse
         // ── الأسلاف البعيدون: لا نسأل عن أمر معلوم بالضرورة ──
         if (isDeepAncestor) {
             // حالة الحياة تُفترض وفاته؛ نطلب التأكيد لا الاختيار من الصفر
-            if (p.alive) {
+            // C33: لا نسأل عن نفسي ولا عن إخوتي ولا عن أبنائي/أحفادي ولا عمّن يُعدّ من جيلي أو بعدي (كان يسأل «الغالب أنّك متوفّى؟»)
+            const skipGen = p.kinship === "نفسي" || /^(الأخ|الأخت|الابن|البنت|الحفيد|الحفيدة|ابن |بنت |زوج|الزوج)/.test(p.kinship || "") || (p.birthYear && new Date().getFullYear() - Number(p.birthYear) < 60);
+            if (p.alive && !skipGen) {
                 gapQuestions.push({ id: `gap-alive-${p.id}`, personId: p.id, kind: "alive", presumeDeceased: true,
                     question: t("fs_alghalb_mtwfa", { name, w: she ? t("fs_mtwfya") : t("fs_mtwfa") }) });
             }
@@ -490,7 +491,7 @@ function FamilyChainAddSheet({ existingPersons, relations = [], onSave, onClose 
         const all = existingPersons.filter((p) => normalizeArabicName(p.local_name) === low);
         return {
             low,
-            typed: [...chainNames, ...siblingNames, ...childrenNames, ...wifeNames].find((n) => n.toLowerCase() === low),
+            typed: [...chainNames, ...siblingNames, ...childrenNames, ...wifeNames].find((n) => normalizeArabicName(n) === low),   // C33: كانت تقارن بلا تطبيع فتظهر بلا اسم
             existing: all[0],
             allMatches: all,
             label: all.map((p) => dupLabel(p)).join(" · "),
@@ -629,7 +630,7 @@ function FamilyChainAddSheet({ existingPersons, relations = [], onSave, onClose 
                     sons: sonNames, daughters: daughterNames, wives: wifeNames,
                 }, safeTargetIndex, matchDecisions, firstGender, firstIsSelf, childMother) }))));
 }
-function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGroups = [], presetRelatedToId, presetRelationType, presetKinship, onSave, onDelete, onClose, }) {
+function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGroups = [], presetRelatedToId, presetRelationType, presetKinship, presetGender, onSave, onDelete, onClose, }) {
     var _a, _b, _c, _d, _e, _f, _g;
     const { colors } = useTheme();
     const isEdit = !!person;
@@ -665,7 +666,9 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
     const [kinshipSearch, setKinshipSearch] = useState("");
     const [openKinshipSection, setOpenKinshipSection] = useState(null);
     const [gender, setGender] = useState((person === null || person === void 0 ? void 0 : person.gender)
+        || presetGender   // C33: جنس القريب المُضاف من الشجرة (زوجة/أمّ…) حين لا تحدّده صلته بي
         || KINSHIP_GENDER_DEFAULTS[person === null || person === void 0 ? void 0 : person.kinship]
+        || (presetKinship && KINSHIP_GENDER_DEFAULTS[presetKinship])
         || (presetRelationType && KINSHIP_GENDER_DEFAULTS[KINSHIP_FOR_PRESET[presetRelationType]])
         || "male");
     const [phone, setPhone] = useState(((_a = person === null || person === void 0 ? void 0 : person.contacts) === null || _a === void 0 ? void 0 : _a.phone) || "");
@@ -1025,7 +1028,7 @@ function FamilyAddEventSheet({ persons, relations = [], initial, onSave, onClose
                 React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } },
                     "\u0627\u0644\u0625\u062C\u0631\u0627\u0621 \u0627\u0644\u0645\u0642\u062A\u0631\u062D \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B: ",
                     eventSuggestedActionLabel(type))),
-            React.createElement(Button, { label: t("hfz_alhdth"), disabled: !title.trim(), onPress: () => { onSave(personId, type, title.trim(), dateInputToTs(dateStr), desc.trim()); onClose(); } }))));
+            React.createElement(Button, { label: t("hfz_alhdth"), disabled: !title.trim() || !personId, onPress: () => { onSave(personId, type, title.trim(), dateInputToTs(dateStr), desc.trim()); onClose(); } }))));
 }
 function FamilyAddScheduleSheet({ persons, relations = [], preselectedPersonId, initial, onSave, onClose }) {
     var _a;
@@ -1042,7 +1045,7 @@ function FamilyAddScheduleSheet({ persons, relations = [], preselectedPersonId, 
             React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mb-4` }, Object.keys(actionLabelKeys).map((k) => React.createElement(Chip, { key: k, label: actionLabel(k), active: action === k, onPress: () => setAction(k) }))),
             React.createElement("div", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("sc_tkrar")),
             React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mb-4` }, SCHEDULE_FREQS.map((f) => React.createElement(Chip, { key: f.key, label: t(f.labelKey), active: freqKey === f.key, onPress: () => setFreqKey(f.key) }))),
-            React.createElement(Button, { label: t("hfz_almwad"), onPress: () => { onSave(personId, action, freqKey); onClose(); } }))));
+            React.createElement(Button, { label: t("hfz_almwad"), disabled: !personId, onPress: () => { onSave(personId, action, freqKey); onClose(); } }))));
 }
 // ============================================================================
 // شاشات المحادثات — مع تحذير بارز إنها غير مشفّرة طرف لطرف فعلياً بعد

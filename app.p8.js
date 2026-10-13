@@ -2589,11 +2589,15 @@ function AppInner() {
             }
             const id = `gp-${Date.now()}-a${i}`;
             ancestorIds.push(id);
+            // C33: أصول السلسلة هي أصول الشخص المُضاف لا أصولي: «الوالد/الجد» فقط حين يكون المُضاف أنا أو أخي/أختي (أصولنا واحدة)؛
+            //      وإلّا تُسجَّل «أخرى» وتُضبط يدويّاً (كان ابن العم يُضيف أباه «والداً» لي). ولا نحكم بوفاة أحدٍ من عندنا.
+            const shared = !personData.kinship || ["نفسي", "الأخ", "الأخت"].indexOf(personData.kinship) >= 0;
+            const kin = shared ? (i === 0 ? "الوالد" : i === 1 ? "الجد" : "أخرى") : "أخرى";
             newAncestors.push({
-                id, local_name: nm, kinship: i === 0 ? "الوالد" : i === 1 ? "الجد" : `سلف (${i + 1})`, // ⛔ مُعرِّف لا نصّ
+                id, local_name: nm, kinship: kin,
                 gender: "male", // الأصول في النسب ذكور
-                proximity: proximityForKinship(i === 0 ? "الوالد" : i === 1 ? "الجد" : "أخرى"),
-                alive: i === 0, favorite: false, locations: [],
+                proximity: proximityForKinship(kin),
+                alive: true, favorite: false, locations: [],
                 lastContactDate: Date.now(), contacts: null, notes: "", linkedTo: null,
             });
         });
@@ -2630,6 +2634,11 @@ function AppInner() {
             // بالشجرة" لأنه ببساطة ما كان مرتبطاً بأي علاقة فعلية من قبل
             const edge = resolveRelationEdge(newPersonId, relation.relatedToId, relation.relationType);
             setKinshipRelations((prev) => {
+                // C33: مسار النموذج كان يتجاوز حارس الوالدَين (ثلاثة آباء لابنٍ واحد)
+                if (edge.type === "parent" && prev.filter((r) => r.groupId === groupId && r.type === "parent" && r.target === edge.target).length >= 2) {
+                    setTimeout(() => showToast(t("lhdha_alshkhs_waldan_msjlan"), "error"), 0);
+                    return prev;
+                }
                 let next = [...prev, { id: `k-${Date.now()}`, groupId, source: edge.source, target: edge.target, type: edge.type }];
                 if (edge.type === "parent") {
                     const sp = inferSpouseFromParents(groupId, edge.target, next);
@@ -3190,11 +3199,11 @@ function AppInner() {
         showToast(t("fam_evt_added", { action: eventSuggestedActionLabel(type) }), "success");
     }
     function cycleMemberRole(groupId, userId) {
-        const order = ["owner", "admin", "member", "viewer"];
+        const order = ["admin", "member", "viewer"];   // C33: المالك لا يُمنح بالتدوير — المالك واحد
         setMembers((prev) => ({
             ...prev,
             [groupId]: prev[groupId].map((m) => {
-                if (m.userId !== userId)
+                if (m.userId !== userId || m.role === "owner")
                     return m;
                 const next = order[(order.indexOf(m.role) + 1) % order.length];
                 return { ...m, role: next };
@@ -3331,7 +3340,7 @@ function AppInner() {
         const linkedGroupName = linkedTo ? (_c = familyGroups.find((g) => g.id === linkedTo.groupId)) === null || _c === void 0 ? void 0 : _c.name : null;
         const linkedPerson = linkedTo ? (groupPersons[linkedTo.groupId] || []).find((p) => p.id === linkedTo.personId) : null;
         const roleForPerson = (_d = familyGroups.find((g) => g.id === currentGroupIdForPerson)) === null || _d === void 0 ? void 0 : _d.role;
-        const canEditPerson = roleForPerson === "owner" || roleForPerson === "admin";
+        const canEditPerson = roleForPerson !== "viewer";
         discoverContent = (React.createElement(FamilyPersonDetailScreen, { person: freshPerson, persons: groupPersons[currentGroupIdForPerson] || [], relations: kinshipRelations.filter((r) => r.groupId === currentGroupIdForPerson), favorites: familyFavorites, otherGroups: otherGroupsForPerson, linkedGroupName: linkedGroupName, linkedPersonName: linkedPerson === null || linkedPerson === void 0 ? void 0 : linkedPerson.local_name, canEdit: canEditPerson, onToggleFav: toggleFamilyFav, onEdit: (personId, data) => editPerson(currentGroupIdForPerson, personId, data), onDelete: (personId) => { deletePerson(currentGroupIdForPerson, personId); setDiscoverStack(discoverStack.slice(0, -1)); }, onOpenLinkedPerson: () => linkedTo && linkedPerson && setDiscoverStack([...discoverStack, { type: "personDetail", data: linkedPerson, groupId: linkedTo.groupId }]), onCreateInLaws: (p) => createInLawsGroup(discoverTop.groupId, p), onClearFacts: (pid) => {
                 const gid = currentGroupIdForPerson;
                 setGroupPersons((prev) => ({
@@ -3342,12 +3351,13 @@ function AppInner() {
             }, onSimulateProximity: (personId) => simulateProximity(personId, freshPerson.local_name), onMarkContact: (personId) => markContactNow(currentGroupIdForPerson, personId), onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
     }
     else if (discoverTop.type === "tree") {
-        const canEditTree = discoverTop.data.role === "owner" || discoverTop.data.role === "admin";
-        discoverContent = (React.createElement(FamilyTreeScreen, { groupId: discoverTop.data.id, persons: groupPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), canEdit: canEditTree, onAddRelation: addKinshipRelation, onDeleteRelation: deleteKinshipRelation, onEndMarriage: endMarriage, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: discoverTop.data.id }]), onMarkContact: (personId) => markContactNow(discoverTop.data.id, personId), onQuickSchedule: (personId) => { setPreselectedSchedulePersonId(personId); setShowAddSchedule(true); }, onOpenStats: () => setDiscoverStack([...discoverStack, { type: "stats", data: discoverTop.data }]), onAddRelativeTo: (gid, person, relKey, kinship) => setGapAddPreset({
+        const canEditTree = famCanEdit(discoverTop.data);
+        discoverContent = (React.createElement(FamilyTreeScreen, { groupId: discoverTop.data.id, persons: groupPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), canEdit: canEditTree, onAddRelation: addKinshipRelation, onDeleteRelation: deleteKinshipRelation, onEndMarriage: endMarriage, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: discoverTop.data.id }]), onMarkContact: (personId) => markContactNow(discoverTop.data.id, personId), onQuickSchedule: (personId) => { setPreselectedSchedulePersonId(personId); setShowAddSchedule(true); }, onOpenStats: () => setDiscoverStack([...discoverStack, { type: "stats", data: discoverTop.data }]), onAddRelativeTo: (gid, person, relKey, kinship, gender) => setGapAddPreset({
                 groupId: gid,
                 relatedToId: person.id,
                 relationType: relKey,
                 presetKinship: kinship,
+                presetGender: gender || null,
             }), onAddRelativesBulk: addRelativesBulk, allGroupPersons: groupPersons, onInheritParents: () => inferSpousesAndParents(discoverTop.data.id, true), onOpenInLaws: (gid, person) => {
                 var _a;
                 if ((_a = person.linkedTo) === null || _a === void 0 ? void 0 : _a.groupId) {
@@ -3648,7 +3658,7 @@ function AppInner() {
         showAddSchedule && (() => { const schGid = (editingSchedule && editingSchedule.groupId) || (discoverTop && (discoverTop.type === "schedules" || discoverTop.type === "tree") && discoverTop.data && discoverTop.data.id) || (discoverTop && discoverTop.type === "personDetail" && discoverTop.groupId) || currentGroupId; return React.createElement(FamilyAddScheduleSheet, { persons: (groupPersons[schGid] || []).filter((p) => !isSelfPerson(p)), relations: kinshipRelations.filter((r) => r.groupId === schGid), preselectedPersonId: preselectedSchedulePersonId, initial: editingSchedule, onSave: (personId, action, freqKey) => (editingSchedule ? updateSchedule(editingSchedule.id, personId, action, freqKey) : addSchedule(schGid, personId, action, freqKey)), onClose: () => { setShowAddSchedule(false); setPreselectedSchedulePersonId(null); setEditingSchedule(null); } }); })(),
         showAddEvent && (() => { const evGid = (editingEvent && editingEvent.groupId) || (discoverTop && discoverTop.type === "events" && discoverTop.data && discoverTop.data.id) || (discoverTop && discoverTop.type === "personDetail" && discoverTop.groupId) || currentGroupId; return React.createElement(FamilyAddEventSheet, { persons: groupPersons[evGid] || [], relations: kinshipRelations.filter((r) => r.groupId === evGid), initial: editingEvent, onSave: (personId, type, title, ts, desc) => (editingEvent ? updateEvent(editingEvent.id, personId, type, title, ts, desc) : addEvent(evGid, personId, type, title, ts, desc)), onClose: () => { setShowAddEvent(false); setEditingEvent(null); } }); })(),
         bulkAddPreset && (React.createElement(QuickRelativesSheet, { person: bulkAddPreset.person, existingPersons: groupPersons[bulkAddPreset.groupId] || [], relations: kinshipRelations.filter((r) => r.groupId === bulkAddPreset.groupId), startRel: bulkAddPreset.startRel, onSave: (p, sel, names, decisions) => addRelativesBulk(bulkAddPreset.groupId, p, sel, names, decisions), onClose: () => setBulkAddPreset(null) })),
-        gapAddPreset && (React.createElement(FamilyPersonFormSheet, { persons: groupPersons[gapAddPreset.groupId] || [], relations: kinshipRelations.filter((r) => r.groupId === gapAddPreset.groupId), presetRelatedToId: gapAddPreset.relatedToId, presetRelationType: gapAddPreset.relationType, presetKinship: gapAddPreset.presetKinship, onSave: (data) => addPerson(gapAddPreset.groupId, data), onClose: () => setGapAddPreset(null) })),
+        gapAddPreset && (React.createElement(FamilyPersonFormSheet, { persons: groupPersons[gapAddPreset.groupId] || [], relations: kinshipRelations.filter((r) => r.groupId === gapAddPreset.groupId), presetRelatedToId: gapAddPreset.relatedToId, presetRelationType: gapAddPreset.relationType, presetKinship: gapAddPreset.presetKinship, presetGender: gapAddPreset.presetGender || null, onSave: (data) => addPerson(gapAddPreset.groupId, data), onClose: () => setGapAddPreset(null) })),
         schedulingRoom && (React.createElement(ScheduleRoomModal, { onSave: (r) => {
                 // C8: غرفة مجدولة حقيقيّة — تظهر على أجهزتي ويصلني تذكير، وبطاقتها جاهزة وأنا مضيفها
                 if ((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled())) { window.SawaRTC.schedSave({ room: r.code, description: r.title, contactName: r.title, timestamp: r.at, endTime: "", callType: "audio", reminderMinutes: 15 }).catch(() => showToast("تعذّر حفظ الموعد — تحقّق من الاتّصال", "error")); return; }

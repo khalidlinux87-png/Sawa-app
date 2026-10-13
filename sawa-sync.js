@@ -159,21 +159,33 @@
     paintBadge(); drain();
   }
   function push(op, payload) { if (!enabled()) return; enqueue(op, payload); }
+  // C33: رفضٌ نهائيّ من الخادم (صلاحيّة، تحقّق…) مقابل عطلٍ عابر (Firestore 503، انتهاء المهلة، حدّ الطلبات الفرعيّة) — العابر يبقى في الطابور ويُعاد
+  var FINAL = /not allowed|only the owner|required|bad |not found|equals|not stored|deleted|removed|full|expired|invalid|exists|too (large|many)|unknown op|bad op|cycle|slot/i;
+  var MAX_TRIES = 8;
   function drain() {
     if (state.sending || !state.uid || !enabled()) return;
     var q = lsGet(OUTBOX, []);
     if (!q.length) { applyPendingRemote(); return; }
     state.sending = true;
     var item = q[0];
-    sendOnce(item.op, item.payload).then(function (b) {
-      if (b && b.error === "rate_limited") {          // الخادم يطلب التمهّل: التعديل يبقى في الطابور ويُعاد بعد دقيقة
-        state.sending = false; state.lastAck = "… " + item.op + " (rate)"; paintBadge();
-        if (!retryTimer) retryTimer = setTimeout(function () { retryTimer = null; drain(); }, 60000);
-        return;
+    var payload = item.payload;
+    if (item.op === "person.set" && item.ts && payload && !payload.ts) { payload = {}; for (var pk in item.payload) payload[pk] = item.payload[pk]; payload.ts = item.ts; }   // C33: وقت التعديل ⇒ «الأحدث يفوز» في الخادم
+    var later = function (ms, tag) {
+      var q2 = lsGet(OUTBOX, []); if (q2[0] && q2[0].op === item.op && q2[0].ts === item.ts) { q2[0].tries = (q2[0].tries || 0) + 1; lsSet(OUTBOX, q2); }
+      if ((q2[0] && q2[0].tries) >= MAX_TRIES) {   // عنصرٌ سامّ يعطّل الطابور كلّه ⇒ يُنقل إلى المرفوض
+        var r2 = lsGet(OUTBOX, []); r2.shift(); lsSet(OUTBOX, r2);
+        var f2 = lsGet(FAILED, []); f2.push({ op: item.op, error: "gave up after " + MAX_TRIES + " tries (" + tag + ")", ts: Date.now(), payload: item.payload }); lsSet(FAILED, f2.slice(-20));
+        state.sending = false; paintBadge(); drain(); return;
       }
+      state.sending = false; state.lastAck = "… " + item.op + " (" + tag + ")"; paintBadge();
+      if (!retryTimer) retryTimer = setTimeout(function () { retryTimer = null; drain(); }, ms);
+    };
+    sendOnce(item.op, payload).then(function (b) {
+      if (b && b.error === "rate_limited") return later(60000, "rate");          // الخادم يطلب التمهّل
+      if (b && b.ok === false && !FINAL.test(String(b.error || ""))) return later(20000, String(b.error || "err").slice(0, 30));   // عطلٌ عابر في الخادم
       var rest = lsGet(OUTBOX, []); rest.shift(); lsSet(OUTBOX, rest);
       if (!b || b.ok === false) {
-        var f = lsGet(FAILED, []); f.push({ op: item.op, error: b && b.error, ts: Date.now() });
+        var f = lsGet(FAILED, []); f.push({ op: item.op, error: b && b.error, ts: Date.now(), payload: item.payload });
         lsSet(FAILED, f.slice(-20));
         log("رُفض:", item.op, b && b.error);
         state.lastAck = "✗ " + item.op;
@@ -184,9 +196,8 @@
       }
       state.sending = false; paintBadge(); drain();
     }).catch(function (e) {
-      state.sending = false; state.lastAck = "… " + item.op + " (" + String((e && e.message) || e).slice(0, 40) + ")"; paintBadge();
       log("شبكة — إعادة لاحقاً:", (e && e.message) || e);
-      if (!retryTimer) retryTimer = setTimeout(function () { retryTimer = null; drain(); }, 15000);
+      later(15000, String((e && e.message) || e).slice(0, 30));
     });
   }
   try { global.addEventListener("online", drain); } catch (e) {}
@@ -281,17 +292,17 @@
       var base = baseline[localGid];
       var wd = watchers[map[localGid]];
       if (wd && wd.err === "permission-denied" && base) continue;   // بلا صلاحيّة: نحتفظ بالتعديلات ولا نرسلها
-      baseline[localGid] = snap;
-      if (applying[localGid]) { applying[localGid] = false; continue; } // صدى الخادم
-      if (!base) continue;      // أوّل مراقبة بعد الفتح = خطّ الأساس
       var sg = map[localGid];
-      if (roleOf(sg) === "viewer") {
+      if (roleOf(sg) === "viewer" && base && !applying[localGid]) {   // C33: تعديلات المشاهد لا تدخل خطّ الأساس — تُرسَل إن رُقّي لاحقاً
         if (JSON.stringify(base) !== JSON.stringify(snap) && !viewerWarned[sg]) {
           viewerWarned[sg] = true;
           toast(L("أنت مشاهد في هذه العائلة — تعديلاتك لا تُحفَظ على الخادم", "You're a viewer here — your edits aren't saved to the server"));
         }
         continue;
       }
+      baseline[localGid] = snap;
+      if (applying[localGid]) { applying[localGid] = false; continue; } // صدى الخادم
+      if (!base) continue;      // أوّل مراقبة بعد الفتح = خطّ الأساس
       diffAndEnqueue(sg, base, snap);
     }
     for (var lg2 in map) if (watchers[map[lg2]] && contactsChanged(lg2, gp)) { scheduleContactSync(); break; }
@@ -331,7 +342,7 @@
 
   // مستمعٌ لكلّ عائلةٍ مربوطة على هذا الجهاز — التزامن لا يتوقّف على العائلة المفتوحة.
   var watchers = {}; // sg -> { sg, lg, uid, persons, relations, off, err, snap, note, contactsDone }
-  function stopWatch(sg) { var w = watchers[sg]; if (!w) return; try { w.off && w.off(); } catch (e) {} delete watchers[sg]; }
+  function stopWatch(sg) { var w = watchers[sg]; if (!w) return; try { w.off && w.off(); } catch (e) {} try { clearTimeout(w.retryT); } catch (e) {} delete watchers[sg]; }
   function restartWatch() { for (var sg in watchers) stopWatch(sg); rewatch(); }
   function rewatch() {
     if (!app || !state.uid || !enabled()) return;
@@ -354,6 +365,8 @@
       var onErr = function (e) {
         w.err = (e && e.code) || "err"; w.note = "listen✗ " + w.err;
         log("القراءة مرفوضة:", sg, w.err); paintBadge();
+        // C33: المستمع يموت بعد الخطأ (Firestore لا يعيده) ⇒ نعيده بعد ٣٠ ثانية (عودة صلاحيّة، أو عطلٌ عابر)
+        if (!w.retryT) w.retryT = setTimeout(function () { if (watchers[sg] === w) { stopWatch(sg); rewatch(); } }, 30000);
       };
       var offP = base.collection("persons").onSnapshot(function (snap) {
         if (watchers[sg] !== w) return;
@@ -1063,8 +1076,16 @@
     if (cur && !serverGid(cur)) {
       return serverPersonIds(sg).then(function (ids) {
         if (!curIds.length || overlap(curIds, ids) >= 0.5) {
+          var extra = curIds.filter(function (id) { return ids.indexOf(id) < 0; });
+          // C33: مشاهدٌ لا يستطيع رفع ما ليس على الخادم ⇒ لا نربط شجرته بها كي لا تُمحى أشخاصه المحلّيّون
+          if (extra.length && (role || "viewer") === "viewer") return createRestored(sg, name, role);
           setMap(cur, sg);
-          baseline[cur] = snapshot(cur, gp, rels);     // الخادم مرجع: تُطابَق المحلّية معه
+          // خطّ الأساس = ما عند الخادم فقط: ما يزيد محلّيّاً يُرفع (كان يُحذف «حُذف في الخادم»)
+          var snapAll = snapshot(cur, gp, rels), onServer = {}; ids.forEach(function (id) { onServer[id] = 1; });
+          var b0 = { persons: {}, relations: {}, events: snapAll.events };
+          for (var pid in snapAll.persons) if (onServer[pid]) b0.persons[pid] = snapAll.persons[pid];
+          for (var rid in snapAll.relations) { var rr = snapAll.relations[rid]; if (onServer[rr.source] && onServer[rr.target]) b0.relations[rid] = rr; }
+          baseline[cur] = b0;
           restartWatch();
           return cur;
         }

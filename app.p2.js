@@ -5,7 +5,7 @@ function t(key, params) {
     if (s == null)
         return key;
     if (params)
-        Object.keys(params).forEach(k => { s = s.replace(new RegExp('{' + k + '}', 'g'), params[k]); });
+        Object.keys(params).forEach(k => { s = s.replace(new RegExp('{' + k + '}', 'g'), params[k] == null ? "" : params[k]); });
     return s;
 }
 function setLocale(lang) { try {
@@ -1273,6 +1273,7 @@ function hasNoProximityPerson(p) { return !!p && hasNoProximity(p.kinship); } //
 function isSelfPerson(p) {
     return !!p && p.kinship === SELF_KINSHIP;
 }
+function daysSinceContact_(ts) { return ts ? Math.floor((Date.now() - ts) / 86400000) : 9999; }
 function isContactOverdue(person) {
     // صاحب الشجرة لا يُذكَّر بالتواصل مع نفسه. البوّابة هنا لأنها المخنق
     // الذي تمرّ منه كل عدّادات التأخّر وشاراتها وبطاقة التذكير.
@@ -1376,16 +1377,20 @@ const KINSHIP_EN = {
 // الطرفين إلى أصولهما ونأخذ أقرب جدّ مشترك: القرابة الدموية تُوصف تماماً
 // بـ(صعود u · نزول d) وجنس من على الطريق.
 function kinBuildIndex(persons, relations) {
-    const parentsOf = {}, childrenOf = {}, spousesOf = {}, P = {};
+    const parentsOf = {}, childrenOf = {}, spousesOf = {}, exOf = {}, P = {};
     persons.forEach((p) => { P[p.id] = p; });
     relations.forEach((r) => {
         if (r.type === "parent") {
             (parentsOf[r.target] = parentsOf[r.target] || []).push(r.source);
             (childrenOf[r.source] = childrenOf[r.source] || []).push(r.target);
         }
-        else if (r.type === "spouse" || r.type === "ex_spouse") {
+        else if (r.type === "spouse") {
             (spousesOf[r.source] = spousesOf[r.source] || []).push(r.target);
             (spousesOf[r.target] = spousesOf[r.target] || []).push(r.source);
+        }
+        else if (r.type === "ex_spouse") {   // C33: الزواج المنتهي ليس زواجاً قائماً — لا يدخل في «زوجتك/زوجك» ولا في حساب الأصهار
+            (exOf[r.source] = exOf[r.source] || []).push(r.target);
+            (exOf[r.target] = exOf[r.target] || []).push(r.source);
         }
     });
     // أخوّة صريحة بلا والد مشترك: نصل الطرفين بوالد وهميّ لا يدخل البيانات،
@@ -1399,7 +1404,7 @@ function kinBuildIndex(persons, relations) {
         (parentsOf[r.target] = parentsOf[r.target] || []).push(ghost);
         (childrenOf[ghost] = childrenOf[ghost] || []).push(r.source, r.target);
     });
-    return { P, parentsOf, childrenOf, spousesOf };
+    return { P, parentsOf, childrenOf, spousesOf, exOf };
 }
 function kinAncestors(id, parentsOf, maxUp) {
     const out = new Map([[id, { d: 0, via: null }]]);
@@ -1551,6 +1556,8 @@ function describeKinship(aId, bId, persons, relations) {
     // الزوجية أولاً: أقرب من أي نسب وأكثر ما يُسأل عنه
     if ((idx.spousesOf[aId] || []).includes(bId))
         return t(P[bId].gender === "female" ? "kin_your_wife" : "kin_your_husband");
+    if ((idx.exOf[aId] || []).includes(bId))
+        return P[bId].gender === "female" ? tl("زوجتك السابقة", "your ex-wife") : tl("زوجك السابق", "your ex-husband");
     // ⛔ جنسُ من نصفه هو جنس نهاية المسار لا جنس الهدف الأصلي: في مسار
     // المصاهرة نصف الزوج (العمّ) لا الزوجة، وإلا صار «عمّك» aunt.
     const say = (rel, whoId) => {
