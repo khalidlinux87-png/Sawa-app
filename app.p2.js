@@ -420,6 +420,157 @@ function TopBar({ title, subtitle, onBack, actions, avatar, photo }) {
             avatar && React.createElement(Pic, { photo: photo || null, letter: ((avatar === true ? title : avatar) || "?").charAt(0), size: 36, bg: "rgba(255,255,255,0.22)", color: "#fff" })),
         React.createElement("div", { className: "shrink-0" }, actions)));
 }
+// ============================================================================
+// C34: عدّة تصميم «صلة الرحم» — النمط الحديث: رأس متدرّج، بطاقات ناعمة بظلال،
+// صور/حروف ملوّنة، شرائح، ورقة سفليّة للنماذج. تخصّ شاشات العائلة وحدها.
+// ============================================================================
+// مزج لونٍ سداسيّ بالأبيض بنسبة t (0..1) — لتفتيح بداية التدرّج
+function famMix(hex, t) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "")); if (!m) return hex;
+    const n = parseInt(m[1], 16), ch = (s) => Math.round(((n >> s) & 255) + (255 - ((n >> s) & 255)) * t);
+    return "#" + [ch(16), ch(8), ch(0)].map((v) => v.toString(16).padStart(2, "0")).join("");
+}
+function famGrad(colors) { return `linear-gradient(135deg, ${famMix(colors.primary, 0.14)} 0%, ${colors.primary} 45%, ${colors.primaryDark} 100%)`; }
+function famShadow(isDark) { return isDark ? "0 6px 18px rgba(0,0,0,0.38)" : "0 6px 18px rgba(30,41,59,0.07)"; }
+const FAM_AV_GRADS = [["#60a5fa", "#2563eb"], ["#34d399", "#0d9488"], ["#fbbf24", "#f97316"], ["#c084fc", "#7c3aed"], ["#f472b6", "#db2777"], ["#22d3ee", "#0e7490"], ["#a3e635", "#4d7c0f"], ["#fb7185", "#be123c"]];
+function famAvGrad(name) {
+    let h = 0; const s = String(name || "");
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    const g = FAM_AV_GRADS[h % FAM_AV_GRADS.length];
+    return `linear-gradient(135deg, ${g[0]}, ${g[1]})`;
+}
+// صورة الشخص إن وُجدت وإلّا حرفه الأوّل على تدرّجٍ ثابتٍ لاسمه (المتوفّى رماديّ)
+function FamAvatar({ name, photo, size = 46, radius, gray, ring, className, style, children }) {
+    const letter = (String(name || "").trim().charAt(0)) || "؟";
+    const base = Object.assign({ width: size, height: size, borderRadius: radius == null ? "50%" : radius, flexShrink: 0, boxShadow: ring ? `0 0 0 3px ${ring}` : undefined }, style || {});
+    if (photo) return React.createElement("div", { className: "relative overflow-hidden " + (className || ""), style: Object.assign({}, base, { backgroundImage: `url(${photo})`, backgroundSize: "cover", backgroundPosition: "center", filter: gray ? "grayscale(1)" : undefined }) }, children || null);
+    return React.createElement("div", { className: "relative flex items-center justify-center font-extrabold text-white " + (className || ""), style: Object.assign({}, base, { background: gray ? "linear-gradient(135deg,#9ca3af,#6b7280)" : famAvGrad(name), fontSize: Math.round(size * 0.4) }) }, letter, children || null);
+}
+function FamHeader({ title, subtitle, onBack, actions, children, compact }) {
+    const { colors } = useTheme();
+    return (React.createElement("div", { className: "shrink-0 relative", style: { background: famGrad(colors), borderBottomLeftRadius: 26, borderBottomRightRadius: 26, padding: `${compact ? 40 : 44}px 18px ${children ? 16 : 18}px` } },
+        React.createElement("div", { className: `flex ${rowStart()} items-center gap-2.5` },
+            onBack && React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: "rgba(255,255,255,0.18)" } },
+                React.createElement(ChevronLeft, { color: "#fff", size: 20 })),
+            React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+                React.createElement("h1", { className: "text-white font-extrabold truncate", style: { fontSize: compact ? 17 : 21, lineHeight: 1.25 } }, title),
+                subtitle && React.createElement("p", { className: "text-[12px] mt-0.5 truncate", style: { color: "rgba(255,255,255,0.85)" } }, subtitle)),
+            actions && React.createElement("div", { className: `shrink-0 flex ${rowStart()} items-center gap-1.5` }, actions)),
+        children && React.createElement("div", { className: "mt-4" }, children)));
+}
+// زرّ صغير فاتح فوق الرأس المتدرّج
+function FamHeaderBtn({ icon: Icon, label, onPress, ariaLabel }) {
+    return React.createElement("button", { "aria-label": ariaLabel || label, onClick: onPress, className: `flex ${rowStart()} items-center gap-1 rounded-full py-1.5 text-[11px] font-bold text-white`, style: { backgroundColor: "rgba(255,255,255,0.18)", paddingInline: label ? 10 : 8 } },
+        Icon && React.createElement(Icon, { size: 15, color: "#fff" }), label || null);
+}
+function FamStat({ value, label, onPress, icon: Icon }) {
+    return React.createElement(onPress ? "button" : "div", { onClick: onPress, className: "flex-1 rounded-2xl py-2.5 px-2 text-center min-w-0", style: { backgroundColor: "rgba(255,255,255,0.16)" } },
+        React.createElement("div", { className: "text-white font-extrabold flex items-center justify-center gap-1", style: { fontSize: 20, lineHeight: 1.1 } }, Icon && React.createElement(Icon, { size: 15, color: "#fff" }), value),
+        React.createElement("div", { className: "text-[10.5px] mt-1 truncate", style: { color: "rgba(255,255,255,0.88)" } }, label));
+}
+function FamCard({ children, className = "", style, onPress, onContextMenu, flat }) {
+    const { colors, isDark } = useTheme();
+    const Tag = onPress ? "button" : "div";
+    return React.createElement(Tag, { onClick: onPress, onContextMenu: onContextMenu, className: `rounded-[20px] p-3.5 ${onPress ? "w-full " + textStart() + " active:scale-[0.99] transition-transform" : ""} ${className}`, style: Object.assign({ backgroundColor: colors.card, boxShadow: flat ? "none" : famShadow(isDark), marginBottom: 10 }, style || {}) }, children);
+}
+const FAM_TONES = { info: ["#e0f2fe", "#0369a1", "#0c3a52", "#7dd3fc"], warn: ["#fef3c7", "#b45309", "#3f2d0c", "#fcd34d"], ok: ["#dcfce7", "#15803d", "#0f3320", "#86efac"], muted: ["#f3f4f6", "#6b7280", "#262b33", "#9ca3af"], danger: ["#fee2e2", "#b91c1c", "#3f1515", "#fca5a5"], violet: ["#ede9fe", "#6d28d9", "#2e1065", "#c4b5fd"] };
+function famTone(tone, isDark) { const tn = FAM_TONES[tone] || FAM_TONES.info; return { bg: isDark ? tn[2] : tn[0], fg: isDark ? tn[3] : tn[1] }; }
+function FamChip({ label, tone = "info", icon: Icon, onPress, className = "" }) {
+    const { isDark } = useTheme();
+    const c = famTone(tone, isDark);
+    return React.createElement(onPress ? "button" : "span", { onClick: onPress, className: `inline-flex ${rowStart()} items-center gap-1 text-[10.5px] font-bold px-2.5 py-1 rounded-full shrink-0 whitespace-nowrap ${className}`, style: { backgroundColor: c.bg, color: c.fg } }, Icon && React.createElement(Icon, { size: 11 }), label);
+}
+function FamSection({ title, action, onAction, children, className = "" }) {
+    const { colors } = useTheme();
+    return React.createElement("div", { className: `px-4 pt-4 ${className}` },
+        title && React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-2.5 px-0.5` },
+            React.createElement("h3", { className: "text-[13.5px] font-extrabold", style: { color: colors.text } }, title),
+            action && React.createElement("button", { onClick: onAction, className: "text-[11.5px] font-bold", style: { color: colors.primary } }, action)),
+        children);
+}
+// شرائح تصفية مستديرة قابلة للتمرير أفقيّاً
+function FamTabs({ options, value, onChange, className = "" }) {
+    const { colors, isDark } = useTheme();
+    return React.createElement("div", { className: `flex ${rowStart()} gap-2 overflow-x-auto pb-1 ${className}`, style: { scrollbarWidth: "none" } }, options.map((o) => React.createElement("button", { key: o.k, onClick: () => onChange(o.k), className: `shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-bold whitespace-nowrap flex ${rowStart()} items-center gap-1`, style: value === o.k ? { backgroundColor: colors.primary, color: "#fff" } : { backgroundColor: colors.card, color: colors.textMuted, boxShadow: famShadow(isDark) } }, o.i ? React.createElement(o.i, { size: 12 }) : null, o.l, o.n != null ? React.createElement("span", { className: "text-[9.5px] px-1 rounded-full", style: { backgroundColor: value === o.k ? "rgba(255,255,255,0.25)" : colors.bg } }, o.n) : null)));
+}
+// مفتاح مقسوم (ذكر/أنثى، حيّ/متوفّى…)
+function FamSeg({ options, value, onChange }) {
+    const { colors, isDark } = useTheme();
+    return React.createElement("div", { className: `flex ${rowStart()} rounded-2xl p-1`, style: { backgroundColor: colors.bg } }, options.map((o) => React.createElement("button", { key: o.k, onClick: () => onChange(o.k), className: "flex-1 text-center py-2 rounded-xl text-[13px] font-bold", style: value === o.k ? { backgroundColor: colors.card, color: colors.primary, boxShadow: famShadow(isDark) } : { color: colors.textMuted } }, o.l)));
+}
+function FamFab({ icon: Icon = Plus, label, ariaLabel, onPress, style }) {
+    const { colors } = useTheme();
+    return React.createElement("button", { "aria-label": ariaLabel || label || tl("إضافة", "Add"), title: ariaLabel || label || undefined, onClick: onPress, className: `absolute flex ${rowStart()} items-center justify-center gap-2 text-white font-extrabold text-sm active:scale-95 transition-transform`, style: Object.assign({ bottom: 22, [isRTL() ? "left" : "right"]: 18, height: 54, minWidth: 54, paddingInline: label ? 18 : 0, borderRadius: 20, background: famGrad(colors), boxShadow: `0 10px 24px ${colors.primary}59`, zIndex: 20 }, style || {}) }, React.createElement(Icon, { size: 24, color: "#fff" }), label || null);
+}
+// زرّ رئيسيّ متدرّج عريض
+function FamButton({ label, icon: Icon, onPress, disabled, variant = "filled", className = "" }) {
+    const { colors } = useTheme();
+    const filled = variant === "filled";
+    return React.createElement("button", { onClick: onPress, disabled: disabled, className: `w-full flex ${rowStart()} items-center justify-center gap-2 py-3.5 text-[15px] font-extrabold active:scale-[0.98] transition-transform ${className}`, style: filled
+            ? { background: famGrad(colors), color: "#fff", borderRadius: 16, opacity: disabled ? 0.5 : 1, boxShadow: disabled ? "none" : `0 8px 20px ${colors.primary}40` }
+            : variant === "danger" ? { backgroundColor: colors.danger + "14", color: colors.danger, borderRadius: 16, opacity: disabled ? 0.5 : 1 }
+                : { backgroundColor: colors.bg, color: colors.primary, borderRadius: 16, opacity: disabled ? 0.5 : 1 } },
+        Icon && React.createElement(Icon, { size: 18 }), label);
+}
+// حقل إدخال ناعم بلا حدود
+function famInput(colors, extra) { return Object.assign({ backgroundColor: colors.bg, color: colors.text, border: "1.5px solid transparent", borderRadius: 14, outline: "none" }, extra || {}); }
+function FamLabel({ children, hint }) {
+    const { colors } = useTheme();
+    return React.createElement("label", { className: `block text-[11.5px] font-bold mb-1.5 ${textStart()}`, style: { color: colors.textMuted } }, children, hint ? React.createElement("span", { className: "font-normal" }, " (" + hint + ")") : null);
+}
+// ورقة سفليّة للنماذج: مقبض، عنوان، زرّ إغلاق، جسم قابل للتمرير، وتذييل ثابت.
+// Esc وزرّ الرجوع في أندرويد يغلقانها (كما في ToolSheet).
+function famCssOnce() {
+    if (document.getElementById("fam-css")) return;
+    const el = document.createElement("style"); el.id = "fam-css";
+    el.textContent = ".fam-in:focus{box-shadow:0 0 0 2px var(--fam-ring)!important;outline:none}.fam-in::placeholder{opacity:.7}";
+    document.head.appendChild(el);
+}
+function FamSheet({ title, subtitle, onClose, children, footer, maxHeight = "92%", z = 40, hero }) {
+    const { colors } = useTheme();
+    famCssOnce();
+    useEffect(() => {
+        const k = (e) => { if (e.key === "Escape") onClose(); };
+        window.addEventListener("keydown", k);
+        let popped = false;
+        const pop = () => { popped = true; onClose(); };
+        try { history.pushState({ sawaSheet: 1 }, ""); window.addEventListener("popstate", pop); } catch (e) { }
+        return () => { window.removeEventListener("keydown", k); window.removeEventListener("popstate", pop); if (!popped) { try { if (history.state && history.state.sawaSheet) history.back(); } catch (e) { } } };
+    }, []);
+    return (React.createElement(React.Fragment, null,
+        React.createElement("div", { onClick: onClose, className: "sawa-fade-in", style: { position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.45)", zIndex: z } }),
+        React.createElement("div", { role: "dialog", "aria-modal": "true", "aria-label": title, className: "sawa-pop-in", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: z + 1, backgroundColor: colors.card, borderTopLeftRadius: 30, borderTopRightRadius: 30, maxHeight: maxHeight, display: "flex", flexDirection: "column", paddingBottom: "env(safe-area-inset-bottom, 0px)", boxShadow: "0 -10px 30px rgba(0,0,0,0.14)", "--fam-ring": colors.primary + "55" } },
+            React.createElement("div", { className: "flex justify-center pt-2.5 pb-1 shrink-0" },
+                React.createElement("div", { style: { width: 42, height: 5, borderRadius: 3, backgroundColor: colors.border } })),
+            (title || onClose) && React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-5 pt-1 pb-2 shrink-0` },
+                React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+                    React.createElement("p", { className: "text-[17px] font-extrabold truncate", style: { color: colors.text } }, title),
+                    subtitle && React.createElement("p", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } }, subtitle)),
+                React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: onClose, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.bg } },
+                    React.createElement(X, { size: 16, color: colors.textMuted }))),
+            hero || null,
+            React.createElement("div", { className: "px-5 pt-1 pb-4 overflow-y-auto", style: { flex: 1, minHeight: 0 } }, children),
+            footer && React.createElement("div", { className: "px-5 pt-2 pb-3 shrink-0", style: { borderTop: `1px solid ${colors.border}` } }, footer))));
+}
+// زرّ إجراء دائريّ ملوّن مع تسمية (اتّصال/رسالة/تعديل…)
+function FamAction({ icon: Icon, label, onPress, bg, href }) {
+    const { colors } = useTheme();
+    const Tag = href ? "a" : "button";
+    return React.createElement("div", { className: "flex flex-col items-center gap-1.5", style: { opacity: (onPress || href) ? 1 : 0.4 } },
+        React.createElement(Tag, { "aria-label": label, href: href, onClick: onPress, disabled: !(onPress || href), className: "rounded-full flex items-center justify-center active:scale-95 transition-transform", style: { width: 50, height: 50, backgroundColor: bg || colors.primary, boxShadow: `0 6px 14px ${(bg || colors.primary)}55` } }, React.createElement(Icon, { size: 21, color: "#fff" })),
+        React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, label));
+}
+// صفّ قائمة داخل بطاقة: أيقونة + عنوان + وصف + سهم
+function FamRow({ icon: Icon, title, sub, onPress, tone, right, last }) {
+    const { colors, isDark } = useTheme();
+    const c = tone ? famTone(tone, isDark) : null;
+    return React.createElement("button", { onClick: onPress, className: `w-full flex ${rowStart()} items-center gap-3 py-3 ${textStart()}`, style: { borderBottom: last ? "none" : `1px solid ${colors.border}` } },
+        Icon && React.createElement("div", { className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: c ? c.bg : colors.primary + "14" } }, React.createElement(Icon, { size: 17, color: c ? c.fg : colors.primary })),
+        React.createElement("div", { className: "flex-1 min-w-0" },
+            React.createElement("div", { className: "text-[13.5px] font-bold truncate", style: { color: c ? c.fg : colors.text } }, title),
+            sub && React.createElement("div", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } }, sub)),
+        right || React.createElement(ChevronLeft, { size: 15, color: colors.textMuted, style: { transform: isRTL() ? "none" : "scaleX(-1)" } }));
+}
 function generateRecoveryCodes() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     return Array.from({ length: 10 }, () => {
