@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c25";
+  var VERSION = "c26";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -127,7 +127,10 @@
       var snd = c.pc && c.pc.getSenders().filter(function (x) { return x.track === old || (x.track && x.track.kind === "audio"); })[0];
       return (snd ? snd.replaceTrack(nt) : Promise.resolve()).then(function () {
         if (old) { try { c.local.removeTrack(old); old.stop(); } catch (e) {} }
-        c.local.addTrack(nt); c.out = which; paint(c); return true;
+        c.local.addTrack(nt); c.out = which; paint(c);
+        // C26: على السمّاعة العاديّة نترك الشاشة لمؤقّت النظام (تنطفئ وحدها) — المتصفّح لا يصل إلى حسّاس القرب
+        if (which === "ear") wakeOff(); else wakeOn();
+        return true;
       });
     }).catch(function (e) { log("route", e && (e.name || e.message)); if (!quiet) toast(L("تعذّر تحويل الصوت على هذا الجهاز", "Couldn't switch audio output on this device")); return false; })
       .then(function (x) { c.routing = false; return x; });
@@ -174,6 +177,15 @@
   var wake = null;
   function wakeOn() { try { if (navigator.wakeLock && !wake) navigator.wakeLock.request("screen").then(function (w) { wake = w; }).catch(function () {}); } catch (e) {} }
   function wakeOff() { try { if (wake) wake.release(); } catch (e) {} wake = null; }
+  // C26: إشعارات المكالمات (فائتة · رنين) تُغلق حين تُفتح شاشة المكالمات أو تنتهي المكالمة
+  function clearCallNotifications() {
+    try {
+      if (!global.navigator || !navigator.serviceWorker || !navigator.serviceWorker.getRegistration) return;
+      navigator.serviceWorker.getRegistration().then(function (r) { return r && r.getNotifications ? r.getNotifications() : []; }).then(function (ns) {
+        (ns || []).forEach(function (n) { var d = n.data || {}; if (d.t === "missed" || d.t === "call") try { n.close(); } catch (e) {} });
+      }).catch(function () {});
+    } catch (e) {}
+  }
 
   // ============================================================
   //  واجهة المكالمة
@@ -614,7 +626,7 @@
   };
   function finish(c, reason, opts) {
     if (!c || c.done) return;
-    opts = opts || {}; c.done = true;
+    opts = opts || {}; c.done = true; clearCallNotifications();
     clearTimers(c); stopTone(); wakeOff();
     c.offs.forEach(function (f) { f(); }); c.offs = [];
     // أخبر الطرف الآخر
@@ -983,7 +995,7 @@
   };
   function gFinish(g, reason, opts) {
     if (!g || g.done) return;
-    opts = opts || {}; g.done = true;
+    opts = opts || {}; g.done = true; clearCallNotifications();
     var me = myUid();
     for (var k in g.timers) clearTimeout(g.timers[k]); g.timers = {};
     if (g.tick) clearInterval(g.tick); g.tick = null;
@@ -2180,6 +2192,7 @@
     _cur: function () { return cur; }, _incoming: incoming, _dev: devId,
     _restart: function () { if (cur && cur.pc) { cur.state = "reconnecting"; iceRestart(cur); } },
     // C7: الجماعيّة
+    clearCallNotifications: clearCallNotifications,   // C26
     groupCall: function (cid, type, o) { return groupStart({ cid: cid, vc: !!(o && o.vc) }, o && o.vc ? "audio" : type); },   // C24: o.vc = دردشة صوتيّة بلا رنين
     groupWith: function (uids, type, title) { return groupStart({ to: uids }, type, title); },
     groupAccept: groupAccept, groupDecline: groupDecline, groupLeave: groupLeave, admit: gAdmit, addToGroup: gAdd, watchChat: watchChat,

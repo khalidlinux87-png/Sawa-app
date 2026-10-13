@@ -1,5 +1,6 @@
 function App() {
-    const [isDark, setIsDark] = useState(false);
+    // C26: المظهر كان في useState فيضيع مع كلّ إعادة تحميل (ومنها التحديث) — صار محفوظاً
+    const [isDark, setIsDark] = usePersistedState("ui.dark", false, 50);
     // مفتاح إعادة البناء عند تبديل اللغة. اللغة تعيش في window لا في
     // حالة React، فنستمع لحدث يبثّه setLocale.
     const [langTick, setLangTick] = useState(function () { try { return localStorage.getItem("sawaLang") || "ar"; } catch (e) { return "ar"; } });
@@ -10,9 +11,11 @@ function App() {
     }, []);
     // ⛔ سطرٌ واحد يميّز هويّة التطبيقين بصرياً: كلّ الألوان تُشتقّ منه،
     // فلا حاجة إلى تجهيل عشرات المواضع بـIS_RAHIM.
-    const [accentKey, setAccentKey] = useState(IS_RAHIM ? "green" : "sawa");
-    const [fontScale, setFontScale] = useState(1);
-    const [highContrast, setHighContrast] = useState(false);
+    const [accentKey0, setAccentKey] = usePersistedState("ui.accent", IS_RAHIM ? "green" : "sawa", 50);
+    const accentKey = ACCENT_THEMES[accentKey0] ? accentKey0 : (IS_RAHIM ? "green" : "sawa");
+    const [fontScale0, setFontScale] = usePersistedState("ui.fontScale", 1, 50);
+    const fontScale = typeof fontScale0 === "number" && fontScale0 >= 0.8 && fontScale0 <= 1.4 ? fontScale0 : 1;
+    const [highContrast, setHighContrast] = usePersistedState("ui.contrast", false, 50);
     const [dataSaver, setDataSaver] = usePersistedState("dataSaver", false);
     const accent = ACCENT_THEMES[accentKey];
     const base = isDark ? darkColors : lightColors;

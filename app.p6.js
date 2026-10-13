@@ -286,6 +286,8 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
         return (React.createElement(ScheduledCallsScreen, { scheduledCalls: scheduledCalls, onDelete: onDeleteScheduledCall, onJoinNow: (entry) => { setSubScreen(null); if (entry.cloud && window.SawaRTC && window.SawaRTC.schedStart(entry)) return; setActiveCall({ name: entry.contactName, callType: entry.callType }); }, onNewSchedule: () => setSubScreen("schedule"), onBack: () => setSubScreen(null) }));
     }
     const missedCount = callLog.filter((c) => c.type === "missed").length;
+    // C26: فتح «المكالمات» يُزيل إشعارات «مكالمة فائتة» (والرنين القديم) من شريط الإشعارات
+    useEffect(() => { try { if (window.SawaRTC && window.SawaRTC.clearCallNotifications) window.SawaRTC.clearCallNotifications(); } catch (e) { } }, []);
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 overflow-y-auto relative", style: { backgroundColor: colors.card } },
         React.createElement("div", { style: { display: "flex", flexDirection: isRTL() ? "row" : "row-reverse", direction: "ltr", alignItems: "center", padding: "1rem 1rem 0 1rem" } },
             React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: isRTL() ? "row" : "row-reverse", justifyContent: "flex-start", alignItems: "center", gap: 8 } },
