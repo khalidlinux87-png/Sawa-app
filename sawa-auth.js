@@ -23,7 +23,7 @@
   // القيم عامّة غير سرّية (هكذا يصمّمها Firebase).
   var FIREBASE_CONFIG = {
     apiKey: "AIzaSyBmnt6-HMdEaR7LinHWuUnnV26Xu5akkvE",
-    authDomain: "sawa-test-9770f.firebaseapp.com",
+    authDomain: "www.sawaaap.com",   // C36: نطاقنا بدل firebaseapp.com — يمرّ /__/auth/* عبر الـWorker إلى Firebase
     projectId: "sawa-test-9770f",
     storageBucket: "sawa-test-9770f.firebasestorage.app",
     messagingSenderId: "98971055474",
