@@ -431,6 +431,169 @@ function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, se
                     : React.createElement("button", { "aria-label": t("mb_remove"), onClick: () => setConfirmingRemove(m.userId), className: "w-8 h-8 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.bg } },
                         React.createElement(Trash2, { size: 13, color: colors.danger }))))))))));
 }
+// ============================================================================
+// C37: منازل الأقارب وتنبيه القرب — «منزل عمّك على بعد ٥٠٠ م: فرصةٌ للزيارة أو للاتّصال»
+//   الموقع يُحفظ في person.locations[0] = { type:"home", lat, lng, radius_meters, address_text } ويُزامَن مع العائلة.
+//   الفحص عند فتح التطبيق وكلّ دقيقتين ما دام ظاهراً (المتصفّح لا يعطي الموقع والتطبيق مغلق).
+// ============================================================================
+function geoDist(a, b) {   // هافرساين بالأمتار
+    const R = 6371000, toR = (x) => x * Math.PI / 180;
+    const dLat = toR(b.lat - a.lat), dLng = toR(b.lng - a.lng);
+    const s = Math.sin(dLat / 2) ** 2 + Math.cos(toR(a.lat)) * Math.cos(toR(b.lat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+function geoValid(lat, lng) { return typeof lat === "number" && typeof lng === "number" && isFinite(lat) && isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && !(lat === 0 && lng === 0); }
+function homeOf(p) { const l = (p && p.locations || []).find((x) => x && geoValid(Number(x.lat), Number(x.lng))); return l ? { lat: Number(l.lat), lng: Number(l.lng), radius: Number(l.radius_meters) || 500, label: l.address_text || "", type: l.type || "home" } : null; }
+function fmtDist(m) { const n = Math.round(m); return n < 1000 ? tl(n.toLocaleString(loc()) + " م", n + " m") : tl((n / 1000).toLocaleString(loc(), { maximumFractionDigits: 1 }) + " كم", (n / 1000).toFixed(1) + " km"); }
+// رابط خرائط Google (الطويل): @lat,lng · q=lat,lng · query=lat,lng · !3dLAT!4dLNG · ll=lat,lng · geo:lat,lng
+function parseMapsUrl(s) {
+    s = String(s || "").trim(); if (!s) return null;
+    const pats = [/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/, /[?&](?:q|query|ll|center|destination)=(-?\d{1,2}\.\d+)[, ]+(-?\d{1,3}\.\d+)/, /!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/, /geo:(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/, /^\s*(-?\d{1,2}\.\d+)\s*[, ]\s*(-?\d{1,3}\.\d+)\s*$/];
+    for (const re of pats) { const m = s.match(re); if (m) { const lat = Number(m[1]), lng = Number(m[2]); if (geoValid(lat, lng)) return { lat, lng }; } }
+    return null;
+}
+function geoNow(opts) {
+    return new Promise((res, rej) => {
+        if (!navigator.geolocation) return rej(new Error("no-geo"));
+        navigator.geolocation.getCurrentPosition((p) => res({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, ts: Date.now() }), rej, Object.assign({ enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }, opts || {}));
+    });
+}
+const PROX_RADII = [300, 500, 1000, 2000];
+// محرّر منزل القريب داخل نموذج الشخص: «أنا الآن في منزله» · لصق رابط خرائط · وصف · نطاق التنبيه
+function HomeEditor({ value, onChange, personName }) {
+    const { colors } = useTheme();
+    const [busy, setBusy] = useState(false);
+    const [err, setErr] = useState("");
+    const [pasteOpen, setPasteOpen] = useState(false);
+    const [pasted, setPasted] = useState("");
+    const v = value || null;
+    const set = (patch) => onChange(Object.assign({ type: "home", radius_meters: 500, address_text: "" }, v || {}, patch));
+    const useGps = async () => {
+        setBusy(true); setErr("");
+        try { const p = await geoNow({ enableHighAccuracy: true, maximumAge: 0 }); set({ lat: Number(p.lat.toFixed(6)), lng: Number(p.lng.toFixed(6)) }); }
+        catch (e) { setErr(e && e.code === 1 ? tl("رُفض إذن الموقع — فعّله من إعدادات المتصفّح", "Location permission denied") : tl("تعذّر تحديد الموقع — جرّب في مكانٍ مكشوف", "Couldn't get location")); }
+        setBusy(false);
+    };
+    const applyPaste = () => { const c = parseMapsUrl(pasted); if (!c) { setErr(tl("لم أجد إحداثيّاتٍ في الرابط — استعمل رابط «مشاركة» من خرائط Google أو الصق «lat, lng»", "No coordinates found in that link")); return; } set(c); setPasted(""); setPasteOpen(false); setErr(""); };
+    const has = v && geoValid(Number(v.lat), Number(v.lng));
+    return React.createElement("div", { className: "mb-4" },
+        React.createElement(FamLabel, { hint: tl("لتنبيهك حين تمرّ قربه", "to alert you when nearby") }, tl("منزله", "Home")),
+        React.createElement("div", { className: "rounded-2xl p-3", style: { backgroundColor: colors.bg } },
+            has ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-2.5` },
+                React.createElement("div", { className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: "#22C55E18" } }, React.createElement(MapPin, { size: 17, color: "#16a34a" })),
+                React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+                    React.createElement("div", { className: "text-[12.5px] font-bold", style: { color: colors.text } }, tl("الموقع محدَّد ✓", "Location set ✓")),
+                    React.createElement("div", { className: "text-[10.5px]", dir: "ltr", style: { color: colors.textMuted, textAlign: isRTL() ? "right" : "left" } }, Number(v.lat).toFixed(5) + ", " + Number(v.lng).toFixed(5))),
+                React.createElement("button", { onClick: () => onChange(null), className: "text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0", style: { color: colors.danger, backgroundColor: colors.danger + "12" } }, tl("إزالة", "Remove")))
+                : React.createElement("p", { className: `text-[11px] mb-2.5 ${textStart()}`, style: { color: colors.textMuted } }, tl("حدّد موقع منزله بإحدى الطريقتين:", "Set the home location:")),
+            React.createElement("div", { className: `flex ${rowStart()} gap-2` },
+                React.createElement("button", { onClick: useGps, disabled: busy, className: `flex-1 flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12px] font-extrabold text-white`, style: { background: famGrad(colors), opacity: busy ? 0.6 : 1 } },
+                    React.createElement(Navigation, { size: 14 }), busy ? tl("جارٍ التحديد…", "Locating…") : has ? tl("حدّث: أنا في منزله الآن", "Update: I'm here now") : tl("أنا الآن في منزله", "I'm at their home now")),
+                React.createElement("button", { onClick: () => setPasteOpen(!pasteOpen), className: `flex-1 flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12px] font-bold`, style: { backgroundColor: colors.card, color: colors.primary } },
+                    React.createElement(LinkIcon, { size: 14 }), tl("رابط خرائط", "Maps link"))),
+            pasteOpen && React.createElement("div", { className: `flex ${rowStart()} gap-2 mt-2` },
+                React.createElement("input", { dir: "ltr", value: pasted, onChange: (e) => setPasted(e.target.value), placeholder: "https://maps.google.com/…  or  15.6, 32.5", className: "fam-in flex-1 min-w-0 rounded-xl px-3 py-2.5 text-[12px]", style: { backgroundColor: colors.card, color: colors.text, border: "1.5px solid transparent" } }),
+                React.createElement("button", { onClick: applyPaste, className: "rounded-xl px-3 text-[12px] font-bold", style: { backgroundColor: colors.primary, color: "#fff" } }, t("takyd"))),
+            err && React.createElement("p", { className: `text-[10.5px] mt-2 ${textStart()}`, style: { color: colors.danger } }, err),
+            has && React.createElement(React.Fragment, null,
+                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: v.address_text || "", onChange: (e) => set({ address_text: e.target.value.slice(0, 120) }), placeholder: tl("وصف: حي العمارات، الخرطوم (اختياري)", "Description: neighborhood, city (optional)"), className: `fam-in w-full rounded-xl px-3 py-2.5 text-[12px] mt-2 ${textStart()}`, style: { backgroundColor: colors.card, color: colors.text, border: "1.5px solid transparent" } }),
+                React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mt-2` },
+                    React.createElement("span", { className: "text-[10.5px] font-bold shrink-0", style: { color: colors.textMuted } }, tl("نبّهني ضمن", "Alert within")),
+                    React.createElement("div", { className: "flex-1" }, React.createElement(FamSeg, { value: Number(v.radius_meters) || 500, onChange: (r) => set({ radius_meters: r }), options: PROX_RADII.map((r) => ({ k: r, l: fmtDist(r) })) }))))));
+}
+// ورقة اختيار القريب الذي تُحفظ له رسالة موقعٍ منزلاً (من المحادثة)
+function HomePickerSheet({ coords, label, groups, groupPersons, onPick, onClose }) {
+    const { colors } = useTheme();
+    const [q, setQ] = useState("");
+    const all = useMemo(() => groups.flatMap((g) => (groupPersons[g.id] || []).filter((p) => p.alive !== false).map((p) => ({ p, g }))), [groups, groupPersons]);
+    const list = all.filter(({ p }) => !q.trim() || normalizeArabicName(p.local_name).includes(normalizeArabicName(q)));
+    return React.createElement(FamSheet, { title: tl("منزل مَن هذا؟", "Whose home is this?"), subtitle: label || (coords.lat.toFixed(4) + ", " + coords.lng.toFixed(4)), onClose: onClose, maxHeight: "80%", z: 60 },
+        React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: q, onChange: (e) => setQ(e.target.value), placeholder: t("bhth_balasm_aw_sla"), className: "fam-in w-full px-3.5 py-3 text-sm mb-3", style: famInput(colors) }),
+        list.length === 0 && React.createElement("p", { className: "text-xs text-center py-6", style: { color: colors.textMuted } }, t("la_twjd_ntayj_mtabqa")),
+        list.slice(0, 60).map(({ p, g }) => React.createElement("button", { key: g.id + p.id, onClick: () => onPick(g.id, p), className: `w-full flex ${rowStart()} items-center gap-3 py-2.5 ${textStart()}`, style: { borderBottom: `1px solid ${colors.border}` } },
+            React.createElement(FamAvatar, { name: p.local_name, photo: p.photo, size: 40 }),
+            React.createElement("div", { className: "flex-1 min-w-0" },
+                React.createElement("div", { className: "text-[13.5px] font-bold truncate", style: { color: colors.text } }, p.local_name),
+                React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted } }, kinshipLabel(p.kinship), " · ", g.name, homeOf(p) ? tl(" · له منزلٌ محدَّد", " · has a home") : "")),
+            React.createElement(MapPin, { size: 15, color: homeOf(p) ? colors.textMuted : colors.primary }))));
+}
+// ورقة تنبيه القرب: زيارة (مع فكرة هديّة) أو اتّصال أو لاحقاً
+function ProximitySheet({ alert, onVisit, onCall, onSnooze, onMute, onClose, onOpenPerson }) {
+    const { colors } = useTheme();
+    const { person, dist, gid } = alert;
+    const [step, setStep] = useState("ask");   // ask | visit
+    const first = person.local_name.split(" ")[0];
+    const kin = kinshipLabel(person.kinship);
+    const phone = person.contacts && person.contacts.phone ? String(person.contacts.phone) : "";
+    const overdue = isContactOverdue(person);
+    // أفكار ذكيّة بحسب حاله
+    const ideas = [];
+    const bd = (() => { if (!person.birthday) return null; const [m, d] = String(person.birthday).split("-").map(Number); if (!(m >= 1 && d >= 1)) return null; const now = new Date(), t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()); let n = new Date(t0.getFullYear(), m - 1, d); if (n < t0) n.setFullYear(t0.getFullYear() + 1); return Math.round((n - t0) / 86400000); })();
+    if (bd !== null && bd <= 7) ideas.push({ i: Cake, c: "#f43f5e", t: bd === 0 ? tl("عيد ميلاده اليوم! 🎉 الزيارة اليوم لها طعمٌ آخر.", "Birthday today! 🎉") : tl("عيد ميلاده بعد " + bd + " يوم — هديّةٌ صغيرة الآن تسبق الجميع.", "Birthday in " + bd + " days — a small gift now beats everyone.") });
+    if (person.status_detail === "sick") ideas.push({ i: Stethoscope, c: "#ef4444", t: tl("مريض حاليّاً — زيارته عيادة، ولا تُطل الجلوس.", "Currently ill — keep the visit short.") });
+    if (person.status_detail === "newlywed") ideas.push({ i: Heart, c: "#ec4899", t: tl("متزوّجٌ حديثاً — مباركةٌ وهديّة للبيت.", "Newlywed — congratulate with a gift for the home.") });
+    if (person.status_detail === "travel" || person.status_detail === "abroad") ideas.push({ i: Plane, c: "#6366f1", t: tl("مسجَّلٌ أنّه مسافر — تأكّد بالاتّصال قبل أن تطرق الباب.", "Marked as travelling — call before you knock.") });
+    if (overdue) ideas.push({ i: Clock, c: "#f59e0b", t: tl("مضى وقتٌ طويل منذ آخر تواصل (" + contactAgoLabel(person.lastContactDate).replace(/^.*?:\s*/, "") + ") — الزيارة تجبر ذلك.", "It's been a while (" + contactAgoLabel(person.lastContactDate) + ").") });
+    const gifts = [tl("حلوى أو تمر", "Sweets or dates"), tl("فاكهة", "Fruit"), tl("عطر أو بخّور", "Perfume or incense"), tl("شيءٌ يحبّه", "Something they like"), tl("للأطفال إن كان عنده", "Something for the kids")];
+    return React.createElement(FamSheet, { title: tl("أنت قريبٌ من منزل " + first, "You're near " + first + "'s home"), subtitle: kin + " · " + tl("على بعد ", "about ") + fmtDist(dist), onClose: onClose, z: 70, maxHeight: "88%",
+            hero: React.createElement("div", { className: "flex justify-center -mt-1 mb-1" }, React.createElement(FamAvatar, { name: person.local_name, photo: person.photo, size: 64, ring: "#22C55E" })) },
+        step === "ask" ? React.createElement(React.Fragment, null,
+            React.createElement("p", { className: `text-[14px] font-extrabold mb-1 ${textStart()}`, style: { color: colors.text } }, tl("فرصةٌ مناسبة للزيارة — هل عندك وقت؟", "A good chance for a visit — do you have time?")),
+            React.createElement("p", { className: `text-[12px] leading-relaxed mb-3 ${textStart()}`, style: { color: colors.textMuted } }, tl("صلة الرحم تزيد في العمر والرزق. زيارةٌ قصيرة خيرٌ من لا شيء، وإن لم يتّسع وقتك فاتّصالٌ من الشارع يفرحه.", "A short visit is better than none; if you can't, a call from the street will make them happy.")),
+            ideas.map((x, i) => React.createElement("div", { key: i, className: `flex ${rowStart()} items-start gap-2 rounded-2xl px-3 py-2.5 mb-2`, style: { backgroundColor: x.c + "14" } },
+                React.createElement(x.i, { size: 15, color: x.c, className: "mt-0.5 shrink-0" }),
+                React.createElement("span", { className: `text-[12px] font-bold ${textStart()}`, style: { color: colors.text } }, x.t))),
+            React.createElement("div", { className: "flex flex-col gap-2 mt-3" },
+                React.createElement(FamButton, { icon: Heart, label: tl("نعم، سأزوره الآن", "Yes, I'll visit now"), onPress: () => setStep("visit") }),
+                React.createElement(FamButton, { variant: "soft", icon: Phone, label: phone ? tl("لا وقت الآن — سأتّصل به", "No time — I'll call") : tl("لا وقت الآن — سأراسله", "No time — I'll message"), onPress: () => onCall(phone) }),
+                React.createElement("div", { className: `flex ${rowStart()} gap-2` },
+                    React.createElement("button", { onClick: onSnooze, className: "flex-1 py-2.5 rounded-xl text-[12px] font-bold", style: { backgroundColor: colors.bg, color: colors.textMuted } }, tl("ذكّرني بعد ساعتين", "Remind me in 2h")),
+                    React.createElement("button", { onClick: onMute, className: "flex-1 py-2.5 rounded-xl text-[12px] font-bold", style: { backgroundColor: colors.bg, color: colors.textMuted } }, tl("لا تنبّهني لمنزله", "Don't alert for this home")))),
+            React.createElement("button", { onClick: onOpenPerson, className: "w-full text-center text-[11.5px] font-bold mt-3", style: { color: colors.primary } }, t("ard_almlf_alkaml")))
+            : React.createElement(React.Fragment, null,
+                React.createElement("p", { className: `text-[14px] font-extrabold mb-1 ${textStart()}`, style: { color: colors.text } }, tl("جميل! هل تحمل هديّةً معك؟ 🎁", "Great! Bringing a gift? 🎁")),
+                React.createElement("p", { className: `text-[12px] leading-relaxed mb-3 ${textStart()}`, style: { color: colors.textMuted } }, tl("ليست شرطاً، لكنّ الهديّة الصغيرة تُذهب الوحر وتبقى في الذاكرة. أفكارٌ سريعة من الطريق:", "Not required, but a small gift stays in memory. Quick ideas:")),
+                React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mb-4` }, gifts.map((g) => React.createElement(FamChip, { key: g, tone: "warn", icon: Gift, label: g }))),
+                phone && React.createElement("p", { className: `text-[11.5px] mb-3 ${textStart()}`, style: { color: colors.textMuted } }, tl("نصيحة: اتّصل قبل الوصول بدقائق — الزيارة المفاجئة قد تُحرج.", "Tip: call a few minutes before arriving.")),
+                React.createElement(FamButton, { icon: Check, label: tl("سجّل الزيارة وأغلق", "Log the visit & close"), onPress: onVisit }),
+                phone && React.createElement("a", { href: "tel:" + phone.replace(/[^\d+]/g, ""), className: `w-full flex ${rowStart()} items-center justify-center gap-2 py-3 mt-2 rounded-2xl text-[14px] font-bold`, style: { backgroundColor: colors.bg, color: colors.primary } }, React.createElement(Phone, { size: 16 }), tl("اتّصل به أوّلاً", "Call first"))));
+}
+// محرّك الفحص: عند الفتح وكلّ دقيقتين ما دام التطبيق ظاهراً. مرّة في اليوم لكلّ قريب، ولا تنبيه وأنت في منزلك أنت.
+function useProximityWatch(enabled, groups, groupPersons, onAlert) {
+    const lastRef = useRef(0);
+    useEffect(() => {
+        if (!enabled) return;
+        let stop = false, timer = null;
+        const seen = () => { try { return JSON.parse(localStorage.getItem("sawa_prox_seen") || "{}"); } catch (e) { return {}; } };
+        const muted = () => { try { return JSON.parse(localStorage.getItem("sawa_prox_mute") || "{}"); } catch (e) { return {}; } };
+        const dayKey = () => new Date().toISOString().slice(0, 10);
+        const check = async () => {
+            if (stop || document.visibilityState !== "visible") return;
+            if (Date.now() - lastRef.current < 90000) return;
+            lastRef.current = Date.now();
+            let pos; try { pos = await geoNow(); } catch (e) { return; }
+            try { localStorage.setItem("sawa_lastpos", JSON.stringify(pos)); } catch (e) { }
+            const sn = seen(), mu = muted(), today = dayKey();
+            let best = null, atHome = false;
+            groups.forEach((g) => (groupPersons[g.id] || []).forEach((p) => {
+                const h = homeOf(p); if (!h) return;
+                const d = geoDist(pos, h);
+                if (isSelfPerson(p)) { if (d <= h.radius) atHome = true; return; }
+                if (p.alive === false) return;
+                if (d > h.radius + Math.min(pos.acc || 0, 150)) return;
+                const s = sn[p.id];   // «YYYY-MM-DD» = نُبّه اليوم · تاريخٌ كامل = مؤجَّل حتى وقته
+                if (mu[p.id] || (typeof s === "string" && (s.length === 10 ? s === today : Date.parse(s) > Date.now()))) return;
+                if (!best || d < best.dist) best = { person: p, gid: g.id, dist: d, pos };
+            }));
+            if (best && !atHome) { sn[best.person.id] = today; try { localStorage.setItem("sawa_prox_seen", JSON.stringify(sn)); } catch (e) { } onAlert(best); }
+        };
+        const onVis = () => { if (document.visibilityState === "visible") check(); };
+        document.addEventListener("visibilitychange", onVis);
+        const first = setTimeout(check, 4000);   // بعد الإقلاع بقليل — لا يزاحم شاشة البداية
+        timer = setInterval(check, 120000);
+        return () => { stop = true; clearTimeout(first); clearInterval(timer); document.removeEventListener("visibilitychange", onVis); };
+    }, [enabled, groups, groupPersons]);
+}
 // نافذة إضافة/تعديل قريب شاملة — تُستخدم لكلا الحالتين (person=null للإضافة،
 // أو كائن شخص حقيقي للتعديل المسبق التعبئة)
 // إضافة سريعة بالنسب المتسلسل — طريقة إضافية بجانب النموذج التفصيلي، مو
@@ -674,6 +837,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
     const [birthYear, setBirthYear] = useState((person === null || person === void 0 ? void 0 : person.birthYear) || "");
     const [statusDetail, setStatusDetail] = useState((person === null || person === void 0 ? void 0 : person.status_detail) || "");
     const [notes, setNotes] = useState((person === null || person === void 0 ? void 0 : person.notes) || "");
+    const [home, setHome] = useState(() => { const h = person && (person.locations || [])[0]; return h && geoValid(Number(h.lat), Number(h.lng)) ? Object.assign({ type: "home", radius_meters: 500, address_text: "" }, h) : null; });   // C37
     const [photo, setPhoto] = useState((person === null || person === void 0 ? void 0 : person.photo) || null);
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [contactImportError, setContactImportError] = useState(false);
@@ -732,6 +896,8 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
             contacts: phone.trim() ? { phone: phone.trim() } : null,
             notes: notes.trim(),
             photo,
+            // C37: منزله — موقعٌ واحد (الأوّل) يُستعمل لتنبيه القرب، ويُزامَن مع العائلة
+            locations: home && geoValid(Number(home.lat), Number(home.lng)) ? [{ type: "home", lat: Number(home.lat), lng: Number(home.lng), radius_meters: Number(home.radius_meters) || 500, address_text: String(home.address_text || "").slice(0, 120) }] : [],
             alive: !isDeceased,
             death_date: isDeceased ? (deathDate || null) : null,
             relation: !isEdit && linkEnabled && relatedToId ? { relatedToId, relationType } : null,
@@ -889,6 +1055,10 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                     React.createElement(Chip, { label: t("pf_alom_unset"), active: !motherId, onPress: () => setMotherId(null) })))),
             React.createElement("label", { className: `text-[11.5px] font-bold mb-1.5 block ${textStart()}`, style: { color: colors.textMuted } }, t("rqm_alhatf_akhtyary")),
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: phone, onChange: (e) => setPhone(e.target.value), placeholder: "09XXXXXXXX", className: "fam-in outline-none w-full rounded-2xl px-3.5 py-3 text-sm mb-4", style: { backgroundColor: colors.bg, color: colors.text, border: "1.5px solid transparent" } }),
+            !isDeceased && kinship !== SELF_KINSHIP && React.createElement(HomeEditor, { value: home, onChange: setHome, personName: localName }),
+            kinship === SELF_KINSHIP && React.createElement("div", { className: "mb-4" },
+                React.createElement(HomeEditor, { value: home, onChange: setHome, personName: localName }),
+                React.createElement("p", { className: `text-[10.5px] -mt-2 ${textStart()}`, style: { color: colors.textMuted } }, tl("منزلك أنت: لن تُنبَّه لجيرانك من الأقارب وأنت في بيتك.", "Your own home: no alerts for relatives nearby while you're at home."))),
             React.createElement("label", { className: `text-[11.5px] font-bold mb-1.5 block ${textStart()}`, style: { color: colors.textMuted } }, t("tarykh_almylad_akhtyary")),
             React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-4` },
                 React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: birthday, onChange: (e) => setBirthday(e.target.value), placeholder: t("mm_dd_mthal_07"), className: "fam-in outline-none flex-1 rounded-2xl px-3.5 py-3 text-sm", style: { backgroundColor: colors.bg, color: colors.text, border: "1.5px solid transparent", minWidth: 0 } }),

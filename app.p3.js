@@ -198,7 +198,7 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
                         React.createElement("div", { className: "text-xs font-extrabold", style: { color: colors.text } }, t("taksy_swa")),
                         React.createElement("div", { className: "text-[10px] leading-snug", style: { color: colors.textMuted } }, t("dsc_taksy_wsf")))))));
 }
-function FamilyGroupsScreen({ groups, groupPersons, currentGroupId, onSetCurrent, onOpenGroup, onOpenGroupOverdue, onCreateGroup, onRenameGroup, onDeleteGroup, onBack }) {
+function FamilyGroupsScreen({ groups, groupPersons, currentGroupId, onSetCurrent, onOpenGroup, onOpenGroupOverdue, onCreateGroup, onRenameGroup, onDeleteGroup, onBack, proxEnabled, onEnableProx, onDisableProx }) {
     // C34: الرئيسية بالنمط الحديث — رأس متدرّج بإحصاءات، بطاقات العائلات، المناسبات القريبة، ومن ينتظر تواصلك
     const { colors, isDark } = useTheme();
     const [showCreate, setShowCreate] = useState(false);
@@ -235,6 +235,18 @@ function FamilyGroupsScreen({ groups, groupPersons, currentGroupId, onSetCurrent
                 React.createElement(FamStat, { value: n(upcoming.length), label: tl("مناسبات قريبة", "Upcoming") }),
                 React.createElement(FamStat, { value: n(overdueAll.length), label: tl("تواصل متأخّر", "Overdue") }))),
         React.createElement("div", { className: "flex-1 overflow-y-auto", style: { paddingBottom: 96 } },
+            // C37: تنبيهات القرب — بطاقة تفعيل، ثمّ سطر حالة
+            groups.length > 0 && onEnableProx && (!proxEnabled
+                ? React.createElement("div", { className: "px-4 pt-4" }, React.createElement(FamCard, { className: `flex ${rowStart()} items-center gap-3`, style: { marginBottom: 0 } },
+                    React.createElement("div", { className: "w-11 h-11 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "#22C55E18" } }, React.createElement(MapPin, { size: 20, color: "#16a34a" })),
+                    React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+                        React.createElement("div", { className: "text-[13.5px] font-extrabold", style: { color: colors.text } }, tl("تنبيهات القرب", "Nearby alerts")),
+                        React.createElement("div", { className: "text-[11px] leading-relaxed", style: { color: colors.textMuted } }, tl("حين تمرّ قرب منزل قريبٍ أذكّرك: زيارةٌ أو اتّصال. حدّد منازلهم من ملفّاتهم.", "When you pass near a relative's home, I'll suggest a visit or a call."))),
+                    React.createElement("button", { onClick: onEnableProx, className: "shrink-0 rounded-full px-3.5 py-2 text-[12px] font-extrabold text-white", style: { background: famGrad(colors) } }, tl("تفعيل", "Enable"))))
+                : React.createElement("div", { className: `px-5 pt-3 flex ${rowStart()} items-center gap-2 text-[11px] font-bold`, style: { color: colors.textMuted } },
+                    React.createElement(MapPin, { size: 12, color: "#16a34a" }),
+                    React.createElement("span", { className: "flex-1" }, tl("تنبيهات القرب مفعّلة · " + n(allPersons.filter(homeOf).length) + " منزلاً محدَّداً", "Nearby alerts on · " + n(allPersons.filter(homeOf).length) + " homes set")),
+                    React.createElement("button", { onClick: onDisableProx, style: { color: colors.primary } }, tl("إيقاف", "Turn off")))),
             React.createElement(FamSection, { title: tl("عائلاتي", "My families"), action: tl("+ عائلة جديدة", "+ New family"), onAction: () => setShowCreate(true) },
                 groups.length === 0 && React.createElement(FamCard, { className: "text-center", style: { padding: 24 } },
                     React.createElement("div", { className: "mx-auto mb-3 rounded-full flex items-center justify-center", style: { width: 64, height: 64, background: famGrad(colors) } }, React.createElement(UsersRound, { size: 30, color: "#fff" })),
@@ -1201,21 +1213,22 @@ function FamilyPersonDetailScreen({ person, persons = [], relations = [], favori
                     }, className: `shrink-0 flex ${rowStart()} items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-bold`, style: { backgroundColor: colors.bg, color: copiedPhone === "failed" ? colors.danger : colors.primary } },
                     React.createElement(Copy, { size: 12 }),
                     copiedPhone === "success" ? t("fp_tm_alnskh") : copiedPhone === "failed" ? t("fp_tadhr_alnskh") : t("fp_nskh_alrqm")))),
-            ((_c = person.locations) === null || _c === void 0 ? void 0 : _c.length) > 0 && (React.createElement(FamCard, null,
-                React.createElement("div", { className: `font-bold mb-2 text-sm ${textStart()}`, style: { color: colors.text } }, t("almwaqa_almhfwza_tnbyh_and")),
-                person.locations.map((loc, i) => (React.createElement("div", { key: i, className: "mb-2 pb-2", style: { borderBottom: i < person.locations.length - 1 ? `1px solid ${colors.border}` : "none" } },
-                    React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
-                        React.createElement(MapPin, { size: 15, color: colors.primary }),
-                        React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, locationTypeLabels[loc.type] || loc.type)),
-                    React.createElement("div", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } },
-                        loc.address_text,
-                        t("fp_ntaq_tnbyh"),
-                        loc.radius_meters,
-                        t("fp_mtr"))))),
-                !RELEASE_UI && React.createElement("button", { onClick: () => { onSimulateProximity(person.id); setSimulated(true); setTimeout(() => setSimulated(false), 2500); }, className: `w-full flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2 mt-1 border`, style: { borderColor: colors.primary } },
-                    React.createElement(Navigation, { size: 13, color: colors.primary }),
-                    React.createElement("span", { className: "text-xs font-bold", style: { color: colors.primary } }, simulated ? t("fp_tm_irsal") : t("fp_mhakaa_qryb"))),
-                !RELEASE_UI && React.createElement("p", { className: "text-[10px] mt-1.5 text-center", style: { color: colors.textMuted } }, t("alttba_alfaly_balkhlfya_yhtaj")))),
+            // C37: منزله — المسافة من آخر موقعٍ معروف لي، وفتح في الخرائط، وتحديده إن لم يكن
+            (() => {
+                const h = homeOf(person);
+                let last = null; try { last = JSON.parse(localStorage.getItem("sawa_lastpos") || "null"); } catch (e) { }
+                const d = h && last && geoValid(Number(last.lat), Number(last.lng)) ? geoDist(last, h) : null;
+                if (!h) return canEdit && person.alive ? React.createElement(FamCard, { style: { paddingTop: 2, paddingBottom: 2 } },
+                    React.createElement(FamRow, { icon: MapPin, title: tl("حدّد منزله", "Set home location"), sub: tl("لتنبيهك حين تمرّ قربه — فرصة زيارةٍ أو اتّصال", "Get alerted when you pass nearby"), last: true, onPress: () => setShowEditForm(true) })) : null;
+                const url = window.SawaChat && window.SawaChat.mapsUrl ? window.SawaChat.mapsUrl(h.lat, h.lng) : `https://www.google.com/maps/search/?api=1&query=${h.lat},${h.lng}`;
+                return React.createElement(FamCard, { className: `flex ${rowStart()} items-center gap-3` },
+                    React.createElement("div", { className: "w-10 h-10 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: "#22C55E18" } }, React.createElement(MapPin, { size: 17, color: "#16a34a" })),
+                    React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+                        React.createElement("div", { className: "text-[10.5px] font-bold", style: { color: colors.textMuted } }, tl("منزله", "Home")),
+                        React.createElement("div", { className: "text-[13px] font-extrabold truncate", style: { color: colors.text } }, h.label || tl("موقعٌ محدَّد", "Location set")),
+                        React.createElement("div", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } }, d !== null ? tl("على بعد " + fmtDist(d) + " من آخر موقعٍ لك", fmtDist(d) + " from your last location") : tl("التنبيه ضمن " + fmtDist(h.radius), "Alert within " + fmtDist(h.radius)))),
+                    React.createElement("a", { href: url, target: "_blank", rel: "noopener", className: `shrink-0 flex ${rowStart()} items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-bold`, style: { backgroundColor: colors.bg, color: colors.primary } }, React.createElement(Navigation, { size: 12 }), tl("الخرائط", "Maps")));
+            })(),
             person.notes && (React.createElement(FamCard, null,
                 React.createElement("div", { className: `font-bold mb-1 text-[12.5px] ${textStart()}`, style: { color: colors.text } }, t("mlahzat")),
                 React.createElement("p", { className: `text-[12px] leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, person.notes))))));

@@ -862,7 +862,10 @@ function LocationBubble({ m, mine }) {
             React.createElement(MapPin, { size: 13, color: mine ? "#fff" : colors.primary }),
             React.createElement("span", { className: "text-xs font-bold truncate", style: { color: mine ? "#fff" : colors.text } }, m.text || tl("موقعي", "My location"))),
         React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: mine ? "#ffffffcc" : colors.textMuted, direction: "ltr", textAlign: isRTL() ? "right" : "left" } }, lat.toFixed(5) + ", " + lng.toFixed(5) + (m.acc ? " · ±" + Math.round(m.acc) + "m" : "")),
-        React.createElement("div", { className: "text-[11px] font-extrabold mt-1", style: { color: mine ? "#fff" : colors.primary } }, tl("فتح في الخرائط ↗", "Open in Maps ↗"))));
+        React.createElement("div", { className: `flex ${rowStart()} items-center gap-3 mt-1` },
+            React.createElement("span", { className: "text-[11px] font-extrabold", style: { color: mine ? "#fff" : colors.primary } }, tl("فتح في الخرائط ↗", "Open in Maps ↗")),
+            // C37: رسالة موقع ⇒ منزل قريبٍ في صلة الرحم (يلتقطها AppInner)
+            React.createElement("button", { onClick: (e) => { e.stopPropagation(); try { window.dispatchEvent(new CustomEvent("sawa-save-home", { detail: { lat, lng, label: m.text || "" } })); } catch (x) { } }, className: "text-[11px] font-bold underline", style: { color: mine ? "#ffffffdd" : colors.textMuted } }, tl("احفظه منزلاً لقريب", "Save as a relative's home")))));
 }
 function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSendSticker, onSendFile, onSendVoice, onEditMessage, onMarkViewedOnce, onTogglePin, onToggleStar, onOpenInfo, disappearing, setDisappearing, background, onBack, myUserId, isBlocked, allConversations, allGroups, isTyping, onLogCall, isOnline, callSettings, groupPersons = {}, onDeleteMessage, onOpenFamilyProfile, draft = "", onSaveDraft, unreadCount = 0, }) {
     var _a, _b;

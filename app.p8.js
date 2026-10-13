@@ -3077,6 +3077,27 @@ function AppInner() {
         }));
         showToast(t("sjlna_twaslk_alhyn"), "success");
     }
+    // ── C37: منازل الأقارب وتنبيه القرب ──
+    const [proxEnabled, setProxEnabled] = usePersistedState("ui.proxAlerts", false, 50);
+    const [proxAlert, setProxAlert] = useState(null);     // { person, gid, dist }
+    const [homeSave, setHomeSave] = useState(null);       // { lat, lng, label } من رسالة موقع في المحادثة
+    useProximityWatch(proxEnabled && flow === "app", familyGroups, groupPersons, (a) => {
+        setProxAlert(a);
+        setNotifications((prev) => [{ id: `n-prox-${Date.now()}`, type: "proximity", title: t("tnbyh_alqrb_anwan"), body: t("tnbyh_alqrb_ns", { personName: a.person.local_name }), read: false }, ...prev].slice(0, 50));
+        try { if (navigator.vibrate) navigator.vibrate([120, 60, 120]); } catch (e) { }
+    });
+    useEffect(() => { const h = (e) => setHomeSave(e.detail || null); window.addEventListener("sawa-save-home", h); return () => window.removeEventListener("sawa-save-home", h); }, []);
+    function setPersonHome(gid, p, c, label) {
+        const loc = { type: "home", lat: Number(Number(c.lat).toFixed(6)), lng: Number(Number(c.lng).toFixed(6)), radius_meters: 500, address_text: String(label || "").slice(0, 120) };
+        setGroupPersons((prev) => ({ ...prev, [gid]: (prev[gid] || []).map((x) => (x.id === p.id ? { ...x, locations: [loc] } : x)) }));
+        logActivity(gid, tl("حُدّد منزل " + p.local_name, "Set home of " + p.local_name));
+        showToast(tl("حُفظ منزل " + p.local_name.split(" ")[0] + " ✓", "Saved " + p.local_name + "'s home ✓"), "success");
+    }
+    function enableProx() {
+        geoNow({ enableHighAccuracy: false, maximumAge: 0 }).then(() => { setProxEnabled(true); showToast(tl("فُعّلت تنبيهات القرب ✓", "Proximity alerts on ✓"), "success"); })
+            .catch((e) => showToast(e && e.code === 1 ? tl("رُفض إذن الموقع — فعّله من إعدادات المتصفّح للموقع", "Location permission denied") : tl("تعذّر تحديد موقعك الآن", "Couldn't get your location"), "error"));
+    }
+    const proxSeenSet = (pid, v) => { try { const s = JSON.parse(localStorage.getItem("sawa_prox_seen") || "{}"); s[pid] = v; localStorage.setItem("sawa_prox_seen", JSON.stringify(s)); } catch (e) { } };
     // إنشاء مجموعة أصهار: أهل الزوج/الزوجة في مجموعة مستقلة، والشخص نفسه
     // يوجد في المجموعتين مرتبطاً عبر linkedTo — فيبقى النسب غير مختلط
     // والشجرة الأصلية بجذر واحد، بينما تبقى صلة الرحم شاملة للطرفين.
@@ -3236,7 +3257,7 @@ function AppInner() {
         discoverContent = (React.createElement(TaxiScreen, { ride: taxiRide, tripsHistory: taxiTripsHistory, scheduledRides: scheduledTaxiRides, onRequestRide: requestTaxiRide, onScheduleRide: scheduleRide, onCancelScheduledRide: cancelScheduledRide, onTriggerScheduledRide: triggerScheduledRide, onCancelRide: cancelTaxiRide, onNewRide: () => setTaxiRide(null), onRateDriver: rateDriverTrip, onBack: () => setDiscoverStack([]) }));
     }
     else if (discoverTop.type === "groups") {
-        discoverContent = (React.createElement(FamilyGroupsScreen, { groups: familyGroups, groupPersons: groupPersons, currentGroupId: currentGroupId, onSetCurrent: setCurrentGroupId, // ⛔ قائمة ← تفصيل ← رجوعٌ إلى القائمة. كان الاختيار يُفرغ المكدّس في
+        discoverContent = (React.createElement(FamilyGroupsScreen, { groups: familyGroups, groupPersons: groupPersons, currentGroupId: currentGroupId, onSetCurrent: setCurrentGroupId, proxEnabled: proxEnabled, onEnableProx: enableProx, onDisableProx: () => setProxEnabled(false), // ⛔ قائمة ← تفصيل ← رجوعٌ إلى القائمة. كان الاختيار يُفرغ المكدّس في
             // أرحام ظنّاً أنّه «تبديل»، فينقطع الطريق ويرجع السهم إلى الجذر.
             onOpenGroup: (g) => {
                 if (IS_RAHIM)
@@ -3458,6 +3479,13 @@ function AppInner() {
                 setFlow("postRecoveryCodes");
             } })),
         flow === "postRecoveryCodes" && (React.createElement(PostRecoveryCodesScreen, { codes: recoveryCodes, onDone: () => setFlow("app") })),
+        flow === "app" && proxAlert && React.createElement(ProximitySheet, { alert: proxAlert, onClose: () => setProxAlert(null),
+            onVisit: () => { markContactNow(proxAlert.gid, proxAlert.person.id); logActivity(proxAlert.gid, tl("زيارة " + proxAlert.person.local_name, "Visited " + proxAlert.person.local_name)); setProxAlert(null); },
+            onCall: (phone) => { const a = proxAlert; setProxAlert(null); markContactNow(a.gid, a.person.id); if (phone) { try { location.href = "tel:" + phone.replace(/[^\d+]/g, ""); } catch (e) { } } else showToast(tl("لا رقم مسجَّلاً له — أضفه من ملفّه", "No phone saved — add it in their profile"), "error"); },
+            onSnooze: () => { proxSeenSet(proxAlert.person.id, new Date(Date.now() + 7200000).toISOString()); setProxAlert(null); showToast(tl("سأذكّرك بعد ساعتين", "I'll remind you in 2 hours"), "success"); },
+            onMute: () => { try { const m = JSON.parse(localStorage.getItem("sawa_prox_mute") || "{}"); m[proxAlert.person.id] = 1; localStorage.setItem("sawa_prox_mute", JSON.stringify(m)); } catch (e) { } setProxAlert(null); },
+            onOpenPerson: () => { const a = proxAlert; setProxAlert(null); const g = familyGroups.find((x) => x.id === a.gid); if (!g) return; setTab("discover"); setDiscoverStack([{ type: "groups" }, { type: "groupDetail", data: g }, { type: "personDetail", data: a.person, groupId: a.gid }]); } }),
+        flow === "app" && homeSave && React.createElement(HomePickerSheet, { coords: homeSave, label: homeSave.label, groups: familyGroups, groupPersons: groupPersons, onClose: () => setHomeSave(null), onPick: (gid, p) => { setPersonHome(gid, p, homeSave, homeSave.label); setHomeSave(null); } }),
         flow === "app" && activeRoom && (React.createElement(ErrorBoundary, null,
             React.createElement(SawaRoomScreen, { roomCode: activeRoom, onBack: () => setActiveRoom(null), familyMembers: Object.values(groupPersons).flat().filter((p) => { var _a; return p.alive && ((_a = p.contacts) === null || _a === void 0 ? void 0 : _a.phone); }), groups: groups, onSendTasksToGroup: (groupId, title, texts) => {
                     const g = groups.find((x) => x.id === groupId);

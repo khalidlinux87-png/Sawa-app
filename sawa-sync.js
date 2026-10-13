@@ -32,7 +32,7 @@
   // lastContactDate لا تُزامَن هنا: هي خاصّة بالمستخدم (contacts.sync أدناه).
   var SYNC_FIELDS = ["local_name", "gender", "kinship", "proximity", "birthYear", "birthday",
                      "alive", "death_date", "deathYear", "contacts", "phones", "notes", "motherId",
-                     "status_detail", "noChildren"];
+                     "status_detail", "noChildren", "locations"];   // C37: منزل القريب (تنبيه القرب) يُزامَن مع العائلة
 
 
   var state = {
@@ -949,10 +949,31 @@
       return r;
     });
   }
+  // C35: Firebase لا ينسخ اسم Google وصورته إلى الحساب عند ربط الضيف (linkWithPopup) — يبقى الحساب بلا اسمٍ في لوحة
+  //      Firebase وفي authInfo. نكتبهما من بيانات مزوّد Google، ويسبقهما اسم «سوا» الذي اختاره المستخدم (إن وُجد)،
+  //      ثمّ نجدّد رمز الدخول لتظهر claims.name. يُستدعى أيضاً عند تغيير الاسم في سوا فيبقى الاسمان متطابقَين.
+  function syncAuthName(preferName) {
+    try {
+      var u = firebase.auth().currentUser; if (!u || u.isAnonymous) return Promise.resolve(false);
+      var g = (u.providerData || []).filter(function (p) { return p && (p.displayName || p.photoURL); })[0] || {};
+      var name = String(preferName || u.displayName || g.displayName || "").replace(/\s+/g, " ").trim().slice(0, 60);
+      var photo = u.photoURL || g.photoURL || null;
+      var patch = {};
+      if (name && name !== u.displayName) patch.displayName = name;
+      if (photo && photo !== u.photoURL) patch.photoURL = photo;
+      if (!Object.keys(patch).length) return Promise.resolve(false);
+      return u.updateProfile(patch).then(function () { return u.getIdToken(true); })
+        .then(function () { var cu = firebase.auth().currentUser; if (cu) setUser(cu); return true; })
+        .catch(function () { return false; });
+    } catch (e) { return Promise.resolve(false); }
+  }
+  function sawaNameNow() { try { var c = global.SawaChat; var p = c && c.profile && c.profile(); return (p && p.name) || null; } catch (e) { return null; } }
   function afterLinked(msg) {
     var u = firebase.auth().currentUser; if (u) setUser(u);
-    restartWatch();
-    return indexMine().then(function () { toast(msg); renderPanel(); refreshMyGroups(); });
+    return syncAuthName(sawaNameNow()).then(function () {
+      restartWatch();
+      return indexMine().then(function () { toast(msg); renderPanel(); refreshMyGroups(); });
+    });
   }
   function linkGoogle() {
     if (!hasFirebase() || !state.uid) { toast(L("تعذّر الاتصال بالخادم", "Can't reach the server")); return; }
@@ -1509,7 +1530,7 @@
   global.SawaSync = {
     connect: connect, onReady: onReady, getToken: getToken,
     push: push, observe: observe, bindApp: bindApp,
-    uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, shareLink: shareLink,
+    uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, syncAuthName: syncAuthName, shareLink: shareLink,
     watchGroup: watchGroup, serverGid: serverGid,
     isCloud: function (lg) { return !!serverGid(lg); },
     call: function (op, payload) { return call(op, payload); }, toast: function (m) { toast(m); },
