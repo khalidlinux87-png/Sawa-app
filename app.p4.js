@@ -2071,6 +2071,7 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
             const who = m.senderUserId === "me" ? "أنا" : conversation.name;
             const txt = m.type === "text" ? m.text
                 : m.type === "voice" ? "[رسالة صوتية]"
+                : m.type === "location" ? "[موقع]"
                     : m.type === "image" ? "[صورة]"
                         : m.type === "video" ? "[فيديو]"
                             : m.type === "file" ? ("[ملف] " + (m.text || ""))

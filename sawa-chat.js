@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c30";
+  var VERSION = "c32";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -546,7 +546,7 @@
     return type === "voice" ? L("🎤 رسالة صوتيّة", "🎤 Voice message") : type === "image" ? L("📷 صورة", "📷 Photo")
       : type === "video" ? L("🎥 فيديو", "🎥 Video") : type === "file" ? L("📎 ملفّ", "📎 File") : type === "poll" ? L("📊 استطلاع", "📊 Poll")
       : type === "contact" ? L("👤 جهة اتّصال", "👤 Contact") : type === "bill" ? L("🧾 فاتورة", "🧾 Bill") : type === "fund" ? L("💝 تبرّعات", "💝 Fundraiser")
-      : type === "tasks" ? L("✅ مهامّ", "✅ Tasks") : "";
+      : type === "tasks" ? L("✅ مهامّ", "✅ Tasks") : type === "location" ? L("📍 موقع", "📍 Location") : "";
   }
   function preview(m) {
     if (!m) return "";
@@ -929,6 +929,7 @@
       else { o.senderUserId = appId(m.by); if (m.type === "system") { o.type = "system"; o.text = sysText(m, c); } }   // C23: إشعارات المحادثة السرّيّة في المحادثة الفرديّة
       if (m.e2eErr) o.e2eErr = true;
       if (!m.del && MEDIA_TYPES.indexOf(m.type) >= 0) mediaShape(m, o, cid, mine);
+      if (!m.del && m.type === "location" && m.extra) { o.type = "location"; o.lat = Number(m.extra.lat); o.lng = Number(m.extra.lng); o.acc = m.extra.acc || null; o.text = m.extra.label || ""; }
       if (mine) o.status = x.pending ? (x.pending === "failed" ? "failed" : "pending") : statusOf(c, m.ts);
       if (x.progress != null) o.uploadPct = x.progress;   // نسبة رفع الوسيط (تظهر بدل الساعة)
       return o;
@@ -1229,6 +1230,23 @@
     });
   }
   // kind: image | video | voice | file · src: Blob/File أو dataURL
+  // C32: مشاركة الموقع — يُطلب من الجهاز (دقّةٌ عالية، ١٥ ثانية) ويُرسل كرسالة «location» (وتُشفَّر في السرّيّة كغيرها)
+  function sendLocation(cid, label) {
+    if (!isCloud(cid) || !state.uid) return Promise.resolve(null);
+    if (!(global.navigator && navigator.geolocation)) { toast(L("هذا الجهاز لا يدعم تحديد الموقع", "Location isn't supported on this device")); return Promise.resolve(null); }
+    toast(L("📍 جارٍ تحديد موقعك…", "📍 Getting your location…"));
+    return new Promise(function (res) {
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        var c = pos.coords;
+        res(send(cid, null, { type: "location", extra: { lat: Math.round(c.latitude * 1e6) / 1e6, lng: Math.round(c.longitude * 1e6) / 1e6, acc: Math.round(c.accuracy || 0) || null, label: label ? String(label).slice(0, 120) : null } }));
+      }, function (e) {
+        toast(e && e.code === 1 ? L("لم يُسمح بالوصول إلى الموقع — فعّله من إعدادات المتصفّح", "Location permission denied — enable it in browser settings")
+          : e && e.code === 3 ? L("تعذّر تحديد الموقع في الوقت المحدّد — جرّب في مكانٍ مكشوف", "Location timed out — try outdoors") : L("تعذّر تحديد الموقع", "Couldn't get your location"));
+        res(null);
+      }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+    });
+  }
+  function mapsUrl(lat, lng) { return "https://www.google.com/maps/search/?api=1&query=" + lat + "," + lng; }
   function sendMedia(cid, opts) {
     if (!isCloud(cid) || !state.uid) return null;
     var secret = e2eOn(chats[cid]);
@@ -2831,6 +2849,11 @@
       if (!rt) { var rf = findMsg(cid, m.reply.id); var rp = rf && rf.msg.enc ? plain[encKey(cid, rf.msg)] : null; if (rp && typeof rp.text === "string") rt = rp.text; }   // الاقتباس من نسختي المفكوكة
       o.reply = { id: m.reply.id, day: m.reply.day || null, by: p.reply && typeof p.reply.by === "string" ? p.reply.by : null, text: rt.slice(0, 200) };
     }
+    if (m.type === "location") {
+      var lx = p.extra || {}, la = Number(lx.lat), ln = Number(lx.lng);
+      if (!(la >= -90 && la <= 90 && ln >= -180 && ln <= 180)) { o.type = "text"; o.e2eErr = true; o.text = L("🔒 تعذّر فكّ تشفير هذه الرسالة", "🔒 Couldn't decrypt this message"); delete o.extra; return o; }
+      o.extra = { lat: la, lng: ln, acc: Number(lx.acc) || null, label: typeof lx.label === "string" ? lx.label.slice(0, 120) : null };
+    }
     if (MEDIA_TYPES.indexOf(m.type) >= 0) {
       var sx = m.extra || {}, px = p.extra || {}, num = function (v) { return typeof v === "number" && isFinite(v) && v >= 0 ? v : null; };
       if (!sx.mid || px.mid !== sx.mid) { o.type = "text"; delete o.extra; o.e2eErr = true; o.text = L("🔒 تعذّر فكّ تشفير هذه الرسالة", "🔒 Couldn't decrypt this message"); return o; }   // الخادم لا يربط الرسالة بوسيطٍ آخر
@@ -3032,6 +3055,7 @@
     e2eSupported: function () { return e2e.ok(); }, e2eStartDm: e2eStartDm, e2eNewSheet: e2eNewSheet, e2eAct: e2eAct, e2eSafety: e2eSafety,   // C23
     adminCached: adminCached, checkAdmin: checkAdmin,   // C24
     setBlocked: setBlocked,
+    sendLocation: sendLocation, mapsUrl: mapsUrl,   // C32
     photoOf: photoOf, setMyPhoto: setMyPhoto,   // C25
     e2eCreateDm: e2eCreateDm, e2eCreateGroup: e2eCreateGroup, e2eJoin: e2eJoin, e2eState: function (cid) { return e2eState(chats[cid]); },
     _e2e: e2e, _plain: function () { return plain; },

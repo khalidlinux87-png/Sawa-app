@@ -845,6 +845,25 @@ function E2eBar({ e2e }) {
         e2e.text ? React.createElement("p", { className: "text-[11.5px] leading-5", style: { color: colors.textMuted } }, e2e.text) : null,
         e2e.action ? React.createElement("button", { onClick: () => C && C.e2eAct && C.e2eAct(e2e.cid), className: "mt-2 px-5 py-2 rounded-xl text-xs font-extrabold text-white", style: { backgroundColor: colors.primary } }, e2e.action) : null));
 }
+// C32: فقاعة الموقع — خريطة مصغّرة (OpenStreetMap) وزرّ «فتح في الخرائط»
+function LocationBubble({ m, mine }) {
+    const { colors } = useTheme();
+    const lat = Number(m.lat), lng = Number(m.lng);
+    if (!(lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180)) return null;
+    const z = 15, n = Math.pow(2, z), x = Math.floor((lng + 180) / 360 * n), y = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+    const tile = `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
+    const url = window.SawaChat && window.SawaChat.mapsUrl ? window.SawaChat.mapsUrl(lat, lng) : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    const open = (e) => { e.stopPropagation(); try { window.open(url, "_blank", "noopener"); } catch (x) { location.href = url; } };
+    return (React.createElement("div", { onClick: open, style: { cursor: "pointer", minWidth: 200 } },
+        React.createElement("div", { className: "rounded-xl overflow-hidden relative mb-1.5", style: { height: 120, backgroundColor: mine ? "rgba(255,255,255,0.18)" : colors.bg, backgroundImage: `url(${tile})`, backgroundSize: "cover", backgroundPosition: "center" } },
+            React.createElement("div", { style: { position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-100%)" } },
+                React.createElement(MapPin, { size: 30, color: "#E53935", fill: "#E53935", strokeWidth: 1.5 }))),
+        React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5` },
+            React.createElement(MapPin, { size: 13, color: mine ? "#fff" : colors.primary }),
+            React.createElement("span", { className: "text-xs font-bold truncate", style: { color: mine ? "#fff" : colors.text } }, m.text || tl("موقعي", "My location"))),
+        React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: mine ? "#ffffffcc" : colors.textMuted, direction: "ltr", textAlign: isRTL() ? "right" : "left" } }, lat.toFixed(5) + ", " + lng.toFixed(5) + (m.acc ? " · ±" + Math.round(m.acc) + "m" : "")),
+        React.createElement("div", { className: "text-[11px] font-extrabold mt-1", style: { color: mine ? "#fff" : colors.primary } }, tl("فتح في الخرائط ↗", "Open in Maps ↗"))));
+}
 function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSendSticker, onSendFile, onSendVoice, onEditMessage, onMarkViewedOnce, onTogglePin, onToggleStar, onOpenInfo, disappearing, setDisappearing, background, onBack, myUserId, isBlocked, allConversations, allGroups, isTyping, onLogCall, isOnline, callSettings, groupPersons = {}, onDeleteMessage, onOpenFamilyProfile, draft = "", onSaveDraft, unreadCount = 0, }) {
     var _a, _b;
     const { colors } = useTheme();
@@ -1016,7 +1035,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                                     React.createElement("div", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.text } }, m.text),
                                     React.createElement("div", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } },
                                         (m.fileSize / 1024).toFixed(0),
-                                        t("ch_kylwbayt"))))) : m.type === "voice" ? (React.createElement(VoiceMessageBubble, { loading: !!m.mediaLoading, failed: !!m.mediaFailed, cid: m.cloudCid || null, mid: m.cloudMid || null, url: m.audioUrl, duration: m.duration, mine: mine, transcript: m.transcript })) : editingMessageId === m.id ? (React.createElement("div", { className: "flex flex-col gap-1.5" },
+                                        t("ch_kylwbayt"))))) : m.type === "location" ? React.createElement(LocationBubble, { m, mine }) : m.type === "voice" ? (React.createElement(VoiceMessageBubble, { loading: !!m.mediaLoading, failed: !!m.mediaFailed, cid: m.cloudCid || null, mid: m.cloudMid || null, url: m.audioUrl, duration: m.duration, mine: mine, transcript: m.transcript })) : editingMessageId === m.id ? (React.createElement("div", { className: "flex flex-col gap-1.5" },
                                 React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: editingText, onChange: (e) => setEditingText(e.target.value), className: "text-sm rounded px-2 py-1", style: { backgroundColor: mine ? "rgba(255,255,255,0.15)" : colors.bg, color: mine ? "#fff" : colors.text, border: `1px solid ${mine ? "#ffffff55" : colors.border}` }, autoFocus: true }),
                                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                                     React.createElement("button", { onClick: () => { onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); }, className: "text-[10px] font-bold", style: { color: mine ? "#fff" : colors.primary } }, t("hfz")),
@@ -1101,6 +1120,10 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                             React.createElement("div", { className: "w-14 h-14 rounded-2xl flex items-center justify-center", style: { backgroundColor: colors.primary + "1a" } },
                                 React.createElement(FileIconLucide, { size: 24, color: colors.primary })),
                             React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, t("mstnd"))),
+                        window.SawaChat && window.SawaChat.sendLocation && conversation.cloud !== false && React.createElement("button", { onClick: () => { setShowAttachMenu(false); window.SawaChat.sendLocation(conversation.id); }, className: "flex flex-col items-center gap-2 py-3" },
+                            React.createElement("div", { className: "w-14 h-14 rounded-2xl flex items-center justify-center", style: { backgroundColor: "#E539351a" } },
+                                React.createElement(MapPin, { size: 24, color: "#E53935" })),
+                            React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, tl("الموقع", "Location"))),
                         React.createElement("button", { onClick: () => { setShowAttachMenu(false); setSharingContact(true); }, className: "flex flex-col items-center gap-2 py-3" },
                             React.createElement("div", { className: "w-14 h-14 rounded-2xl flex items-center justify-center", style: { backgroundColor: "#22C55E1a" } },
                                 React.createElement(User, { size: 24, color: "#22C55E" })),
@@ -1652,7 +1675,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                         React.createElement("div", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.text } }, m.text),
                         React.createElement("div", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } },
                             (m.fileSize / 1024).toFixed(0),
-                            t("gc_kylwbayt"))))) : m.type === "voice" ? (React.createElement(VoiceMessageBubble, { loading: !!m.mediaLoading, failed: !!m.mediaFailed, cid: m.cloudCid || null, mid: m.cloudMid || null, url: m.audioUrl, duration: m.duration, mine: mine, transcript: m.transcript })) : editingMessageId === m.id ? (React.createElement("div", { className: "flex flex-col gap-1.5" },
+                            t("gc_kylwbayt"))))) : m.type === "location" ? React.createElement(LocationBubble, { m, mine }) : m.type === "voice" ? (React.createElement(VoiceMessageBubble, { loading: !!m.mediaLoading, failed: !!m.mediaFailed, cid: m.cloudCid || null, mid: m.cloudMid || null, url: m.audioUrl, duration: m.duration, mine: mine, transcript: m.transcript })) : editingMessageId === m.id ? (React.createElement("div", { className: "flex flex-col gap-1.5" },
                     React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: editingText, onChange: (e) => setEditingText(e.target.value), className: "text-sm rounded px-2 py-1", style: { backgroundColor: mine ? "rgba(255,255,255,0.15)" : colors.bg, color: mine ? "#fff" : colors.text, border: `1px solid ${mine ? "#ffffff55" : colors.border}` }, autoFocus: true }),
                     React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                         React.createElement("button", { onClick: () => { onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); }, className: "text-[10px] font-bold", style: { color: mine ? "#fff" : colors.primary } }, t("hfz")),
@@ -1827,7 +1850,11 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 React.createElement("button", { onClick: () => { var _a; return (_a = fileInputRef.current) === null || _a === void 0 ? void 0 : _a.click(); }, className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3` },
                     React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary + "22" } },
                         React.createElement(FileIconLucide, { size: 15, color: colors.primary })),
-                    React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("mstnd"))))),
+                    React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("mstnd"))),
+                window.SawaChat && window.SawaChat.sendLocation && /^(fam_|grp_)/.test(group.id || "") && React.createElement("button", { onClick: () => { setShowAttachMenu(false); window.SawaChat.sendLocation(group.id); }, className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3` },
+                    React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: "#E5393522" } },
+                        React.createElement(MapPin, { size: 15, color: "#E53935" })),
+                    React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, tl("الموقع", "Location"))))),
             React.createElement("button", { "aria-label": t("irfaq"), onClick: () => { setShowToolsMenu(false); setShowAttachMenu(!showAttachMenu); }, className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: showAttachMenu ? colors.primary : colors.bg } },
                 React.createElement(Paperclip, { size: 16, color: showAttachMenu ? "#fff" : colors.textMuted })),
             showToolsMenu && React.createElement("div", { onClick: () => setShowToolsMenu(false), style: { position: "fixed", inset: 0, zIndex: 9 } }),
