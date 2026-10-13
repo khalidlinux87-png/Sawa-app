@@ -1420,7 +1420,7 @@ function ArchivedChatsScreen({ conversations, archivedIds, mutedIds, onOpenChat,
             list.length === 0 && React.createElement(EmptyState, { icon: Archive, label: t("ma_fy_mhadthat_mwrshfa") }),
             list.map((c) => (React.createElement(Card, { key: c.id, className: `flex ${rowStart()} items-center mb-1.5` },
                 React.createElement("button", { onClick: () => onOpenChat(c), className: `flex-1 flex ${rowStart()} items-center ${textStart()}`, style: { minWidth: 0 } },
-                    React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${ms("3")} shrink-0`, style: { backgroundColor: colors.primaryLight } },
+                    React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${me("3")} shrink-0`, style: { backgroundColor: colors.primaryLight } },
                         React.createElement(User, { size: 20, color: colors.primaryDark })),
                     React.createElement("div", { className: "flex-1", style: { minWidth: 0 } },
                         React.createElement("div", { style: { display: "flex", flexDirection: "row", direction: "ltr", alignItems: "center", justifyContent: "space-between" } },
@@ -1703,7 +1703,7 @@ function ConversationsListScreen({ onOpenScheduledRooms, chatDrafts = {}, conver
                     React.createElement("button", { onClick: () => onOpenGroup(g), /* flex-row صريحة لا rowStart(): ترميز هذا الصف مرتّب من اليمين
                                (صورة ← نص ← عدّاد ← سهم) فلا يحتاج عكساً */
                             className: `w-full flex flex-row items-center ${textStart()}` },
-                        React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${ms("3")} shrink-0`, style: { backgroundColor: colors.primaryLight } },
+                        React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${me("3")} shrink-0`, style: { backgroundColor: colors.primaryLight } },
                             React.createElement(Users2, { size: 20, color: colors.primaryDark })),
                         React.createElement("div", { className: "flex-1", style: { minWidth: 0 } },
                             React.createElement("div", { style: { display: "flex", flexDirection: "row", direction: "ltr", alignItems: "center", justifyContent: "space-between" } },
@@ -1740,7 +1740,7 @@ function ConversationsListScreen({ onOpenScheduledRooms, chatDrafts = {}, conver
                                         c.name.toLowerCase().includes(p.local_name.split(" ")[0].toLowerCase());
                                 });
                                 const overdue = matchedPerson && isContactOverdue(matchedPerson);
-                                return (React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${ms("3")} relative`, style: {
+                                return (React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${me("3")} relative`, style: {
                                         backgroundColor: c.isSavedMessages ? colors.accent : colors.primaryLight,
                                         outline: overdue ? `2px solid #ef4444` : matchedPerson ? `2px solid ${colors.accent}` : "none",
                                         outlineOffset: 1,

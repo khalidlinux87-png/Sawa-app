@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c26";
+  var VERSION = "c28";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -129,7 +129,7 @@
         if (old) { try { c.local.removeTrack(old); old.stop(); } catch (e) {} }
         c.local.addTrack(nt); c.out = which; paint(c);
         // C26: على السمّاعة العاديّة نترك الشاشة لمؤقّت النظام (تنطفئ وحدها) — المتصفّح لا يصل إلى حسّاس القرب
-        if (which === "ear") wakeOff(); else wakeOn();
+        if (which === "ear") { wakeOff(); earArm(); } else { wakeOn(); earOff(); }
         return true;
       });
     }).catch(function (e) { log("route", e && (e.name || e.message)); if (!quiet) toast(L("تعذّر تحويل الصوت على هذا الجهاز", "Couldn't switch audio output on this device")); return false; })
@@ -177,6 +177,23 @@
   var wake = null;
   function wakeOn() { try { if (navigator.wakeLock && !wake) navigator.wakeLock.request("screen").then(function (w) { wake = w; }).catch(function () {}); } catch (e) {} }
   function wakeOff() { try { if (wake) wake.release(); } catch (e) {} wake = null; }
+  // C28: «وضع الأذن» — على السمّاعة العاديّة تسودّ الشاشة بعد ٥ ثوانٍ (المتصفّح لا يطفئها ولا يصل إلى حسّاس القرب)،
+  //      فلا تلمسها الوجنة، وتعود بالضغط المطوّل أو بتحويل الصوت إلى المكبّر أو بانتهاء المكالمة.
+  var earT = null, earEl = null;
+  function earOn() {
+    if (earEl || !document.body) return;
+    earEl = el("div", "position:fixed;inset:0;z-index:2147483646;background:#000;touch-action:none;display:flex;align-items:flex-end;justify-content:center;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 28px)");
+    earEl.appendChild(el("div", "color:#333;font:600 12px system-ui;text-align:center;padding:0 24px", L("وضع الأذن — اضغط مطوّلاً لإظهار الشاشة", "Ear mode — press and hold to show the screen")));
+    var holdT = null;
+    var down = function (e) { try { e.preventDefault(); } catch (x) {} clearTimeout(holdT); holdT = setTimeout(function () { earOff(); earArm(); }, 700); };
+    var up = function () { clearTimeout(holdT); };
+    earEl.addEventListener("touchstart", down, { passive: false }); earEl.addEventListener("mousedown", down);
+    earEl.addEventListener("touchend", up); earEl.addEventListener("touchcancel", up); earEl.addEventListener("mouseup", up);
+    earEl.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+    document.body.appendChild(earEl);
+  }
+  function earOff() { clearTimeout(earT); earT = null; if (earEl) { try { earEl.remove(); } catch (e) {} earEl = null; } }
+  function earArm() { clearTimeout(earT); earT = setTimeout(function () { if (cur && cur.out === "ear" && !cur.done && cur.state === "connected") earOn(); }, 5000); }
   // C26: إشعارات المكالمات (فائتة · رنين) تُغلق حين تُفتح شاشة المكالمات أو تنتهي المكالمة
   function clearCallNotifications() {
     try {
@@ -626,7 +643,7 @@
   };
   function finish(c, reason, opts) {
     if (!c || c.done) return;
-    opts = opts || {}; c.done = true; clearCallNotifications();
+    opts = opts || {}; c.done = true; clearCallNotifications(); earOff();
     clearTimers(c); stopTone(); wakeOff();
     c.offs.forEach(function (f) { f(); }); c.offs = [];
     // أخبر الطرف الآخر
