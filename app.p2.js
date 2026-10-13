@@ -398,7 +398,13 @@ function EmptyState({ icon: Icon, label }) {
         React.createElement(Icon, { size: 30, color: colors.border }),
         React.createElement("p", { className: "text-xs text-center mt-2", style: { color: colors.textMuted } }, label)));
 }
-function TopBar({ title, subtitle, onBack, actions, avatar }) {
+// C25: صورة الحساب إن وُجدت (من SawaChat.photoOf) وإلّا الحرف الأوّل — بالحجم والألوان نفسها
+function Pic({ photo, letter, size, bg, color, className, style, children }) {
+    const base = Object.assign({ width: size, height: size, backgroundColor: bg }, style || {});
+    if (photo) return React.createElement("div", { className: "rounded-full shrink-0 overflow-hidden flex items-center justify-center " + (className || ""), style: Object.assign({}, base, { backgroundImage: `url(${photo})`, backgroundSize: "cover", backgroundPosition: "center" }) }, children || null);
+    return React.createElement("div", { className: "rounded-full shrink-0 flex items-center justify-center font-extrabold " + (className || ""), style: Object.assign({ color, fontSize: Math.round(size * 0.42) }, base) }, letter, children || null);
+}
+function TopBar({ title, subtitle, onBack, actions, avatar, photo }) {
     const { colors } = useTheme();
     return (React.createElement("div", { className: `flex items-center px-4 pt-10 pb-3 ${rowStart()}`, style: { backgroundColor: colors.primary } },
         onBack && React.createElement("button", { onClick: onBack, className: `${ms("2")}` },
@@ -411,7 +417,7 @@ function TopBar({ title, subtitle, onBack, actions, avatar }) {
             React.createElement("div", { className: `min-w-0 ${textStart()}` },
                 React.createElement("h1", { className: "text-white text-sm font-bold truncate" }, title),
                 subtitle && React.createElement("p", { className: "text-[10px] truncate", style: { color: "#ffffffcc" } }, subtitle)),
-            avatar && React.createElement("div", { className: "w-9 h-9 rounded-full shrink-0 flex items-center justify-center font-bold text-sm", style: { backgroundColor: "rgba(255,255,255,0.22)", color: "#fff" } }, ((avatar === true ? title : avatar) || "?").charAt(0))),
+            avatar && React.createElement(Pic, { photo: photo || null, letter: ((avatar === true ? title : avatar) || "?").charAt(0), size: 36, bg: "rgba(255,255,255,0.22)", color: "#fff" })),
         React.createElement("div", { className: "shrink-0" }, actions)));
 }
 function generateRecoveryCodes() {
@@ -743,8 +749,8 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         React.createElement("div", { className: "mx-4 rounded-2xl shadow-lg px-5 pt-5 pb-4", style: { backgroundColor: colors.card, marginTop: -120, position: "relative", zIndex: 2, border: `1px solid ${colors.border}` } },
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-4` },
                 React.createElement("div", { className: "shrink-0 rounded-2xl overflow-hidden flex items-center justify-center", style: { width: 68, height: 68, backgroundColor: colors.primaryLight, border: `3px solid ${colors.primary}` } },
-                    !RELEASE_UI && profilePhoto && React.createElement("img", { src: profilePhoto, alt: t("swrty"), className: "w-full h-full object-cover" }),
-                    (RELEASE_UI || !profilePhoto) && React.createElement("span", { className: "text-2xl font-extrabold", style: { color: colors.primary } }, myDisplayName ? myDisplayName.charAt(0) : t("s"))),
+                    myProfile && myProfile.photo && React.createElement("img", { src: myProfile.photo, alt: t("swrty"), className: "w-full h-full object-cover" }),
+                    !(myProfile && myProfile.photo) && React.createElement("span", { className: "text-2xl font-extrabold", style: { color: colors.primary } }, myDisplayName ? myDisplayName.charAt(0) : t("s"))),
                 React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
                     React.createElement("h3", { className: "text-base font-extrabold truncate", style: { color: colors.text } }, myDisplayName || (meState === "loading" ? tl("جارٍ تحميل حسابك…", "Loading your account…") : meState === "err" ? tl("تعذّر تحميل حسابك", "Couldn't load your account") : meState === "noauth" ? tl("لم تسجّل الدخول", "Not signed in") : t("mstkhdm_swa", { app: appName() }))),
                     cloudMe ? (myProfile.phone

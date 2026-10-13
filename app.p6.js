@@ -536,7 +536,7 @@ function AddContactModal({ colors, onAdd, onClose }) {
 function ContactRow({ contact, isOnline, blocked, colors, onPress, showInvite }) {
     return (React.createElement("button", { onClick: onPress, className: "w-full flex flex-row items-center px-4 py-2.5 gap-3", style: { backgroundColor: "transparent", opacity: blocked ? 0.6 : 1 } },
         React.createElement("div", { className: "relative shrink-0" },
-            React.createElement("div", { className: "w-11 h-11 rounded-full flex items-center justify-center font-bold text-base", style: { backgroundColor: colors.primaryLight, color: colors.primaryDark } }, contact.name.charAt(0)),
+            React.createElement(Pic, { photo: contact.photo || null, letter: contact.name.charAt(0), size: 44, bg: colors.primaryLight, color: colors.primaryDark }),
             isOnline && !blocked && (React.createElement("span", { className: "absolute bottom-0 w-3 h-3 rounded-full border-2", style: { [isRTL() ? "left" : "right"]: 0, backgroundColor: "#22C55E", borderColor: colors.bg } }))),
         React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
             React.createElement("div", { className: "text-sm font-bold truncate", style: { color: colors.text } }, contact.name),
@@ -569,7 +569,7 @@ function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVid
                 React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: onClose, className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: colors.bg } }, React.createElement(X, { size: 16, color: colors.textMuted }))),
             React.createElement("div", { className: "flex flex-col items-center mb-4" },
                 React.createElement("div", { className: "relative mb-2.5" },
-                    React.createElement("div", { className: "w-20 h-20 rounded-full flex items-center justify-center font-extrabold text-3xl", style: { backgroundColor: colors.primaryLight, color: colors.primaryDark } }, contact.name.charAt(0)),
+                    React.createElement(Pic, { photo: contact.photo || null, letter: contact.name.charAt(0), size: 80, bg: colors.primaryLight, color: colors.primaryDark }),
                     isOnline && !blocked && (React.createElement("span", { className: "absolute bottom-1 w-4 h-4 rounded-full border-2", style: { [isRTL() ? "left" : "right"]: 4, backgroundColor: "#22C55E", borderColor: colors.card } }))),
                 React.createElement("span", { className: "text-lg font-extrabold text-center", style: { color: colors.text } }, contact.name),
                 contact.nick && contact.realName && contact.realName !== contact.nick && React.createElement("span", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } }, tl("اسمه في سوا: ", "Sawa name: ") + contact.realName),

@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c24";
+  var VERSION = "c25";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -37,6 +37,14 @@
   }
   function myUid() { try { return C() && C().uid ? C().uid() : null; } catch (e) { return null; } }
   function myName() { try { var m = C().me(); return (m && m.name) || ""; } catch (e) { return ""; } }
+  // C25: صورة الحساب على دائرة الحرف (SawaChat.photoOf) — الصورة إن وُجدت وإلّا الحرف
+  function photoOf(uid) { try { return uid && C().photoOf ? C().photoOf(uid) : null; } catch (e) { return null; } }
+  function setAv(el, name, uid) {
+    if (!el) return;
+    var ph = photoOf(uid);
+    if (ph) { el.textContent = ""; el.style.backgroundImage = "url(" + ph + ")"; el.style.backgroundSize = "cover"; el.style.backgroundPosition = "center"; }
+    else { el.style.backgroundImage = "none"; el.textContent = (name || "؟").charAt(0); }
+  }
   function nameOf(uid) {
     try { var l = C().contacts(); for (var i = 0; i < l.length; i++) if (l[i].uid === uid) return l[i].name; } catch (e) {}
     return "";
@@ -235,7 +243,7 @@
   }
   function show(c) {
     buildUi();
-    ui.av.textContent = (c.name || "؟").charAt(0);
+    setAv(ui.av, c.name, c.peer);
     ui.nm.textContent = c.name || ""; ui.topName.textContent = c.name || "";
     ui.rv.style.display = "none"; ui.lv.style.display = "none"; ui.sub.textContent = "";
     ui.rv.srcObject = null; ui.ra.srcObject = null; ui.lv.srcObject = null;
@@ -1142,7 +1150,7 @@
     var hasV = g.type === "video" && g.local.getVideoTracks().length > 0 && !g.camOff;
     t.v.srcObject = hasV ? g.local : null; t.v.style.display = hasV ? "block" : "none"; t.v.style.transform = g.facing === "environment" ? "none" : "scaleX(-1)";
     if (hasV) try { t.v.play().catch(function () {}); } catch (e) {}
-    t.av.textContent = (myName() || "أ").charAt(0); t.av.style.display = hasV ? "none" : "flex";
+    setAv(t.av, myName() || "أ", myUid()); t.av.style.display = hasV ? "none" : "flex";
     t.lab.textContent = L("أنت", "You") + (g.muted ? " · 🔇" : "");
     gLayout(g);
   }
@@ -1159,7 +1167,7 @@
     if (st && t.a.srcObject !== st) { t.a.srcObject = st; try { t.a.play().catch(function () {}); } catch (e) {} }
     if (hasV && t.v.srcObject !== st) { t.v.srcObject = st; try { t.v.play().catch(function () {}); } catch (e) {} }
     t.v.style.display = hasV ? "block" : "none"; t.av.style.display = hasV ? "none" : "flex";
-    t.av.textContent = gName(g, uid).charAt(0);
+    setAv(t.av, gName(g, uid), uid);
     var state = !p ? L("ينضمّ…", "joining…") : p.state === "connected" ? "" : p.state === "lost" ? L("انقطع", "lost") : p.state === "reconnecting" ? L("الشبكة ضعيفة…", "weak network…") : L("جارٍ الربط…", "connecting…");
     t.lab.textContent = gName(g, uid) + (state ? " · " + state : "");
     gLayout(g);
@@ -1855,7 +1863,7 @@
     }
     if (showV) try { t.v.play().catch(function () {}); } catch (e) {}
     t.v.style.display = showV ? "block" : "none"; t.av.style.display = showV ? "none" : "flex";
-    t.av.textContent = (isMe ? (myName() || "أ") : name).charAt(0); t.av.style.background = isMe ? PRI : LINE;
+    t.av.style.background = isMe ? PRI : LINE; setAv(t.av, isMe ? (myName() || "أ") : name, isMe ? myUid() : uid);
     var st = isMe ? "" : !p ? L("ينضمّ…", "joining…") : p.state === "connected" ? "" : p.state === "lost" ? L("انقطع", "lost") : p.state === "reconnecting" ? L("شبكة ضعيفة…", "weak…") : L("جارٍ الربط…", "connecting…");
     if (!st && !isMe && m.cam && !showV && !r.low) st = L("📷 الصورة لم تصل بعد", "📷 video not arriving");
     t.lab.textContent = name + (st ? " · " + st : "");

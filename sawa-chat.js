@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c24";
+  var VERSION = "c25";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -55,9 +55,60 @@
   function displayName(p) {
     return nickOf(p.uid) || p.name || (p.anon ? L("ضيف · ", "Guest · ") + guestTag(p.uid) : L("عضو", "Member") + " · " + guestTag(p.uid));
   }
+  // ---------- C25: صور الحسابات — avatars/{uid} في Firestore (يكتبها الخادم)، تُقرأ على دفعاتٍ وتُخزَّن ١٢ ساعة ----------
+  var AVK = "sawa_avatars", avCache = null, avWant = {}, avT = null, avFetching = {};
+  function avAll() { if (!avCache) { avCache = lsGet(AVK, {}); if (!avCache || typeof avCache !== "object") avCache = {}; } return avCache; }
+  function avSave() { var all = avAll(), ks = Object.keys(all); if (ks.length > 400) { ks.sort(function (a, b) { return (all[a].at || 0) - (all[b].at || 0); }); ks.slice(0, ks.length - 400).forEach(function (k) { delete all[k]; }); } lsSet(AVK, all); }
+  function photoOf(uid) {
+    if (!uid || !/^[A-Za-z0-9_-]{1,128}$/.test(String(uid))) return null;
+    var e = avAll()[uid], fresh = e && Date.now() - (e.at || 0) < 12 * 3600000;
+    if (!fresh && !avFetching[uid]) { avWant[uid] = 1; if (!avT) avT = setTimeout(avFlush, 60); }
+    return e && e.d ? e.d : null;
+  }
+  function avFlush() {
+    avT = null;
+    var d = fsdb(), ids = Object.keys(avWant).filter(function (u) { return !avFetching[u]; }).slice(0, 30); avWant = {};
+    if (!d || !ids.length || !state.uid) return;
+    ids.forEach(function (u) { avFetching[u] = 1; });
+    var chunks = []; for (var i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
+    Promise.all(chunks.map(function (ch) {
+      var q; try { q = d.collection("avatars").where(firebase.firestore.FieldPath.documentId(), "in", ch).get(); } catch (e) { q = Promise.reject(e); }
+      return q.then(function (snap) {
+        var got = {}; snap.forEach(function (doc) { var x = doc.data() || {}; if (typeof x.d === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(x.d) && x.d.length <= 20000) got[doc.id] = x.d; });
+        var all = avAll(), now = Date.now();
+        ch.forEach(function (u) { all[u] = { d: got[u] || null, at: now }; });
+      }, function (e) { log("avatars:", e && e.code); var all = avAll(), now = Date.now(); ch.forEach(function (u) { all[u] = all[u] || { d: null, at: now - 11 * 3600000 }; }); });
+    })).then(function () { ids.forEach(function (u) { delete avFetching[u]; }); avSave(); avChanged(); });
+  }
+  function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
+  function setMyPhoto(dataUrl) {   // null ⇒ إزالة
+    return call("profile.set", { photo: dataUrl || null }).then(function () {
+      var all = avAll(); all[state.uid] = { d: dataUrl || null, at: Date.now() }; avSave(); avChanged();
+    });
+  }
+  // صورةٌ صغيرة مربّعة (١٢٨px, JPEG) ≤ ٢٠ ألف حرف
+  function squareThumb(blob) {
+    return loadImg(blob).then(function (r) {
+      var img = r.img, w = img.naturalWidth, h = img.naturalHeight, m = Math.min(w, h), sizes = [160, 128, 96, 72], qs = [0.8, 0.72, 0.62, 0.5];
+      for (var i = 0; i < sizes.length; i++) {
+        var c = document.createElement("canvas"); c.width = c.height = sizes[i];
+        var ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, (w - m) / 2, (h - m) / 2, m, m, 0, 0, c.width, c.height);
+        var du = c.toDataURL("image/jpeg", qs[i]); if (du.length <= 20000) { URL.revokeObjectURL(r.url); return du; }
+      }
+      URL.revokeObjectURL(r.url); throw new Error("too big");
+    });
+  }
+  function pickPhoto() {
+    return new Promise(function (res) {
+      var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+      inp.onchange = function () { var f = inp.files && inp.files[0]; res(f || null); };
+      inp.click();
+    });
+  }
   function decorate(p) {
     var pr = state.presence[p.uid] || null;
-    return { id: p.uid, uid: p.uid, name: displayName(p), realName: p.name || null, nick: nickOf(p.uid), anon: !!p.anon, tag: guestTag(p.uid),
+    return { id: p.uid, uid: p.uid, name: displayName(p), realName: p.name || null, nick: nickOf(p.uid), anon: !!p.anon, tag: guestTag(p.uid), photo: photoOf(p.uid),
              families: p.families || [], via: p.via || [], onSawa: true, phone: p.phone || "",
              online: !!(pr && pr.state === "online"), lastSeen: pr && pr.ts ? pr.ts : null };
   }
@@ -96,7 +147,7 @@
   // ---------- الملفّ الشخصيّ: اسم «سوا» + رقم الهاتف (غير موثّق حتّى الإطلاق) ----------
   function profile() {
     var m = state.me || {};
-    return { uid: state.uid, name: m.name || null, phone: m.phone || null, phoneVerified: false, googleName: m.googleName || null, anon: !!m.anon,
+    return { uid: state.uid, name: m.name || null, phone: m.phone || null, phoneVerified: false, googleName: m.googleName || null, anon: !!m.anon, photo: state.uid ? photoOf(state.uid) : null,
              code: m.code || null, findable: m.findable !== false };
   }
   function saveProfile(patch) {
@@ -120,6 +171,18 @@
     var h = document.createElement("div"); h.textContent = L("حسابي", "My account"); h.style.cssText = "font:800 16px system-ui;text-align:center;margin-bottom:4px";
     box.appendChild(h);
     if (typeof hint === "string" && hint) { var hh = document.createElement("div"); hh.textContent = hint; hh.style.cssText = "font:700 13px system-ui;color:#2e7d5b;text-align:center;margin:2px 0 4px"; box.appendChild(hh); }
+    // C25: الصورة — تظهر لجهات اتّصالك في المحادثات والمكالمات
+    var pr = document.createElement("div"); pr.style.cssText = "display:flex;align-items:center;gap:12px;margin:8px 0 2px";
+    var pv = document.createElement("div"); pv.style.cssText = "width:64px;height:64px;border-radius:50%;background:#CFE5F7 center/cover no-repeat;display:flex;align-items:center;justify-content:center;font:800 26px system-ui;color:#1d5f9e;flex-shrink:0;overflow:hidden";
+    var curPhoto = photoOf(state.uid), newPhoto;
+    var paintPv = function () { var d = newPhoto === undefined ? curPhoto : newPhoto; pv.style.backgroundImage = d ? "url(" + d + ")" : "none"; pv.textContent = d ? "" : ((p.name || p.googleName || "؟").charAt(0)); };
+    paintPv();
+    var pb = document.createElement("div"); pb.style.cssText = "display:flex;flex-direction:column;gap:6px;flex:1";
+    var chg = document.createElement("button"); chg.textContent = L("📷 تغيير الصورة", "📷 Change photo"); chg.style.cssText = "padding:9px 12px;border:1.5px solid #2F80C8;border-radius:10px;background:#fff;color:#2F80C8;font:800 13px system-ui";
+    var rmv = document.createElement("button"); rmv.textContent = L("إزالة الصورة", "Remove photo"); rmv.style.cssText = "padding:7px 12px;border:0;border-radius:10px;background:transparent;color:#b42318;font:700 12px system-ui";
+    chg.onclick = function () { pickPhoto().then(function (f) { if (!f) return; return squareThumb(f).then(function (du) { newPhoto = du; paintPv(); }); }).catch(function () { toast(L("تعذّر قراءة الصورة", "Couldn't read the image")); }); };
+    rmv.onclick = function () { newPhoto = null; paintPv(); };
+    pb.appendChild(chg); pb.appendChild(rmv); pr.appendChild(pv); pr.appendChild(pb); box.appendChild(pr);
     box.appendChild(lab(L("اسمك في سوا — يراه من تتواصل معهم", "Your name in Sawa — shown to people you connect with")));
     var nIn = inp(p.name || p.googleName || "", L("مثال: خالد علي", "e.g. Khalid Ali")); box.appendChild(nIn);
     if (p.googleName && p.googleName !== p.name) { var g = document.createElement("div"); g.textContent = L("اسم حساب Google: ", "Google name: ") + p.googleName; g.style.cssText = "font:500 11px system-ui;color:#888;margin:4px 2px 0"; box.appendChild(g); }
@@ -140,10 +203,11 @@
       var patch = {}, nm = nIn.value.replace(/\s+/g, " ").trim(), ph = pIn.value.trim();
       if (nm !== (p.name || "")) patch.name = nm;
       if (ph !== (p.phone || "")) patch.phone = ph;
-      if (!Object.keys(patch).length) { close(); return; }
+      var photoChanged = newPhoto !== undefined && newPhoto !== curPhoto;
+      if (!Object.keys(patch).length && !photoChanged) { close(); return; }
       if (patch.name !== undefined && patch.name.length < 2) { toast(L("اكتب اسماً من حرفين على الأقلّ", "Enter at least 2 letters")); return; }
       ok.disabled = true; ok.textContent = "…";
-      saveProfile(patch).then(function () { toast(L("حُفظ ✓ — يظهر لجهات اتّصالك خلال لحظات", "Saved ✓")); close(); refresh(); })
+      (photoChanged ? setMyPhoto(newPhoto) : Promise.resolve()).then(function () { return Object.keys(patch).length ? saveProfile(patch) : null; }).then(function () { toast(L("حُفظ ✓ — يظهر لجهات اتّصالك خلال لحظات", "Saved ✓")); close(); refresh(); })
         .catch(function (e) { ok.disabled = false; ok.textContent = L("حفظ", "Save"); toast((e && e.message) || String(e)); });
     };
     setTimeout(function () { try { nIn.focus(); } catch (e) {} }, 50);
@@ -807,7 +871,7 @@
     return {
       id: c.cid, cloud: true, kind: c.type, peerUid: other || null,
       name: c.type === "saved" ? L("رسائلي المحفوظة", "Saved messages") : (sec ? "🔒 " : "") + personName(other, c),
-      isSavedMessages: c.type === "saved", secret: sec, e2e: sec ? e2eUi(c) : null,
+      isSavedMessages: c.type === "saved", secret: sec, e2e: sec ? e2eUi(c) : null, photo: other ? photoOf(other) : null,
       lastMessage: lp ? preview(lp.msg) : sec ? secretPreview(c) : preview(l), lastFromMe: lastMine,
       lastStatus: lp ? lp.status : (l && l.by === state.uid ? statusOf(c, l.ts) : null),
       unread: unreadOf(c), updatedAt: lp ? lp.ts : (c.updatedTs || 0), pinnedMessageId: c.pinned || null,
@@ -817,7 +881,7 @@
   function groupOf(c) {
     var admins = c.admins || [], l = c.last;
     var members = (c.members || []).map(function (u) {
-      return { id: appId(u), uid: u, name: u === state.uid ? L("أنت", "You") : personName(u, c), role: admins.indexOf(u) >= 0 ? "admin" : "member" };
+      return { id: appId(u), uid: u, name: u === state.uid ? L("أنت", "You") : personName(u, c), role: admins.indexOf(u) >= 0 ? "admin" : "member", photo: photoOf(u) };
     });
     var pendList = pend[c.cid] || [], lp = pendList[pendList.length - 1];
     var sec = e2eOn(c);
@@ -2445,7 +2509,7 @@
     startMyPresence(uid);
     refresh();
     stopChats(); prefs = null; prefsLoaded = false; pend = {}; virtualChats = {};
-    adminP = null;
+    adminP = null; avWant = {}; avFetching = {};
     plain = {}; decQ = {}; mediaKeys = {}; chatsLoaded = false; missingSince = {}; keyFp = {}; knownSec = null; e2e.reset();   // C23
     e2e.load().then(function () { publishChats(); Object.keys(days).forEach(publishMessages); }, function () { publishChats(); });
     restorePending(); startChats(uid); loadPrefs(); drainOutbox();
@@ -2968,6 +3032,7 @@
     e2eSupported: function () { return e2e.ok(); }, e2eStartDm: e2eStartDm, e2eNewSheet: e2eNewSheet, e2eAct: e2eAct, e2eSafety: e2eSafety,   // C23
     adminCached: adminCached, checkAdmin: checkAdmin,   // C24
     setBlocked: setBlocked,
+    photoOf: photoOf, setMyPhoto: setMyPhoto,   // C25
     e2eCreateDm: e2eCreateDm, e2eCreateGroup: e2eCreateGroup, e2eJoin: e2eJoin, e2eState: function (cid) { return e2eState(chats[cid]); },
     _e2e: e2e, _plain: function () { return plain; },
     onboarding: function () { return onb ? onb.step : null; }, startOnboarding: function () { try { localStorage.removeItem("sawa_onboarded"); } catch (e) {} onbStart(); },

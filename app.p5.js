@@ -146,8 +146,7 @@ function GroupCallOverlay({ groupName, members, callType, onEnd }) {
             var _a;
             const joined = joinedIds.includes(m.id);
             return (React.createElement("div", { key: m.id, className: "rounded-xl flex flex-col items-center justify-center py-4", style: { backgroundColor: "#171B21", opacity: joined ? 1 : 0.4 } },
-                React.createElement("div", { className: "w-12 h-12 rounded-full flex items-center justify-center mb-1.5", style: { backgroundColor: colors.primary } },
-                    React.createElement("span", { className: "text-base font-extrabold text-white" }, (_a = m.name) === null || _a === void 0 ? void 0 : _a.charAt(0))),
+                React.createElement(Pic, { photo: m.photo || null, letter: (_a = m.name) === null || _a === void 0 ? void 0 : _a.charAt(0), size: 48, bg: colors.primary, color: "#fff", className: "mb-1.5" }),
                 React.createElement("span", { className: "text-xs font-bold text-white" }, m.name),
                 React.createElement("span", { className: "text-[10px] mt-0.5", style: { color: joined ? "#5AA9E6" : "#8A93A0" } }, joined ? "متّصل" : "جارٍ الانضمام…")));
         })),
@@ -278,7 +277,7 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
                         React.createElement(UserPlus, { size: 14, color: colors.primary }),
                         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.primary } }, t("gi_idafa")))),
                 group.members.map((m) => React.createElement("div", { key: m.id, className: `flex ${rowStart()} items-center gap-3 px-4 py-2.5` },
-                    React.createElement("div", { className: "w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, (m.name || "?").charAt(0)),
+                    React.createElement(Pic, { photo: m.photo || null, letter: (m.name || "?").charAt(0), size: 40, bg: colors.primaryLight, color: colors.primary }),
                     React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
                         React.createElement("div", { className: "text-sm truncate", style: { color: colors.text } }, m.name),
                         m.role === "admin" && React.createElement("div", { className: "text-[10px] font-bold", style: { color: colors.accent } }, t("gi_mshrf"))),
@@ -918,7 +917,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
             } }));
     }
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col relative" },
-        React.createElement(TopBar, { title: conversation.isSavedMessages ? t("rsayly_almhfwza") : conversation.name, avatar: !conversation.isSavedMessages, subtitle: isTyping ? t("ch_yktb") : (isOnline ? t("ch_mtsl_alan") : null), onBack: onBack, actions: React.createElement("div", { className: "flex flex-row items-center gap-3" },
+        React.createElement(TopBar, { title: conversation.isSavedMessages ? t("rsayly_almhfwza") : conversation.name, avatar: !conversation.isSavedMessages, photo: conversation.photo || null, subtitle: isTyping ? t("ch_yktb") : (isOnline ? t("ch_mtsl_alan") : null), onBack: onBack, actions: React.createElement("div", { className: "flex flex-row items-center gap-3" },
                 React.createElement("button", { "aria-label": t("bhth"), onClick: () => setShowSearch(!showSearch) },
                     React.createElement(Search, { size: 18, color: "#fff" })),
                 !conversation.isSavedMessages && (React.createElement("button", { "aria-label": t("atsal"), onClick: () => setShowCallChoice(!showCallChoice) },
@@ -1644,7 +1643,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                     React.createElement(Send, { size: 9, style: { transform: "scaleX(-1)" } }),
                     t("rsala_mwjha"))),
                 !mine && React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-0.5` },
-                    React.createElement(SenderAvatar, { name: (sender && sender.name) || t("gc_swal"), size: 20 }),
+                    React.createElement(SenderAvatar, { name: (sender && sender.name) || t("gc_swal"), size: 20, photo: sender && sender.photo }),
                     React.createElement("span", { className: "text-[10px] font-bold", style: { color: senderColor((sender && sender.name) || t("gc_swal")) } }, sender === null || sender === void 0 ? void 0 : sender.name)),
                 m.replyToText && React.createElement("div", { className: "max-w-[78%] text-[10px] px-2 py-1 mb-0.5 rounded-lg border-r-2 truncate", style: { backgroundColor: colors.card, borderColor: colors.accent, color: colors.textMuted } }, "↩ " + m.replyToText),
                 React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["image", "video"].includes(m.type) ? "" : "px-3 py-2"}`, style: { backgroundColor: ["image", "video"].includes(m.type) ? "transparent" : mine ? colors.primary : colors.card, borderColor: ["image", "video"].includes(m.type) ? "transparent" : colors.border, cursor: "pointer" }, onContextMenu: (e) => { e.preventDefault(); setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "" }); }, onTouchStart: (e) => { const t0 = Date.now(); const el = e.currentTarget; const onEnd = () => { if (Date.now() - t0 > 500) { setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "" }); } el.removeEventListener("touchend", onEnd); }; el.addEventListener("touchend", onEnd); } }, m.type === "image" ? (React.createElement("button", { onClick: () => setViewingImage(m.fileUrl), className: "block -m-1" }, m.fileUrl ? React.createElement("img", { src: m.fileUrl, alt: m.text, className: "rounded-xl max-h-56 w-full object-cover", style: { minWidth: 160 } }) : React.createElement(MediaUnavailable, { label: t("swra") }))) : m.type === "video" ? (React.createElement("video", { src: m.fileUrl, controls: true, className: "rounded-xl max-h-56 w-full", style: { minWidth: 200 } })) : m.type === "file" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2`, onClick: () => { if (m.cloudMid && window.SawaChat) window.SawaChat.openFile(m); }, style: { cursor: m.cloudMid ? "pointer" : "default" } },

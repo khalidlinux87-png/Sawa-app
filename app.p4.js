@@ -1744,8 +1744,9 @@ function ConversationsListScreen({ onOpenScheduledRooms, chatDrafts = {}, conver
                                         backgroundColor: c.isSavedMessages ? colors.accent : colors.primaryLight,
                                         outline: overdue ? `2px solid #ef4444` : matchedPerson ? `2px solid ${colors.accent}` : "none",
                                         outlineOffset: 1,
+                                        backgroundImage: !c.isSavedMessages && c.photo ? `url(${c.photo})` : "none", backgroundSize: "cover", backgroundPosition: "center",
                                     } },
-                                    c.isSavedMessages ? React.createElement(Bookmark, { size: 19, color: "#fff", fill: "#fff" }) : React.createElement(User, { size: 20, color: colors.primaryDark }),
+                                    c.isSavedMessages ? React.createElement(Bookmark, { size: 19, color: "#fff", fill: "#fff" }) : c.photo ? null : React.createElement(User, { size: 20, color: colors.primaryDark }),
                                     !c.isSavedMessages && onlineContacts.includes(c.name) && (React.createElement("span", { className: "absolute bottom-0 left-0 w-3 h-3 rounded-full border-2", style: { backgroundColor: "#22C55E", borderColor: colors.card } })),
                                     overdue && (React.createElement("span", { className: "absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px]", style: { backgroundColor: "#ef4444", color: "#fff", border: `2px solid ${colors.card}` } }, "!")),
                                     matchedPerson && !overdue && (React.createElement("span", { className: "absolute -top-1 -right-1 text-[10px]" }, "\uD83E\uDD0D"))));
@@ -1921,8 +1922,9 @@ function senderColor(name) {
     for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0;
     return SENDER_COLORS[h % SENDER_COLORS.length];
 }
-function SenderAvatar({ name, size }) {
+function SenderAvatar({ name, size, photo }) {
     const s = size || 26;
+    if (photo) return React.createElement("div", { className: "rounded-full shrink-0", style: { width: s, height: s, backgroundImage: `url(${photo})`, backgroundSize: "cover", backgroundPosition: "center" } });
     return React.createElement("div", {
         className: "rounded-full flex items-center justify-center shrink-0 font-extrabold",
         style: { width: s, height: s, backgroundColor: senderColor(name), color: "#fff", fontSize: Math.round(s * 0.42) },
