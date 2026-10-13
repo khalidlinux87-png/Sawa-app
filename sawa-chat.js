@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c32";
+  var VERSION = "c39";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -36,6 +36,44 @@
   //       «مستخدم سوا +249 9X…» ثوانيَ فتبدو نسخةً قديمة). onUid يتحقّق من الهويّة ويمسحها إن اختلفت.
   (function () { var c = lsGet("sawa_people_cache", null); if (c && c.uid && c.me) { state.me = c.me; state.people = c.people || []; state.cachedUid = c.uid; } })();
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  // C39: تثبيت التطبيق على الشاشة الرئيسيّة — نلتقط beforeinstallprompt (Chrome/Edge/Samsung على أندرويد) ونحتفظ به لزرّ «تثبيت»
+  var instPrompt = null;
+  try {
+    global.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); instPrompt = e; try { global.dispatchEvent(new CustomEvent("sawa-install-state")); } catch (x) {} });
+    global.addEventListener("appinstalled", function () { instPrompt = null; lsSet("sawa_installed", Date.now()); try { global.dispatchEvent(new CustomEvent("sawa-install-state")); } catch (x) {} });
+  } catch (e) {}
+  function isStandalone() {
+    try { if (global.matchMedia && global.matchMedia("(display-mode: standalone)").matches) return true; } catch (e) {}
+    try { if (global.navigator.standalone === true) return true; } catch (e) {}
+    try { if (String(document.referrer || "").indexOf("android-app://") === 0) return true; } catch (e) {}
+    return false;
+  }
+  // installed · ios-safari · ios-other · android-prompt · android-manual · desktop
+  function installState() {
+    if (isStandalone()) return "installed";
+    var ua = ""; try { ua = navigator.userAgent || ""; } catch (e) {}
+    var ios = /iPhone|iPad|iPod/.test(ua); try { if (!ios && navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ios = true; } catch (e) {}
+    if (ios) return (/Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo|GSA/.test(ua)) ? "ios-safari" : "ios-other";
+    if (!/Android/.test(ua)) return "desktop";
+    return instPrompt ? "android-prompt" : "android-manual";
+  }
+  function installable() { var st = installState(); return st !== "installed" && st !== "desktop"; }
+  function installNow() {   // أندرويد مع prompt: يفتح مربّع التثبيت الأصليّ
+    var e = instPrompt; if (!e) return Promise.resolve("none");
+    try { e.prompt(); } catch (x) { return Promise.resolve("none"); }
+    return (e.userChoice || Promise.resolve({ outcome: "dismissed" })).then(function (r) { var out = r && r.outcome === "accepted" ? "accepted" : "dismissed"; if (out === "accepted") { instPrompt = null; lsSet("sawa_installed", Date.now()); } return out; }).catch(function () { return "dismissed"; });
+  }
+  // خطوات التثبيت اليدويّ لكلّ منصّة
+  function installSteps(st) {
+    if (st === "ios-safari" || st === "ios-other") return [
+      ["share", L("اضغط زرّ المشاركة في شريط Safari السفليّ", "Tap the Share button in Safari's bottom bar")],
+      ["plus", L("مرّر في القائمة واختر «إضافة إلى الشاشة الرئيسية»", "Scroll and choose “Add to Home Screen”")],
+      ["check", L("اضغط «إضافة» في أعلى الشاشة", "Tap “Add” at the top")]];
+    return [
+      ["menu", L("اضغط القائمة ⋮ في أعلى المتصفّح", "Tap the ⋮ menu at the top of the browser")],
+      ["plus", L("اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية»", "Choose “Install app” or “Add to Home screen”")],
+      ["check", L("اضغط «تثبيت»", "Tap “Install”")]];
+  }
 
   // ---------- ربط التطبيق ----------
   function bindApp(fns) {
@@ -153,6 +191,8 @@
   function saveProfile(patch) {
     return call("profile.set", patch).then(function (b) {
       state.me = Object.assign({}, state.me || {}, { name: b.profile.name, phone: b.profile.phone });
+      // C35: اسم سوا يُكتب في حساب Firebase أيضاً (للمربوط بـGoogle أو البريد) فلا يختلف الاسمان
+      if ("name" in patch && b.profile.name) { try { if (S() && S().syncAuthName) S().syncAuthName(b.profile.name); } catch (e) {} }
       lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
       publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {}
       return profile();
@@ -2071,7 +2111,8 @@
   // ---------- شاشات البداية (المستخدم الجديد) ----------
   //  ترحيب ← الدخول (Google · البريد · بدون حساب) ← الاسم ← رمزك ← الإشعارات ← تواصل مع أحد ← المحادثات
   var onb = null, pendingCode = null, pendingDelete = false, onbDeleteMode = false;
-  var ONB_STEPS = ["login", "name", "code", "notify", "find"];
+  var ONB_BASE = ["login", "name", "code", "notify", "find"];
+  function onbSteps() { return installable() ? ["login", "name", "code", "notify", "install", "find"] : ONB_BASE; }
   function onbActive() { return !!onb; }
   function onbNeeded() {
     if (lsGet("sawa_onboarded", 0)) return false;
@@ -2100,7 +2141,13 @@
     check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
     send: '<path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/>',
     cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 8.5a4.5 4.5 0 0 1-.5 9.5H7z"/>',
-    devices: '<rect x="2" y="5" width="13" height="10" rx="2"/><path d="M5 19h7"/><rect x="17" y="8" width="5" height="11" rx="1.5"/>'
+    devices: '<rect x="2" y="5" width="13" height="10" rx="2"/><path d="M5 19h7"/><rect x="17" y="8" width="5" height="11" rx="1.5"/>',
+    share: '<path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>',
+    plus: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/>',
+    menu: '<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>',
+    check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+    download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
+    home: '<path d="m3 11 9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>'
   };
   var ONB_G = '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
   var ONB_CSS = [
@@ -2192,6 +2239,18 @@
     "#sawa-onb .ob-opt .ob-txt{flex:1}",
     "#sawa-onb .ob-opt .ob-fwd svg{width:18px;height:18px;opacity:.7}",
     "#sawa-onb .ob-opts{display:flex;flex-direction:column;gap:10px;width:100%;margin-top:24px}",
+    "#sawa-onb .ob-steps,.sawa-inst .ob-steps{display:flex;flex-direction:column;gap:10px;width:100%;max-width:360px;margin:20px auto 0;text-align:start}",
+    "#sawa-onb .ob-step{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);animation:ob-in .5s both}",
+    "#sawa-onb .ob-step:nth-child(2){animation-delay:.08s}#sawa-onb .ob-step:nth-child(3){animation-delay:.16s}",
+    "#sawa-onb .ob-step .ob-num,.sawa-inst .ob-num{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:800 13px system-ui;background:#fff;color:#1d5fa0}",
+    "#sawa-onb .ob-step .ob-fi{flex:none;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:rgba(255,255,255,.16)}",
+    "#sawa-onb .ob-step .ob-fi svg,.sawa-inst .ob-step .ob-fi svg{width:20px;height:20px}",
+    "#sawa-onb .ob-step span:last-child{font:600 13.5px/1.5 system-ui}",
+    "#sawa-onb .ob-home{display:flex;align-items:center;gap:14px;margin-top:22px;padding:12px 16px;border-radius:22px;background:rgba(255,255,255,.94);color:#1A1A2E;box-shadow:0 20px 40px -16px rgba(3,20,45,.7);animation:ob-drop .7s cubic-bezier(.2,.9,.25,1.2) .3s both}",
+    "#sawa-onb .ob-home img{width:52px;height:52px;border-radius:14px;flex:none;box-shadow:0 4px 10px rgba(0,0,0,.18)}",
+    "#sawa-onb .ob-home b{display:block;font:800 14px system-ui}#sawa-onb .ob-home small{display:block;font:500 12px system-ui;color:#5b6775;margin-top:2px}",
+    ".sawa-inst .ob-step{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:16px;background:#f1f5f9;color:#1f2937;font:600 13.5px/1.5 system-ui}",
+    ".sawa-inst .ob-step .ob-fi{flex:none;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:#dbeafe;color:#1d5fa0}",
     "@keyframes ob-in{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}",
     "@keyframes ob-fill{from{width:0}to{width:100%}}",
     "@keyframes ob-float{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(24px,30px) scale(1.12)}}",
@@ -2224,14 +2283,15 @@
     if (step === "name") { var a = authNow(); return a && !a.anon ? null : "login"; }
     if (step === "code") return "name";
     if (step === "notify") return "code";
-    if (step === "find") return pushState() === "default" ? "notify" : "code";
+    if (step === "install") return pushState() === "default" ? "notify" : "code";
+    if (step === "find") return installable() ? "install" : pushState() === "default" ? "notify" : "code";
     return null;
   }
   function onbFrame(step) {
     var el = onb.el; el.innerHTML = "";
     if (onb.timer) { clearInterval(onb.timer); onb.timer = null; }
     var bg = oc("div", "ob-bg"); ["ob-b1", "ob-b2", "ob-b3"].forEach(function (c) { bg.appendChild(oc("div", "ob-blob " + c)); }); el.appendChild(bg);
-    var i = ONB_STEPS.indexOf(step === "email" ? "login" : step);
+    var ONB_STEPS = onbSteps(), i = ONB_STEPS.indexOf(step === "email" ? "login" : step);
     var top = oc("div", "ob-top");
     if (i >= 0) {
       var prev = onbBackOf(step);
@@ -2422,8 +2482,13 @@
       var on = bigBtn(L("تفعيل الإشعارات", "Turn on notifications"), "white", "bell");
       var later = bigBtn(L("ليس الآن", "Not now"), "link");
       ft.appendChild(on); ft.appendChild(later);
-      on.onclick = function () { on.disabled = true; enablePush().then(function () { onbGo("find"); }); };
-      later.onclick = function () { lsSet("sawa_push_asked", Date.now()); onbGo("find"); };
+      on.onclick = function () { on.disabled = true; enablePush().then(function () { onbGo("install"); }); };
+      later.onclick = function () { lsSet("sawa_push_asked", Date.now()); onbGo("install"); };
+      return;
+    }
+    if (step === "install") {
+      if (!installable()) return onbGo("find");
+      installBody(b, ft, function () { onbGo("find"); }, true);
       return;
     }
     if (step === "find") {
@@ -2442,6 +2507,61 @@
       return;
     }
     onbGo("welcome");
+  }
+  // C39: محتوى شاشة التثبيت — onb=true داخل شاشات البداية (زجاجيّ)، وإلّا ورقة بيضاء
+  function installBody(b, ft, onNext, inOnb) {
+    var st = installState();
+    if (inOnb) b.appendChild(oTile("download"));
+    b.appendChild(hTitle(L("ثبّت سوا على هاتفك", "Install Sawa on your phone")));
+    b.appendChild(hSub(st === "ios-other"
+      ? L("على آيفون يُثبَّت من متصفّح Safari فقط. انسخ الرابط وافتحه في Safari ثمّ اتبع الخطوات.", "On iPhone, installing works only from Safari. Copy the link, open it in Safari, then follow the steps.")
+      : L("يصير سوا تطبيقاً بشعاره على الشاشة الرئيسيّة: يفتح بلا شريط عنوان، وتصلك المكالمات والرسائل أسرع.", "Sawa becomes an app with its icon on your home screen: no address bar, and calls and messages reach you faster.")));
+    var hm = oc("div", "ob-home"); var hi = mk("img"); hi.src = "./icons/icon-192.png"; hi.alt = ""; hm.appendChild(hi);
+    var ht = mk("div"); ht.appendChild(mk("b", "", L("سوا", "Sawa"))); ht.appendChild(mk("small", "", L("على الشاشة الرئيسيّة", "On your home screen"))); hm.appendChild(ht);
+    if (inOnb) b.appendChild(hm);
+    if (st !== "android-prompt") {
+      var ul = oc("div", "ob-steps");
+      installSteps(st).forEach(function (x, k) {
+        var r = oc("div", "ob-step"); r.appendChild(oc("span", "ob-num", arNum(k + 1)));
+        var fi = oc("span", "ob-fi"); fi.appendChild(oi(x[0])); r.appendChild(fi);
+        r.appendChild(mk("span", "", x[1])); ul.appendChild(r);
+      });
+      b.appendChild(ul);
+    }
+    var main;
+    if (st === "android-prompt") {
+      main = bigBtn(L("تثبيت التطبيق", "Install app"), "white", "download");
+      main.onclick = function () { main.disabled = true; installNow().then(function (r) { main.disabled = false; if (r === "accepted") { toast(L("تمّ التثبيت ✓ — افتح سوا من الشاشة الرئيسيّة", "Installed ✓ — open Sawa from your home screen")); onNext(); } else if (r === "none") { onbInstallRefresh(b, ft, onNext, inOnb); } }); };
+      ft.appendChild(main);
+    } else if (st === "ios-other") {
+      main = bigBtn(L("نسخ الرابط", "Copy link"), "white", "copy");
+      main.onclick = function () { copyText(global.location.origin + "/"); toast(L("نُسخ الرابط — افتحه في Safari", "Link copied — open it in Safari")); };
+      ft.appendChild(main);
+    }
+    var later = bigBtn(inOnb ? L(st === "android-prompt" ? "ليس الآن" : "فهمت، تابع", st === "android-prompt" ? "Not now" : "Got it, continue") : L("إغلاق", "Close"), inOnb ? "link" : "white");
+    later.onclick = function () { lsSet("sawa_install_skip", Date.now()); onNext(); };
+    ft.appendChild(later);
+    // إن وصل beforeinstallprompt بعد رسم الشاشة (أندرويد) نُعيد الرسم بزرّ التثبيت
+    var re = function () { global.removeEventListener("sawa-install-state", re); if (document.body.contains(b)) onbInstallRefresh(b, ft, onNext, inOnb); };
+    global.addEventListener("sawa-install-state", re);
+  }
+  function onbInstallRefresh(b, ft, onNext, inOnb) { b.innerHTML = ""; ft.innerHTML = ""; installBody(b, ft, onNext, inOnb); }
+  // ورقة التثبيت من الإعدادات (للمستخدم القديم الذي يفتح من المتصفّح)
+  function installSheet() {
+    if (!installable()) { toast(installState() === "installed" ? L("سوا مثبَّتٌ على هاتفك ✓", "Sawa is already installed ✓") : L("التثبيت متاحٌ من هاتفك المحمول", "Install from your phone")); return; }
+    onbCss();
+    var ov = document.createElement("div");
+    ov.style.cssText = "position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center";
+    var box = document.createElement("div"); box.className = "sawa-inst"; box.dir = isAr() ? "rtl" : "ltr";
+    box.style.cssText = "background:#fff;color:#1f2937;border-radius:22px 22px 0 0;padding:14px 18px calc(16px + env(safe-area-inset-bottom,0px));width:100%;max-width:520px;max-height:88%;overflow-y:auto;font:500 14px/1.7 system-ui;text-align:center";
+    box.appendChild(mk("div", "width:42px;height:5px;border-radius:3px;background:#e2e8f0;margin:0 auto 10px"));
+    var body = mk("div"), foot = mk("div", "display:flex;flex-direction:column;gap:8px;margin-top:16px");
+    var close = function () { try { ov.remove(); } catch (e) {} };
+    installBody(body, foot, close, false);
+    try { body.querySelector(".ob-h").style.cssText = "font:800 18px system-ui;color:#0f172a"; body.querySelector(".ob-p").style.cssText = "font:500 13.5px/1.7 system-ui;color:#475569;margin-top:6px"; } catch (e) {}
+    foot.querySelectorAll("button").forEach(function (bt, k) { bt.style.cssText = "border:0;border-radius:14px;padding:13px;font:800 14px system-ui;display:flex;align-items:center;justify-content:center;gap:8px;" + (k === 0 && foot.children.length > 1 ? "background:#2F80C8;color:#fff" : "background:#f1f5f9;color:#1f2937"); });
+    ov.onclick = function (e) { if (e.target === ov) close(); };
+    box.appendChild(body); box.appendChild(foot); ov.appendChild(box); document.body.appendChild(ov);
   }
   function onbDone() {
     if (!onb) return;
@@ -3059,6 +3179,7 @@
     photoOf: photoOf, setMyPhoto: setMyPhoto,   // C25
     e2eCreateDm: e2eCreateDm, e2eCreateGroup: e2eCreateGroup, e2eJoin: e2eJoin, e2eState: function (cid) { return e2eState(chats[cid]); },
     _e2e: e2e, _plain: function () { return plain; },
+    installState: installState, installable: installable, installSheet: installSheet, installNow: installNow,
     onboarding: function () { return onb ? onb.step : null; }, startOnboarding: function () { try { localStorage.removeItem("sawa_onboarded"); } catch (e) {} onbStart(); },
     _state: state, _onUid: onUid, _tokenFrom: tokenFrom
   };

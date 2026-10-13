@@ -872,6 +872,8 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
             { key: "mycode", label: tl("رمزي في سوا", "My Sawa code"), icon: QrCode, onPress: () => SCm.codeSheet(), color: "#2F80C8" },
             { key: "requests", label: tl("طلبات التواصل", "Contact requests") + (reqCount ? " (" + reqCount + ")" : ""), icon: UserPlus, onPress: () => SCm.requestsSheet(), color: reqCount ? "#E11D48" : "#2F80C8" },
         ] : []),
+        // C39: تثبيت التطبيق على الشاشة الرئيسيّة — يظهر فقط حين يُفتح سوا من المتصفّح على هاتف
+        ...(SCm && SCm.installable && SCm.installable() ? [{ key: "install", label: tl("ثبّت سوا على هاتفك", "Install Sawa on your phone"), icon: Download, onPress: () => SCm.installSheet(), color: "#2F80C8" }] : []),
         { key: "feedback", label: t("me_arsl_mlahza"), icon: Send, onPress: onOpenFeedback, color: "#10B981" },
         { key: "settings", label: t("me_iadadat_almlf"), icon: MoreHorizontal, onPress: onOpenSettings },
         { key: "notifications", label: RELEASE_UI ? tl("التذكيرات", "Reminders") : t("me_mrkz_altnbyhat"), icon: BellIcon, onPress: onOpenNotifications },
