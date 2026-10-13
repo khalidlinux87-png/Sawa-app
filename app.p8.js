@@ -1996,6 +1996,10 @@ function AppInner() {
     const [starredMessages, setStarredMessages] = useState([]);
     const [typingConversations, setTypingConversations] = useState([]);
     const [callLog, setCallLog] = usePersistedState("callLog", initialCallLog);
+    // C27: شارة «فائتة» على تبويب المكالمات تُحسب منذ آخر فتحٍ للتبويب (كانت تبقى ما دام في السجلّ مكالمةٌ فائتة)
+    const [missedSeenAt, setMissedSeenAt] = usePersistedState("missedSeenAt", 0, 50);
+    const missedNew = callLog.filter((c) => c.type === "missed" && (c.timestamp || 0) > (missedSeenAt || 0)).length;
+    useEffect(() => { if (tab === "calls") setMissedSeenAt(Date.now()); }, [tab, callLog.length]);
     const [favoriteContacts, setFavoriteContacts] = useState([]);
     const [callSettings, setCallSettings] = useState({ requireApproval: false, defaultScheduleType: "audio" });
     const [speedDialContacts, setSpeedDialContacts] = useState([]);
@@ -3637,7 +3641,7 @@ function AppInner() {
                         setChatsStack([]); }, className: "flex-1 flex flex-col items-center py-3 relative" },
                     React.createElement("div", { className: "relative" },
                         React.createElement(Icon, { size: 26, color: active ? colors.primary : colors.textMuted }),
-                        tabItem.key === "calls" && callLog.filter((c) => c.type === "missed").length > 0 && (React.createElement("span", { className: "absolute -top-1.5 -left-2 min-w-[14px] h-3.5 px-0.5 rounded-full flex items-center justify-center text-[8px] font-bold text-white", style: { backgroundColor: colors.danger } }, callLog.filter((c) => c.type === "missed").length))),
+                        tabItem.key === "calls" && missedNew > 0 && (React.createElement("span", { className: "absolute -top-1.5 -left-2 min-w-[14px] h-3.5 px-0.5 rounded-full flex items-center justify-center text-[8px] font-bold text-white", style: { backgroundColor: colors.danger } }, missedNew))),
                     React.createElement("span", { className: "text-[12px] mt-1 whitespace-nowrap leading-tight", style: { color: active ? colors.primary : colors.textMuted, fontWeight: active ? 800 : 600 } }, t(IS_RAHIM && tabItem.key === "discover" ? "sla_alrhm" : tabItem.labelKey)),
                     active && React.createElement("div", { className: "w-1.5 h-1.5 rounded-full mt-0.5", style: { backgroundColor: colors.primary } })));
             }))))),

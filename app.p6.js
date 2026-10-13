@@ -341,8 +341,9 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
                 const Icon = callTypeIcons[c.type];
                 const arrowColor = c.type === "outgoing" ? "#22C55E" : "#E53935";
                 return (React.createElement("div", { key: c.id, className: "flex flex-row items-center px-4 py-2.5 border-b", style: { borderColor: "#EFEFEF" } },
-                    React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${me("3")} shrink-0`, style: { backgroundColor: colors.primaryLight } },
-                        React.createElement(User, { size: 19, color: colors.primaryDark })),
+                    (() => { const ph = c.peerUid && window.SawaChat && window.SawaChat.photoOf ? window.SawaChat.photoOf(c.peerUid) : null;
+                        return React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${me("3")} shrink-0`, style: { backgroundColor: colors.primaryLight, backgroundImage: ph ? `url(${ph})` : "none", backgroundSize: "cover", backgroundPosition: "center" } },
+                            ph ? null : c.room || c.cid ? React.createElement(Users, { size: 19, color: colors.primaryDark }) : React.createElement(User, { size: 19, color: colors.primaryDark })); })(),
                     React.createElement("div", { className: "flex-1 min-w-0" },
                         React.createElement("div", { className: "text-[15px]", style: { color: c.type === "missed" ? "#E53935" : colors.text, fontWeight: 500 } },
                             c.name,
