@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c30";
+  var VERSION = "c38";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -1329,6 +1329,7 @@
   //  شبكة مباشرة ≤ ٨ أشخاص و≤ ٤ كاميرات (حتّى SFU). الصوت والصورة قناتان ثابتتان من البداية ⇒ تشغيل الكاميرا بلا إعادة تفاوض.
   // ============================================================
   var ROOM_MAX = 8, ROOM_CAMS = 4, HOST_GRACE = global.__sawaRoomGraceMs || 12000;
+  function rMax(r) { var m = r && r.meta && Number(r.meta.max); return m >= 2 && m <= ROOM_MAX ? m : ROOM_MAX; }   // C38: حدّ المضيف
   var rm = null, rui = { root: null };
   var CODE_CH = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   function newCode() { var r = new Uint8Array(8), s = ""; try { global.crypto.getRandomValues(r); } catch (e) { for (var i = 0; i < 8; i++) r[i] = Math.random() * 256; } for (var j = 0; j < 8; j++) s += CODE_CH[r[j] % 32]; return s; }
@@ -1392,12 +1393,38 @@
       rListen(r, rRef(r, "kick/" + me), "value", function (s) { if (s.val() === true && !r.done) rLeave(r, "kicked"); });
       if (!host && !admitted && r.meta.locked) throw Object.assign(new Error("locked"), { ui: L("الغرفة مقفلة — اطلب من المضيف فتحها", "The room is locked") });
       if (!host && !admitted && r.meta.lobby && r.meta.owner !== me) { rWait(r); return; }
-      return rMedia(r).then(function () { if (!r.done) rEnter(r); });
+      // C38: رمز دخول (يسأل عنه قبل الميكروفون؛ القواعد تتحقّق منه عند الكتابة)
+      var pinStep = (!host && !admitted && r.meta.owner !== me && r.meta.pinOn) ? rAskPin(r) : Promise.resolve();
+      return pinStep.then(function () { return rMedia(r); }).then(function () { if (!r.done) rEnter(r); });
     }).catch(function (e) {
       log("room", e && (e.name || e.message), e && e.message);
       rLeave(r, "error", { text: (e && e.ui) || mediaError(e) || L("تعذّر دخول الغرفة", "Couldn't join the room") });
     });
     return true;
+  }
+  function rAskPin(r) {
+    return new Promise(function (resolve, reject) {
+      var closed = false;
+      var close = sheet(L("رمز الدخول", "Room PIN"), function (body, cl) {
+        body.appendChild(el("div", "padding:0 16px 8px;color:" + MUTED + ";font:600 12px system-ui;text-align:center", L("هذه الغرفة محميّة برمزٍ من المضيف", "This room is protected by a PIN from the host")));
+        var inp = el("input", "display:block;margin:4px 16px 10px;width:calc(100% - 32px);box-sizing:border-box;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:12px;padding:11px;font:800 20px system-ui;letter-spacing:6px;text-align:center;direction:ltr");
+        inp.placeholder = "••••"; inp.inputMode = "numeric"; inp.maxLength = 6;
+        body.appendChild(inp);
+        var go = el("button", "margin:0 16px 6px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px system-ui", L("دخول", "Enter"));
+        go.onclick = function () {
+          var v = String(inp.value || "").replace(/\D/g, "");
+          if (v.length < 4) { toast(L("الرمز ٤ إلى ٦ أرقام", "PIN is 4–6 digits")); return; }
+          r.pinTried = true;
+          rRef(r, "pins/" + myUid()).set(v).then(function () { closed = true; cl(); resolve(); }).catch(function () { toast(L("تعذّر إرسال الرمز", "Couldn't send PIN")); });
+        };
+        inp.onkeydown = function (e) { if (e.key === "Enter") go.onclick(); };
+        body.appendChild(go);
+        setTimeout(function () { try { inp.focus(); } catch (e) {} }, 60);
+      });
+      // إغلاق الورقة بلا رمز = إلغاء الدخول
+      var ov = close.ov;
+      var check = setInterval(function () { if (closed || r.done) { clearInterval(check); return; } if (ov && !ov.isConnected) { clearInterval(check); reject(Object.assign(new Error("nopin"), { ui: L("لم تدخل رمز الغرفة", "No PIN entered") })); } }, 300);
+    });
   }
   function rMedia(r) {
     return getMedia("audio").then(function (st) {
@@ -1433,33 +1460,46 @@
     }).then(function (s) {
       if (!s || r.done) return;
       var m = s.val() || {};
-      if (Object.keys(m).length > ROOM_MAX) { rLeave(r, "full"); return; }
+      if (Object.keys(m).length > rMax(r)) { rLeave(r, "full", { text: L("الغرفة ممتلئة (الحدّ " + rMax(r) + ")", "The room is full (limit " + rMax(r) + ")") }); return; }
       r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); });
       if (!r.tick) r.tick = setInterval(function () { rTick(r); }, 1000);
       var first = true;
+      // C38: حالة الشبكة — انقطاعٌ ثمّ عودة ⇒ نعيد التفاوض مع من لم يتّصل، ونتحقّق من عضويّتنا
+      r.onOnline = function () { if (r.done || !r.live) return; toast(L("عاد الإنترنت — جارٍ استئناف الغرفة…", "Back online — resuming…")); rRef(r, "members/" + me).once("value").then(function (s) { if (r.done) return; if (!s.val()) rRejoin(r); else Object.keys(r.peers).forEach(function (u) { var p = r.peers[u]; if (p.state !== "connected" && p.offerer) rNegotiate(r, p, true); }); }).catch(function () {}); };
+      r.onOffline = function () { if (r.done || !r.live) return; r.state = "reconnecting"; rPaint(r); };
+      try { global.addEventListener("online", r.onOnline); global.addEventListener("offline", r.onOffline); r.offs.push(function () { global.removeEventListener("online", r.onOnline); global.removeEventListener("offline", r.onOffline); }); } catch (e) {}
+      try { var ci = db().ref(".info/connected"), seenC = false; var ch = ci.on("value", function (s) { var v = !!s.val(); if (v && seenC && !r.done && r.live) r.onOnline(); else if (!v && seenC && !r.done && r.live) r.onOffline(); if (v) seenC = true; }); r.offs.push(function () { try { ci.off("value", ch); } catch (e) {} }); } catch (e) {}
       rListen(r, mine, "child_added", function (x) { onRSig(r, x.val() || {}); });
-      rListen(r, rRef(r, "members"), "value", function (x) {
-        var mm = x.val() || {};
-        if (first) {   // الوافد الجديد يعرض على من سبقه (بحسب ts الخادم)
-          first = false;
-          var mt = mm[me] && mm[me].ts;
-          Object.keys(mm).forEach(function (u) {
-            if (u === me || !mm[u] || !mm[u].sess) return;
-            if (!mt || mm[u].ts < mt || (mm[u].ts === mt && u < me)) rOffer(r, u, mm[u].sess);
-          });
-        }
-        onRMembers(r, mm);
-      });
-      var joinTs = Date.now() - 5000;
-      rListen(r, rRef(r, "chat"), "child_added", function (x) { onRChat(r, x.key, x.val() || {}); });
-      rListen(r, rRef(r, "rx"), "child_added", function (x) { var v = x.val() || {}; if ((v.ts || 0) > joinTs + (srvOffset || 0) - 10000) rFloat(v.e); });
+      rWatchMembership(r, true);
       rListen(r, rRef(r, "ctl/" + me), "value", function (x) { onRCtl(r, x.val() || {}); });
       rWatchReqs(r);
       rLevelsStart(r);
     }).catch(function (e) {
       log("renter", e && e.message);
-      rLeave(r, "error", { text: L("تعذّر دخول الغرفة", "Couldn't join the room") });
+      var denied = /PERMISSION_DENIED/i.test(String(e && (e.code || e.message)));
+      rLeave(r, "error", { text: denied && r.pinTried ? L("رمز الدخول غير صحيح", "Wrong PIN") : denied ? L("الغرفة مقفلة أو تحتاج موافقة المضيف", "The room is locked or needs host approval") : L("تعذّر دخول الغرفة", "Couldn't join the room") });
     });
+  }
+  // C38: مستمعو العضويّة (members/chat/rx تتطلّب أن أكون عضواً): حين تسقط عضويّتي يلغيها الخادم (permission_denied)
+  //      ⇒ هذا هو مؤشّر الانقطاع الحقيقيّ، فنعود بـrRejoin ثمّ نعيد الاستماع
+  function rWatchMembership(r, firstTime) {
+    var me = myUid(), first = !!firstTime;
+    var cancel = function () { if (r.done || !r.live) return; log("members listener cancelled → rejoin"); rRejoin(r); };
+    rListen(r, rRef(r, "members"), "value", function (x) {
+      var mm = x.val() || {};
+      if (first) {   // الوافد الجديد يعرض على من سبقه (بحسب ts الخادم)
+        first = false;
+        var mt = mm[me] && mm[me].ts;
+        Object.keys(mm).forEach(function (u) {
+          if (u === me || !mm[u] || !mm[u].sess) return;
+          if (!mt || mm[u].ts < mt || (mm[u].ts === mt && u < me)) rOffer(r, u, mm[u].sess);
+        });
+      }
+      onRMembers(r, mm);
+    }, cancel);
+    var joinTs = Date.now() - 5000;
+    rListen(r, rRef(r, "chat"), "child_added", function (x) { onRChat(r, x.key, x.val() || {}); });
+    rListen(r, rRef(r, "rx"), "child_added", function (x) { var v = x.val() || {}; if ((v.ts || 0) > joinTs + (srvOffset || 0) - 10000) rFloat(v.e); });
   }
   function rWatchReqs(r) {
     if (r.reqOff) { r.reqOff(); r.reqOff = null; }
@@ -1472,15 +1512,42 @@
     if (r.done) return;
     if (!m) { if (r.live) rLeave(r, "ended"); return; }
     var wasHost = amHost(r);
+    var wasAO = !!(r.meta && r.meta.audioOnly);
     r.meta = m; r.title = m.title || r.title;
     if (m.ended) { rLeave(r, "ended"); return; }
     if (wasHost !== amHost(r)) { rWatchReqs(r); if (amHost(r)) toast(L("صرتَ مضيف الغرفة", "You're now the host")); }
+    // C38: المضيف جعلها صوتيّةً فقط ⇒ كاميرات المشاركين تُطفأ
+    if (m.audioOnly && !wasAO && !amHost(r)) { if (r.camOn) rToggleCam(r); toast(L("المضيف جعل الغرفة صوتيّةً فقط", "The host made this room audio-only")); }
     rPaint(r);
+  }
+  // C38: عضويّتي اختفت وأنا حيّ: إمّا أخرجني المضيف (kick/me = true) أو سقطت الشبكة فحذفها onDisconnect ⇒ أعود بجلسةٍ جديدة
+  function rRejoin(r) {
+    if (r.done || r.rejoining) return;
+    r.rejoining = true; r.state = "reconnecting"; rPaint(r);
+    var me = myUid();
+    rRef(r, "kick/" + me).once("value").then(function (s) {
+      if (r.done) return;
+      if (s.val() === true) { rLeave(r, "kicked"); return; }
+      Object.keys(r.peers).forEach(function (u) { rDrop(r, u); });
+      r.sess = rid(8);
+      return rRef(r, "members/" + me).set({ name: myName() || "", sess: r.sess, ts: TS(), mic: r.mic, cam: r.camOn, hand: r.hand, low: r.low }).then(function () {
+        if (r.done) return;
+        try { rRef(r, "members/" + me).onDisconnect().remove(); rRef(r, "sig/" + me).onDisconnect().remove(); } catch (e) {}
+        r.state = "live"; r.rejoining = false; r.rejoins = (r.rejoins || 0) + 1; rPaint(r);
+        rWatchMembership(r, false);
+        toast(L("عاد الاتّصال ✓", "Reconnected ✓"));
+        // أعرض على كلّ الحاضرين (أنا الأحدث)
+        Object.keys(r.members).forEach(function (u) { if (u !== me && r.members[u] && r.members[u].sess) rOffer(r, u, r.members[u].sess); });
+      });
+    }).catch(function (e) {
+      log("rejoin", e && e.message); r.rejoining = false;
+      if (!r.done) { r.rejoinFails = (r.rejoinFails || 0) + 1; if (r.rejoinFails >= 4) rLeave(r, "error", { text: L("انقطع الاتّصال بالغرفة", "Lost connection to the room") }); else r.timers.rj = setTimeout(function () { delete r.timers.rj; rRejoin(r); }, 2500); }
+    });
   }
   function onRMembers(r, m) {
     if (r.done) return;
     var me = myUid();
-    if (r.live && !m[me]) { rLeave(r, "kicked"); return; }   // أزالني المضيف
+    if (r.live && !m[me]) { rRejoin(r); return; }   // أزالني المضيف أو سقطت الشبكة — rRejoin تفرّق بينهما
     r.members = m;
     Object.keys(r.peers).forEach(function (u) { var p = r.peers[u]; if (!m[u] || m[u].sess !== p.sess) rDrop(r, u); });
     Object.keys(m).forEach(function (u) {
@@ -1586,12 +1653,62 @@
   }
   function rCap(r) {
     var n = Object.keys(r.peers).length, br = n <= 1 ? 600000 : n <= 3 ? 400000 : 250000;
+    if (r.lowRes) br = Math.min(br, 150000);   // C38
     Object.keys(r.peers).forEach(function (u) {
       var p = r.peers[u]; if (!p.vt) return;
       try { var pr = p.vt.sender.getParameters(); if (!pr.encodings || !pr.encodings.length) pr.encodings = [{}]; pr.encodings[0].maxBitrate = br; p.vt.sender.setParameters(pr).catch(function () {}); } catch (e) {}
     });
   }
 
+  // ---------- C38: جودة الشبكة (getStats كلّ ٣ ثوانٍ): 3 ممتاز · 2 جيّد · 1 ضعيف · 0 سيّئ ----------
+  function rStatsTick(r) {
+    if (r.done) return;
+    var me = myUid(), worst = 3, any = false;
+    Object.keys(r.peers).forEach(function (u) {
+      var p = r.peers[u]; if (!p.pc || p.state !== "connected") return;
+      p.pc.getStats().then(function (rep) {
+        if (r.done || r.peers[u] !== p) return;
+        var rtt = null, lostIn = 0, recvIn = 0, lostOut = null, pair = null;
+        rep.forEach(function (x) {
+          if (x.type === "transport" && x.selectedCandidatePairId) pair = rep.get(x.selectedCandidatePairId);
+          if (x.type === "inbound-rtp" && x.kind === "audio") { lostIn += x.packetsLost || 0; recvIn += x.packetsReceived || 0; }
+          if (x.type === "remote-inbound-rtp" && x.kind === "audio") { if (typeof x.fractionLost === "number") lostOut = x.fractionLost; if (typeof x.roundTripTime === "number") rtt = x.roundTripTime * 1000; }
+        });
+        if (!pair) rep.forEach(function (x) { if (x.type === "candidate-pair" && x.state === "succeeded" && (x.selected || x.nominated)) pair = pair || x; });
+        if (pair && typeof pair.currentRoundTripTime === "number") rtt = pair.currentRoundTripTime * 1000;
+        var dl = lostIn - (p.sLost || 0), dr = recvIn - (p.sRecv || 0); p.sLost = lostIn; p.sRecv = recvIn;
+        var loss = dr + dl > 0 ? dl / (dr + dl) : 0;
+        var q = 3;
+        if (rtt != null && rtt > 700 || loss > 0.15 || (lostOut != null && lostOut > 0.15)) q = 0;
+        else if (rtt != null && rtt > 400 || loss > 0.08 || (lostOut != null && lostOut > 0.08)) q = 1;
+        else if (rtt != null && rtt > 200 || loss > 0.03 || (lostOut != null && lostOut > 0.03)) q = 2;
+        if (p.q !== q) { p.q = q; rTile(r, u); }
+        p.rtt = rtt; p.loss = loss;
+        any = true; if (q < worst) worst = q;
+        rAdapt(r, worst);
+      }).catch(function () {});
+    });
+    if (!any && r.myQ !== null) { r.myQ = null; }
+  }
+  // تكيّف: شبكةٌ ضعيفة مرّتين متتاليتين ⇒ فيديو أخفّ (320×240 · 15 إطاراً · 150 كيلوبت) · تتحسّن ٤ مرّات ⇒ يعود · سيّئة ٣ مرّات ⇒ اقتراح «بيانات قليلة» مرّةً
+  function rAdapt(r, q) {
+    r.myQ = q;
+    r.qHist = (r.qHist || []).concat([q]).slice(-6);
+    var h = r.qHist, bad = h.length >= 2 && h.slice(-2).every(function (x) { return x <= 1; }), good = h.length >= 4 && h.slice(-4).every(function (x) { return x >= 2; });
+    if (bad && !r.lowRes) {
+      r.lowRes = true;
+      try { if (r.camTrack) r.camTrack.applyConstraints({ width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } }).catch(function () {}); } catch (e) {}
+      rCap(r); if (r.camOn) toast(L("الشبكة ضعيفة — خفّضتُ جودة الصورة", "Weak network — lowered video quality"));
+    } else if (good && r.lowRes) {
+      r.lowRes = false;
+      try { if (r.camTrack) r.camTrack.applyConstraints({ width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 20, max: 24 } }).catch(function () {}); } catch (e) {}
+      rCap(r);
+    }
+    if (h.length >= 3 && h.slice(-3).every(function (x) { return x === 0; }) && !r.low && !r.lowSuggested) { r.lowSuggested = true; toast(L("الشبكة سيّئة — جرّب «بيانات قليلة» من ⋯", "Bad network — try low-data mode from ⋯")); }
+    rPaintHead(r);
+  }
+  var QBARS = ["▁", "▃", "▅", "▇"], QCOL = ["#ef4444", "#f59e0b", "#a3e635", "#22c55e"];
+  function qTag(q) { if (q == null) return null; var t = el("span", "font:800 11px system-ui;letter-spacing:-1px;color:" + QCOL[q] + ";background:#00000055;border-radius:8px;padding:1px 5px", QBARS.slice(0, q + 1).join("") + "  "); t.title = [L("سيّئة", "bad"), L("ضعيفة", "weak"), L("جيّدة", "good"), L("ممتازة", "excellent")][q]; return t; }
   // ---------- المتحدّث النشط: مستوى الصوت الحقيقيّ ----------
   function rLevelWatch(r, uid, stream) {
     var p = uid === "__me" ? r : r.peers[uid];
@@ -1605,6 +1722,7 @@
   }
   function rLevelsStart(r) {
     if (r.local) rLevelWatch(r, "__me", r.local);
+    r.timers.st = setInterval(function () { rStatsTick(r); }, 3000);   // C38
     r.timers.lv = setInterval(function () {
       if (r.done) return;
       var best = null, bestV = 0.035, me = myUid();
@@ -1626,6 +1744,7 @@
       rMember(r, { cam: false }); rTile(r, "__me"); rPaint(r); return;
     }
     if (r.low) { toast(L("أوقف «بيانات قليلة» أوّلاً", "Turn off low-data mode first")); return; }
+    if (r.meta.audioOnly && !amHost(r)) { toast(L("الغرفة صوتيّة فقط بقرار المضيف", "Audio-only room (host setting)")); return; }
     var me = myUid(), cams = Object.keys(r.members).filter(function (u) { return u !== me && r.members[u].cam; }).length;
     if (cams >= ROOM_CAMS) { toast(L("الحدّ ٤ كاميرات في الغرفة حاليّاً", "Max 4 cameras for now")); return; }
     navigator.mediaDevices.getUserMedia({ video: { facingMode: r.facing, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 20, max: 24 } } }).then(function (s) {
@@ -1740,15 +1859,20 @@
       if (left <= 300 && !r.warned5) { r.warned5 = true; toast(L("تبقّت ٥ دقائق على نهاية الغرفة", "5 minutes left")); }
       if (left <= 0) { if (amHost(r)) rEndAll(); else if (left < -20) rLeave(r, "timeup"); }
     }
+    // C38: قفلٌ تلقائيّ بعد مدّةٍ من البدء (المضيف ينفّذه)
+    if (amHost(r) && r.meta.lockAt && !r.meta.locked && now() >= r.meta.lockAt && !r.autoLocked) { r.autoLocked = true; rSetMeta("locked", true); rSetMeta("lockAt", null); toast(L("قُفلت الغرفة تلقائيّاً — لا دخول جديد", "Room auto-locked")); }
     rPaintHead(r);
   }
 
   // ---------- الواجهة ----------
-  var DARK = "#0f172a", CARD = "#1e293b", LINE = "#334155", MUTED = "#94a3b8", PRI = "#2e7d5b";
+  var DARK = "#0b1220", CARD = "#151f36", LINE = "#26324a", MUTED = "#94a3b8", PRI = "#2F80C8", GRAD = "linear-gradient(135deg,#3b8fd6 0%,#2F80C8 45%,#1E3A63 100%)";
+  var AVG = [["#60a5fa", "#2563eb"], ["#34d399", "#0d9488"], ["#fbbf24", "#f97316"], ["#c084fc", "#7c3aed"], ["#f472b6", "#db2777"], ["#22d3ee", "#0e7490"]];
+  function avGrad(k) { var h = 0, x = String(k || ""); for (var i = 0; i < x.length; i++) h = (h * 31 + x.charCodeAt(i)) >>> 0; var g = AVG[h % AVG.length]; return "linear-gradient(135deg," + g[0] + "," + g[1] + ")"; }
   function rb(icon, label, onclick, opts) {
     opts = opts || {};
-    var w = el("div", "display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;position:relative");
-    var b = el("button", "width:50px;height:50px;border-radius:50%;border:0;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;background:" + (opts.bg || LINE), icon);
+    var w = el("div", "display:flex;flex-direction:column;align-items:center;gap:5px;min-width:54px;position:relative");
+    var b = el("button", "width:52px;height:52px;border-radius:18px;border:0;font-size:21px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;box-shadow:0 6px 16px rgba(0,0,0,.25);transition:transform .12s;background:" + (opts.bg || LINE), icon);
+    b.onpointerdown = function () { b.style.transform = "scale(.94)"; }; b.onpointerup = b.onpointerleave = function () { b.style.transform = ""; };
     b.setAttribute("aria-label", label); b.onclick = function (ev) { ev.stopPropagation(); onclick(); };
     w.appendChild(b); w.appendChild(el("span", "font:600 10px system-ui;color:#cbd5e1;white-space:nowrap", label));
     if (opts.badge) w.appendChild(el("span", "position:absolute;top:-2px;left:4px;min-width:18px;height:18px;border-radius:9px;background:#ef4444;color:#fff;font:800 10px system-ui;display:flex;align-items:center;justify-content:center;padding:0 4px", String(opts.badge)));
@@ -1758,33 +1882,33 @@
     if (rui.root) return rui;
     var root = el("div", "position:fixed;inset:0;z-index:2147483000;background:" + DARK + ";color:#fff;display:none;flex-direction:column;font-family:system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;overflow:hidden");
     root.id = "sawa-room";
-    var head = el("div", "display:flex;align-items:center;gap:8px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 8px;background:" + CARD);
+    var head = el("div", "display:flex;align-items:center;gap:8px;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 12px;background:" + GRAD + ";border-radius:0 0 24px 24px;box-shadow:0 8px 24px rgba(0,0,0,.3)");
     var hd = el("div", "flex:1;min-width:0");
-    var title = el("div", "font:800 15px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"), sub = el("div", "font:600 11px system-ui;color:" + MUTED);
+    var title = el("div", "font:800 16px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"), sub = el("div", "font:600 11px system-ui;color:#ffffffcc");
     hd.appendChild(title); hd.appendChild(sub);
     var hostBtns = el("div", "display:flex;gap:6px");
-    var minB = el("button", "background:" + LINE + ";border:0;color:#fff;border-radius:14px;padding:6px 10px;font:700 11px system-ui", L("تصغير ▾", "Minimize ▾"));
+    var minB = el("button", "background:rgba(255,255,255,.18);border:0;color:#fff;border-radius:14px;padding:7px 11px;font:700 11px system-ui", L("تصغير ▾", "Minimize ▾"));
     minB.onclick = function () { rMinimize(true); };
     head.appendChild(hd); head.appendChild(hostBtns); head.appendChild(minB);
-    var link = el("div", "display:flex;align-items:center;gap:8px;margin:8px 12px 0;padding:8px 10px;border-radius:14px;background:" + CARD + ";border:1px solid " + LINE);
-    var linkTx = el("div", "flex:1;min-width:0;font:700 12px system-ui;direction:ltr;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#e2e8f0");
-    var cp = el("button", "background:" + LINE + ";border:0;color:#fff;border-radius:10px;padding:6px 9px;font:700 11px system-ui", L("نسخ", "Copy"));
-    var sh = el("button", "background:" + LINE + ";border:0;color:#fff;border-radius:10px;padding:6px 9px;font:700 11px system-ui", L("مشاركة", "Share"));
-    var qr = el("button", "background:" + LINE + ";border:0;color:#fff;border-radius:10px;padding:6px 9px;font:700 11px system-ui", "QR");
+    var link = el("div", "display:flex;align-items:center;gap:6px;margin:10px 12px 0;padding:7px 8px 7px 12px;border-radius:16px;background:" + CARD + ";box-shadow:0 4px 14px rgba(0,0,0,.2)");
+    var linkTx = el("div", "flex:1;min-width:0;font:700 12px system-ui;direction:ltr;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cbd5e1");
+    var pillB = function (t) { return el("button", "background:" + LINE + ";border:0;color:#fff;border-radius:12px;padding:7px 10px;font:700 11px system-ui", t); };
+    var cp = pillB(L("نسخ", "Copy")), sh = pillB(L("مشاركة", "Share")), qr = pillB("QR");
+    sh.style.background = PRI;
     cp.onclick = function () { rCopyLink(); }; sh.onclick = function () { rShareLink(); }; qr.onclick = function () { rShowQr(); };
     link.appendChild(linkTx); link.appendChild(cp); link.appendChild(sh); link.appendChild(qr);
     var banners = el("div", "display:flex;flex-direction:column;gap:6px;margin:6px 12px 0");
-    var grid = el("div", "flex:1;min-height:0;display:grid;gap:8px;padding:8px 12px;align-content:center");
+    var grid = el("div", "flex:1;min-height:0;display:grid;gap:10px;padding:10px 12px;align-content:center");
     var center = el("div", "flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:0 24px");
-    var cIcon = el("div", "width:84px;height:84px;border-radius:50%;background:" + PRI + "33;border:2px solid " + PRI + ";display:flex;align-items:center;justify-content:center;font-size:36px", "🎥");
+    var cIcon = el("div", "width:92px;height:92px;border-radius:30px;background:" + GRAD + ";box-shadow:0 10px 30px rgba(47,128,200,.35);display:flex;align-items:center;justify-content:center;font-size:40px", "🎥");
     var cT = el("div", "font:800 18px system-ui"), cS = el("div", "font:600 13px system-ui;color:" + MUTED);
     center.appendChild(cIcon); center.appendChild(cT); center.appendChild(cS);
-    var panel = el("div", "display:none;flex-direction:column;margin:0 12px 6px;border-radius:16px;background:" + CARD + ";border:1px solid " + LINE + ";max-height:45%;min-height:0;overflow:hidden");
-    var bar = el("div", "display:flex;justify-content:space-evenly;align-items:flex-start;padding:10px 4px calc(env(safe-area-inset-bottom,0px) + 14px);background:" + CARD);
+    var panel = el("div", "display:none;flex-direction:column;margin:0 12px 6px;border-radius:20px;background:" + CARD + ";box-shadow:0 6px 18px rgba(0,0,0,.25);max-height:45%;min-height:0;overflow:hidden");
+    var bar = el("div", "display:flex;justify-content:space-evenly;align-items:flex-start;margin:6px 12px calc(env(safe-area-inset-bottom,0px) + 12px);padding:10px 4px 8px;border-radius:26px;background:" + CARD + ";box-shadow:0 10px 30px rgba(0,0,0,.35)");
     var floats = el("div", "position:absolute;inset:0;pointer-events:none;overflow:hidden");
     var audios = el("div", "display:none");
     root.appendChild(head); root.appendChild(link); root.appendChild(banners); root.appendChild(grid); root.appendChild(center); root.appendChild(panel); root.appendChild(bar); root.appendChild(floats); root.appendChild(audios);
-    var pill = el("button", "position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:8px;background:#4f46e5;color:#fff;border:0;border-radius:22px;padding:9px 16px;font:700 13px system-ui;box-shadow:0 4px 18px rgba(0,0,0,.35);direction:rtl");
+    var pill = el("button", "position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:8px;background:" + GRAD + ";color:#fff;border:0;border-radius:22px;padding:10px 18px;font:700 13px system-ui;box-shadow:0 6px 20px rgba(47,128,200,.45);direction:rtl");
     pill.onclick = function () { rMinimize(false); };
     if (!document.getElementById("sawa-room-css")) {
       var st = document.createElement("style"); st.id = "sawa-room-css";
@@ -1802,10 +1926,11 @@
   function rPaintHead(r) {
     if (!r || !rui.root) return;
     var n = Object.keys(r.members).length;
-    rui.title.textContent = (r.title || L("غرفة سوا", "Sawa room")) + (r.meta.locked ? " 🔒" : "");
+    rui.title.textContent = (r.title || L("غرفة سوا", "Sawa room")) + (r.meta.locked ? " 🔒" : "") + (r.meta.pinOn ? " 🔑" : "") + (r.meta.audioOnly ? " 🎧" : "");
     var t = r.meta.endsAt ? L("باقٍ ", "Left ") + fmt(Math.max(0, Math.round((r.meta.endsAt - now()) / 1000))) : rElapsed(r);
-    rui.sub.textContent = r.state === "live" ? t + " · " + n + " " + L("في الغرفة", "in room") + (amHost(r) ? " · " + L("أنت المضيف", "you're host") : "") : "";
-    rui.sub.style.color = r.meta.endsAt && r.meta.endsAt - now() < 300000 ? "#ef4444" : MUTED;
+    rui.sub.textContent = r.state === "live" ? t + " · " + n + "/" + rMax(r) + " " + L("في الغرفة", "in room") + (amHost(r) ? " · " + L("أنت المضيف", "you're host") : "") : "";
+    if (r.state === "live" && r.myQ != null && r.myQ <= 1) rui.sub.textContent += " · " + (r.myQ === 0 ? L("📶 شبكة سيّئة", "📶 bad network") : L("📶 شبكة ضعيفة", "📶 weak network"));
+    rui.sub.style.color = (r.meta.endsAt && r.meta.endsAt - now() < 300000) || (r.state === "live" && r.myQ === 0) ? "#ef4444" : MUTED;
     rui.linkTx.textContent = roomLink(r.code).replace(/^https?:\/\//, "");
     if (rui.min) rui.pill.textContent = "🎥 " + (r.title || "") + " · " + n + "  ▴";
   }
@@ -1818,15 +1943,14 @@
     rui.minB.style.visibility = r.state === "ended" ? "hidden" : "visible";
     if (center) {
       rui.cT.textContent = r.state === "ended" ? (r.endText || "") : (r.title || L("غرفة سوا", "Sawa room"));
-      rui.cS.textContent = r.state === "waiting" ? L("في غرفة الانتظار — بانتظار أن يسمح لك المضيف…", "In the waiting room — waiting for the host…") : r.state === "ended" ? "" : L("جارٍ الانضمام للغرفة…", "Joining the room…");
+      rui.cS.textContent = r.state === "waiting" ? L("في غرفة الانتظار — بانتظار أن يسمح لك المضيف…", "In the waiting room — waiting for the host…") : r.state === "ended" ? "" : r.state === "reconnecting" ? L("انقطع الاتّصال — جارٍ العودة إلى الغرفة…", "Connection lost — rejoining…") : L("جارٍ الانضمام للغرفة…", "Joining the room…");
     } else rLayout(r);
     // أزرار المضيف أعلى الشاشة
     var hb = rui.hostBtns; hb.innerHTML = "";
     if (r.state === "live" && amHost(r)) {
-      var mk = function (txt, on, fn, lab) { var b = el("button", "background:" + (on ? "#ef444433" : LINE) + ";border:1px solid " + (on ? "#ef444466" : LINE) + ";color:#fff;border-radius:10px;width:32px;height:30px;font-size:14px", txt); b.setAttribute("aria-label", lab); b.onclick = fn; hb.appendChild(b); };
+      var mk = function (txt, on, fn, lab) { var b = el("button", "background:" + (on ? "rgba(239,68,68,.35)" : "rgba(255,255,255,.18)") + ";border:0;color:#fff;border-radius:12px;width:34px;height:32px;font-size:15px", txt); b.setAttribute("aria-label", lab); b.onclick = fn; hb.appendChild(b); };
       mk("🔒", r.meta.locked, function () { rSetMeta("locked", !r.meta.locked); toast(r.meta.locked ? L("فُتحت الغرفة", "Room unlocked") : L("قُفلت الغرفة — لا دخول جديد", "Room locked")); }, L("قفل", "Lock"));
-      mk("🚪", r.meta.lobby, function () { rSetMeta("lobby", !r.meta.lobby); toast(r.meta.lobby ? L("أُلغيت غرفة الانتظار", "Waiting room off") : L("غرفة الانتظار مفعّلة", "Waiting room on")); }, L("غرفة الانتظار", "Waiting room"));
-      mk("⏱", !!r.meta.endsAt, function () { rDurationPick(); }, L("مدّة الغرفة", "Duration"));
+      mk("⚙️", !!(r.meta.lobby || r.meta.pinOn || r.meta.audioOnly || r.meta.max || r.meta.endsAt), function () { rSettings(); }, L("إعدادات الغرفة", "Room settings"));
     }
     rPaintBanners(r);
     var bar = rui.bar; bar.innerHTML = "";
@@ -1834,11 +1958,11 @@
     if (r.state !== "live") { var lv = rb("✕", L("إلغاء", "Cancel"), function () { rLeave(r, "left"); }, { bg: "#ef4444" }); bar.appendChild(lv); return; }
     var mic = rb(r.mic ? "🎤" : "🔇", r.mic ? L("كتم", "Mute") : L("الميكروفون", "Unmute"), function () { rToggleMic(r); }, { bg: r.mic ? LINE : "#ef4444" });
     bar.appendChild(mic);
-    bar.appendChild(rb(r.camOn ? "📷" : "🚫", r.camOn ? L("الكاميرا", "Camera") : L("الكاميرا", "Camera"), function () { rToggleCam(r); }, { bg: r.camOn ? PRI : LINE }));
+    bar.appendChild(rb(r.camOn ? "📷" : "🚫", r.camOn ? L("الكاميرا", "Camera") : L("الكاميرا", "Camera"), function () { rToggleCam(r); }, { bg: r.camOn ? GRAD : LINE }));
     // خمسة أزرار فقط تتّسع لأصغر شاشة — «ارفع يدك» و«تفاعل» في «المزيد» (الزرّ يتلوّن حين تكون يدك مرفوعة)
-    bar.appendChild(rb("💬", L("دردشة", "Chat"), function () { rOpenPanel(r.panel === "chat" ? null : "chat"); }, { bg: r.panel === "chat" ? PRI : LINE, badge: r.unread }));
+    bar.appendChild(rb("💬", L("دردشة", "Chat"), function () { rOpenPanel(r.panel === "chat" ? null : "chat"); }, { bg: r.panel === "chat" ? GRAD : LINE, badge: r.unread }));
     bar.appendChild(rb(r.hand ? "✋" : "⋯", r.hand ? L("يدك مرفوعة", "Hand up") : L("المزيد", "More"), function () { rMore(); }, { bg: r.hand ? "#f59e0b" : LINE }));
-    bar.appendChild(rb("📞", L("مغادرة", "Leave"), function () { rLeaveConfirm(); }, { bg: "#ef4444" }));
+    bar.appendChild(rb("📞", L("مغادرة", "Leave"), function () { rLeaveConfirm(); }, { bg: "linear-gradient(135deg,#f87171,#dc2626)" }));
     bar.lastChild._b.style.transform = "rotate(135deg)";
   }
   function rPaintBanners(r) {
@@ -1871,9 +1995,9 @@
   }
   function rTileEl(uid) {
     var t = rui.tiles[uid]; if (t) return t;
-    var box = el("div", "position:relative;border-radius:16px;overflow:hidden;background:" + CARD + ";border:2px solid " + LINE + ";min-height:0;display:flex;align-items:center;justify-content:center;transition:border-color .2s,box-shadow .2s");
+    var box = el("div", "position:relative;border-radius:20px;overflow:hidden;background:" + CARD + ";border:2px solid transparent;min-height:0;display:flex;align-items:center;justify-content:center;transition:border-color .2s,box-shadow .2s;box-shadow:0 6px 18px rgba(0,0,0,.25)");
     var v = el("video", "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none"); v.autoplay = true; v.playsInline = true; v.muted = true; v.setAttribute("playsinline", "");
-    var av = el("div", "width:56px;height:56px;border-radius:50%;background:" + LINE + ";display:flex;align-items:center;justify-content:center;font:800 22px system-ui");
+    var av = el("div", "width:60px;height:60px;border-radius:50%;background:" + LINE + ";display:flex;align-items:center;justify-content:center;font:800 24px system-ui;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.3)");
     var lab = el("div", "position:absolute;bottom:6px;right:8px;left:8px;font:700 11px system-ui;text-shadow:0 1px 3px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
     var tags = el("div", "position:absolute;top:6px;right:6px;left:6px;display:flex;justify-content:space-between;font-size:13px");
     box.appendChild(v); box.appendChild(av); box.appendChild(lab); box.appendChild(tags);
@@ -1908,17 +2032,20 @@
     }
     if (showV) try { t.v.play().catch(function () {}); } catch (e) {}
     t.v.style.display = showV ? "block" : "none"; t.av.style.display = showV ? "none" : "flex";
-    t.av.style.background = isMe ? PRI : LINE; setAv(t.av, isMe ? (myName() || "أ") : name, isMe ? myUid() : uid);
+    setAv(t.av, isMe ? (myName() || "أ") : name, isMe ? myUid() : uid); if (!photoOf(isMe ? myUid() : uid)) t.av.style.backgroundImage = avGrad(isMe ? myUid() : uid);
     var st = isMe ? "" : !p ? L("ينضمّ…", "joining…") : p.state === "connected" ? "" : p.state === "lost" ? L("انقطع", "lost") : p.state === "reconnecting" ? L("شبكة ضعيفة…", "weak…") : L("جارٍ الربط…", "connecting…");
     if (!st && !isMe && m.cam && !showV && !r.low) st = L("📷 الصورة لم تصل بعد", "📷 video not arriving");
     t.lab.textContent = name + (st ? " · " + st : "");
     var mic = isMe ? r.mic : m.mic !== false, hostU = r.meta.host === (isMe ? me : uid);
     t.tags.innerHTML = "";
     t.tags.appendChild(el("span", "", (hostU ? "👑 " : "") + ((isMe ? r.hand : m.hand) ? "✋" : "")));
-    t.tags.appendChild(el("span", "background:" + (mic ? "#22c55e33" : "#ef444455") + ";border-radius:10px;padding:1px 5px", mic ? "🎤" : "🔇"));
+    var right = el("span", "display:flex;gap:4px;align-items:center");
+    if (!isMe && p && p.state === "connected") { var qt = qTag(p.q); if (qt) right.appendChild(qt); }
+    right.appendChild(el("span", "background:" + (mic ? "#22c55e33" : "#ef444455") + ";border-radius:10px;padding:1px 5px", mic ? "🎤" : "🔇"));
+    t.tags.appendChild(right);
     var speaking = r.speaker === uid && mic;
-    t.box.style.borderColor = speaking ? "#22c55e" : isMe ? PRI : LINE;
-    t.box.style.boxShadow = speaking ? "0 0 0 3px #22c55e44" : "none";
+    t.box.style.borderColor = speaking ? "#22c55e" : isMe ? PRI + "99" : "transparent";
+    t.box.style.boxShadow = speaking ? "0 0 0 4px #22c55e44, 0 6px 18px rgba(0,0,0,.25)" : "0 6px 18px rgba(0,0,0,.25)";
     t.box.style.cursor = !isMe && amHost(r) ? "pointer" : "default";
     rLayout(r);
   }
@@ -1942,18 +2069,19 @@
   // ---------- لوحات منبثقة ----------
   function sheet(titleTx, build) {
     var ov = el("div", "position:fixed;inset:0;z-index:2147483002;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;direction:rtl;font-family:system-ui");
-    var box = el("div", "background:" + CARD + ";color:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 8px)");
-    box.appendChild(el("div", "width:40px;height:4px;border-radius:2px;background:" + LINE + ";margin:10px auto 6px"));
-    if (titleTx) box.appendChild(el("div", "padding:2px 16px 8px;font:800 14px system-ui;text-align:center", titleTx));
+    var box = el("div", "background:" + CARD + ";color:#fff;border-radius:28px 28px 0 0;width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 8px);box-shadow:0 -10px 30px rgba(0,0,0,.4)");
+    box.appendChild(el("div", "width:42px;height:5px;border-radius:3px;background:" + LINE + ";margin:12px auto 8px"));
+    if (titleTx) box.appendChild(el("div", "padding:2px 18px 10px;font:800 16px system-ui;text-align:center", titleTx));
     var body = el("div", "overflow-y:auto;flex:1;min-height:0"); box.appendChild(body);
     ov.appendChild(box); ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
     var close = function () { ov.remove(); };
+    close.ov = ov;
     build(body, close); document.body.appendChild(ov);
     return close;
   }
   function item(body, icon, label, fn, danger) {
-    var b = el("button", "width:100%;display:flex;align-items:center;gap:12px;padding:13px 18px;background:transparent;border:0;border-top:1px solid " + LINE + ";color:" + (danger ? "#f87171" : "#e2e8f0") + ";font:700 13px system-ui;text-align:right");
-    b.appendChild(el("span", "font-size:17px;width:22px;text-align:center", icon)); b.appendChild(el("span", "flex:1", label));
+    var b = el("button", "width:100%;display:flex;align-items:center;gap:12px;padding:11px 16px;background:transparent;border:0;border-top:1px solid " + LINE + ";color:" + (danger ? "#f87171" : "#e2e8f0") + ";font:700 13.5px system-ui;text-align:right");
+    b.appendChild(el("span", "font-size:17px;width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:" + (danger ? "rgba(239,68,68,.15)" : "rgba(255,255,255,.07)"), icon)); b.appendChild(el("span", "flex:1", label));
     b.onclick = fn; body.appendChild(b); return b;
   }
   function rHostMenu(uid) {
@@ -1990,11 +2118,86 @@
       item(body, "↩", L("البقاء", "Stay"), close);
     });
   }
+  // C38: إعدادات الغرفة بيد المضيف
+  function rSettings() {
+    var r = rm; if (!r || !amHost(r)) return;
+    var again = function () { setTimeout(rSettings, 80); };
+    sheet(L("إعدادات الغرفة", "Room settings"), function (body, close) {
+      var tog = function (icon, label, sub, on, fn) {
+        var b = item(body, icon, label, function () { fn(); close(); again(); });
+        b.appendChild(el("span", "font:800 11px system-ui;padding:3px 9px;border-radius:9px;background:" + (on ? "#22c55e33" : LINE) + ";color:" + (on ? "#4ade80" : "#cbd5e1"), on ? L("مفعّل", "On") : L("متوقّف", "Off")));
+        if (sub) b.appendChild(el("div", "position:absolute", ""));
+      };
+      tog("🔒", L("قفل الغرفة", "Lock room"), null, !!r.meta.locked, function () { rSetMeta("locked", !r.meta.locked); });
+      tog("🚪", L("غرفة الانتظار", "Waiting room"), null, !!r.meta.lobby, function () { rSetMeta("lobby", !r.meta.lobby); });
+      tog("🎧", L("صوتٌ فقط (بلا كاميرات)", "Audio only (no cameras)"), null, !!r.meta.audioOnly, function () { rSetMeta("audioOnly", !r.meta.audioOnly); });
+      var mx = item(body, "👥", L("الحدّ الأقصى للمشاركين", "Max participants"), function () { close(); rMaxPick(); });
+      mx.appendChild(el("span", "font:800 12px system-ui;color:#cbd5e1", String(rMax(r)) + (r.meta.max ? "" : " (" + L("الافتراض", "default") + ")")));
+      var pn = item(body, "🔑", L("رمز الدخول", "Join PIN"), function () { close(); rPinPick(); });
+      pn.appendChild(el("span", "font:800 12px system-ui;color:" + (r.meta.pinOn ? "#4ade80" : "#cbd5e1"), r.meta.pinOn ? L("مفعّل", "On") : L("بلا رمز", "None")));
+      var du = item(body, "⏱", L("مدّة الغرفة", "Room duration"), function () { close(); rDurationPick(); });
+      du.appendChild(el("span", "font:800 12px system-ui;color:#cbd5e1", r.meta.endsAt ? L("باقٍ ", "Left ") + fmt(Math.max(0, Math.round((r.meta.endsAt - now()) / 1000))) : L("بلا حدّ", "No limit")));
+      var al = item(body, "⏲", L("قفلٌ تلقائيّ بعد البدء", "Auto-lock after start"), function () { close(); rAutoLockPick(); });
+      al.appendChild(el("span", "font:800 12px system-ui;color:#cbd5e1", r.meta.lockAt ? (r.meta.locked ? L("قُفلت", "Locked") : L("بعد ", "in ") + fmt(Math.max(0, Math.round((r.meta.lockAt - now()) / 1000)))) : L("متوقّف", "Off")));
+      item(body, "✏️", L("تغيير عنوان الغرفة", "Rename room"), function () { close(); rRenamePick(); });
+    });
+  }
+  function rMaxPick() {
+    var r = rm; if (!r) return;
+    sheet(L("الحدّ الأقصى للمشاركين", "Max participants"), function (body, close) {
+      body.appendChild(el("div", "padding:0 16px 6px;color:" + MUTED + ";font:600 12px system-ui;text-align:center", L("الشبكة المباشرة تحتمل حتى ٨ أشخاص و٤ كاميرات", "Direct mesh supports up to 8 people and 4 cameras")));
+      [2, 3, 4, 5, 6, 8].forEach(function (n) { var b = item(body, "👥", String(n) + (n === ROOM_MAX ? " (" + L("الافتراض", "default") + ")" : ""), function () { rSetMeta("max", n === ROOM_MAX ? null : n); close(); }); if (rMax(r) === n) b.appendChild(el("span", "", "✓")); });
+    });
+  }
+  function rPinPick() {
+    var r = rm; if (!r) return;
+    sheet(L("رمز الدخول", "Join PIN"), function (body, close) {
+      body.appendChild(el("div", "padding:0 16px 8px;color:" + MUTED + ";font:600 12px system-ui;text-align:center", L("من يعرف الرابط يحتاج هذا الرمز أيضاً (٤–٦ أرقام). من في الغرفة الآن لا يتأثّر.", "Anyone with the link also needs this PIN (4–6 digits). Current members aren't affected.")));
+      var inp = el("input", "display:block;margin:4px 16px 10px;width:calc(100% - 32px);box-sizing:border-box;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:12px;padding:11px;font:800 20px system-ui;letter-spacing:6px;text-align:center;direction:ltr");
+      inp.inputMode = "numeric"; inp.maxLength = 6; inp.placeholder = "••••"; body.appendChild(inp);
+      var go = el("button", "margin:0 16px 6px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px system-ui", L("تفعيل الرمز", "Set PIN"));
+      go.onclick = function () {
+        var v = String(inp.value || "").replace(/\D/g, "");
+        if (v.length < 4 || v.length > 6) { toast(L("الرمز ٤ إلى ٦ أرقام", "PIN is 4–6 digits")); return; }
+        rRef(r, "pin").set(v).then(function () { return rRef(r, "meta/pinOn").set(true); }).then(function () { toast(L("فُعّل رمز الدخول: ", "PIN set: ") + v); close(); }).catch(function (e) { log("pin", e && e.message); toast(L("تعذّر حفظ الرمز", "Couldn't save PIN")); });
+      };
+      body.appendChild(go);
+      if (r.meta.pinOn) item(body, "🗑", L("إزالة الرمز", "Remove PIN"), function () { rRef(r, "pin").remove().then(function () { return rRef(r, "meta/pinOn").set(null); }).then(function () { toast(L("أُزيل رمز الدخول", "PIN removed")); }).catch(function () {}); close(); }, true);
+      setTimeout(function () { try { inp.focus(); } catch (e) {} }, 60);
+    });
+  }
+  function rAutoLockPick() {
+    var r = rm; if (!r) return;
+    sheet(L("قفلٌ تلقائيّ بعد البدء", "Auto-lock after start"), function (body, close) {
+      body.appendChild(el("div", "padding:0 16px 6px;color:" + MUTED + ";font:600 12px system-ui;text-align:center", L("بعد هذه المدّة لا يدخل أحدٌ جديد — يبقى الحاضرون", "After this, no one new can join")));
+      [[0, L("متوقّف", "Off")], [5, L("٥ دقائق", "5 min")], [10, L("١٠ دقائق", "10 min")], [15, L("١٥ دقيقة", "15 min")], [30, L("٣٠ دقيقة", "30 min")]].forEach(function (o) {
+        item(body, "⏲", o[1], function () { if (rm) rm.autoLocked = false; rSetMeta("lockAt", o[0] ? now() + o[0] * 60000 : null); close(); });
+      });
+    });
+  }
+  function rRenamePick() {
+    var r = rm; if (!r) return;
+    sheet(L("عنوان الغرفة", "Room title"), function (body, close) {
+      var inp = el("input", "display:block;margin:4px 16px 10px;width:calc(100% - 32px);box-sizing:border-box;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:12px;padding:11px;font:700 14px system-ui");
+      inp.value = r.title || ""; inp.maxLength = 80; inp.dir = "auto"; body.appendChild(inp);
+      var go = el("button", "margin:0 16px 6px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px system-ui", L("حفظ", "Save"));
+      go.onclick = function () { var v = String(inp.value || "").trim().slice(0, 80); if (!v) return; rSetMeta("title", v); close(); };
+      body.appendChild(go);
+      setTimeout(function () { try { inp.focus(); inp.select(); } catch (e) {} }, 60);
+    });
+  }
   function rDurationPick() {
     sheet(L("مدّة الغرفة", "Room duration"), function (body, close) {
       [[0, L("بلا حدّ", "No limit")], [30, L("٣٠ دقيقة", "30 min")], [60, L("ساعة", "1 hour")], [90, L("ساعة ونصف", "1.5 hours")], [120, L("ساعتان", "2 hours")]].forEach(function (o) {
         item(body, "⏱", o[1], function () { rSetMeta("endsAt", o[0] ? now() + o[0] * 60000 : null); if (rm) rm.warned5 = false; close(); });
       });
+      // C38: مدّة حرّة بالدقائق
+      var row = el("div", "display:flex;gap:8px;padding:10px 16px 6px;border-top:1px solid " + LINE);
+      var inp = el("input", "flex:1;min-width:0;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:10px;padding:9px 10px;font:700 14px system-ui;text-align:center;direction:ltr");
+      inp.inputMode = "numeric"; inp.placeholder = L("دقائق (٥–٤٨٠)", "minutes (5–480)");
+      var go = el("button", "border:0;border-radius:10px;padding:0 14px;background:" + PRI + ";color:#fff;font:800 13px system-ui", L("تطبيق", "Apply"));
+      go.onclick = function () { var n = parseInt(String(inp.value || "").replace(/\D/g, ""), 10); if (!(n >= 5 && n <= 480)) { toast(L("من ٥ إلى ٤٨٠ دقيقة", "5–480 minutes")); return; } rSetMeta("endsAt", now() + n * 60000); if (rm) rm.warned5 = false; close(); };
+      row.appendChild(inp); row.appendChild(go); body.appendChild(row);
     });
   }
   function rReactBar() {
@@ -2033,7 +2236,7 @@
         var fam = (c.families || []).map(function (f) { return f.name; }).join("، ");
         var b = item(body, "◻️", (c.name || "") + (fam ? " · " + fam : ""), function () { picked[c.uid] = !picked[c.uid]; b.firstChild.textContent = picked[c.uid] ? "☑️" : "◻️"; });
       });
-      var send = el("button", "margin:12px 16px 4px;width:calc(100% - 32px);padding:11px;border:0;border-radius:12px;background:" + PRI + ";color:#fff;font:800 13px system-ui", L("إرسال الدعوة", "Send invite"));
+      var send = el("button", "margin:12px 16px 4px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px system-ui", L("إرسال الدعوة", "Send invite"));
       send.onclick = function () {
         var to = Object.keys(picked).filter(function (u) { return picked[u]; });
         if (!to.length) { toast(L("اختر شخصاً على الأقلّ", "Pick at least one")); return; }
@@ -2138,7 +2341,7 @@
       inp.placeholder = "ABCD2345"; inp.setAttribute("autocapitalize", "characters");
       body.appendChild(el("div", "padding:0 16px;color:" + MUTED + ";font:600 12px system-ui;text-align:center", L("الصق رابط الغرفة أو اكتب رمزها (٨ حروف)", "Paste the room link or type its 8-letter code")));
       body.appendChild(inp);
-      var go = el("button", "margin:0 16px 8px;width:calc(100% - 32px);padding:11px;border:0;border-radius:12px;background:" + PRI + ";color:#fff;font:800 13px system-ui", L("انضمام", "Join"));
+      var go = el("button", "margin:0 16px 8px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px system-ui", L("انضمام", "Join"));
       go.onclick = function () { var c = cleanCode(inp.value); if (!c) { toast(L("رمز الغرفة غير صحيح", "Invalid room code")); return; } close(); roomJoin(c); };
       body.appendChild(go);
       setTimeout(function () { try { inp.focus(); } catch (e) {} }, 50);
@@ -2159,19 +2362,20 @@
     if (rm && rm.code === code) { if (rui.min) rMinimize(false); return; }
     var ov = el("div", "position:fixed;inset:0;z-index:2147483003;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;font-family:system-ui");
     ov.dir = isAr() ? "rtl" : "ltr";
-    var box = el("div", "background:#fff;color:#1A1A2E;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:18px 16px calc(env(safe-area-inset-bottom,0px) + 18px);box-sizing:border-box;text-align:center");
+    var box = el("div", "background:#fff;color:#1A1A2E;border-radius:28px 28px 0 0;width:100%;max-width:480px;padding:14px 18px calc(env(safe-area-inset-bottom,0px) + 18px);box-sizing:border-box;text-align:center;box-shadow:0 -10px 30px rgba(0,0,0,.2)");
     ov.appendChild(box); document.body.appendChild(ov);
     var close = function () { try { ov.remove(); } catch (e) {} };
     ov.onclick = function (e) { if (e.target === ov) close(); };
-    box.appendChild(el("div", "font-size:34px", "🎙️"));
+    box.appendChild(el("div", "width:42px;height:5px;border-radius:3px;background:#e5e7eb;margin:0 auto 12px"));
+    box.appendChild(el("div", "width:76px;height:76px;border-radius:26px;margin:0 auto 6px;background:" + GRAD + ";display:flex;align-items:center;justify-content:center;font-size:34px;box-shadow:0 8px 20px rgba(47,128,200,.35)", "🎙️"));
     var tt = el("div", "font:800 17px system-ui;margin:4px 0 2px", L("غرفة سوا", "Sawa room")); box.appendChild(tt);
     var sub = el("div", "font:600 12.5px system-ui;color:#8796a5", "…"); box.appendChild(sub);
     var mic = false;
-    var mb = el("button", "margin:14px auto 4px;display:block;padding:10px 16px;border-radius:12px;border:1.5px solid #dfe5ec;background:#fff;font:800 13px system-ui;color:#1A1A2E");
+    var mb = el("button", "margin:14px auto 4px;display:block;padding:10px 16px;border-radius:14px;border:0;background:#f3f4f6;font:800 13px system-ui;color:#1A1A2E");
     var paintMic = function () { mb.textContent = mic ? L("🎤 الميكروفون: يعمل عند الدخول", "🎤 Mic: on when joining") : L("🔇 الميكروفون: مكتوم عند الدخول", "🔇 Mic: muted when joining"); };
     mb.onclick = function () { mic = !mic; paintMic(); }; paintMic(); box.appendChild(mb);
-    var go = el("button", "margin:10px 0 0;width:100%;padding:13px;border:0;border-radius:12px;background:" + PRI + ";color:#fff;font:800 14px system-ui", L("انضمام", "Join"));
-    var no = el("button", "margin:8px 0 0;width:100%;padding:12px;border:1.5px solid #dfe5ec;border-radius:12px;background:#fff;color:#1A1A2E;font:800 14px system-ui", L("ليس الآن", "Not now"));
+    var go = el("button", "margin:10px 0 0;width:100%;padding:14px;border:0;border-radius:16px;background:" + GRAD + ";color:#fff;font:800 15px system-ui;box-shadow:0 8px 20px rgba(47,128,200,.35)", L("انضمام", "Join"));
+    var no = el("button", "margin:8px 0 0;width:100%;padding:12px;border:0;border-radius:16px;background:#f3f4f6;color:#374151;font:800 14px system-ui", L("ليس الآن", "Not now"));
     go.onclick = function () { close(); roomJoin(code, { mic: mic }); };
     no.onclick = close;
     box.appendChild(go); box.appendChild(no);
@@ -2236,9 +2440,9 @@
     // C8: الغرف
     roomCreate: roomCreate, roomJoin: roomJoin, prejoin: roomPrejoin, roomJoinPrompt: roomJoinPrompt, roomLink: roomLink, newRoomCode: newCode, roomLeave: function () { if (rm) rLeave(rm, "left"); },
     room: function () { var r = rm; return r ? { code: r.code, state: r.state, host: r.meta.host, title: r.title, members: Object.keys(r.members), mic: r.mic, cam: r.camOn, hand: !!r.hand, low: r.low,
-      locked: !!r.meta.locked, lobby: !!r.meta.lobby, chat: r.chat.length, speaker: r.speaker, peers: Object.keys(r.peers).map(function (u) { return { uid: u, state: r.peers[u].state }; }) } : null; },
+      locked: !!r.meta.locked, lobby: !!r.meta.lobby, chat: r.chat.length, speaker: r.speaker, max: rMax(r), myQ: r.myQ == null ? null : r.myQ, lowRes: !!r.lowRes, rejoins: r.rejoins || 0, sess: r.sess, audioOnly: !!r.meta.audioOnly, pinOn: !!r.meta.pinOn, lockAt: r.meta.lockAt || null, endText: r.endText || null, peers: Object.keys(r.peers).map(function (u) { return { uid: u, state: r.peers[u].state, q: r.peers[u].q == null ? null : r.peers[u].q }; }) } : null; },
     _rm: function () { return rm; }, _r: { prejoin: roomPrejoin, toggleMic: rToggleMic, toggleCam: rToggleCam, hand: rToggleHand, low: rToggleLow, chat: rSendChat, react: rReact, admit: rAdmit, remove: rRemove,
-      makeHost: rMakeHost, ctl: rCtl, muteAll: rMuteAll, lowerAll: rLowerAll, meta: rSetMeta, endAll: rEndAll, summary: rSummaryText, panel: rOpenPanel },
+      makeHost: rMakeHost, ctl: rCtl, muteAll: rMuteAll, lowerAll: rLowerAll, meta: rSetMeta, endAll: rEndAll, summary: rSummaryText, panel: rOpenPanel, settings: rSettings, max: rMax, rejoin: function () { if (rm) rRejoin(rm); }, adapt: function (q) { if (rm) rAdapt(rm, q); }, stats: function () { if (rm) rStatsTick(rm); } },
     _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming
   };
   try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") schedRefresh(false); }); } catch (e) {}
