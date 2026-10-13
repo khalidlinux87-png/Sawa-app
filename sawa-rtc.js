@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c38";
+  var VERSION = "c39";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -292,9 +292,9 @@
     ui.nm.textContent = c.name || ""; ui.topName.textContent = c.name || "";
     ui.rv.style.display = "none"; ui.lv.style.display = "none"; ui.sub.textContent = "";
     ui.rv.srcObject = null; ui.ra.srcObject = null; ui.lv.srcObject = null;
-    minimize(false); paint(c);
+    minimize(false); paint(c); guardArm();
   }
-  function hide() { if (!ui.root) return; ui.root.style.display = "none"; ui.pill.style.display = "none"; ui.min = false;
+  function hide() { if (!ui.root) return; ui.root.style.display = "none"; ui.pill.style.display = "none"; ui.min = false; guardDisarm();
     try { ui.rv.srcObject = null; ui.ra.srcObject = null; ui.lv.srcObject = null; } catch (e) {} }
   function paintStatus(c) {
     if (!ui.root || c !== cur && c.state !== "ended") return;
@@ -700,6 +700,27 @@
   var GC_MAX = { video: 4, audio: 8 }, ALONE_MS = global.__sawaRtcAloneMs || 60000;
   var gc = null, gui = { root: null };
   function busy() { return !!(cur || gc || rm); }
+  // C39: زرّ الرجوع (أندرويد) أثناء المكالمة/الغرفة كان يُغلق التطبيق كلّه فتسقط المكالمة ⇒ يصغّرها بدل ذلك ويُبقي الحراسة
+  var bg = { armed: false, skip: false, told: 0 };
+  function guardArm() { if (bg.armed) return; try { history.pushState({ sawaCall: 1 }, ""); bg.armed = true; } catch (e) {} }
+  function guardDisarm() {
+    if (!bg.armed) return; bg.armed = false;
+    try { if (history.state && history.state.sawaCall) { bg.skip = true; history.back(); } } catch (e) {}
+  }
+  try {
+    global.addEventListener("popstate", function () {
+      if (bg.skip) { bg.skip = false; return; }
+      if (!bg.armed) return;
+      try { if (history.state && history.state.sawaCall) return; } catch (e) {}   // المسحوب ورقةٌ فوق المكالمة لا المكالمة
+      bg.armed = false;
+      if (!busy()) return;
+      guardArm();
+      if (cur && ui.root && !ui.min) minimize(true);
+      else if (gc && gui.root && !gui.min) gMinimize(true);
+      else if (rm && rui.root && !rui.min) rMinimize(true);
+      else if (Date.now() - bg.told > 4000) { bg.told = Date.now(); toast(L("المكالمة مستمرّة — أنهِها من الشريط العلويّ", "Call still running — end it from the top bar")); }
+    });
+  } catch (e) {}
 
   function gcNew(o) {
     o.peers = {}; o.members = {}; o.offs = []; o.timers = {}; o.sess = rid(8); o.muted = false; o.camOff = false; o.facing = "user";
@@ -1103,9 +1124,9 @@
   function gShow(g) {
     gBuild();
     gui.grid.innerHTML = ""; gui.audios.innerHTML = ""; gui.reqs.innerHTML = ""; gui.tiles = {};
-    gMinimize(false); gPaint(g);
+    gMinimize(false); gPaint(g); guardArm();
   }
-  function gHide() { if (!gui.root) return; gui.root.style.display = "none"; gui.pill.style.display = "none"; gui.min = false; gui.grid.innerHTML = ""; gui.audios.innerHTML = ""; gui.tiles = {}; }
+  function gHide() { if (!gui.root) return; gui.root.style.display = "none"; gui.pill.style.display = "none"; gui.min = false; guardDisarm(); gui.grid.innerHTML = ""; gui.audios.innerHTML = ""; gui.tiles = {}; }
   function gMinimize(on) {
     if (!gui.root) return; gui.min = !!on;
     gui.root.style.display = on ? "none" : "flex"; gui.pill.style.display = on ? "flex" : "none";
@@ -1919,8 +1940,8 @@
     rui = { root: root, title: title, sub: sub, hostBtns: hostBtns, minB: minB, link: link, linkTx: linkTx, banners: banners, grid: grid, center: center, cT: cT, cS: cS, panel: panel, bar: bar, floats: floats, audios: audios, pill: pill, tiles: {}, min: false };
     return rui;
   }
-  function rShow(r) { rBuild(); rui.grid.innerHTML = ""; rui.audios.innerHTML = ""; rui.banners.innerHTML = ""; rui.panel.style.display = "none"; rui.tiles = {}; rMinimize(false); rPaint(r); }
-  function rHide() { if (!rui.root) return; rui.root.style.display = "none"; rui.pill.style.display = "none"; rui.min = false; rui.grid.innerHTML = ""; rui.audios.innerHTML = ""; rui.tiles = {}; }
+  function rShow(r) { rBuild(); rui.grid.innerHTML = ""; rui.audios.innerHTML = ""; rui.banners.innerHTML = ""; rui.panel.style.display = "none"; rui.tiles = {}; rMinimize(false); rPaint(r); guardArm(); }
+  function rHide() { if (!rui.root) return; rui.root.style.display = "none"; rui.pill.style.display = "none"; rui.min = false; guardDisarm(); rui.grid.innerHTML = ""; rui.audios.innerHTML = ""; rui.tiles = {}; }
   function rMinimize(on) { if (!rui.root) return; rui.min = !!on; rui.root.style.display = on ? "none" : "flex"; rui.pill.style.display = on ? "flex" : "none"; rPaintHead(rm); }
   function rElapsed(r) { return r.joinedAt ? fmt(Math.floor((Date.now() - r.joinedAt) / 1000)) : "0:00"; }
   function rPaintHead(r) {
