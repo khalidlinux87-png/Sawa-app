@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c28";
+  var VERSION = "c30";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -177,6 +177,22 @@
   var wake = null;
   function wakeOn() { try { if (navigator.wakeLock && !wake) navigator.wakeLock.request("screen").then(function (w) { wake = w; }).catch(function () {}); } catch (e) {} }
   function wakeOff() { try { if (wake) wake.release(); } catch (e) {} wake = null; }
+  // C30: الصوت في الخلفيّة — جلسة وسائط (Media Session) تُبقي أندرويد على صوت المكالمة حين تنتقل إلى تطبيقٍ آخر،
+  //      وتعرض إشعار «مكالمة جارية» بزرّ إنهاء. عند العودة نعيد تشغيل عناصر الصوت احتياطاً.
+  function bgAudio(on, title, onEnd) {
+    try {
+      var ms = navigator.mediaSession; if (!ms) return;
+      if (!on) { try { ms.metadata = null; } catch (e) {} ms.playbackState = "none"; ["hangup", "pause", "play", "stop"].forEach(function (a) { try { ms.setActionHandler(a, null); } catch (e) {} }); return; }
+      ms.metadata = new MediaMetadata({ title: title || L("مكالمة", "Call"), artist: L("سوا — مكالمة جارية", "Sawa — call in progress"), artwork: [{ src: "./icons/icon-192.png", sizes: "192x192", type: "image/png" }] });
+      ms.playbackState = "playing";
+      try { ms.setActionHandler("hangup", function () { if (onEnd) onEnd(); }); } catch (e) {}
+      try { ms.setActionHandler("stop", function () { if (onEnd) onEnd(); }); } catch (e) {}
+      try { ms.setActionHandler("pause", function () { ms.playbackState = "playing"; }); } catch (e) {}
+      try { ms.setActionHandler("play", function () { ms.playbackState = "playing"; }); } catch (e) {}
+    } catch (e) {}
+  }
+  function resumeAudio() { try { document.querySelectorAll("#sawa-call audio, #sawa-gcall audio, #sawa-room audio").forEach(function (a) { if (a.srcObject && a.paused) a.play().catch(function () {}); }); } catch (e) {} }
+  try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") resumeAudio(); }); } catch (e) {}
   // C28: «وضع الأذن» — على السمّاعة العاديّة تسودّ الشاشة بعد ٥ ثوانٍ (المتصفّح لا يطفئها ولا يصل إلى حسّاس القرب)،
   //      فلا تلمسها الوجنة، وتعود بالضغط المطوّل أو بتحويل الصوت إلى المكبّر أو بانتهاء المكالمة.
   var earT = null, earEl = null;
@@ -210,8 +226,8 @@
   var ui = { root: null };
   function el(tag, css, txt) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (txt != null) e.textContent = txt; return e; }
   function btn(icon, label, bg, onclick) {
-    var w = el("div", "display:flex;flex-direction:column;align-items:center;gap:6px;min-width:64px");
-    var b = el("button", "width:60px;height:60px;border-radius:50%;border:0;font-size:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;background:" + bg, icon);
+    var w = el("div", "display:flex;flex-direction:column;align-items:center;gap:5px;min-width:54px;flex:1 1 0");
+    var b = el("button", "width:54px;height:54px;border-radius:50%;border:0;font-size:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;background:" + bg, icon);
     b.setAttribute("aria-label", label);
     b.onclick = function (ev) { ev.stopPropagation(); onclick(); };
     var t = el("span", "font:600 12px system-ui;color:#e8f5ee", label);
@@ -238,7 +254,7 @@
     var st = el("div", "font:600 15px system-ui;color:#bfe3d0");
     var sub = el("div", "font:500 11px system-ui;color:#8fb8a4;min-height:14px");
     mid.appendChild(av); mid.appendChild(nm); mid.appendChild(st); mid.appendChild(sub);
-    var bar = el("div", "position:relative;z-index:3;display:flex;justify-content:space-evenly;align-items:flex-start;padding:18px 10px calc(env(safe-area-inset-bottom,0px) + 26px);background:linear-gradient(transparent,rgba(0,0,0,.55))");
+    var bar = el("div", "position:relative;z-index:3;display:flex;flex-wrap:wrap;gap:8px 0;justify-content:space-evenly;align-items:flex-start;padding:14px 6px calc(env(safe-area-inset-bottom,0px) + 22px);background:linear-gradient(transparent,rgba(0,0,0,.55))");
     r.appendChild(rv); r.appendChild(ra); r.appendChild(lv); r.appendChild(top); r.appendChild(mid); r.appendChild(bar);
     // الشريط المصغّر
     var pill = el("button", "position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:8px;background:#2e7d5b;color:#fff;border:0;border-radius:22px;padding:9px 16px;font:700 13px system-ui;box-shadow:0 4px 18px rgba(0,0,0,.35);direction:rtl;cursor:pointer");
@@ -421,7 +437,7 @@
     if (c.done) return;
     if (s === "connected") {
       clearTimeout(c.timers.conn); clearTimeout(c.timers.lost); delete c.timers.lost;
-      if (!c.connectedAt) { c.connectedAt = Date.now(); stopTone(); capVideo(c); wakeOn();
+      if (!c.connectedAt) { c.connectedAt = Date.now(); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); });
         audioRoutes().then(function (rt) {   // C15: المكالمة الصوتيّة تبدأ على سمّاعة الأذن كالهاتف، والفيديو على المكبّر
           if (!rt || c.done || cur !== c) return;
           c.routes = rt; c.out = "spk";
@@ -643,7 +659,7 @@
   };
   function finish(c, reason, opts) {
     if (!c || c.done) return;
-    opts = opts || {}; c.done = true; clearCallNotifications(); earOff();
+    opts = opts || {}; c.done = true; clearCallNotifications(); earOff(); bgAudio(false);
     clearTimers(c); stopTone(); wakeOff();
     c.offs.forEach(function (f) { f(); }); c.offs = [];
     // أخبر الطرف الآخر
@@ -819,7 +835,7 @@
       if (g.done) return;
       g.live = true;
       try { g.ref.child("members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
-      g.joinedAt = Date.now(); g.state = "live"; wakeOn(); gPaint(g);
+      g.joinedAt = Date.now(); g.state = "live"; wakeOn(); gPaint(g); bgAudio(true, g.title || L("مكالمة جماعيّة", "Group call"), function () { groupLeave(); });
       if (!g.tick) g.tick = setInterval(function () { gPaintHead(g); }, 1000);
       if (g.role === "starter" && !g.vc) playTone("back");   // نغمة «يرنّ» حتّى ينضمّ أوّل شخص (لا رنين في الدردشة الصوتيّة)
       var first = true;
@@ -1012,7 +1028,7 @@
   };
   function gFinish(g, reason, opts) {
     if (!g || g.done) return;
-    opts = opts || {}; g.done = true; clearCallNotifications();
+    opts = opts || {}; g.done = true; clearCallNotifications(); bgAudio(false);
     var me = myUid();
     for (var k in g.timers) clearTimeout(g.timers[k]); g.timers = {};
     if (g.tick) clearInterval(g.tick); g.tick = null;
@@ -1418,7 +1434,7 @@
       if (!s || r.done) return;
       var m = s.val() || {};
       if (Object.keys(m).length > ROOM_MAX) { rLeave(r, "full"); return; }
-      r.state = "live"; wakeOn(); rPaint(r);
+      r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); });
       if (!r.tick) r.tick = setInterval(function () { rTick(r); }, 1000);
       var first = true;
       rListen(r, mine, "child_added", function (x) { onRSig(r, x.val() || {}); });
@@ -1678,7 +1694,7 @@
   function rLeave(r, reason, opts) {
     r = r || rm; if (!r) return;
     if (r.done) { if (rm === r) rm = null; return; }
-    opts = opts || {}; r.done = true;
+    opts = opts || {}; r.done = true; bgAudio(false);
     var me = myUid(), ref = r.ref, wasHost = amHost(r), members = r.members, meta = r.meta;
     for (var k in r.timers) { clearTimeout(r.timers[k]); clearInterval(r.timers[k]); } r.timers = {};
     if (r.tick) clearInterval(r.tick); r.tick = null;

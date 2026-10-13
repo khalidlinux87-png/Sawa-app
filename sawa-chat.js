@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c25";
+  var VERSION = "c30";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -870,7 +870,7 @@
     var sec = e2eOn(c);
     return {
       id: c.cid, cloud: true, kind: c.type, peerUid: other || null,
-      name: c.type === "saved" ? L("رسائلي المحفوظة", "Saved messages") : (sec ? "🔒 " : "") + personName(other, c),
+      name: c.type === "saved" ? L("رسائلي المحفوظة", "Saved messages") : personName(other, c) + (sec ? " 🔒" : ""),
       isSavedMessages: c.type === "saved", secret: sec, e2e: sec ? e2eUi(c) : null, photo: other ? photoOf(other) : null,
       lastMessage: lp ? preview(lp.msg) : sec ? secretPreview(c) : preview(l), lastFromMe: lastMine,
       lastStatus: lp ? lp.status : (l && l.by === state.uid ? statusOf(c, l.ts) : null),
@@ -887,7 +887,7 @@
     var sec = e2eOn(c);
     var lastText = lp ? preview(lp.msg) : (l ? (l.type === "system" ? sysText({ by: l.by, extra: { ev: l.ev } }, c).replace(/«»|“”/g, "").trim() : (l.by && l.by !== state.uid ? personName(l.by, c) + ": " : "") + (sec ? secretPreview(c) : preview(l))) : (sec ? secretPreview(c) : ""));
     return { id: c.cid, cloud: true, kind: c.type, familyGroupId: c.familyGroupId || null, desc: c.desc || "", adminsOnly: !!c.adminsOnly, infoAdminsOnly: !!c.infoAdminsOnly,
-      name: (sec ? "🔒 " : "") + (c.name || L("مجموعة", "Group")), members: members, lastMessage: lastText, secret: sec, e2e: sec ? e2eUi(c) : null,
+      name: (c.name || L("مجموعة", "Group")) + (sec ? " 🔒" : ""), members: members, lastMessage: lastText, secret: sec, e2e: sec ? e2eUi(c) : null,
       unread: unreadOf(c), updatedAt: lp ? lp.ts : (c.updatedTs || 0), pinnedMessageId: c.pinned || null, disappear: c.disappear || 0 };
   }
   var pubChatsT = null;
