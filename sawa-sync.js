@@ -1271,6 +1271,7 @@
         if (!t) return;
         var act = t.getAttribute("data-act");
         if (act === "close") closePanel();
+        else if (act === "retry") { state.ready = false; state.error = null; renderPanel(); connect().then(function () { renderPanel(); refreshMyGroups(); refreshReviews(); }); }
         else if (act === "google") linkGoogle();
         else if (act === "email") { closePanel(); try { global.SawaChat.emailSheet(); } catch (x) {} }
         else if (act === "upload") uploadCurrent();
@@ -1300,6 +1301,8 @@
     }
     panelEl.style.display = "flex";
     renderPanel();
+    // C42: إن لم يكتمل الاتصال عند الإقلاع (ترتيب تحميل/شبكة) نعيد المحاولة عند فتح اللوحة بدل «جارٍ الاتصال…» إلى الأبد
+    if (!state.uid) { state.ready = false; connect().then(function () { renderPanel(); refreshMyGroups(); refreshReviews(); }); return; }
     refreshMyGroups();
     refreshReviews();
   }
@@ -1318,7 +1321,9 @@
     var p = function (txt, color) { return '<div style="font:500 14px/1.6 system-ui;color:' + (color || "#1f2d3a") + '">' + txt + '</div>'; };
 
     var acct;
-    if (!state.uid) acct = p(L("جارٍ الاتصال بالخادم…", "Connecting…"), "#8a6d1f");
+    if (!state.uid) acct = state.error
+      ? p(L("تعذّر الاتصال بالخادم: ", "Couldn't reach the server: ") + esc(state.error), "#b42318") + btn("retry", L("إعادة المحاولة", "Retry"))
+      : p(L("جارٍ الاتصال بالخادم…", "Connecting…"), "#8a6d1f");
     else if (state.isAnon) acct = p(L("ضيف — هويّتك محفوظة في هذا المتصفّح فقط وقد تضيع عند مسح بياناته أو تغيير الهاتف. اربطها بحساب لتصل لمحادثاتك وعائلتك من أيّ جهاز.",
                                        "Guest — your identity lives in this browser only. Link an account to reach your chats and family from any device.")) +
                                btn("google", L("ربط بحساب Google", "Link Google account"), true) +

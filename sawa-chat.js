@@ -1479,8 +1479,8 @@
     return isIOS()
       ? L("الإشعارات محظورة لسوا. افتح «الإعدادات» ← «الإشعارات» ← «سوا» وفعّل «السماح بالإشعارات».",
           "Notifications are blocked for Sawa. Open Settings → Notifications → Sawa and turn on Allow Notifications.")
-      : L("الإشعارات محظورة لسوا. اضغط مطوّلاً على أيقونة سوا ← «معلومات التطبيق» ← «الإشعارات» ← سماح. (أو من المتصفّح: 🔒 بجانب العنوان ← الأذونات ← الإشعارات ← سماح) ثمّ أعد فتح سوا.",
-          "Notifications are blocked for Sawa. Long-press the Sawa icon → App info → Notifications → Allow (or in the browser: 🔒 next to the address → Permissions → Notifications → Allow), then reopen Sawa.");
+      : L("الإشعارات محظورة لسوا. افعل الاثنين ثمّ أعد فتح سوا:\n١) اضغط مطوّلاً على أيقونة سوا ← «معلومات التطبيق» ← «الإشعارات» ← سماح.\n٢) افتح Chrome ← ⋮ ← الإعدادات ← إعدادات المواقع ← الإشعارات ← ابحث عن sawaaap.com ← سماح (أو احذفه من قائمة «محظور»).",
+          "Notifications are blocked for Sawa. Do both, then reopen Sawa:\n1) Long-press the Sawa icon → App info → Notifications → Allow.\n2) Open Chrome → ⋮ → Settings → Site settings → Notifications → find sawaaap.com → Allow (or remove it from the Blocked list).");
   }
   function enablePush() {
     if (!VAPID_KEY) { toast(L("الإشعارات لم تُفعَّل بعد في هذا الإصدار", "Notifications aren't set up in this version yet")); return Promise.resolve(false); }
@@ -1492,7 +1492,12 @@
       if (perm !== "granted") { emitPush(); if (perm === "denied") helpSheet(); else toast(L("لم تُفعَّل الإشعارات — يمكنك المحاولة لاحقاً", "Notifications weren't turned on")); return false; }
       return pushToken().then(function (tok) { lsSet("sawa_push", {}); return registerToken(tok); })
         .then(function () { toast(L("الإشعارات مفعّلة ✓", "Notifications on ✓")); hideBanner(); emitPush(); return true; });
-    }).catch(function (e) { toast(L("تعذّر تفعيل الإشعارات: ", "Couldn't enable notifications: ") + ((e && e.message) || e)); emitPush(); return false; });
+    }).catch(function (e) {
+      // C42: الإذن محظور (في التطبيق المثبَّت/TWA يأتي من Firebase برمز permission-blocked) ⇒ ورقة إرشادٍ عربيّة بدل نصّ الخطأ الخامّ
+      var code = (e && e.code) || "", msg = String((e && e.message) || e || "");
+      if (/permission-blocked|permission-default|denied/i.test(code + " " + msg) || (global.Notification && Notification.permission === "denied")) { lsSet("sawa_push_asked", Date.now()); helpSheet(); }
+      else toast(L("تعذّر تفعيل الإشعارات: ", "Couldn't enable notifications: ") + msg);
+      emitPush(); return false; });
   }
   function disablePush() {
     var prev = lsGet("sawa_push", {});
@@ -1551,7 +1556,7 @@
     var box = document.createElement("div"); box.dir = isAr() ? "rtl" : "ltr";
     box.style.cssText = "background:#fff;color:#1f2937;border-radius:18px 18px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));width:100%;max-width:520px;font:500 14px/1.8 system-ui";
     var h = document.createElement("div"); h.style.cssText = "font:800 16px system-ui;margin-bottom:6px"; h.textContent = L("🔔 تفعيل الإشعارات", "🔔 Turn on notifications");
-    var p = document.createElement("div"); p.textContent = deniedHelp();
+    var p = document.createElement("div"); p.textContent = deniedHelp(); p.style.whiteSpace = "pre-line";
     var ok = btn(L("حسناً", "OK"), true); ok.style.marginTop = "12px"; ok.style.width = "100%";
     ok.onclick = function () { try { ov.remove(); } catch (e) {} };
     ov.onclick = function (e) { if (e.target === ov) ok.onclick(); };
