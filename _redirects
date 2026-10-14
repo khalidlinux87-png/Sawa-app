@@ -1,0 +1,2 @@
+# Cloudflare Pages: يقدّم ملفّ ربط تطبيق أندرويد من مجلّد well-known (بلا نقطة) على المسار الذي يطلبه Google
+/.well-known/assetlinks.json /well-known/assetlinks.json 200
