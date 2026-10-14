@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c43";
+  var VERSION = "c44";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -185,7 +185,7 @@
   // ---------- الملفّ الشخصيّ: اسم «سوا» + رقم الهاتف (غير موثّق حتّى الإطلاق) ----------
   function profile() {
     var m = state.me || {};
-    return { uid: state.uid, name: m.name || null, phone: m.phone || null, phoneVerified: !!m.phoneVerified, emailVerified: !!m.emailVerified, googleName: m.googleName || null, anon: !!m.anon, photo: state.uid ? photoOf(state.uid) : null,
+    return { uid: state.uid, name: m.name || null, phone: m.phone || null, phoneVerified: !!m.phoneVerified, verifiedBy: m.phoneVerified ? (m.verifiedBy || "whatsapp") : null, emailVerified: !!m.emailVerified, googleName: m.googleName || null, anon: !!m.anon, photo: state.uid ? photoOf(state.uid) : null,
              code: m.code || null, findable: m.findable !== false, waReady: !!state.waReady };
   }
   function saveProfile(patch) {
@@ -1617,6 +1617,7 @@
       if (m.type === "sawa-push" && m.data) {
         if (m.data.t !== "call" && m.data.cid !== openCid) toast((m.data.title ? m.data.title + ": " : "") + (m.data.body || ""));
         if (m.data.t === "req") loadRequests();
+        if (m.data.t === "vouchok") { state.me = Object.assign({}, state.me || {}, { phoneVerified: true, verifiedBy: "contacts" }); publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} toast(L("تأكّد رقمك ✓", "Your number is confirmed ✓")); }
         if (m.data.t === "reqok") { refresh(); loadRequests(); }
       }
       if (m.type === "sawa-open" && m.data) { if (m.data.t === "req") whenReady(function () { requestsSheet(); }); else openFromPush(m.data.cid); }
@@ -1673,6 +1674,10 @@
     if (/too_many_pending/.test(m)) return L("لديك ٢٠ طلباً بانتظار الموافقة — ألغِ بعضها أوّلاً", "You have 20 pending requests — cancel some first");
     if (/not_found/.test(m)) return L("لا يوجد حسابٌ بهذا الرمز", "No account with this code");
     if (/bad_phone/.test(m)) return L("رقم الهاتف غير صحيح — مثال: +249912345678", "Invalid phone — e.g. +249912345678");
+    if (/no_phone/.test(m)) return L("أضف رقم هاتفك أوّلاً من «حسابي»", "Add your phone number first (Me)");
+    if (/no_targets/.test(m)) return L("اختر شخصاً واحداً على الأقلّ", "Pick at least one person");
+    if (/not_eligible/.test(m)) return L("لتأكيد الآخرين يلزم حسابٌ بـGoogle أو بريدٍ مؤكَّد أو رقمٍ موثَّق", "To confirm others you need a Google / confirmed-email account or a verified number");
+    if (/not_contact/.test(m)) return L("لستما جهتي اتّصال", "You're not contacts");
     if (/bad_email/.test(m)) return L("البريد غير صحيح", "Invalid email");
     if (/^wait$/.test(m)) return L("غيّرتَ رمزك قبل قليل — انتظر ١٠ دقائق", "You changed your code a moment ago — wait 10 minutes");
     if (/fetch|network|timeout/i.test(m)) return L("تحقّق من الاتّصال بالإنترنت", "Check your internet connection");
@@ -1720,14 +1725,14 @@
   }
 
   // ---------- طلبات التواصل ----------
-  var reqs = { incoming: [], outgoing: [], at: 0 };
+  var reqs = { incoming: [], outgoing: [], vouches: [], at: 0 };
   function publishReqs() {
-    try { global.dispatchEvent(new CustomEvent("sawa-requests", { detail: reqs.incoming.length })); } catch (e) {}
+    try { global.dispatchEvent(new CustomEvent("sawa-requests", { detail: reqs.incoming.length + (reqs.vouches || []).length })); } catch (e) {}
   }
   function loadRequests() {
     if (!state.uid) return Promise.resolve(reqs);
     return call("code.requests", {}).then(function (b) {
-      reqs = { incoming: b.incoming || [], outgoing: b.outgoing || [], at: Date.now() };
+      reqs = { incoming: b.incoming || [], outgoing: b.outgoing || [], vouches: b.vouches || [], at: Date.now() };
       publishReqs(); return reqs;
     }).catch(function (e) { log("requests:", (e && e.message) || e); return reqs; });
   }
@@ -1781,9 +1786,56 @@
       card.appendChild(acts);
       return card;
     }
+    // C44: بطاقة «هل هذا رقم فلان؟»
+    function vouchRow(r) {
+      var card = mk("div", "border:1.5px solid #bfe0d2;background:#f3faf6;border-radius:14px;padding:12px;margin:8px 0");
+      var top = mk("div", "display:flex;gap:10px;align-items:center");
+      top.appendChild(avatar(r.name, 42));
+      var info = mk("div", "flex:1;min-width:0");
+      info.appendChild(mk("div", "font:800 15px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis", r.name || L("مستخدم سوا", "Sawa user")));
+      info.appendChild(mk("div", "font:700 14px system-ui;color:#187854;direction:ltr;text-align:" + (isAr() ? "right" : "left"), r.phone || ""));
+      top.appendChild(info); card.appendChild(top);
+      card.appendChild(mk("div", "font:600 13px/1.6 system-ui;margin-top:8px", L("يطلب تأكيد أنّ هذا رقمه. هل هو رقمه الذي تعرفه؟", "Asks you to confirm this is their number. Is it the number you know?")));
+      var st = mk("div", "font:600 12px system-ui;min-height:16px;margin-top:4px;color:#8796a5"); card.appendChild(st);
+      var acts = mk("div", "display:flex;gap:8px;margin-top:8px;flex-wrap:wrap");
+      function act(label, kind, fn) { var b = mkBtn(label, kind); b.style.padding = "9px 8px"; b.style.fontSize = "13px"; b.style.flex = "1"; b.onclick = function () { b.disabled = true; b.textContent = "…"; fn(b, label); }; acts.appendChild(b); return b; }
+      function answer(ok, matched) {
+        return call("vouch.respond", { for: r.uid, ok: ok, matched: !!matched }).then(function (b) {
+          reqs.vouches = reqs.vouches.filter(function (x) { return x.uid !== r.uid; }); publishReqs();
+          if (!ok) toast(L("حسناً — لم يُحتسب", "OK — not counted"));
+          else if (b.stale) toast(L("غيّر رقمه — انتهى الطلب", "They changed their number — request expired"));
+          else if (b.verified) toast(L("تأكّد رقمه ✓ شكراً", "Their number is now confirmed ✓ thanks"));
+          else if (b.conflict) toast(L("هذا الرقم موثَّق لحسابٍ آخر", "This number is verified on another account"));
+          else toast(L("شكراً — أُحتسب تأكيدك (" + b.count + "/" + b.needed + ")", "Thanks — counted (" + b.count + "/" + b.needed + ")"));
+          draw();
+        }).catch(function (e) { toast(codeErr(e)); draw(); });
+      }
+      var yes = act(L("نعم، هذا رقمه", "Yes, that's their number"), "primary", function () { answer(true, false); });
+      act(L("لست متأكّداً", "Not sure"), "", function () { answer(false); });
+      // مقارنة بدفتر الهاتف (Chrome أندرويد: Contact Picker)
+      try {
+        if (global.navigator && navigator.contacts && navigator.contacts.select) {
+          var cmp = mkBtn(L("📒 قارن بدفتر هاتفي", "📒 Compare with my phonebook")); cmp.style.width = "100%"; cmp.style.marginTop = "6px";
+          cmp.onclick = function () {
+            navigator.contacts.select(["tel", "name"], { multiple: false }).then(function (cs) {
+              var c = cs && cs[0]; if (!c) return;
+              var norm = function (x) { var d = String(x || "").replace(/[^\d+]/g, ""); if (d.indexOf("00") === 0) d = "+" + d.slice(2); if (/^0\d{9}$/.test(d)) d = "+249" + d.slice(1); return d; };
+              var want = norm(r.phone), got = (c.tel || []).map(norm);
+              if (got.indexOf(want) >= 0) { st.textContent = L("✓ مطابقٌ لدفترك", "✓ Matches your phonebook"); st.style.color = "#187854"; yes.disabled = true; yes.textContent = "…"; answer(true, true); }
+              else { st.textContent = L("الرقم في دفترك مختلف: ", "Your phonebook has: ") + (got[0] || "—") + L(" — لا تؤكّد إلّا إن كنت متأكّداً.", " — confirm only if you're sure."); st.style.color = "#b42318"; }
+            }).catch(function () {});
+          };
+          card.appendChild(acts); card.appendChild(cmp); return card;
+        }
+      } catch (e) {}
+      card.appendChild(acts);
+      return card;
+    }
     function draw() {
       list.innerHTML = "";
-      if (!reqs.incoming.length && !reqs.outgoing.length) list.appendChild(note(L("لا طلبات الآن. شارك رمزك ليصلك من يعرفك.", "No requests. Share your code so people can reach you.")));
+      var vs = reqs.vouches || [];
+      if (!reqs.incoming.length && !reqs.outgoing.length && !vs.length) list.appendChild(note(L("لا طلبات الآن. شارك رمزك ليصلك من يعرفك.", "No requests. Share your code so people can reach you.")));
+      if (vs.length) { list.appendChild(mk("div", "font:800 13px system-ui;color:#5b6b7c;margin-top:8px", L("تأكيد رقم", "Number confirmation") + " (" + vs.length + ")")); vs.forEach(function (r) { list.appendChild(vouchRow(r)); }); }
       if (reqs.incoming.length) { list.appendChild(mk("div", "font:800 13px system-ui;color:#5b6b7c;margin-top:8px", L("وصلتك", "Received") + " (" + reqs.incoming.length + ")")); reqs.incoming.forEach(function (r) { list.appendChild(row(r, true)); }); }
       if (reqs.outgoing.length) { list.appendChild(mk("div", "font:800 13px system-ui;color:#5b6b7c;margin-top:12px", L("أرسلتَها", "Sent") + " (" + reqs.outgoing.length + ")")); reqs.outgoing.forEach(function (r) { list.appendChild(row(r, false)); }); }
       var foot = mk("div", "display:flex;gap:8px;margin-top:12px");
@@ -1905,10 +1957,68 @@
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
     var p = profile();
     if (p.phoneVerified) { toast(L("رقمك موثَّق ✓", "Your number is verified ✓")); return true; }
-    var s = sheet(L("توثيق رقمك عبر واتساب", "Verify your number via WhatsApp"));
+    var s = sheet(L("توثيق رقمك", "Verify your number"));
+    if (!p.phone) { s.box.appendChild(note(L("أضف رقم هاتفك أوّلاً من «حسابي» ← القلم.", "Add your phone number first (Me → pencil)."), "#8a6d00", "#fff7e0")); var ab = mkBtn(L("أضف رقمي", "Add my number"), "primary"); ab.onclick = function () { s.close(); editProfile(); }; s.box.appendChild(ab); return true; }
     var body = mk("div"); s.box.appendChild(body);
     var timer = null, stopPoll = function () { if (timer) { clearInterval(timer); timer = null; } };
     var origClose = s.close; s.close = function () { stopPoll(); origClose(); };
+    // C44: الشاشة الأولى — «عبر معارفك» دائماً، و«عبر واتساب» إن كان الخادم مهيّأً
+    function home() {
+      body.innerHTML = "";
+      body.appendChild(mk("div", "font:600 13px system-ui;color:#5b6b7c;direction:ltr;text-align:center;margin:2px 0 8px", p.phone));
+      body.appendChild(note(L("جارٍ التحميل…", "Loading…")));
+      Promise.all([call("phone.status", {}), call("profile.get", {}).catch(function () { return {}; })]).then(function (rr) {
+        var st = rr[0] || {}, wa = !!(rr[1] && rr[1].verify && rr[1].verify.whatsapp);
+        state.waReady = wa;
+        body.innerHTML = "";
+        body.appendChild(mk("div", "font:600 13px system-ui;color:#5b6b7c;direction:ltr;text-align:center;margin:2px 0 8px", p.phone));
+        if (st.phoneVerified) { state.me = Object.assign({}, state.me || {}, { phoneVerified: true, verifiedBy: st.verifiedBy || "whatsapp" }); publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} body.appendChild(note(L("رقمك موثَّق ✓", "Verified ✓"), "#187854", "#e8f5ee")); return; }
+        // ١) عبر المعارف
+        var c1 = mk("div", "border:1px solid #e6ebf0;border-radius:16px;padding:12px;margin:8px 0");
+        c1.appendChild(mk("div", "font:800 15px system-ui", L("👥 عبر معارفك", "👥 Through people you know")));
+        c1.appendChild(note(L("اطلب من اثنين من جهات اتّصالك (بحساب Google أو بريدٍ مؤكَّد) أن يؤكّدا أنّ هذا رقمك. بلا رسائل ولا تكلفة.", "Ask two of your contacts (with a Google or confirmed-email account) to confirm this is your number. No messages, no cost.")));
+        var n = st.vouches || 0, need = st.needed || 2;
+        var bar = mk("div", "display:flex;align-items:center;gap:8px;margin:6px 0");
+        for (var i = 0; i < need; i++) bar.appendChild(mk("div", "flex:1;height:8px;border-radius:4px;background:" + (i < n ? "#187854" : "#e6ebf0")));
+        bar.appendChild(mk("div", "font:800 12px system-ui;color:#5b6b7c;white-space:nowrap", n + " / " + need));
+        c1.appendChild(bar);
+        if (st.vouchers && st.vouchers.length) c1.appendChild(note(L("أكّد: ", "Confirmed by: ") + st.vouchers.filter(Boolean).join("، "), "#187854"));
+        var ask = mkBtn(L("اطلب من معارفك", "Ask my contacts"), "primary"); c1.appendChild(ask);
+        ask.onclick = function () { pickVouchers(function () { home(); }); };
+        body.appendChild(c1);
+        // ٢) عبر واتساب
+        var c2 = mk("div", "border:1px solid #e6ebf0;border-radius:16px;padding:12px;margin:8px 0");
+        c2.appendChild(mk("div", "font:800 15px system-ui", L("💬 عبر واتساب", "💬 Via WhatsApp")));
+        if (wa) { c2.appendChild(note(L("ترسل رمزاً قصيراً إلى رقم سوا على واتساب فيُوثَّق رقمك فوراً.", "Send a short code to Sawa's WhatsApp and your number is verified instantly."))); var g2 = mkBtn(L("ابدأ — افتح واتساب", "Start — open WhatsApp")); g2.onclick = intro; c2.appendChild(g2); }
+        else c2.appendChild(note(L("قيد التجهيز — سيُفعَّل قريباً.", "Coming soon."), "#8a6d00", "#fff7e0"));
+        body.appendChild(c2);
+      }).catch(function (e) { body.innerHTML = ""; body.appendChild(note(codeErr(e), "#b42318")); });
+    }
+    // اختيار المعارف (حتى ٥)
+    function pickVouchers(done) {
+      var ppl = (state.people || []).filter(function (x) { return !x.anon; });
+      var s2 = sheet(L("من يؤكّد رقمك؟", "Who can confirm your number?"));
+      if (!ppl.length) { s2.box.appendChild(note(L("لا جهات اتّصال بعد — أضف معارفك أوّلاً.", "No contacts yet — add people first."))); return; }
+      s2.box.appendChild(note(L("اختر حتى ٥ أشخاص يعرفون رقمك. يصلهم طلبٌ بسيط: «هل هذا رقم فلان؟».", "Pick up to 5 people who know your number. They get a simple question: “Is this their number?”.")));
+      var chosen = {}, list = mk("div", "max-height:50vh;overflow-y:auto;margin:6px 0");
+      ppl.slice(0, 200).forEach(function (x) {
+        var row = mk("button", "width:100%;display:flex;align-items:center;gap:10px;padding:8px 6px;border:0;border-bottom:1px solid #eef2f6;background:transparent;text-align:start;font:600 14px system-ui;color:#1A1A2E");
+        var cb = mk("span", "width:22px;height:22px;border-radius:7px;border:2px solid #cbd5e1;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:none");
+        row.appendChild(cb); row.appendChild(avatar(x.name, 34)); row.appendChild(mk("span", "flex:1", x.name || L("مستخدم سوا", "Sawa user")));
+        row.onclick = function () { if (chosen[x.uid]) delete chosen[x.uid]; else { if (Object.keys(chosen).length >= 5) { toast(L("خمسة كحدٍّ أقصى", "Five at most")); return; } chosen[x.uid] = 1; } cb.textContent = chosen[x.uid] ? "✓" : ""; cb.style.background = chosen[x.uid] ? "#187854" : "transparent"; cb.style.color = "#fff"; cb.style.borderColor = chosen[x.uid] ? "#187854" : "#cbd5e1"; snd.disabled = !Object.keys(chosen).length; };
+        list.appendChild(row);
+      });
+      s2.box.appendChild(list);
+      var snd = mkBtn(L("إرسال الطلب", "Send request"), "primary"); snd.disabled = true; s2.box.appendChild(snd);
+      snd.onclick = function () {
+        snd.disabled = true; snd.textContent = "…";
+        call("vouch.request", { to: Object.keys(chosen) }).then(function (r) {
+          if (r.already) { toast(L("رقمك موثَّق أصلاً ✓", "Already verified ✓")); s2.close(); done(); return; }
+          toast(r.sent ? L("أُرسل الطلب إلى " + r.sent + " — سنبلغك حين يؤكّدوا", "Sent to " + r.sent + " — we'll tell you when they confirm") : L("لم يُرسَل — اختر جهات اتّصال متبادلة", "Not sent — pick mutual contacts"));
+          s2.close(); done();
+        }).catch(function (e) { snd.disabled = false; snd.textContent = L("إرسال الطلب", "Send request"); toast(codeErr(e)); });
+      };
+    }
     function intro() {
       body.innerHTML = "";
       body.appendChild(note(L("لا نرسل لك رسالة SMS — أنت الذي ترسل رمزاً قصيراً إلى رقم سوا على واتساب، فنعرف رقمك من واتساب نفسه. مجّاناً وفي ثوانٍ.",
@@ -1943,7 +2053,7 @@
         call("phone.status", {}).then(function (q) {
           if (!q.phoneVerified) return;
           stopPoll();
-          state.me = Object.assign({}, state.me || {}, { phone: q.phone, phoneVerified: true });
+          state.me = Object.assign({}, state.me || {}, { phone: q.phone, phoneVerified: true, verifiedBy: q.verifiedBy || "whatsapp" });
           lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
           publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {}
           toast(L("تمّ توثيق رقمك ✓ " + q.phone, "Number verified ✓ " + q.phone));
@@ -1951,7 +2061,7 @@
         }).catch(function () {});
       }, 3000);
     }
-    intro();
+    home();
     return true;
   }
   // ---------- «رمزي في سوا» ----------

@@ -910,7 +910,7 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
                         ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-0.5 flex-wrap`, style: { color: colors.textMuted } },
                             React.createElement("span", { className: "text-xs", dir: "ltr" }, myProfile.phone),
                             myProfile.phoneVerified
-                                ? React.createElement("span", { className: "text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0", style: { color: "#187854", backgroundColor: "#E8F5EE" } }, tl("موثّق ✓", "Verified ✓"))
+                                ? React.createElement("span", { className: "text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0", style: { color: "#187854", backgroundColor: "#E8F5EE" } }, myProfile.verifiedBy === "contacts" ? tl("مؤكَّد من معارفك ✓", "Confirmed by contacts ✓") : tl("موثّق ✓", "Verified ✓"))
                                 : React.createElement("button", { onClick: () => { try { SCm.verifySheet(); } catch (e) {} }, className: "text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0", style: { color: "#B7791F", backgroundColor: "#FEF3C7" } }, tl("غير موثّق — وثّقه", "Unverified — verify")))
                         : React.createElement("button", { onClick: editMe, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, "+ أضف رقم هاتفك"))
                         : meState === "err" ? React.createElement("button", { onClick: () => { try { SCm.refresh(); } catch (e) {} meTick((n) => n + 1); }, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, tl("↻ إعادة المحاولة", "↻ Retry"))
