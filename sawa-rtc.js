@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c39";
+  var VERSION = "c45";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -1350,7 +1350,10 @@
   //  شبكة مباشرة ≤ ٨ أشخاص و≤ ٤ كاميرات (حتّى SFU). الصوت والصورة قناتان ثابتتان من البداية ⇒ تشغيل الكاميرا بلا إعادة تفاوض.
   // ============================================================
   var ROOM_MAX = 8, ROOM_CAMS = 4, HOST_GRACE = global.__sawaRoomGraceMs || 12000;
-  function rMax(r) { var m = r && r.meta && Number(r.meta.max); return m >= 2 && m <= ROOM_MAX ? m : ROOM_MAX; }   // C38: حدّ المضيف
+  var SFU_MAX = 30, SFU_CAMS = 6;
+  function rBig(r) { return !!(r && r.meta && r.meta.big); }
+  function rCap0(r) { return rBig(r) ? SFU_MAX : ROOM_MAX; }
+  function rMax(r) { var cap = rCap0(r), m = r && r.meta && Number(r.meta.max); return m >= 2 && m <= cap ? m : cap; }   // C38: حدّ المضيف
   var rm = null, rui = { root: null };
   var CODE_CH = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   function newCode() { var r = new Uint8Array(8), s = ""; try { global.crypto.getRandomValues(r); } catch (e) { for (var i = 0; i < 8; i++) r[i] = Math.random() * 256; } for (var j = 0; j < 8; j++) s += CODE_CH[r[j] % 32]; return s; }
@@ -1373,9 +1376,9 @@
   function amHost(r) { return !!r && r.meta.host === myUid(); }
 
   // ---------- الإنشاء والانضمام ----------
-  function roomCreate(title) {
+  function roomCreate(title, o) {
     if (!enabled()) return false;
-    return roomJoin(newCode(), { create: true, title: title || ((myName() ? L("غرفة ", "Room of ") + myName() : L("غرفة سوا", "Sawa room"))) });
+    return roomJoin(newCode(), { create: true, big: !!(o && o.big), title: title || ((myName() ? L("غرفة ", "Room of ") + myName() : L("غرفة سوا", "Sawa room"))) });
   }
   function roomJoin(code, opts) {
     opts = opts || {};
@@ -1392,7 +1395,8 @@
       var m = s.val();
       if (!m) {
         if (!opts.create) throw Object.assign(new Error("gone"), { ui: L("الغرفة غير موجودة أو انتهت", "This room doesn't exist or has ended") });
-        m = { host: me, owner: me, title: String(r.title).slice(0, 80), ts: TS(), gc: Date.now() + 3 * 3600000, locked: false, lobby: false };   // C16: gc = متى يجوز حذفها فارغةً   // C14: المالك لا يُطرد ويستعيد الاستضافة
+        m = { host: me, owner: me, title: String(r.title).slice(0, 80), ts: TS(), gc: Date.now() + 3 * 3600000, locked: false, lobby: false };
+        if (opts.big) m.big = true;   // C45   // C16: gc = متى يجوز حذفها فارغةً   // C14: المالك لا يُطرد ويستعيد الاستضافة
         return rRef(r, "meta").set(m).then(function () { return rRef(r, "meta").once("value"); }).then(function (x) { return x.val(); });
       }
       return m;
@@ -1508,6 +1512,7 @@
     var cancel = function () { if (r.done || !r.live) return; log("members listener cancelled → rejoin"); rRejoin(r); };
     rListen(r, rRef(r, "members"), "value", function (x) {
       var mm = x.val() || {};
+      if (first && rBig(r)) { first = false; sfuStart(r); }
       if (first) {   // الوافد الجديد يعرض على من سبقه (بحسب ts الخادم)
         first = false;
         var mt = mm[me] && mm[me].ts;
@@ -1533,8 +1538,9 @@
     if (r.done) return;
     if (!m) { if (r.live) rLeave(r, "ended"); return; }
     var wasHost = amHost(r);
-    var wasAO = !!(r.meta && r.meta.audioOnly);
+    var wasAO = !!(r.meta && r.meta.audioOnly), wasBig = rBig(r);
     r.meta = m; r.title = m.title || r.title;
+    if (r.live && wasBig !== rBig(r)) rSwitchMode(r);
     if (m.ended) { rLeave(r, "ended"); return; }
     if (wasHost !== amHost(r)) { rWatchReqs(r); if (amHost(r)) toast(L("صرتَ مضيف الغرفة", "You're now the host")); }
     // C38: المضيف جعلها صوتيّةً فقط ⇒ كاميرات المشاركين تُطفأ
@@ -1550,6 +1556,7 @@
       if (r.done) return;
       if (s.val() === true) { rLeave(r, "kicked"); return; }
       Object.keys(r.peers).forEach(function (u) { rDrop(r, u); });
+      sfuStop(r);
       r.sess = rid(8);
       return rRef(r, "members/" + me).set({ name: myName() || "", sess: r.sess, ts: TS(), mic: r.mic, cam: r.camOn, hand: r.hand, low: r.low }).then(function () {
         if (r.done) return;
@@ -1557,8 +1564,9 @@
         r.state = "live"; r.rejoining = false; r.rejoins = (r.rejoins || 0) + 1; rPaint(r);
         rWatchMembership(r, false);
         toast(L("عاد الاتّصال ✓", "Reconnected ✓"));
-        // أعرض على كلّ الحاضرين (أنا الأحدث)
-        Object.keys(r.members).forEach(function (u) { if (u !== me && r.members[u] && r.members[u].sess) rOffer(r, u, r.members[u].sess); });
+        // أعرض على كلّ الحاضرين (أنا الأحدث) — أو جلسة SFU جديدة في الغرفة الكبيرة
+        if (rBig(r)) sfuStart(r);
+        else Object.keys(r.members).forEach(function (u) { if (u !== me && r.members[u] && r.members[u].sess) rOffer(r, u, r.members[u].sess); });
       });
     }).catch(function (e) {
       log("rejoin", e && e.message); r.rejoining = false;
@@ -1576,7 +1584,7 @@
       r.met[u] = rName(r, u);
       var p = r.peers[u];
       if (p && p.lowSent !== !!m[u].low) { p.lowSent = !!m[u].low; rSenders(r, p); }   // من فعّل «بيانات قليلة» لا نرسل له الصورة
-      if (!p && m[u].sess && !r.timers["o" + u]) r.timers["o" + u] = setTimeout(function () {
+      if (!rBig(r) && !p && m[u].sess && !r.timers["o" + u]) r.timers["o" + u] = setTimeout(function () {
         delete r.timers["o" + u];
         if (!r.done && !r.peers[u] && r.members[u] && r.members[u].sess === m[u].sess) rOffer(r, u, m[u].sess);
       }, 6000);
@@ -1589,8 +1597,220 @@
       var oldest = Object.keys(r.members).sort(function (a, b) { return (r.members[a].ts || 0) - (r.members[b].ts || 0); })[0];
       if (oldest === me) rRef(r, "meta/host").set(me).catch(function (e) { log("claim", e && e.message); });
     }, HOST_GRACE);
+    if (rBig(r)) sfuSync(r);
     Object.keys(rui.tiles || {}).forEach(function (u) { if (u !== "__me" && !m[u]) rTile(r, u); });
     Object.keys(m).forEach(function (u) { if (u !== me) rTile(r, u); });
+    rPaint(r);
+  }
+
+  // ---------- C45: الغرفة الكبيرة عبر Cloudflare Realtime SFU ----------
+  //  اتّصالٌ واحد لكلّ جهاز بخادم الوسائط (بدل اتّصالٍ بكلّ مشارك): أرسل صوتي (وصورتي) مرّةً واحدة، وأسحب مسارات الآخرين.
+  //  الـWorker يحمل مفتاح التطبيق ويتحقّق أنّي عضوٌ في الغرفة وأنّ المسار المسحوب لعضوٍ فيها.
+  //  members/$u.sfu = { s: sessionId, a: اسم مسار الصوت, v: اسم مسار الصورة }. «الأقران» هنا وهميّون (stream + state) فيعمل العرض كما هو.
+  var SFU_STUN = [{ urls: "stun:stun.cloudflare.com:3478" }];
+  function sfuStart(r) {
+    if (r.sfu || r.done || !r.live) return;
+    var s = r.sfu = { pulled: {}, byMid: {}, fails: {}, state: "new", gen: (r.sfuGen = (r.sfuGen || 0) + 1) };
+    var pc = s.pc = new global.RTCPeerConnection({ iceServers: (r.ice && r.ice.length ? r.ice : []).concat(SFU_STUN), bundlePolicy: "max-bundle" });
+    pc.ontrack = function (e) {
+      var x = s.byMid[e.transceiver && e.transceiver.mid]; if (!x || r.sfu !== s) return;
+      x.track = e.track;
+      var p = sfuPeer(r, x.uid); if (!p) return;
+      var keep = p.stream.getTracks().filter(function (t) { return t.kind !== e.track.kind; });
+      p.stream = new global.MediaStream(keep.concat([e.track]));
+      if (e.track.kind === "audio" && p.an) { try { p.an.src.disconnect(); } catch (z) {} p.an = null; }
+      e.track.onunmute = function () { rTile(r, x.uid); }; e.track.onmute = function () { rTile(r, x.uid); };
+      if (e.track.kind === "audio") rLevelWatch(r, x.uid, p.stream);
+      sfuPeers(r);
+    };
+    pc.onconnectionstatechange = function () {
+      if (r.sfu !== s || r.done) return;
+      s.state = pc.connectionState;
+      if (s.state === "connected") { clearTimeout(s.lost); s.lost = null; s.restarts = 0; }
+      else if ((s.state === "disconnected" || s.state === "failed") && !s.lost) s.lost = setTimeout(function () {
+        s.lost = null; if (r.sfu !== s || r.done || pc.connectionState === "connected") return;
+        log("sfu: transport lost → new session"); sfuRestart(r);
+      }, s.state === "failed" ? 500 : 5000);
+      sfuPeers(r);
+    };
+    var a = r.local && r.local.getAudioTracks()[0];
+    s.atx = pc.addTransceiver(a || "audio", { direction: "sendonly" });
+    wcall("sfu.new", { room: r.code }).then(function (b) {
+      if (r.sfu !== s || r.done) return;
+      if (!b || !b.sessionId) throw new Error((b && b.error) || "sfu unavailable");
+      s.sid = b.sessionId;
+      return pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).then(function () {
+        s.aName = r.sess + "a";
+        return wcall("sfu.push", { room: r.code, sid: s.sid, sdp: pc.localDescription.sdp, tracks: [{ mid: s.atx.mid, trackName: s.aName }] });
+      }).then(function (b2) {
+        if (r.sfu !== s || r.done) return;
+        return pc.setRemoteDescription({ type: "answer", sdp: b2.sdp });
+      }).then(function () {
+        if (r.sfu !== s || r.done) return;
+        s.ready = true;
+        rMember(r, { sfu: { s: s.sid, a: s.aName, v: null } });
+        if (r.camOn) sfuCam(r);
+        sfuSync(r);
+      });
+    }).catch(function (e) {
+      log("sfu start", e && e.message);
+      if (r.sfu !== s || r.done) return;
+      var m = String(e && e.message || "");
+      if (/not_configured|sfu_off/.test(m)) { toast(L("الغرف الكبيرة غير مفعّلة على الخادم بعد", "Large rooms aren't enabled on the server yet")); return; }
+      sfuRestart(r, 3000);
+    });
+  }
+  function sfuStop(r) {
+    var s = r && r.sfu; if (!s) return;
+    r.sfu = null; s.dead = true;
+    clearTimeout(s.lost); clearTimeout(s.retry);
+    try { s.pc.close(); } catch (e) {}
+    Object.keys(r.peers).forEach(function (u) { if (r.peers[u].sfu) rDrop(r, u); });
+  }
+  function sfuRestart(r, delay) {
+    var n = (r.sfuRestarts = (r.sfuRestarts || 0) + 1);
+    sfuStop(r);
+    if (n > 6) { rLeave(r, "error", { text: L("تعذّر الاتّصال بخادم الغرفة الكبيرة", "Couldn't reach the large-room server") }); return; }
+    r.timers.sfur = setTimeout(function () { delete r.timers.sfur; if (!r.done && r.live && rBig(r)) sfuStart(r); }, delay || 800);
+  }
+  // قرينٌ وهميّ لكلّ عضوٍ له جلسة SFU — يحمل stream و state ليعرضه rTile كما في الشبكة المباشرة
+  function sfuPeer(r, uid) {
+    var m = r.members[uid]; if (!m || uid === myUid()) return null;
+    var p = r.peers[uid];
+    if (p && (!p.sfu || p.sess !== m.sess)) { rDrop(r, uid); p = null; }
+    if (!p) {
+      var tr = [], sf = r.sfu;   // مساراتٌ سُحبت قبل (أُسقط القرين ثمّ عاد) تُعاد إليه
+      if (sf) Object.keys(sf.pulled).forEach(function (k) { var x = sf.pulled[k]; if (x.uid === uid && x.track && x.track.readyState === "live") tr.push(x.track); });
+      p = r.peers[uid] = { uid: uid, sess: m.sess, sfu: true, stream: new global.MediaStream(tr), state: "connecting" };
+    }
+    return p;
+  }
+  function sfuPeers(r) {
+    var s = r.sfu; if (!s) return;
+    var me = myUid();
+    Object.keys(r.members).forEach(function (u) {
+      if (u === me) return;
+      var f = r.members[u] && r.members[u].sfu; if (!f || !f.s) return;
+      var p = sfuPeer(r, u); if (!p) return;
+      var gotA = !!(s.pulled[u + ":a"] && s.pulled[u + ":a"].track);
+      var st = s.state === "connected" && gotA ? "connected" : (s.state === "disconnected" || s.state === "failed") ? "reconnecting" : "connecting";
+      if (p.state !== st) { p.state = st; rTile(r, u); }
+    });
+    Object.keys(r.peers).forEach(function (u) { var p = r.peers[u]; if (p.sfu && !(r.members[u] && r.members[u].sfu && r.members[u].sfu.s)) rDrop(r, u); });
+    rPaint(r);
+  }
+  // المصالحة: ما يجب سحبه = صوت كلّ عضو + صورة من فتح كاميرته (إلّا في «بيانات قليلة»)؛ نسحب الناقص ونغلق الزائد
+  function sfuSync(r) {
+    var s = r.sfu; if (!s || !s.ready || r.done) return;
+    if (s.busy) { s.again = true; return; }
+    var me = myUid(), want = {};
+    Object.keys(r.members).forEach(function (u) {
+      if (u === me) return;
+      var m = r.members[u], f = m && m.sfu; if (!f || !f.s) return;
+      if (f.a) want[u + ":a"] = { uid: u, kind: "audio", sessionId: f.s, trackName: f.a };
+      if (f.v && m.cam && !r.low) want[u + ":v"] = { uid: u, kind: "video", sessionId: f.s, trackName: f.v };
+    });
+    var same = function (k) { var x = s.pulled[k], w = want[k]; return x && w && x.sessionId === w.sessionId && x.trackName === w.trackName; };
+    var toPull = Object.keys(want).filter(function (k) { return !same(k) && (s.fails[k] || 0) < 6; });
+    var toClose = Object.keys(s.pulled).filter(function (k) { return !same(k); });
+    if (!toPull.length && !toClose.length) { sfuPeers(r); return; }
+    s.busy = true;
+    var pc = s.pc, step = Promise.resolve(), gen = s.gen;
+    if (toClose.length) step = step.then(function () {
+      var mids = [];
+      toClose.forEach(function (k) {
+        var x = s.pulled[k]; delete s.pulled[k]; if (!x) return;
+        if (x.mid) { mids.push(x.mid); delete s.byMid[x.mid]; }
+        var p = r.peers[x.uid];
+        if (p && p.sfu && x.track) { p.stream = new global.MediaStream(p.stream.getTracks().filter(function (t) { return t !== x.track; })); rTile(r, x.uid); }
+      });
+      if (!mids.length) return;
+      return wcall("sfu.close", { room: r.code, sid: s.sid, mids: mids }).then(function (b) { return sfuApplyOffer(r, s, b); }).catch(function (e) { log("sfu close", e && e.message); });
+    });
+    if (toPull.length) step = step.then(function () {
+      if (r.sfu !== s) return;
+      return wcall("sfu.pull", { room: r.code, sid: s.sid, tracks: toPull.map(function (k) { return { sessionId: want[k].sessionId, trackName: want[k].trackName }; }) }).then(function (b) {
+        if (r.sfu !== s || s.gen !== gen) return;
+        (b.tracks || []).forEach(function (t) {
+          var k = toPull.filter(function (kk) { return want[kk].sessionId === t.sessionId && want[kk].trackName === t.trackName; })[0];
+          if (!k) return;
+          if (t.error || !t.mid) { s.fails[k] = (s.fails[k] || 0) + 1; return; }
+          var x = { uid: want[k].uid, kind: want[k].kind, sessionId: t.sessionId, trackName: t.trackName, mid: t.mid };
+          s.pulled[k] = x; s.byMid[t.mid] = x; delete s.fails[k];
+        });
+        return sfuApplyOffer(r, s, b);
+      });
+    });
+    step.catch(function (e) { log("sfu sync", e && e.message); toPull.forEach(function (k) { if (!s.pulled[k]) s.fails[k] = (s.fails[k] || 0) + 1; }); })
+      .then(function () {
+        s.busy = false; if (r.sfu !== s) return;
+        sfuPeers(r);
+        if (s.camPending) { s.camPending = false; sfuCam(r); if (s.busy) return; }
+        var retry = toPull.some(function (k) { return !s.pulled[k] && (s.fails[k] || 0) < 6; });
+        if (s.again) { s.again = false; sfuSync(r); }
+        else if (retry) { clearTimeout(s.retry); s.retry = setTimeout(function () { sfuSync(r); }, 1500); }
+      });
+  }
+  // الخادم يعيد عرضاً (offer) حين يتغيّر ما نستقبله ⇒ نجيب ونرسل الجواب
+  function sfuApplyOffer(r, s, b) {
+    if (!b || !b.sdp || !b.renegotiate || r.sfu !== s) return;
+    var pc = s.pc;
+    return pc.setRemoteDescription({ type: "offer", sdp: b.sdp })
+      .then(function () { return pc.createAnswer(); })
+      .then(function (a) { return pc.setLocalDescription(a); })
+      .then(function () { return wcall("sfu.reneg", { room: r.code, sid: s.sid, sdp: pc.localDescription.sdp }); });
+  }
+  function sfuRepull(r, uid, kind) { var s = r.sfu; if (!s) return; var k = uid + ":" + kind; if (s.pulled[k]) { s.pulled[k].trackName = "~stale"; } delete s.fails[k]; sfuSync(r); }
+  // صورتي: أوّل مرّة نضيف مُرسِلاً ونرسل المسار؛ بعدها replaceTrack فقط (بلا تفاوض)
+  function sfuCam(r) {
+    var s = r.sfu; if (!s || !s.ready || r.done) return;
+    var t = r.camOn && r.camTrack && !r.low ? r.camTrack : null;
+    if (s.vtx) { try { s.vtx.sender.replaceTrack(t).catch(function () {}); } catch (e) {} rCap(r); return; }
+    if (!t || s.vpush) return;
+    if (s.busy) { s.camPending = true; return; }   // تفاوضٌ جارٍ على الاتّصال نفسه — ننتظره
+    s.vpush = true;
+    var pc = s.pc;
+    s.vtx = pc.addTransceiver(t, { direction: "sendonly" });
+    s.vName = r.sess + "v";
+    s.busy = true;
+    pc.createOffer().then(function (o) { return pc.setLocalDescription(o); })
+      .then(function () { return wcall("sfu.push", { room: r.code, sid: s.sid, sdp: pc.localDescription.sdp, tracks: [{ mid: s.vtx.mid, trackName: s.vName }] }); })
+      .then(function (b) { if (r.sfu !== s) return; return pc.setRemoteDescription({ type: "answer", sdp: b.sdp }); })
+      .then(function () { if (r.sfu !== s) return; rMember(r, { sfu: { s: s.sid, a: s.aName, v: s.vName } }); rCap(r); })
+      .catch(function (e) { log("sfu cam", e && e.message); s.vtx = null; })
+      .then(function () { s.vpush = false; s.busy = false; s.again = false; if (r.sfu === s) { sfuCam(r); sfuSync(r); } });
+  }
+  // جودة شبكتي في الغرفة الكبيرة: RTT للاتّصال الوحيد + فقد الحزم الواردة
+  function sfuStats(r) {
+    var s = r.sfu; if (!s || !s.pc) return;
+    s.pc.getStats().then(function (rep) {
+      if (r.sfu !== s) return;
+      var rtt = null, lost = 0, recv = 0, pair = null;
+      rep.forEach(function (x) {
+        if (x.type === "transport" && x.selectedCandidatePairId) pair = rep.get(x.selectedCandidatePairId);
+        if (x.type === "inbound-rtp" && x.kind === "audio") { lost += x.packetsLost || 0; recv += x.packetsReceived || 0; }
+      });
+      if (pair && typeof pair.currentRoundTripTime === "number") rtt = pair.currentRoundTripTime * 1000;
+      var dl = lost - (s.sLost || 0), dr = recv - (s.sRecv || 0); s.sLost = lost; s.sRecv = recv;
+      var loss = dr + dl > 0 ? dl / (dr + dl) : 0, q = 3;
+      if (rtt != null && rtt > 700 || loss > 0.15) q = 0; else if (rtt != null && rtt > 400 || loss > 0.08) q = 1; else if (rtt != null && rtt > 200 || loss > 0.03) q = 2;
+      s.rtt = rtt; s.loss = loss;
+      rAdapt(r, q);
+    }).catch(function () {});
+  }
+  // المضيف بدّل نوع الغرفة أثناءها: نغلق كلّ الاتّصالات ونبدأ بالنمط الآخر
+  function rSwitchMode(r) {
+    Object.keys(r.peers).forEach(function (u) { rDrop(r, u); });
+    sfuStop(r);
+    Object.keys(r.timers).forEach(function (k) { if (/^o/.test(k)) { clearTimeout(r.timers[k]); delete r.timers[k]; } });
+    if (rBig(r)) { toast(L("صارت غرفةً كبيرة — جارٍ الانتقال…", "Switched to a large room…")); sfuStart(r); }
+    else {
+      toast(L("عادت غرفةً عاديّة — جارٍ الانتقال…", "Switched back to a regular room…")); rMember(r, { sfu: null });
+      // عرضٌ حتميّ بلا تصادم: صاحب المعرّف الأصغر يعرض (والمؤقّت الاحتياطيّ في onRMembers يكمل ما فات)
+      var me = myUid();
+      Object.keys(r.members).forEach(function (u) { if (u !== me && me < u && r.members[u] && r.members[u].sess && !r.peers[u]) rOffer(r, u, r.members[u].sess); });
+      onRMembers(r, r.members);
+    }
     rPaint(r);
   }
 
@@ -1673,6 +1893,7 @@
     rTile(r, uid);
   }
   function rCap(r) {
+    if (r.sfu && r.sfu.vtx) { try { var sp = r.sfu.vtx.sender.getParameters(); if (!sp.encodings || !sp.encodings.length) sp.encodings = [{}]; sp.encodings[0].maxBitrate = r.lowRes ? 150000 : 350000; r.sfu.vtx.sender.setParameters(sp).catch(function () {}); } catch (e) {} }
     var n = Object.keys(r.peers).length, br = n <= 1 ? 600000 : n <= 3 ? 400000 : 250000;
     if (r.lowRes) br = Math.min(br, 150000);   // C38
     Object.keys(r.peers).forEach(function (u) {
@@ -1709,7 +1930,8 @@
         rAdapt(r, worst);
       }).catch(function () {});
     });
-    if (!any && r.myQ !== null) { r.myQ = null; }
+    if (!any && r.sfu && r.sfu.pc && r.sfu.state === "connected") sfuStats(r);
+    else if (!any && r.myQ !== null) { r.myQ = null; }
   }
   // تكيّف: شبكةٌ ضعيفة مرّتين متتاليتين ⇒ فيديو أخفّ (320×240 · 15 إطاراً · 150 كيلوبت) · تتحسّن ٤ مرّات ⇒ يعود · سيّئة ٣ مرّات ⇒ اقتراح «بيانات قليلة» مرّةً
   function rAdapt(r, q) {
@@ -1762,16 +1984,18 @@
     if (r.camOn) {
       r.camOn = false; try { if (r.camTrack) r.camTrack.stop(); } catch (e) {} r.camTrack = null;
       Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); });
+      sfuCam(r);
       rMember(r, { cam: false }); rTile(r, "__me"); rPaint(r); return;
     }
     if (r.low) { toast(L("أوقف «بيانات قليلة» أوّلاً", "Turn off low-data mode first")); return; }
     if (r.meta.audioOnly && !amHost(r)) { toast(L("الغرفة صوتيّة فقط بقرار المضيف", "Audio-only room (host setting)")); return; }
-    var me = myUid(), cams = Object.keys(r.members).filter(function (u) { return u !== me && r.members[u].cam; }).length;
-    if (cams >= ROOM_CAMS) { toast(L("الحدّ ٤ كاميرات في الغرفة حاليّاً", "Max 4 cameras for now")); return; }
+    var me = myUid(), cams = Object.keys(r.members).filter(function (u) { return u !== me && r.members[u].cam; }).length, camCap = rBig(r) ? SFU_CAMS : ROOM_CAMS;
+    if (cams >= camCap) { toast(L("الحدّ " + camCap + " كاميرات في الغرفة حاليّاً", "Max " + camCap + " cameras for now")); return; }
     navigator.mediaDevices.getUserMedia({ video: { facingMode: r.facing, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 20, max: 24 } } }).then(function (s) {
       if (r.done) { stopStream(s); return; }
       r.camTrack = s.getVideoTracks()[0]; r.camOn = true;
       Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); });
+      sfuCam(r);
       rMember(r, { cam: true }); rCap(r); rTile(r, "__me"); rPaint(r);
     }).catch(function (e) { toast(mediaError(e) || L("تعذّر تشغيل الكاميرا", "Couldn't start the camera")); });
   }
@@ -1781,7 +2005,7 @@
     try { r.camTrack.stop(); } catch (e) {}
     navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: want }, width: { ideal: 640 }, height: { ideal: 480 } } })
       .catch(function () { return navigator.mediaDevices.getUserMedia({ video: { facingMode: want } }); })
-      .then(function (s) { if (r.done || rm !== r) { stopStream(s); return; } r.camTrack = s.getVideoTracks()[0]; r.facing = want; Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); }); rTile(r, "__me"); })
+      .then(function (s) { if (r.done || rm !== r) { stopStream(s); return; } r.camTrack = s.getVideoTracks()[0]; r.facing = want; Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); }); sfuCam(r); rTile(r, "__me"); })
       .catch(function () { toast(L("تعذّر تبديل الكاميرا", "Couldn't switch camera")); })
       .then(function () { r.switching = false; });
   }
@@ -1792,6 +2016,7 @@
     if (r.low && r.camOn) rToggleCam(r);
     rMember(r, { low: r.low });
     Object.keys(rui.tiles || {}).forEach(function (u) { if (u !== "__me") rTile(r, u); });
+    if (rBig(r)) sfuSync(r);   // لا نسحب صور الآخرين في وضع البيانات القليلة
     toast(r.low ? L("وضع البيانات القليلة: صوتٌ فقط", "Low-data mode: audio only") : L("عاد الفيديو", "Video is back"));
     rPaint(r);
   }
@@ -1840,6 +2065,7 @@
     if (r.tick) clearInterval(r.tick); r.tick = null;
     r.offs.forEach(function (f) { f(); }); r.offs = [];
     Object.keys(r.peers).forEach(function (u) { try { r.peers[u].pc.close(); } catch (e) {} });
+    sfuStop(r);
     stopStream(r.local); try { if (r.camTrack) r.camTrack.stop(); } catch (e) {}
     stopTone(); wakeOff();
     if (ref && me) {
@@ -2042,7 +2268,7 @@
         p.camWait = null;
         if (r.done || r.peers[uid] !== p) return;
         var still = !p.stream.getVideoTracks().some(function (x) { return x.readyState === "live" && !x.muted; });
-        if (still && r.members[uid] && r.members[uid].cam) { p.camRetried = true; log("cam: no frames from", uid, "→ renegotiate"); rNegotiate(r, p, true); rTile(r, uid); }
+        if (still && r.members[uid] && r.members[uid].cam) { p.camRetried = true; log("cam: no frames from", uid, "→ renegotiate"); if (p.sfu) sfuRepull(r, uid, "v"); else rNegotiate(r, p, true); rTile(r, uid); }
       }, 8000);
       if (!wantV || showV) { clearTimeout(p.camWait); p.camWait = null; if (!m.cam) p.camRetried = false; }
     }
@@ -2074,7 +2300,8 @@
     if (!rui.root || !r) return;
     var me = myUid();
     var ids = ["__me"].concat(Object.keys(r.members).filter(function (u) { return u !== me; }).sort(function (a, b) { return (r.members[a].ts || 0) - (r.members[b].ts || 0); }));
-    if (!rui.tiles.__me) rTileEl("__me");
+    // C45: بلاطتي تُرسم فور إنشائها (كانت تبقى فارغةً بلا اسم حتى أوّل تبديلٍ أو حديث)
+    if (!rui.tiles.__me) { rTileEl("__me"); if (!rui.paintingMe) { rui.paintingMe = true; try { rTile(r, "__me"); } finally { rui.paintingMe = false; } } }
     ids = ids.filter(function (u) { return rui.tiles[u]; });
     var n = ids.length, cols = n <= 1 ? 1 : n === 2 ? 1 : n <= 4 ? 2 : n <= 6 ? 2 : 3, rows = Math.ceil(n / cols);
     var anyV = Object.keys(r.members).some(function (u) { return r.members[u].cam; }) || r.camOn;
@@ -2152,6 +2379,9 @@
       tog("🔒", L("قفل الغرفة", "Lock room"), null, !!r.meta.locked, function () { rSetMeta("locked", !r.meta.locked); });
       tog("🚪", L("غرفة الانتظار", "Waiting room"), null, !!r.meta.lobby, function () { rSetMeta("lobby", !r.meta.lobby); });
       tog("🎧", L("صوتٌ فقط (بلا كاميرات)", "Audio only (no cameras)"), null, !!r.meta.audioOnly, function () { rSetMeta("audioOnly", !r.meta.audioOnly); });
+      // C45: غرفة كبيرة (حتى ٣٠) عبر خادم الوسائط
+      var bg = item(body, "🏟", L("غرفة كبيرة (حتى " + SFU_MAX + ")", "Large room (up to " + SFU_MAX + ")"), function () { close(); rBigToggle(); });
+      bg.appendChild(el("span", "font:800 11px system-ui;padding:3px 9px;border-radius:9px;background:" + (rBig(r) ? "#22c55e33" : LINE) + ";color:" + (rBig(r) ? "#4ade80" : "#cbd5e1"), rBig(r) ? L("مفعّل", "On") : L("متوقّف", "Off")));
       var mx = item(body, "👥", L("الحدّ الأقصى للمشاركين", "Max participants"), function () { close(); rMaxPick(); });
       mx.appendChild(el("span", "font:800 12px system-ui;color:#cbd5e1", String(rMax(r)) + (r.meta.max ? "" : " (" + L("الافتراض", "default") + ")")));
       var pn = item(body, "🔑", L("رمز الدخول", "Join PIN"), function () { close(); rPinPick(); });
@@ -2163,11 +2393,30 @@
       item(body, "✏️", L("تغيير عنوان الغرفة", "Rename room"), function () { close(); rRenamePick(); });
     });
   }
+  function rBigToggle() {
+    var r = rm; if (!r || !amHost(r)) return;
+    if (rBig(r)) {
+      var n = Object.keys(r.members).length;
+      if (n > ROOM_MAX) { toast(L("في الغرفة " + n + " — الغرفة العاديّة تحتمل " + ROOM_MAX + " فقط", n + " here — a regular room holds " + ROOM_MAX)); return; }
+      rRef(r, "meta").update({ big: null, max: null }).catch(function (e) { log("big off", e && e.message); });
+      return;
+    }
+    wcall("sfu.cfg", {}).then(function (b) {
+      if (!b || !b.enabled) { toast(L("الغرف الكبيرة قيد التجهيز على الخادم", "Large rooms are being set up on the server")); return; }
+      sheet(L("غرفة كبيرة؟", "Make it a large room?"), function (body, close) {
+        body.appendChild(el("div", "padding:0 18px 10px;color:#cbd5e1;font:500 13px/1.8 system-ui;text-align:center", L("حتى " + SFU_MAX + " مشاركاً و" + SFU_CAMS + " كاميرات. يمرّ الصوت والصورة عبر خادم وسائط فيرسل كلّ هاتفٍ مرّةً واحدة بدل الإرسال لكلّ مشارك — أخفّ على الهواتف والشبكة. سينقطع الصوت ثانيةً أو اثنتين أثناء الانتقال.", "Up to " + SFU_MAX + " people and " + SFU_CAMS + " cameras via a media server. Audio drops for a second while switching.")));
+        var go = el("button", "margin:0 16px 8px;width:calc(100% - 32px);padding:12px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 14px system-ui", L("تحويلها إلى غرفة كبيرة", "Make it large"));
+        go.onclick = function () { close(); rSetMeta("big", true); };
+        body.appendChild(go);
+      });
+    }, function (e) { toast(L("تعذّر الاتّصال بالخادم", "Couldn't reach the server")); });
+  }
   function rMaxPick() {
     var r = rm; if (!r) return;
     sheet(L("الحدّ الأقصى للمشاركين", "Max participants"), function (body, close) {
-      body.appendChild(el("div", "padding:0 16px 6px;color:" + MUTED + ";font:600 12px system-ui;text-align:center", L("الشبكة المباشرة تحتمل حتى ٨ أشخاص و٤ كاميرات", "Direct mesh supports up to 8 people and 4 cameras")));
-      [2, 3, 4, 5, 6, 8].forEach(function (n) { var b = item(body, "👥", String(n) + (n === ROOM_MAX ? " (" + L("الافتراض", "default") + ")" : ""), function () { rSetMeta("max", n === ROOM_MAX ? null : n); close(); }); if (rMax(r) === n) b.appendChild(el("span", "", "✓")); });
+      var big = rBig(r), cap = rCap0(r);
+      body.appendChild(el("div", "padding:0 16px 6px;color:" + MUTED + ";font:600 12px system-ui;text-align:center", big ? L("الغرفة الكبيرة تحتمل حتى " + SFU_MAX + " شخصاً و" + SFU_CAMS + " كاميرات", "Large room: up to " + SFU_MAX + " people, " + SFU_CAMS + " cameras") : L("الشبكة المباشرة تحتمل حتى ٨ أشخاص و٤ كاميرات — للأكثر فعّل «غرفة كبيرة»", "Direct mesh supports up to 8 people and 4 cameras")));
+      (big ? [10, 15, 20, 25, 30] : [2, 3, 4, 5, 6, 8]).forEach(function (n) { var b = item(body, "👥", String(n) + (n === cap ? " (" + L("الافتراض", "default") + ")" : ""), function () { rSetMeta("max", n === cap ? null : n); close(); }); if (rMax(r) === n) b.appendChild(el("span", "", "✓")); });
     });
   }
   function rPinPick() {
@@ -2461,9 +2710,9 @@
     // C8: الغرف
     roomCreate: roomCreate, roomJoin: roomJoin, prejoin: roomPrejoin, roomJoinPrompt: roomJoinPrompt, roomLink: roomLink, newRoomCode: newCode, roomLeave: function () { if (rm) rLeave(rm, "left"); },
     room: function () { var r = rm; return r ? { code: r.code, state: r.state, host: r.meta.host, title: r.title, members: Object.keys(r.members), mic: r.mic, cam: r.camOn, hand: !!r.hand, low: r.low,
-      locked: !!r.meta.locked, lobby: !!r.meta.lobby, chat: r.chat.length, speaker: r.speaker, max: rMax(r), myQ: r.myQ == null ? null : r.myQ, lowRes: !!r.lowRes, rejoins: r.rejoins || 0, sess: r.sess, audioOnly: !!r.meta.audioOnly, pinOn: !!r.meta.pinOn, lockAt: r.meta.lockAt || null, endText: r.endText || null, peers: Object.keys(r.peers).map(function (u) { return { uid: u, state: r.peers[u].state, q: r.peers[u].q == null ? null : r.peers[u].q }; }) } : null; },
+      locked: !!r.meta.locked, lobby: !!r.meta.lobby, chat: r.chat.length, speaker: r.speaker, max: rMax(r), myQ: r.myQ == null ? null : r.myQ, lowRes: !!r.lowRes, rejoins: r.rejoins || 0, sess: r.sess, audioOnly: !!r.meta.audioOnly, pinOn: !!r.meta.pinOn, lockAt: r.meta.lockAt || null, big: rBig(r), sfu: r.sfu ? { sid: r.sfu.sid || null, state: r.sfu.state, ready: !!r.sfu.ready, pulled: Object.keys(r.sfu.pulled).sort() } : null, endText: r.endText || null, peers: Object.keys(r.peers).map(function (u) { return { uid: u, state: r.peers[u].state, q: r.peers[u].q == null ? null : r.peers[u].q }; }) } : null; },
     _rm: function () { return rm; }, _r: { prejoin: roomPrejoin, toggleMic: rToggleMic, toggleCam: rToggleCam, hand: rToggleHand, low: rToggleLow, chat: rSendChat, react: rReact, admit: rAdmit, remove: rRemove,
-      makeHost: rMakeHost, ctl: rCtl, muteAll: rMuteAll, lowerAll: rLowerAll, meta: rSetMeta, endAll: rEndAll, summary: rSummaryText, panel: rOpenPanel, settings: rSettings, max: rMax, rejoin: function () { if (rm) rRejoin(rm); }, adapt: function (q) { if (rm) rAdapt(rm, q); }, stats: function () { if (rm) rStatsTick(rm); } },
+      makeHost: rMakeHost, ctl: rCtl, muteAll: rMuteAll, lowerAll: rLowerAll, meta: rSetMeta, endAll: rEndAll, summary: rSummaryText, panel: rOpenPanel, settings: rSettings, max: rMax, rejoin: function () { if (rm) rRejoin(rm); }, bigToggle: rBigToggle, sfuRestart: function () { if (rm) sfuRestart(rm, 100); }, adapt: function (q) { if (rm) rAdapt(rm, q); }, stats: function () { if (rm) rStatsTick(rm); } },
     _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming
   };
   try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") schedRefresh(false); }); } catch (e) {}
