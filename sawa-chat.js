@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c39";
+  var VERSION = "c43";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -185,12 +185,12 @@
   // ---------- الملفّ الشخصيّ: اسم «سوا» + رقم الهاتف (غير موثّق حتّى الإطلاق) ----------
   function profile() {
     var m = state.me || {};
-    return { uid: state.uid, name: m.name || null, phone: m.phone || null, phoneVerified: false, googleName: m.googleName || null, anon: !!m.anon, photo: state.uid ? photoOf(state.uid) : null,
-             code: m.code || null, findable: m.findable !== false };
+    return { uid: state.uid, name: m.name || null, phone: m.phone || null, phoneVerified: !!m.phoneVerified, emailVerified: !!m.emailVerified, googleName: m.googleName || null, anon: !!m.anon, photo: state.uid ? photoOf(state.uid) : null,
+             code: m.code || null, findable: m.findable !== false, waReady: !!state.waReady };
   }
   function saveProfile(patch) {
     return call("profile.set", patch).then(function (b) {
-      state.me = Object.assign({}, state.me || {}, { name: b.profile.name, phone: b.profile.phone });
+      state.me = Object.assign({}, state.me || {}, { name: b.profile.name, phone: b.profile.phone, phoneVerified: !!b.profile.phoneVerified });
       // C35: اسم سوا يُكتب في حساب Firebase أيضاً (للمربوط بـGoogle أو البريد) فلا يختلف الاسمان
       if ("name" in patch && b.profile.name) { try { if (S() && S().syncAuthName) S().syncAuthName(b.profile.name); } catch (e) {} }
       lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
@@ -229,8 +229,13 @@
     box.appendChild(lab(L("رقم هاتفك (اختياريّ)", "Your phone number (optional)")));
     var pIn = inp(p.phone || "", "+249 9X XXX XXXX", true); pIn.type = "tel"; box.appendChild(pIn);
     var note = document.createElement("div");
-    note.textContent = L("⚠️ «غير موثّق»: يظهر لجهات اتّصالك فقط، ولا يُستعمل للدخول أو البحث عنك حتّى نوثّقه برسالة SMS عند الإطلاق.", "⚠️ Unverified: visible to your contacts only; not used for sign-in or search until SMS verification at launch.");
-    note.style.cssText = "font:500 11px system-ui;color:#8a6d00;background:#fff7e0;border-radius:10px;padding:8px 10px;margin-top:8px;line-height:1.6";
+    if (p.phone && p.phoneVerified) {
+      note.textContent = L("✓ رقمك موثَّق — يستطيع معارفك إيجادك به. تغييره يُلغي التوثيق.", "✓ Your number is verified — people can find you by it. Changing it removes verification.");
+      note.style.cssText = "font:600 11.5px system-ui;color:#187854;background:#e8f5ee;border-radius:10px;padding:8px 10px;margin-top:8px;line-height:1.6";
+    } else {
+      note.textContent = L("غير موثَّق: يظهر لجهات اتّصالك فقط ولا يُبحث عنك به. وثّقه عبر واتساب في ثوانٍ من «حسابي».", "Unverified: shown to your contacts only; nobody can find you by it. Verify it via WhatsApp from «Me».");
+      note.style.cssText = "font:500 11px system-ui;color:#8a6d00;background:#fff7e0;border-radius:10px;padding:8px 10px;margin-top:8px;line-height:1.6";
+    }
     box.appendChild(note);
     var row = document.createElement("div"); row.style.cssText = "display:flex;gap:8px;margin-top:14px";
     var ok = document.createElement("button"); ok.textContent = L("حفظ", "Save"); ok.style.cssText = "flex:1;padding:12px;border:0;border-radius:12px;background:#2e7d5b;color:#fff;font:800 14px system-ui";
@@ -1667,6 +1672,8 @@
     if (/rate_limited/.test(m)) return L("محاولاتٌ كثيرة — انتظر قليلاً ثمّ أعد المحاولة", "Too many tries — wait a little");
     if (/too_many_pending/.test(m)) return L("لديك ٢٠ طلباً بانتظار الموافقة — ألغِ بعضها أوّلاً", "You have 20 pending requests — cancel some first");
     if (/not_found/.test(m)) return L("لا يوجد حسابٌ بهذا الرمز", "No account with this code");
+    if (/bad_phone/.test(m)) return L("رقم الهاتف غير صحيح — مثال: +249912345678", "Invalid phone — e.g. +249912345678");
+    if (/bad_email/.test(m)) return L("البريد غير صحيح", "Invalid email");
     if (/^wait$/.test(m)) return L("غيّرتَ رمزك قبل قليل — انتظر ١٠ دقائق", "You changed your code a moment ago — wait 10 minutes");
     if (/fetch|network|timeout/i.test(m)) return L("تحقّق من الاتّصال بالإنترنت", "Check your internet connection");
     return m;
@@ -1792,15 +1799,36 @@
   // ---------- «أدخل رمز شخص» ----------
   function findSheet(prefill) {
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
-    var s = sheet(L("أضف برمز سوا", "Add by Sawa code"));
-    s.box.appendChild(note(L("اطلب من الشخص رمزه (في «حسابي» عنده) واكتبه هنا — ١٠ أرقام.", "Ask for their code (in their «Me» tab) and type it here — 10 digits.")));
+    var s = sheet(L("أضف شخصاً", "Add someone"));
+    // C43: طرق البحث — الرمز (دائماً) · الهاتف الموثَّق · البريد الموثَّق
+    var mode = "code";
+    var seg = mk("div", "display:flex;gap:6px;margin:0 0 10px;background:#f1f5f9;border-radius:12px;padding:4px");
+    var segBtns = {};
+    [["code", L("رمز سوا", "Code")], ["phone", L("رقم الهاتف", "Phone")], ["email", L("البريد", "Email")]].forEach(function (x) {
+      var b = mk("button", "flex:1;border:0;border-radius:9px;padding:8px 4px;font:700 12.5px system-ui;background:transparent;color:#5b6b7c", x[1]);
+      b.onclick = function () { setMode(x[0]); }; segBtns[x[0]] = b; seg.appendChild(b);
+    });
+    s.box.appendChild(seg);
+    var intro = note(""); s.box.appendChild(intro);
     var inp = mk("input", "width:100%;box-sizing:border-box;border:1.5px solid #dfe5ec;color:#1A1A2E;background:#fff;border-radius:14px;padding:13px;font:800 24px ui-monospace,Menlo,monospace;letter-spacing:2px;text-align:center;direction:ltr;outline:none");
     inp.setAttribute("inputmode", "numeric"); inp.setAttribute("autocomplete", "off"); inp.placeholder = "000 000 0000";
     s.box.appendChild(inp);
     var hint = mk("div", "font:600 12px system-ui;min-height:18px;margin:6px 2px;text-align:center"); s.box.appendChild(hint);
     var go = mkBtn(L("بحث", "Search"), "primary"); s.box.appendChild(go);
     var res = mk("div", "margin-top:12px"); s.box.appendChild(res);
+    function setMode(m) {
+      mode = m; res.innerHTML = ""; inp.value = "";
+      Object.keys(segBtns).forEach(function (k) { segBtns[k].style.background = k === m ? "#fff" : "transparent"; segBtns[k].style.color = k === m ? "#1A1A2E" : "#5b6b7c"; segBtns[k].style.boxShadow = k === m ? "0 1px 3px rgba(0,0,0,.12)" : "none"; });
+      if (m === "code") { intro.textContent = L("اطلب من الشخص رمزه (في «حسابي» عنده) واكتبه هنا — ١٠ أرقام.", "Ask for their code (in their «Me» tab) and type it here — 10 digits."); inp.setAttribute("inputmode", "numeric"); inp.type = "text"; inp.placeholder = "000 000 0000"; inp.style.font = "800 24px ui-monospace,Menlo,monospace"; inp.style.letterSpacing = "2px"; }
+      else if (m === "phone") { intro.textContent = L("يُعثر على من وثّق رقمه عبر واتساب فقط. اكتب الرقم بالصيغة الدوليّة أو المحلّيّة.", "Finds only people who verified their number via WhatsApp. International or local format."); inp.setAttribute("inputmode", "tel"); inp.type = "tel"; inp.placeholder = "+249 9X XXX XXXX"; inp.style.font = "700 18px system-ui"; inp.style.letterSpacing = "0"; }
+      else { intro.textContent = L("يُعثر على أصحاب حسابات Google أو البريد المؤكَّد الذين لم يخفوا أنفسهم.", "Finds people with a Google or confirmed email account who haven't hidden themselves."); inp.setAttribute("inputmode", "email"); inp.type = "email"; inp.placeholder = "name@example.com"; inp.style.font = "700 16px system-ui"; inp.style.letterSpacing = "0"; }
+      inp.style.direction = "ltr"; sync();
+    }
     function sync() {
+      if (mode !== "code") {
+        var v = inp.value.trim(), okv = mode === "phone" ? /^\+?[\d\s()-]{8,}$/.test(v) : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+        hint.textContent = ""; go.disabled = !okv; go.style.opacity = okv ? "1" : ".5"; return okv ? v : null;
+      }
       var d = codeDigits(inp.value).slice(0, 10), f = fmtCode(d);
       if (inp.value !== f) inp.value = f;
       var ok = d.length === 10 && codeValid(d);
@@ -1818,7 +1846,7 @@
       if (!b.found) { c.appendChild(note(L("لا يوجد حسابٌ بهذا الرمز. ربّما غيّر صاحبه رمزه أو أخفاه — اطلب منه رمزه الحاليّ.", "No account with this code. It may have been changed or hidden."), "#8a5a00")); res.appendChild(c); return; }
       var a = avatar(b.name, 64); a.style.margin = "0 auto 8px"; c.appendChild(a);
       c.appendChild(mk("div", "font:800 18px system-ui", b.name || L("مستخدم سوا", "Sawa user")));
-      c.appendChild(mk("div", "font:600 12px system-ui;color:#8796a5;direction:ltr;margin:2px 0 10px", fmtCode(b.code)));
+      c.appendChild(mk("div", "font:600 12px system-ui;color:#8796a5;direction:ltr;margin:2px 0 10px", b.code ? fmtCode(b.code) : ""));
       if (b.self) { c.appendChild(note(L("هذا رمزك أنت 🙂", "That's your own code 🙂"))); res.appendChild(c); return; }
       if (b.contact) {
         c.appendChild(note(L("جهة اتّصالك ✓", "Already a contact ✓"), "#2e7d5b"));
@@ -1859,14 +1887,73 @@
     go.onclick = function () {
       var d = sync(); if (!d) return;
       go.disabled = true; go.textContent = "…";
-      call("code.find", { code: d }).then(card, function (e) { res.innerHTML = ""; res.appendChild(note(codeErr(e), "#b42318")); })
+      var q = mode === "code" ? call("code.find", { code: d }) : mode === "phone" ? call("find.phone", { phone: d }) : call("find.email", { email: d });
+      q.then(function (b) { if (!b.found && mode !== "code") { res.innerHTML = ""; res.appendChild(note(mode === "phone" ? L("لا أحد بهذا الرقم — ربّما لم يوثّقه صاحبه بعد، أو أخفى نفسه. اطلب رمزه بدلاً.", "Nobody with this number — maybe not verified yet, or hidden. Ask for their code instead.") : L("لا أحد بهذا البريد — ربّما يدخل بطريقةٍ أخرى أو أخفى نفسه. اطلب رمزه بدلاً.", "Nobody with this email — maybe they sign in differently, or hid themselves. Ask for their code instead."))); return; } card(b); },
+        function (e) { res.innerHTML = ""; res.appendChild(note(codeErr(e), "#b42318")); })
         .then(function () { go.disabled = false; go.textContent = L("بحث", "Search"); });
     };
+    setMode("code");
     if (prefill) { inp.value = prefill; if (sync()) go.onclick(); } else sync();
     setTimeout(function () { try { if (!prefill) inp.focus(); } catch (e) {} }, 60);
     return true;
   }
 
+  // ---------- C43: توثيق الرقم عبر واتساب ----------
+  //  phone.start ⇒ رمز SAWA-XXXXXX ورابط wa.me برقم سوا · المستخدم يرسله من واتسابه · Meta ⇒ Worker /wa/webhook ⇒ phoneVerified
+  //  الرقم الذي أرسل الرمز هو الذي يُوثَّق (حتّى لو كتب رقماً آخر). الورقة تستطلع phone.status كلّ ٣ ثوانٍ.
+  function verifySheet() {
+    if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
+    var p = profile();
+    if (p.phoneVerified) { toast(L("رقمك موثَّق ✓", "Your number is verified ✓")); return true; }
+    var s = sheet(L("توثيق رقمك عبر واتساب", "Verify your number via WhatsApp"));
+    var body = mk("div"); s.box.appendChild(body);
+    var timer = null, stopPoll = function () { if (timer) { clearInterval(timer); timer = null; } };
+    var origClose = s.close; s.close = function () { stopPoll(); origClose(); };
+    function intro() {
+      body.innerHTML = "";
+      body.appendChild(note(L("لا نرسل لك رسالة SMS — أنت الذي ترسل رمزاً قصيراً إلى رقم سوا على واتساب، فنعرف رقمك من واتساب نفسه. مجّاناً وفي ثوانٍ.",
+        "No SMS needed — you send a short code to Sawa's WhatsApp number, and we learn your number from WhatsApp itself. Free, in seconds.")));
+      body.appendChild(note(L("يُوثَّق الرقم الذي ترسل منه الرمز، ويحلّ محلّ الرقم المكتوب في حسابك إن اختلف.", "The number you send from is the one verified; it replaces the typed one if different."), "#8a6d00", "#fff7e0"));
+      var go = mkBtn(L("ابدأ — افتح واتساب", "Start — open WhatsApp"), "primary"); go.style.marginTop = "10px"; body.appendChild(go);
+      go.onclick = function () {
+        go.disabled = true; go.textContent = "…";
+        call("phone.start", {}).then(function (r) {
+          if (!r.enabled) { state.waReady = false; body.innerHTML = ""; body.appendChild(note(L("التحقّق عبر واتساب قيد التجهيز — سيُفعَّل قريباً، وسنبلغك.", "WhatsApp verification is being set up — coming soon."), "#8a6d00", "#fff7e0")); return; }
+          state.waReady = true; stage(r);
+        }, function (e) { go.disabled = false; go.textContent = L("ابدأ — افتح واتساب", "Start — open WhatsApp"); toast(codeErr(e)); });
+      };
+    }
+    function stage(r) {
+      body.innerHTML = "";
+      body.appendChild(note(L("١) يفتح واتساب برسالة جاهزة فيها الرمز — اضغط «إرسال» فقط.\n٢) عد إلى سوا؛ نتحقّق تلقائيّاً خلال ثوانٍ.", "1) WhatsApp opens with the code ready — just tap Send.\n2) Come back to Sawa; we verify automatically in seconds.")));
+      var codeEl = mk("div", "font:800 26px ui-monospace,Menlo,monospace;letter-spacing:3px;text-align:center;direction:ltr;background:#f1f5f9;border-radius:14px;padding:12px;margin:8px 0", "SAWA-" + r.code);
+      body.appendChild(codeEl);
+      var open = mkBtn(L("📲 افتح واتساب وأرسل الرمز", "📲 Open WhatsApp and send the code"), "primary"); body.appendChild(open);
+      var st = note(L("بانتظار رسالتك…", "Waiting for your message…"), "#8796a5"); st.style.textAlign = "center"; body.appendChild(st);
+      var cp = mkBtn(L("نسخ الرمز (إن لم يفتح واتساب)", "Copy the code (if WhatsApp didn't open)")); body.appendChild(cp);
+      cp.onclick = function () { copyText("SAWA-" + r.code); toast(L("نُسخ — أرسله إلى واتساب سوا", "Copied — send it to Sawa's WhatsApp")); };
+      open.onclick = function () { try { global.open(r.link, "_blank"); } catch (e) { global.location.href = r.link; } };
+      open.onclick();
+      var n = 0;
+      stopPoll();
+      timer = setInterval(function () {
+        n++;
+        if (Date.now() > r.exp || n > 100) { stopPoll(); st.textContent = L("انتهت صلاحيّة الرمز — اطلب رمزاً جديداً.", "Code expired — request a new one."); st.style.color = "#b42318"; var again = mkBtn(L("رمز جديد", "New code"), "primary"); again.onclick = intro; body.appendChild(again); return; }
+        if (document.visibilityState !== "visible" && n % 5) return;
+        call("phone.status", {}).then(function (q) {
+          if (!q.phoneVerified) return;
+          stopPoll();
+          state.me = Object.assign({}, state.me || {}, { phone: q.phone, phoneVerified: true });
+          lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
+          publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {}
+          toast(L("تمّ توثيق رقمك ✓ " + q.phone, "Number verified ✓ " + q.phone));
+          s.close();
+        }).catch(function () {});
+      }, 3000);
+    }
+    intro();
+    return true;
+  }
   // ---------- «رمزي في سوا» ----------
   function codeSheet() {
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
@@ -3172,7 +3259,7 @@
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
     _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,
     // C10
-    codeSheet: codeSheet, findSheet: findSheet, requestsSheet: requestsSheet, emailSheet: emailSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, reportSheet: reportSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },
+    codeSheet: codeSheet, findSheet: findSheet, verifySheet: verifySheet, requestsSheet: requestsSheet, emailSheet: emailSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, reportSheet: reportSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },
     requestCount: function () { return reqs.incoming.length; }, fmtCode: fmtCode, codeValid: codeValid,
     retryFailed: retryFailed, discardFailed: discardFailed, failedSheet: failedSheet,   // C14
     retryMedia: retryMedia,   // C18
