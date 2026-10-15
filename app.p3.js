@@ -1772,6 +1772,7 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
 // ============================================================
 function FocusView({ data, onGo, onOpenMenu, colors, onAddRelative }) {
     const { person, grandparents, parents, spouses, children, siblings, grandchildren } = data;
+    const stepChildren = data.stepChildren || [];
     // ══════════════════════════════════════════════════════════
     // المبدأ الحاكم لهذا التخطيط:
     //
@@ -1871,7 +1872,12 @@ function FocusView({ data, onGo, onOpenMenu, colors, onAddRelative }) {
                         React.createElement("div", { style: { width: 2, height: 14, backgroundColor: colors.border } }),
                         React.createElement("div", { className: `flex ${rowStart()} gap-1 flex-wrap justify-center`, style: { maxWidth: 300 } },
                             children.map((p) => React.createElement(CircleNode, { key: p.id, p: p, d: 46 })),
-                            React.createElement(AddNode, { label: t("ft_add_child", { name: person.local_name.split(" ")[0] }), relKey: "child", d: 46 }))))),
+                            React.createElement(AddNode, { label: t("ft_add_child", { name: person.local_name.split(" ")[0] }), relKey: "child", d: 46 })),
+                        // C46: أبناء الزوج/الزوجة من زواجٍ آخر — تحت الأبناء بخطٍّ متقطّع (ليسوا من نسله)
+                        stepChildren.length > 0 && (React.createElement("div", { className: "mt-2 pt-1.5 flex flex-col items-center", style: { borderTop: `1.5px dashed ${colors.border}`, maxWidth: 300 } },
+                            React.createElement("span", { className: "text-[9px] font-bold mb-1", style: { color: colors.textMuted } },
+                                stepChildren[0].via ? tl("أبناء " + stepChildren[0].via.local_name.split(" ")[0] + " من زواجٍ آخر", stepChildren[0].via.local_name.split(" ")[0] + "'s children from another marriage") : tl("أبناء الزوج/الزوجة", "Spouse's children")),
+                            React.createElement("div", { className: `flex ${rowStart()} gap-1 flex-wrap justify-center` }, stepChildren.map((x) => React.createElement(CircleNode, { key: x.p.id, p: x.p, d: 42 })))))))),
                 bloodRow.map((p) => (React.createElement("div", { key: p.id, className: "flex flex-col items-center shrink-0" },
                     hasParents && React.createElement("div", { style: { width: 2, height: 12, backgroundColor: colors.border } }),
                     React.createElement(CircleNode, { p: p, d: 52 })))),
@@ -1930,6 +1936,10 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
         const sibE = relations.filter((r) => r.type === "sibling").map((r) => [r.source, r.target]);
         if (!sibE.length)
             return;
+        // C46: مجاورة وفهرس «له والد» — كان كلّ عنصرٍ في الطابور يمسح كلّ حواف الأخوّة
+        const adj = {};
+        sibE.forEach(([a, b]) => { (adj[a] || (adj[a] = [])).push(b); (adj[b] || (adj[b] = [])).push(a); });
+        const hasPar = new Set(relations.filter((r) => r.type === "parent").map((r) => r.target));
         const seen = new Set();
         let needs = false;
         persons.forEach((p) => {
@@ -1939,21 +1949,12 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
             const q = [p.id];
             while (q.length) {
                 const cur = q.pop();
-                sibE.forEach(([a, b]) => {
-                    if (a === cur && !grp.has(b)) {
-                        grp.add(b);
-                        q.push(b);
-                    }
-                    if (b === cur && !grp.has(a)) {
-                        grp.add(a);
-                        q.push(a);
-                    }
-                });
+                (adj[cur] || []).forEach((n) => { if (!grp.has(n)) { grp.add(n); q.push(n); } });
             }
             grp.forEach((id) => seen.add(id));
             if (grp.size < 2)
                 return;
-            const withP = [...grp].filter((id) => relations.some((r) => r.type === "parent" && r.target === id));
+            const withP = [...grp].filter((id) => hasPar.has(id));
             if (withP.length > 0 && withP.length < grp.size)
                 needs = true;
         });
@@ -2034,29 +2035,26 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
         parentsOfChild[child].push(parent);
     });
     const hasParent = new Set(parentEdges.map((e) => e.child));
-    const siblingGroupOf = {};
-    function findGroup(id) {
-        let root = id;
-        while (siblingGroupOf[root] && siblingGroupOf[root] !== root)
-            root = siblingGroupOf[root];
-        return root;
-    }
-    persons.forEach((p) => { siblingGroupOf[p.id] = p.id; });
-    sameLevelEdges.forEach(([a, b]) => {
-        const ra = findGroup(a), rb = findGroup(b);
-        if (ra !== rb)
-            siblingGroupOf[ra] = rb;
-    });
-    function groupMembers(anyId) {
-        const root = findGroup(anyId);
-        return persons.filter((p) => findGroup(p.id) === root);
-    }
+    // C46: فهارس تُبنى مرّةً لكلّ تغييرٍ في البيانات (لا في كلّ رسم): معرّف ⇒ شخص/ترتيب، ومجموعات الإخوة (union-find مع ضغط المسار).
+    //      كانت groupMembers تمسح كلّ الأشخاص لكلّ جيل، وpersonName/byId تبحث خطّيّاً — O(n²) تظهر فوق بضع مئات.
+    const treeIdx = useMemo(() => {
+        const byIdM = new Map(), order = new Map(), up = new Map();
+        persons.forEach((p, i) => { byIdM.set(p.id, p); order.set(p.id, i); up.set(p.id, p.id); });
+        const find = (id) => { let r = id; while (up.has(r) && up.get(r) !== r) r = up.get(r); let c = id; while (up.has(c) && up.get(c) !== r) { const n = up.get(c); up.set(c, r); c = n; } return r; };
+        relations.forEach((r) => { if (r.type !== "sibling") return; const a = find(r.source), b = find(r.target); if (a !== b && up.has(a)) up.set(a, b); });
+        const members = new Map();
+        persons.forEach((p) => { const r = find(p.id); const l = members.get(r); if (l) l.push(p); else members.set(r, [p]); });
+        return { byIdM, order, find, members };
+    }, [persons, relations]);
+    function findGroup(id) { return treeIdx.find(id); }
+    function groupMembers(anyId) { return treeIdx.members.get(findGroup(anyId)) || []; }
     function personName(id) {
-        var _a;
-        return ((_a = persons.find((p) => p.id === id)) === null || _a === void 0 ? void 0 : _a.local_name) || t("ft_swal");
+        const p = treeIdx.byIdM.get(id);
+        return (p && p.local_name) || t("ft_swal");
     }
-    const { distinctLabel: treeLineage, sortedByGeneration: treeSort } = buildLineageHelpers(persons, relations);
-    const treeSorted = treeSort(persons);
+    const lineageHelpers = useMemo(() => buildLineageHelpers(persons, relations), [persons, relations]);
+    const { distinctLabel: treeLineage, sortedByGeneration: treeSort } = lineageHelpers;
+    const treeSorted = linkPicker ? treeSort(persons) : [];   // C46: لا نرتّب الكلّ في كلّ رسم — يُستعمل في منتقي الربط وحده
     // عدد أفراد العائلة المرتبطة (الأصهار) لعرضه على البطاقة
     function linkedCountOf(p) {
         var _a;
@@ -2066,6 +2064,7 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
     }
     // نُطبّع الطرفين: البحث عن "فاطمه" يجب أن يجد "فاطمة"
     const q = normalizeArabicName(searchQuery);
+    const deferQ = React.useDeferredValue || ((x) => x);
     const matchesSearch = (p) => !q || normalizeArabicName(p.local_name).includes(q);
     const treeScrollRef = useRef(null);
     // وضع التركيز: نعرض ثلاثة أجيال حول شخص واحد بدل الشجرة كاملة —
@@ -2171,25 +2170,30 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
     const [compactDeep, setCompactDeep] = useState(true); // ضغط الأجيال البعيدة
     const [focusId, setFocusId] = useState(null);
     const [focusPath, setFocusPath] = useState([]); // مسار التنقّل
+    // C46: الطيّ التلقائيّ يُحسب قبل أوّل رسمٍ للشجرة الكاملة (كان أثراً بعده: تُرسم الشجرة كلّها مفتوحةً ثمّ تُطوى = ضعف العمل)
+    function autoFold() {
+        // نطوي فروع الجيل الثالث فما بعد — والعائلة الكبيرة (فوق ٢٥٠) من الجيل الثاني، فتُفتح الشجرة خفيفةً ويُفتح الفرع عند الحاجة
+        const firstParent = {};
+        relations.forEach((r) => { if (r.type === "parent" && !(r.target in firstParent)) firstParent[r.target] = r.source; });
+        const memo = {};
+        const depthOf = (id) => {
+            if (id in memo) return memo[id];
+            let d = 0, cur = firstParent[id];
+            const seen = new Set([id]);
+            while (cur && !seen.has(cur) && d < 20) { seen.add(cur); d++; cur = firstParent[cur]; }
+            return (memo[id] = d);
+        };
+        const cut = persons.length > 250 ? 2 : 3;
+        const next = {};
+        persons.forEach((p) => { if (depthOf(p.id) >= cut)
+            next[p.id] = true; });
+        return next;
+    }
     useEffect(() => {
         if (viewMode !== "full" || autoCollapsedRef.current)
             return;
         autoCollapsedRef.current = true;
-        // نطوي فروع الجيل الثالث فما بعد
-        const depthOf = (id) => {
-            var _a, _b;
-            let d = 0, cur = (_a = relations.find((r) => r.type === "parent" && r.target === id)) === null || _a === void 0 ? void 0 : _a.source;
-            const seen = new Set([id]);
-            while (cur && !seen.has(cur) && d < 20) {
-                seen.add(cur);
-                d++;
-                cur = (_b = relations.find((r) => r.type === "parent" && r.target === cur)) === null || _b === void 0 ? void 0 : _b.source;
-            }
-            return d;
-        };
-        const next = {};
-        persons.forEach((p) => { if (depthOf(p.id) >= 3)
-            next[p.id] = true; });
+        const next = autoFold();
         if (Object.keys(next).length)
             setCollapsedIds((prev) => ({ ...next, ...prev }));
     }, [viewMode, persons, relations]);
@@ -2211,10 +2215,12 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
         }, 120);
         return () => clearTimeout(tmr);
     }, [q, viewMode]);
+    // C46: تُستدعى دالّةً لا مكوّناً — تعريفها داخل الشاشة كان يجعل React يرى «نوعاً جديداً» في كلّ رسم فيهدم كلّ البطاقات ويبنيها
+    //      (فتحُ قائمةٍ أو تكبيرٌ = إعادة بناء مئات البطاقات). والأفعال تمرّ بمرجعٍ حيّ فلا تتقادم داخل الشجرة المحفوظة.
     function PersonCardButton({ p, depth = 0 }) {
         var _a;
         const meta = { "A***": colors.danger, "A**": colors.danger, "A*": colors.accent, A: colors.accent, B: colors.textMuted, C: colors.textMuted }[p.proximity];
-        const highlighted = q && matchesSearch(p);
+        const highlighted = qTree && normalizeArabicName(p.local_name).includes(qTree);
         // الأجيال البعيدة (3+) تُضغط: بطاقة أصغر تزيد ما يظهر بالشاشة نحو النصف
         const isDeep = compactDeep && depth >= 3;
         const base = isDeep ? 62 : 90;
@@ -2234,20 +2240,39 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
             p.linkedTo && (React.createElement("span", { className: `absolute top-1 right-1 flex ${rowStart()} items-center gap-0.5 px-1 rounded-full`, style: { backgroundColor: colors.accent + "22" }, title: t("lha_aayla_mrtbta") },
                 React.createElement(Users2, { size: 9, color: colors.accent }),
                 linkedCountOf(p) > 0 && (React.createElement("span", { className: "text-[7px] font-extrabold", style: { color: colors.accent } }, linkedCountOf(p))))),
-            React.createElement("button", { onClick: () => canEdit ? setNodeMenu(p) : onOpenPerson(p), onContextMenu: (e) => { e.preventDefault(); if (canEdit)
+            React.createElement("button", { onClick: () => canEdit ? setNodeMenu(p) : treeCb.current.onOpenPerson(p), onContextMenu: (e) => { e.preventDefault(); if (canEdit)
                     setNodeMenu(p); }, className: "w-full flex flex-col items-center" },
                 React.createElement(FamAvatar, { name: p.local_name, photo: p.photo, size: isDeep ? 28 : 36, gray: !p.alive, className: "mb-1" }),
                 React.createElement("span", { className: "text-xs font-extrabold block", style: { color: colors.text } }, p.local_name),
                 p.kinship && !isDeep && React.createElement("span", { className: "text-[9px] block truncate w-full", style: { color: colors.textMuted } }, kinshipLabel(p.kinship))),
             p.alive && (React.createElement("div", { className: "flex flex-row items-center justify-center gap-2 mt-1" },
-                React.createElement("button", { onClick: () => onMarkContact(p.id), className: "inline-flex items-center gap-0.5", style: { color: colors.primary } },
+                React.createElement("button", { onClick: () => treeCb.current.onMarkContact(p.id), className: "inline-flex items-center gap-0.5", style: { color: colors.primary } },
                     React.createElement(Phone, { size: 10, color: colors.primary }),
                     React.createElement("span", { className: "text-[9px] font-bold" }, t("twaslt"))),
-                canEdit && (React.createElement("button", { onClick: () => onQuickSchedule(p.id), className: "inline-flex items-center gap-0.5", style: { color: colors.accent } },
+                canEdit && (React.createElement("button", { onClick: () => treeCb.current.onQuickSchedule(p.id), className: "inline-flex items-center gap-0.5", style: { color: colors.accent } },
                     React.createElement(Clock, { size: 10, color: colors.accent }),
                     React.createElement("span", { className: "text-[9px] font-bold" }, t("mwad"))))))));
     }
+    const hasAnyRelation = new Set([
+        ...parentEdges.flatMap((e) => [e.parent, e.child]),
+        ...allLevelEdges.flat(),
+    ]);
+    const treeCb = useRef({});
+    let foldNow = collapsedIds;
     const rendered = new Set();
+    const hiddenByFold = new Set();
+    // من تحت فرعٍ مطويّ (أبناؤه وإخوتهم وأزواجهم ونسلهم) — مخفيّون عمداً لا مفقودون
+    function markHidden(ids) {
+        const q = [...ids];
+        while (q.length) {
+            const id = q.pop();
+            if (hiddenByFold.has(id) || rendered.has(id)) continue;
+            hiddenByFold.add(id);
+            groupMembers(id).forEach((m) => q.push(m.id));
+            (spousesOf[id] || []).forEach((x) => q.push(x));
+            (childrenMap[id] || []).forEach((x) => q.push(x));
+        }
+    }
     function renderGeneration(memberIds, depth = 0) {
         // نوحّد مجموعات كل شخص بـmemberIds (مو الأول بس) — لو انضاف أكتر من
         // ابن لنفس الوالد بدون علاقة أخوّة صريحة بينهم (زي الإضافة السريعة
@@ -2255,7 +2280,8 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
         // أخوّة مباشر، طالما كلهم أبناء لنفس الأب
         const groupIdsSet = new Set();
         memberIds.forEach((id) => { groupMembers(id).forEach((p) => groupIdsSet.add(p.id)); });
-        const group = persons.filter((p) => groupIdsSet.has(p.id) && !rendered.has(p.id));
+        const group = [...groupIdsSet].filter((id) => !rendered.has(id) && treeIdx.byIdM.has(id))
+            .sort((a, b) => treeIdx.order.get(a) - treeIdx.order.get(b)).map((id) => treeIdx.byIdM.get(id));
         if (group.length === 0)
             return null;
         group.forEach((p) => rendered.add(p.id));
@@ -2270,7 +2296,7 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
         const units = group.map((p) => ({
             person: p,
             spouses: (spousesOf[p.id] || [])
-                .map((sid) => persons.find((x) => x.id === sid))
+                .map((sid) => treeIdx.byIdM.get(sid))
                 .filter((sp) => sp && !rendered.has(sp.id))
                 .map((sp) => ({ person: sp, isEx: exSpousePairKey.has([p.id, sp.id].sort().join("|")) })),
         }));
@@ -2304,6 +2330,18 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
                     branches.push({ parent: p, coParent: k === "__unknown" ? null : k, children: byMother.get(k) });
             });
         });
+        // C46: أبناء الزوج/الزوجة من زواجٍ آخر (والدهم الآخر ليس من الصفّ) — كانوا لا يظهرون في الشجرة الكاملة إطلاقاً،
+        //      لأنّ الزوجة تُرسم ملحقةً بزوجها لا محوراً له فروع. فرعٌ مستقلّ باسمها: «أبناء أمل من زواجٍ آخر».
+        const claimed = new Set();
+        branches.forEach((b) => b.children.forEach((c) => claimed.add(c)));
+        units.forEach((u) => u.spouses.forEach((sp) => {
+            const kids = (childrenMap[sp.person.id] || []).filter((cid) => !rendered.has(cid) && !claimed.has(cid)
+                && !(parentsOfChild[cid] || []).some((pid) => groupIdsSet.has(pid)));
+            if (!kids.length)
+                return;
+            kids.forEach((c) => claimed.add(c));
+            branches.push({ parent: sp.person, coParent: null, children: kids, step: true });
+        }));
         return (React.createElement("div", { key: group.map((p) => p.id).join("-"), className: "mb-2" },
             React.createElement("div", { className: `flex ${rowStart()} items-start justify-center gap-2 overflow-x-auto pb-1`, style: { minWidth: 0 } }, units.map((u, ui) => (React.createElement("div", { key: u.person.id, className: `flex ${rowStart()} items-center shrink-0` },
                 ui > 0 && (React.createElement("div", { className: "flex flex-col items-center shrink-0 mx-0.5", style: { alignSelf: "center" }, title: t("ikhwa") },
@@ -2313,7 +2351,7 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
                         border: u.spouses.length ? `1.5px dashed ${colors.primary}66` : "1px solid transparent",
                         backgroundColor: u.spouses.length ? colors.primary + "0a" : "transparent",
                     } },
-                    React.createElement(PersonCardButton, { p: u.person, depth: depth }),
+                    PersonCardButton({ p: u.person, depth: depth }),
                     u.spouses.map((s) => (React.createElement(React.Fragment, { key: s.person.id },
                         React.createElement("span", { className: "shrink-0 flex flex-col justify-center gap-[3px] mx-1", style: { width: 18 }, title: s.isEx ? t("zwaj_sabq") : t("ft_zwaj") },
                             React.createElement("span", { style: {
@@ -2328,21 +2366,22 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
                                     opacity: s.isEx ? 0.5 : 0.85,
                                     borderTop: s.isEx ? `2px dashed ${colors.textMuted}` : "none",
                                 } })),
-                        React.createElement(PersonCardButton, { p: s.person, depth: depth }))))))))),
-            branches.length > 0 && (React.createElement("div", { className: `flex ${rowStart()} items-start justify-center gap-4 mt-1 overflow-x-auto`, style: { minWidth: 0 } }, branches.map(({ parent, coParent, children }) => {
+                        PersonCardButton({ p: s.person, depth: depth }))))))))),
+            branches.length > 0 && (React.createElement("div", { className: `flex ${rowStart()} items-start justify-center gap-4 mt-1 overflow-x-auto`, style: { minWidth: 0 } }, branches.map(({ parent, coParent, children, step }) => {
                 // مفتاح الطيّ يخصّ الفرع لا الوالد — وإلا طُويت فروع الزوجات معاً
                 const branchKey = `${parent.id}|${coParent || "x"}`;
-                const isCollapsed = !!(collapsedIds[branchKey] || collapsedIds[parent.id]);   // C33: الطيّ التلقائيّ و«طيّ الكلّ» يكتبان معرّف الوالد
+                const isCollapsed = !!(foldNow[branchKey] || foldNow[parent.id]);   // C33: الطيّ التلقائيّ و«طيّ الكلّ» يكتبان معرّف الوالد
                 // الآن بعد إضافة حقل الجنس الصريح، نستخدم الصيغة النحوية
                 // الصحيحة ("وزوجته"/"وزوجها") لو الجنس معروف، ونبقي "مع"
                 // المحايدة كبديل آمن لو الجنس غير محدَّد (بيانات قديمة مثلاً)
                 // إن كان الفرع لزواج بعينه، نسمّي تلك الزوجة وحدها
-                const spouseIdsForLabel = coParent ? [coParent] : ((spousesOf[parent.id] || []).length > 1 ? [] : (spousesOf[parent.id] || []));
+                const isStep = !!step;
+                const spouseIdsForLabel = isStep ? [] : coParent ? [coParent] : ((spousesOf[parent.id] || []).length > 1 ? [] : (spousesOf[parent.id] || []));
                 const spouseNames = spouseIdsForLabel.map((id) => {
                     const key = [parent.id, id].sort().join("|");
                     return exSpousePairKey.has(key) ? t("ft_sabqan", { name: personName(id) }) : personName(id);
                 });
-                let spouseLabel = "";
+                let spouseLabel = isStep ? " " + tl("من زواجٍ آخر", "from another marriage") : "";
                 if (spouseNames.length > 0) {
                     if (parent.gender === "male")
                         spouseLabel = t("ft_w_zwjath", { w: spouseNames.length > 1 ? t("ft_zwjath") : t("ft_zwjth"), names: spouseNames.join(t("ft_w")) });
@@ -2359,7 +2398,7 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
                             boxShadow: famShadow(isDark),
                             whiteSpace: "nowrap",
                         } }, isCollapsed ? t(spouseLabel ? "ft_mzyd_abna_zwja" : "ft_mzyd_abna", { n: children.length, name: parent.local_name.split(" ")[0], spouseLabel }) : t("abna_local_name_spouseLabel", { local_name: parent.local_name, spouseLabel, length: children.length })),
-                    !isCollapsed && (React.createElement("div", { className: "px-1.5 pt-1.5", style: { borderTop: `2px solid ${colors.primary}33`, borderRadius: 14, minWidth: 0 } }, renderGeneration(children, depth + 1)))));
+                    isCollapsed ? (markHidden(children), null) : (React.createElement("div", { className: "px-1.5 pt-1.5", style: { borderTop: `2px solid ${colors.primary}33`, borderRadius: 14, minWidth: 0 } }, renderGeneration(children, depth + 1)))));
             })))));
     }
     // الجذور: من لا والد له. نستثني من صار زوجاً لشخص سيُرسم في صفه
@@ -2389,14 +2428,20 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
     });
     // ارتفاع الجذر = أطول سلسلة نزولاً منه. نرسم الأعلى جيلاً أولاً كي
     // لا يظهر الجدّ لأم أسفل الشجرة تحت جيل الأبناء.
-    const heightOf = (id, seen = new Set()) => {
-        if (seen.has(id))
+    // C46: بذاكرة — كانت تُحسب من جديد (بنسخ مجموعة «المزور» لكلّ ابن) داخل دالّة الترتيب، أي مرّاتٍ لكلّ جذر
+    const heightMemo = new Map(), onPath = new Set();
+    const heightOf = (id) => {
+        if (heightMemo.has(id))
+            return heightMemo.get(id);
+        if (onPath.has(id))
             return 0;
-        seen.add(id);
+        onPath.add(id);
         const kids = childrenMap[id] || [];
-        if (!kids.length)
-            return 0;
-        return 1 + Math.max(...kids.map((k) => heightOf(k, new Set(seen))));
+        let h = 0;
+        kids.forEach((k) => { h = Math.max(h, 1 + heightOf(k)); });
+        onPath.delete(id);
+        heightMemo.set(id, h);
+        return h;
     };
     const rootIds = persons
         .filter((p) => !hasParent.has(p.id) && !spouseOfSomeone.has(p.id) && !siblingOfPlaced.has(p.id))
@@ -2442,7 +2487,7 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
         setFocusId(id);
         setTimeout(() => { var _a; return (_a = treeScrollRef.current) === null || _a === void 0 ? void 0 : _a.scrollTo({ top: 0, behavior: "smooth" }); }, 50);
     }
-    const byId = (id) => persons.find((p) => p.id === id);
+    const byId = (id) => treeIdx.byIdM.get(id);
     const toPersons = (ids) => [...ids].map(byId).filter(Boolean);
     const focusData = focusPerson ? (() => {
         const meId = focusPerson.id;
@@ -2474,6 +2519,9 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
         parentIds.forEach((pid) => (parentsOfMap[pid] || []).forEach((gid) => grandIds.add(gid)));
         // الجيل اللاحق: أحفاد من كل الأبناء
         const childIds = childrenMap[meId] || [];
+        // C46: أبناء أزواجي من زواجٍ آخر (ليسوا أبنائي)
+        const mine = new Set(childIds), stepIds = new Set();
+        (spousesOf[meId] || []).forEach((sid) => (childrenMap[sid] || []).forEach((cid) => { if (!mine.has(cid) && cid !== meId) stepIds.add(cid); }));
         const grandChildIds = new Set();
         childIds.forEach((cid) => (childrenMap[cid] || []).forEach((gid) => grandChildIds.add(gid)));
         // أزواج الوالدين ممن ليسوا والديّ (زوجة أب مثلاً) لا تُعرض هنا
@@ -2484,30 +2532,46 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
             spouses: toPersons(spousesOf[meId] || []),
             siblings: toPersons(sibIds),
             children: toPersons(childIds),
+            stepChildren: toPersons(stepIds).map((c) => ({ p: c, via: toPersons((parentsOfChild[c.id] || []).filter((pid) => (spousesOf[meId] || []).includes(pid)))[0] || null })),
             grandchildren: toPersons(grandChildIds),
         };
     })() : null;
-    const rootBlocks = [];
-    rootIds.forEach((id) => {
-        if (rendered.has(id))
-            return;
-        const root = findGroup(id);
-        if (rootGroupsSeen.has(root))
-            return;
-        rootGroupsSeen.add(root);
-        const rootPerson = persons.find((p) => p.id === id);
-        rootBlocks.push(React.createElement("div", { key: `rb-${id}`, className: rootBlocks.length ? "mt-4 pt-3 border-t" : "", style: rootBlocks.length ? { borderColor: colors.border } : undefined },
-            rootBlocks.length > 0 && rootPerson && (React.createElement("p", { className: "text-[10px] font-bold text-center mb-2", style: { color: colors.textMuted } },
-                t("ft_fra"),
-                rootPerson.local_name)),
-            renderGeneration([id], 0)));
-    });
+    treeCb.current = { onMarkContact, onQuickSchedule, onOpenPerson };
+    const qTree = deferQ(q);   // C46: البحث يُبرز في الشجرة بأولويّةٍ منخفضة — الكتابة لا تنتظر إعادة رسم مئات البطاقات
+    const rootBlocks = useMemo(() => {
+        if (viewMode !== "full")
+            return [];
+        const out = [];
+        rendered.clear(); hiddenByFold.clear(); rootGroupsSeen.clear();
+        foldNow = autoCollapsedRef.current ? collapsedIds : { ...autoFold(), ...collapsedIds };
+        const block = (id, extra) => {
+            const rootPerson = treeIdx.byIdM.get(id);
+            out.push(React.createElement("div", { key: `rb-${id}`, className: out.length ? "mt-4 pt-3 border-t" : "", style: out.length ? { borderColor: colors.border } : undefined },
+                out.length > 0 && rootPerson && (React.createElement("p", { className: "text-[10px] font-bold text-center mb-2", style: { color: colors.textMuted } },
+                    extra || t("ft_fra"),
+                    rootPerson.local_name)),
+                renderGeneration([id], 0)));
+        };
+        rootIds.forEach((id) => {
+            if (rendered.has(id) || hiddenByFold.has(id))
+                return;
+            const root = findGroup(id);
+            if (rootGroupsSeen.has(root))
+                return;
+            rootGroupsSeen.add(root);
+            block(id);
+        });
+        // C46: شبكة أمان — من له صلة ولم يُرسم ولم يُطوَ (حالاتٌ نادرة: زوجان سابقان بلا والدين، زواجٌ متشابك…) يُرسم فرعاً مستقلّاً
+        //      بدل أن يختفي من الشجرة الكاملة بصمت.
+        persons.forEach((p) => {
+            if (rendered.has(p.id) || hiddenByFold.has(p.id) || !hasAnyRelation.has(p.id))
+                return;
+            block(p.id, tl("مرتبطٌ بالعائلة: ", "Also linked: "));
+        });
+        return out;
+    }, [viewMode, treeIdx, relations, collapsedIds, compactDeep, qTree, deepestId, canEdit, colors, isDark, allGroupPersons, t("shjra_2")]);
     // الأشخاص اللي بلا أي علاقة إطلاقاً (لا أب ولا أخ ولا زوج) — قسم منفصل
     // صريح، مو مختلطين مع جذور الشجرة الحقيقية
-    const hasAnyRelation = new Set([
-        ...parentEdges.flatMap((e) => [e.parent, e.child]),
-        ...allLevelEdges.flat(),
-    ]);
     const unlinkedPersons = persons.filter((p) => !hasAnyRelation.has(p.id));
     // تصدير الشجرة كملف نصي هرمي — بديل عملي لصورة/PDF (بلا مكتبة رسم canvas
     // بهذي البيئة)، يبقى قابلاً للمشاركة والطباعة من أي تطبيق نصوص
@@ -2662,7 +2726,7 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
                         const allCollapsed = Object.keys(childrenMap).every((pid) => collapsedIds[pid]);
                         const next = {};
                         Object.keys(childrenMap).forEach((pid) => { next[pid] = !allCollapsed; });
-                        setCollapsedIds(next); setShowTreeTools(false); setViewMode("full");
+                        autoCollapsedRef.current = true; setCollapsedIds(next); setShowTreeTools(false); setViewMode("full");
                     } }),
                 React.createElement(FamRow, { icon: BarChart3, title: t("ihsayyat"), onPress: () => { setShowTreeTools(false); onOpenStats(); }, last: true })),
             viewMode === "focus" && focusPath.length > 0 && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 mb-2 overflow-x-auto pb-1` },
