@@ -407,7 +407,7 @@ function Pic({ photo, letter, size, bg, color, className, style, children }) {
 function TopBar({ title, subtitle, onBack, actions, avatar, photo }) {
     const { colors } = useTheme();
     return (React.createElement("div", { className: `flex items-center px-4 pt-10 pb-3 ${rowStart()}`, style: { backgroundColor: colors.primary } },
-        onBack && React.createElement("button", { onClick: onBack, className: `${ms("2")}` },
+        onBack && React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack, className: `${ms("2")}` },
             React.createElement(ChevronLeft, { color: "#fff", size: 22 })),
         // الأفاتار داخل كتلة الاسم لا شقيقاً لها، وإلا انفصل عنه في الصف المعكوس.
         // avatar: true = الحرف الأول من العنوان، أو نص مخصّص.

@@ -1658,6 +1658,7 @@ function AppInner() {
     }
     function forwardMessageToTargets(text, destinationIds) {
         destinationIds.forEach((id) => {
+            if (/^contact:/.test(id) && window.SawaChat && window.SawaChat.openDm) { window.SawaChat.openDm(id.slice(8)).then((cid) => { if (cid) window.SawaChat.send(cid, text, { fwd: true }); }); return; }
             if (cloudChat(id)) { cloudChat(id).send(id, text, { fwd: true }); return; }
             if (conversations.some((c) => c.id === id)) {
                 const msg = { id: `msg-${Date.now()}-f-${id}`, senderUserId: myUserId, text, createdAt: Date.now(), forwarded: true, status: "sent" };
@@ -1725,10 +1726,10 @@ function AppInner() {
     function revokeSession(id) { setSessions((prev) => prev.filter((s) => s.id !== id)); }
     function revokeAllSessions() { setSessions([{ id: "sess-1", device: t("ai_hdha_aljhaz"), lastActive: "الآن" }]); }
     // ------------------------------- لحظات الأصدقاء -------------------------------
-    const [momentsPosts, setMomentsPosts] = usePersistedState("momentsPosts", [
-        { id: "m1", author: "نعمات بابكر", authorId: null, text: "يوم جميل بالخرطوم اليوم 🌿", privacy: "public", createdAt: Date.now() - 3 * 3600000, likedByMe: false, likes: 2, views: 12, viewedBy: [], comments: [{ author: "عثمان", text: "جميل! 😍" }] },
-        { id: "m2", author: "خالد", authorId: null, text: "طلعة حلوة اليوم في الخرطوم 🌇", privacy: "public", createdAt: Date.now() - 26 * 3600000, likedByMe: false, likes: 2, views: 8, viewedBy: [], comments: [] },
-    ]);
+    // C47: كانت لحظتان وهميّتان («نعمات بابكر»، «خالد») تُزرعان لكلّ حسابٍ جديد فتظهر دوائر «مستخدم» فوق المحادثات — لا بيانات وهميّة
+    const [momentsPosts, setMomentsPosts0] = usePersistedState("momentsPosts", []);
+    const setMomentsPosts = setMomentsPosts0;
+    useEffect(() => { setMomentsPosts0((prev) => (prev || []).some((p) => (p.id === "m1" || p.id === "m2") && p.authorId === null) ? prev.filter((p) => !((p.id === "m1" || p.id === "m2") && p.authorId === null)) : prev); }, []);
     function addMomentPost({ text, privacy, photoName, photoData, location, expiresAt, pollSticker }) {
         setMomentsPosts((prev) => {
             // سقف الصور المحفوظة: أقدم صورة تفقد بياناتها ويبقى نصها،
@@ -3587,7 +3588,7 @@ function AppInner() {
                     }
                     if (chatsTop.type === "group") {
                         const liveGroup = groups.find((g) => g.id === chatsTop.data.id) || chatsTop.data;
-                        return (React.createElement(GroupChatScreen, { group: liveGroup, messages: groupMessages[liveGroup.id] || [], myUserId: myUserId, draft: chatDrafts["g:" + liveGroup.id] || "", onSaveDraft: (v) => saveChatDraft("g:" + liveGroup.id, v), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendGroupMessage(liveGroup.id, text, replyTo),
+                        return (React.createElement(GroupChatScreen, { group: liveGroup, messages: groupMessages[liveGroup.id] || [], myUserId: myUserId, draft: chatDrafts["g:" + liveGroup.id] || "", onSaveDraft: (v) => saveChatDraft("g:" + liveGroup.id, v), onTyping: () => { const c = cloudChat(liveGroup.id); if (c) c.typing(liveGroup.id); }, contactsForForward: (window.SawaChat && window.SawaChat.contacts ? window.SawaChat.contacts() : []), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendGroupMessage(liveGroup.id, text, replyTo),
                             onReact: cloudChat(liveGroup.id) ? (messageId, emoji) => cloudChat(liveGroup.id).react(liveGroup.id, messageId, emoji) : null,
                             onDeleteMessage: cloudChat(liveGroup.id) ? (messageId, scope) => { scope === "all" ? cloudChat(liveGroup.id).deleteForAll(liveGroup.id, messageId) : cloudChat(liveGroup.id).deleteForMe(liveGroup.id, messageId); showToast(scope === "all" ? t("ai_hdhft_lljmya") : t("ai_hdhft_andk"), "success"); } : null,
                             contacts: cloudChat(liveGroup.id) ? people : null,
@@ -3609,7 +3610,7 @@ function AppInner() {
                         // المحادثة الحيّة (الاسم/التثبيت/الاختفاء من الخادم) لا لقطة لحظة الفتح
                         const liveConv = conversations.find((c) => c.id === chatsTop.data.id) || chatsTop.data;
                         const SCc = cloudChat(chatsTop.data.id);
-                        return (React.createElement(ChatScreen, { conversation: liveConv, messages: convMessages, draft: chatDrafts[chatsTop.data.id] || "", onSaveDraft: (v) => saveChatDraft(chatsTop.data.id, v), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendChatMessage(chatsTop.data.id, text, replyTo), onForward: (text, destinationIds) => forwardMessageToTargets(text, destinationIds), onTogglePin: (messageId) => togglePinMessage(chatsTop.data.id, messageId), onToggleStar: (messageId, text) => toggleStarMessage(chatsTop.data.id, messageId, text), isTyping: typingConversations.includes(chatsTop.data.id), onLogCall: logCall, isOnline: liveConv.cloud ? !!liveConv.online : onlineContacts.includes(chatsTop.data.name), callSettings: callSettings, allConversations: conversations, allGroups: groups, onReact: (messageId, emoji) => reactToChatMessage(chatsTop.data.id, messageId, emoji), onSendSticker: (emoji) => sendChatSticker(chatsTop.data.id, emoji), onSendFile: (name, size, fileUrl, type, viewOnce, file) => sendChatFile(chatsTop.data.id, name, size, fileUrl, type, viewOnce, file), onSendVoice: (url, duration, transcript, blob, secs) => sendChatVoice(chatsTop.data.id, url, duration, transcript, blob, secs), onMarkViewedOnce: (messageId) => markMessageViewedOnce(chatsTop.data.id, messageId), onEditMessage: (messageId, newText) => editChatMessage(chatsTop.data.id, messageId, newText), onDeleteMessage: (messageId, scope) => {
+                        return (React.createElement(ChatScreen, { conversation: liveConv, messages: convMessages, draft: chatDrafts[chatsTop.data.id] || "", onSaveDraft: (v) => saveChatDraft(chatsTop.data.id, v), onTyping: () => { const c = cloudChat(chatsTop.data.id); if (c) c.typing(chatsTop.data.id); }, contactsForForward: (window.SawaChat && window.SawaChat.contacts ? window.SawaChat.contacts() : []), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendChatMessage(chatsTop.data.id, text, replyTo), onForward: (text, destinationIds) => forwardMessageToTargets(text, destinationIds), onTogglePin: (messageId) => togglePinMessage(chatsTop.data.id, messageId), onToggleStar: (messageId, text) => toggleStarMessage(chatsTop.data.id, messageId, text), isTyping: typingConversations.includes(chatsTop.data.id), onLogCall: logCall, isOnline: liveConv.cloud ? !!liveConv.online : onlineContacts.includes(chatsTop.data.name), callSettings: callSettings, allConversations: conversations, allGroups: groups, onReact: (messageId, emoji) => reactToChatMessage(chatsTop.data.id, messageId, emoji), onSendSticker: (emoji) => sendChatSticker(chatsTop.data.id, emoji), onSendFile: (name, size, fileUrl, type, viewOnce, file) => sendChatFile(chatsTop.data.id, name, size, fileUrl, type, viewOnce, file), onSendVoice: (url, duration, transcript, blob, secs) => sendChatVoice(chatsTop.data.id, url, duration, transcript, blob, secs), onMarkViewedOnce: (messageId) => markMessageViewedOnce(chatsTop.data.id, messageId), onEditMessage: (messageId, newText) => editChatMessage(chatsTop.data.id, messageId, newText), onDeleteMessage: (messageId, scope) => {
                                 if (SCc) { scope === "all" ? SCc.deleteForAll(chatsTop.data.id, messageId) : SCc.deleteForMe(chatsTop.data.id, messageId); showToast(scope === "all" ? t("ai_hdhft_lljmya") : t("ai_hdhft_andk"), "success"); return; }
                                 // تحرير رابط الوسائط المؤقّت — بدونه يبقى الملف
                                 // في ذاكرة المتصفح بعد حذف الرسالة
