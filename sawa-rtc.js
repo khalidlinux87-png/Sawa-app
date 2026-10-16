@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c65";
+  var VERSION = "c67";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -2274,6 +2274,18 @@
     // C64: حارس — لا تبقى الغرفة عالقةً في «جارٍ العودة»: الصوت يتدفّق ⇒ حيّة · عودةٌ معلّقة أكثر من ٢٠ ث (طلبٌ لم يرجع أثناء الانقطاع) ⇒ محاولةٌ جديدة
     if (r.rejoining && r.rejoinAt && Date.now() - r.rejoinAt > 20000) { r.rejoining = false; rRejoin(r); }
     else if (r.live && r.state === "reconnecting" && !r.rejoining && rMediaAlive(r)) { r.state = "live"; rPaint(r); }
+    // C67: وحدي في الغرفة (لا صوت يشهد) وعالق على «جارٍ العودة» — أحداث الشبكة قد لا تصل أصلاً على أندرويد ⇒ نجسّ قاعدة البيانات كلّ ٥ ثوانٍ:
+    //      قراءةٌ ناجحة لعضويّتي ⇒ حيّة؛ عضويّتي محذوفة ⇒ عودة؛ القراءة لا ترجع ⇒ ما زلنا منقطعين فعلاً
+    else if (r.live && r.state === "reconnecting" && !r.rejoining && !r.probing && Date.now() - (r.probeAt || 0) > 5000) {
+      r.probing = true; r.probeAt = Date.now();
+      var me0 = myUid(), tm = setTimeout(function () { r.probing = false; }, 4500);
+      rRef(r, "members/" + me0).once("value").then(function (x) {
+        clearTimeout(tm); r.probing = false;
+        if (r.done || !r.live || r.state !== "reconnecting" || r.rejoining) return;
+        if (x.val()) { r.state = "live"; rPaint(r); log("probe: db back, membership intact → live"); }
+        else { log("probe: membership gone → rejoin"); rRejoin(r); }
+      }).catch(function () { clearTimeout(tm); r.probing = false; });
+    }
     // C65: دخلنا الغرفة بلا TURN (طلب الخوادم تجاوز ٦ ثوانٍ على شبكةٍ بطيئة فاكتفينا بـSTUN) ⇒ نطلبه في الخلفيّة ونرقّي الاتّصالات القائمة
     if (r.live && !hasTurn(r.ice) && !r.iceBusy && Date.now() - (r.iceTry || 0) > 15000) {
       r.iceTry = Date.now(); r.iceBusy = true;
