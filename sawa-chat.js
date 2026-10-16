@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c54";
+  var VERSION = "c56";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1590,6 +1590,54 @@
     yes.onclick = function () { hideBanner(); if (st === "denied") { lsSet("sawa_push_asked", Date.now()); helpSheet(); } else enablePush(); };
     no.onclick = function () { lsSet("sawa_push_asked", Date.now()); hideBanner(); };
     bannerEl.appendChild(txt); bannerEl.appendChild(yes); bannerEl.appendChild(no); document.body.appendChild(bannerEl);
+  }
+  // C56: ورقة «فحص الإشعارات»: الإذن · الدعم · تسجيل الجهاز · أجهزتي على الخادم · إشعار تجريبيّ حقيقيّ · إعادة التسجيل · إرشادات أندرويد
+  function pushCheckSheet() {
+    var s = sheet(L("🔔 فحص الإشعارات والمكالمات في الخلفية", "🔔 Notifications & background calls check"));
+    var row = function (k, v, good) { var r = mk("div", "display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f6;font:600 13px system-ui"); r.appendChild(mk("span", "color:#5b6b7c", k)); r.appendChild(mk("span", "color:" + (good === true ? "#2e7d5b" : good === false ? "#b42318" : "#1A1A2E") + ";text-align:" + (isAr() ? "left" : "right"), v)); return r; };
+    var st = pushState(), sup = pushSupported(), reg = lsGet("sawa_push", {}), sa = isStandalone();
+    var box = s.box;
+    box.appendChild(row(L("طريقة الفتح", "Opened as"), sa ? L("تطبيقٌ مثبّت", "Installed app") : L("متصفّح", "Browser")));
+    box.appendChild(row(L("دعم المتصفّح", "Browser support"), sup ? L("مدعوم ✓", "Supported ✓") : L("غير مدعوم", "Not supported"), sup));
+    box.appendChild(row(L("إذن الإشعارات", "Permission"), st === "granted" ? L("مسموح ✓", "Granted ✓") : st === "denied" ? L("محظور ✗", "Blocked ✗") : st === "off" ? L("موقوف من سوا", "Off in Sawa") : st === "default" ? L("لم يُطلب بعد", "Not asked yet") : "—", st === "granted" ? true : st === "default" ? null : false));
+    box.appendChild(row(L("هذا الجهاز مسجّل", "This device registered"), reg.token && reg.uid === state.uid ? L("نعم ✓ — ", "Yes ✓ — ") + timeAgo(reg.ts || 0) : L("لا ✗", "No ✗"), !!(reg.token && reg.uid === state.uid)));
+    var srv = row(L("أجهزتك عند الخادم", "Devices on server"), "…"); box.appendChild(srv);
+    var out = mk("div", "margin:10px 0 4px"); box.appendChild(out);
+    var test = mkBtn(L("أرسل إشعاراً تجريبيّاً الآن", "Send a test notification now"), "primary"); test.style.marginTop = "10px";
+    var fix = mkBtn(L("إعادة تسجيل هذا الجهاز", "Re-register this device")); fix.style.marginTop = "8px";
+    var en = mkBtn(st === "denied" ? L("كيف أفتح الإشعارات؟", "How do I unblock?") : L("تفعيل الإشعارات", "Turn on notifications"), "primary"); en.style.marginTop = "8px";
+    if (st === "granted") box.appendChild(test); else box.appendChild(en);
+    if (st === "granted") box.appendChild(fix);
+    var tips = note(sa
+      ? L("إن قال الخادم «وصل» ولم يظهر شيء على هاتفك:\n١) اضغط مطوّلاً على أيقونة سوا ← «معلومات التطبيق» ← «الإشعارات» ← مسموح.\n٢) في «معلومات التطبيق» أيضاً: «البطاريّة» ← «بلا قيود» (هواتف Tecno/Infinix/Xiaomi/Huawei توقف الخلفية).\n٣) Chrome ← ⋮ ← الإعدادات ← إعدادات الموقع ← الإشعارات ← sawaaap.com مسموح.\nالمكالمات تصل كإشعارٍ يرنّ؛ اضغطه لترُدّ.",
+          "If the server says delivered but nothing shows:\n1) Long-press the Sawa icon → App info → Notifications → Allowed.\n2) App info → Battery → Unrestricted (Tecno/Infinix/Xiaomi/Huawei kill background apps).\n3) Chrome → ⋮ → Settings → Site settings → Notifications → sawaaap.com allowed.\nCalls arrive as a ringing notification; tap it to answer.")
+      : L("للمكالمات والرسائل والتطبيق مغلق: ثبّت سوا على الشاشة الرئيسيّة وفعّل الإشعارات، وفي «معلومات التطبيق» اجعل البطاريّة «بلا قيود».", "For calls and messages while closed: install Sawa to the home screen, allow notifications, and set Battery → Unrestricted in App info."), "#5b6b7c", "#f5f7fa");
+    tips.style.whiteSpace = "pre-line"; tips.style.marginTop = "12px"; box.appendChild(tips);
+    var closeB = mkBtn(L("إغلاق", "Close"), "ghost"); closeB.style.marginTop = "6px"; closeB.onclick = s.close; box.appendChild(closeB);
+    function runTest(label) {
+      test.disabled = true; test.textContent = L("جارٍ الإرسال…", "Sending…"); out.innerHTML = "";
+      return call("push.test", {}).then(function (b) {
+        srv.lastChild.textContent = String(b.devices || 0);
+        if (!b.devices) { out.appendChild(note(L("لا جهاز مسجّلاً عند الخادم — اضغط «إعادة تسجيل هذا الجهاز».", "No device registered on the server — tap Re-register."), "#b42318", "#fdecec")); return; }
+        (b.results || []).forEach(function (r) {
+          out.appendChild(note((r.ok ? "✓ " : "✗ ") + (r.ua || L("جهاز", "device")) + " · " + timeAgo(r.ts || 0) + (r.ok ? L(" — أرسله الخادم. إن لم يظهر خلال ١٠ ثوانٍ فالمشكلة في إعدادات الهاتف (انظر أدناه).", " — sent by the server. If nothing shows in 10 s, the phone's settings block it (see below).") : r.err === "gone" ? L(" — رمزٌ ميّت (حُذف) — أعد التسجيل.", " — dead token (removed) — re-register.") : " — " + r.err), r.ok ? "#2e7d5b" : "#b42318", r.ok ? "#eaf6ef" : "#fdecec"));
+        });
+      }).catch(function (e) { out.appendChild(note(L("تعذّر الاختبار: ", "Test failed: ") + ((e && e.message) || e), "#b42318", "#fdecec")); })
+        .then(function () { test.disabled = false; test.textContent = L("أرسل إشعاراً تجريبيّاً الآن", "Send a test notification now"); });
+    }
+    test.onclick = function () { runTest(); };
+    fix.onclick = function () {
+      fix.disabled = true; fix.textContent = L("جارٍ…", "…");
+      lsSet("sawa_push", {});
+      var p = Promise.resolve(); try { p = firebase.messaging().deleteToken().catch(function () {}); } catch (e) {}
+      p.then(pushToken).then(registerToken).then(function () { toast(L("أُعيد تسجيل الجهاز ✓", "Device re-registered ✓")); s.close(); pushCheckSheet(); })
+        .catch(function (e) { fix.disabled = false; fix.textContent = L("إعادة تسجيل هذا الجهاز", "Re-register this device"); toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+    };
+    en.onclick = function () { s.close(); if (st === "denied") helpSheet(); else enablePush().then(function (ok) { if (ok) pushCheckSheet(); }); };
+    // عدد الأجهزة عند الخادم (بلا إرسال)
+    if (st === "granted") call("push.test", { dry: true }).then(function (b) { srv.lastChild.textContent = String(b.devices || 0); srv.lastChild.style.color = b.devices ? "#2e7d5b" : "#b42318"; }).catch(function () { srv.lastChild.textContent = "؟"; });
+    else srv.lastChild.textContent = "—";
+    return s;
   }
   function helpSheet() {
     var ov = document.createElement("div");
@@ -3415,7 +3463,7 @@
     isCloud: isCloud, enabled: function () { return !!state.uid; }, openChat: openChat, closeChat: closeChat,
     send: send, edit: edit, clearChat: clearChat,
     // C4
-    enablePush: enablePush, disablePush: disablePush, pushEnabled: pushEnabled, pushSupported: pushSupported, pushState: pushState, pushHelp: helpSheet,
+    enablePush: enablePush, disablePush: disablePush, pushEnabled: pushEnabled, pushSupported: pushSupported, pushState: pushState, pushHelp: helpSheet, pushCheckSheet: pushCheckSheet,
     sendMedia: sendMedia, forwardMessage: forwardMessage, openFile: openFile, markViewedOnce: markViewedOnce, ensureMedia: ensureMedia,
     // C3
     createGroup: createGroup, updateGroup: updateGroup, addMembers: addMembers, removeMember: removeMember, setAdmin: setAdmin,

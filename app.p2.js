@@ -870,6 +870,8 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         // C10: رمز سوا وطلبات التواصل
         ...(cloudMe && SCm.codeSheet ? [
             { key: "mycode", label: tl("رمزي في سوا", "My Sawa code"), icon: QrCode, onPress: () => SCm.codeSheet(), color: "#2F80C8" },
+            // C56: فحص الإشعارات والمكالمات في الخلفية — إشعارٌ تجريبيّ حقيقيّ وإرشادات الهاتف
+            { key: "pushcheck", label: tl("الإشعارات والمكالمات في الخلفية", "Notifications & background calls"), icon: BellIcon, onPress: () => { if (SCm && SCm.pushCheckSheet) SCm.pushCheckSheet(); }, color: "#F59E0B" },
             { key: "requests", label: tl("طلبات التواصل", "Contact requests") + (reqCount ? " (" + reqCount + ")" : ""), icon: UserPlus, onPress: () => SCm.requestsSheet(), color: reqCount ? "#E11D48" : "#2F80C8" },
         ] : []),
         // C39: تثبيت التطبيق على الشاشة الرئيسيّة — يظهر فقط حين يُفتح سوا من المتصفّح على هاتف
