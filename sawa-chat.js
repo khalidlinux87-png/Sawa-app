@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c59";
+  var VERSION = "c60";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1550,12 +1550,38 @@
   }
   function pushEnabled() { return pushState() === "granted"; }
   // بعد الدخول: إن سبق السماح نجدّد الرمز بصمت (يتغيّر أحياناً، أو تغيّر الحساب)؛ وإلا نعرض بطاقة التفعيل
+  // C60: الرمز يموت أحياناً عند FCM بصمت (تغيّر اشتراك المتصفّح، مسح بيانات، خمول طويل) بينما يراه التطبيق صالحاً ⇒ الإشعارات والمكالمات لا تصل حتى «إعادة التسجيل».
+  //   العلاج: تجديدٌ قسريّ (حذف الرمز ثمّ طلب رمزٍ جديد وتسجيله) كلّ ٧ أيّام، وفوراً حين يبلّغ عامل الخدمة بتغيّر الاشتراك (pushsubscriptionchange).
+  var PUSH_ROTATE_MS = 7 * 86400000, rotating = null;
+  function rotateToken(why) {
+    if (rotating) return rotating;
+    rotating = Promise.resolve().then(function () { return firebase.messaging().deleteToken().catch(function () {}); })
+      .then(function () { lsSet("sawa_push", {}); return pushToken(); })
+      .then(function (tok) { return registerToken(tok); })
+      .then(function () { clearResubFlag(); log("push rotated:", why); return true; })
+      .catch(function (e) { log("push rotate:", (e && e.message) || e); return false; })
+      .then(function (ok) { rotating = null; return ok; });
+    return rotating;
+  }
+  function clearResubFlag() {
+    try { localStorage.removeItem("sawa_push_resub"); } catch (e) {}
+    try { if (global.caches) caches.open("flags-sawa").then(function (c) { return c.delete("/push-resub"); }).catch(function () {}); } catch (e) {}
+  }
+  function resubFlagged() {
+    if (lsGet("sawa_push_resub", 0)) return Promise.resolve(true);
+    try { if (!global.caches) return Promise.resolve(false); return caches.open("flags-sawa").then(function (c) { return c.match("/push-resub"); }).then(function (r) { return !!r; }).catch(function () { return false; }); } catch (e) { return Promise.resolve(false); }
+  }
   function refreshPush() {
     var st = pushState();
     emitPush();
     if (st === "default" || st === "denied") return maybeBanner(st);
     if (st !== "granted") return;
-    pushToken().then(registerToken).catch(function (e) { log("push token:", (e && e.message) || e); });
+    var prev = lsGet("sawa_push", {});
+    resubFlagged().then(function (flag) {
+      if (flag) return rotateToken("subscription changed");
+      if (prev.token && prev.ts && Date.now() - prev.ts > PUSH_ROTATE_MS && navigator.onLine !== false) return rotateToken("weekly");
+      return pushToken().then(registerToken);
+    }).catch(function (e) { log("push token:", (e && e.message) || e); });
   }
   // بطاقة «فعّل الإشعارات» (تحتاج ضغطة المستخدم — المتصفّحات تمنع الطلب التلقائيّ)
   //  · لم يُسأل بعد ⇒ تظهر كلّ فتحٍ، و«لاحقاً» يؤجّلها يوماً · محظورة ⇒ تظهر أسبوعيّاً مع طريقة الفتح
@@ -1705,6 +1731,8 @@
         if (m.data.t === "reqok") { refresh(); loadRequests(); }
       }
       if (m.type === "sawa-open" && m.data) { if (m.data.t === "req") whenReady(function () { requestsSheet(); }); else openFromPush(m.data.cid); }
+      // C60: عامل الخدمة يبلّغ أنّ اشتراك الإشعارات تغيّر ⇒ رمزٌ جديد فوراً
+      if (m.type === "sawa-push-resub") { lsSet("sawa_push_resub", Date.now()); if (pushState() === "granted" && state.uid) rotateToken("sw resub"); }
     });
   } catch (e) {}
   function handleChatParam() {

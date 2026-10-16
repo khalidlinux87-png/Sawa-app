@@ -4,7 +4,7 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v258';
+const VERSION = 'sawa-v259';
 // P2: على العناوين القديمة/البديلة (Netlify · sawaap.pages.dev · sawaaap.com بلا www) يصير عامل الخدمة «مُخلياً»:
 //     يمسح المخزون، يحوّل الصفحات المفتوحة إلى العنوان الرسميّ، ثمّ يلغي نفسه. على www.sawaaap.com يعمل كالمعتاد.
 //     (لا يُحذف هذا قبل أن ينتقل كلّ المستخدمين.)
@@ -68,6 +68,15 @@ self.addEventListener('activate', (e) => {
         .map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+// C60: المتصفّح غيّر اشتراك الإشعارات (انتهاء صلاحيّة/تدوير) ⇒ الرمز القديم عند الخادم ميّت. نرفع علماً يقرأه التطبيق عند فتحه (ذاكرة 'flags-sawa' لا تُحذف مع نسخ 'sawa-*')
+//      ونبلّغ أيّ نافذةٍ مفتوحة لتجدّد الرمز فوراً.
+self.addEventListener('pushsubscriptionchange', (e) => {
+  e.waitUntil(Promise.all([
+    caches.open('flags-sawa').then((c) => c.put('/push-resub', new Response(String(Date.now())))).catch(() => null),
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => cs.forEach((c) => c.postMessage({ type: 'sawa-push-resub' }))).catch(() => null),
+  ]));
 });
 
 self.addEventListener('message', (e) => {
