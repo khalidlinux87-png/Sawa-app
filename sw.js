@@ -4,7 +4,7 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v261';
+const VERSION = 'sawa-v262';
 // P2: على العناوين القديمة/البديلة (Netlify · sawaap.pages.dev · sawaaap.com بلا www) يصير عامل الخدمة «مُخلياً»:
 //     يمسح المخزون، يحوّل الصفحات المفتوحة إلى العنوان الرسميّ، ثمّ يلغي نفسه. على www.sawaaap.com يعمل كالمعتاد.
 //     (لا يُحذف هذا قبل أن ينتقل كلّ المستخدمين.)
@@ -45,10 +45,26 @@ self.addEventListener('install', (e) => {
   if (MOVED) { self.skipWaiting(); return; }
   // ⛔ كلّ ملفٍّ على حدة: ملفٌّ واحد مفقود أو انقطاعٌ لحظيّ لا يُفشل التحديث كلّه (كان addAll يُبقي النسخة القديمة عالقة).
   //    ما لم يُخزَّن يُجلب من الشبكة عند أوّل طلبٍ له (cacheFirst) ثمّ يُخزَّن.
+  // C62.1: حارس السلامة — ملفٌّ مقطوع أو تالف (رفعٌ من الهاتف انقطع) يرفض التحديث كلّه ⇒ يبقى المستخدمون على آخر نسخةٍ تعمل
+  //        بدل شاشة «تعذّر تشغيل التطبيق». (انقطاع شبكةٍ عاديّ لملفٍّ ما يبقى متسامحاً كما كان.)
   e.waitUntil(caches.open(VERSION)
-    .then((c) => Promise.all(ASSETS.map((u) => c.add(new Request(u, { cache: 'reload' })).catch((err) => console.warn('precache miss', u, err && err.message)))))
-    .then(() => self.skipWaiting()));
+    .then((c) => Promise.all(ASSETS.map((u) => fetch(new Request(u, { cache: 'reload' }))
+      .then((res) => verifyAsset(u, res))
+      .then((res) => (res && res.ok ? c.put(u, res) : null))
+      .catch((err) => { if (err && err.sawaBroken) throw err; console.warn('precache miss', u, err && err.message); }))))
+    .then(() => self.skipWaiting())
+    .catch((err) => caches.delete(VERSION).then(() => { console.error('update refused:', err && err.message); throw err; })));
 });
+function verifyAsset(u, res) {
+  if (!res || !res.ok || !/\.js$/.test(u)) return Promise.resolve(res);
+  return res.clone().text().then((t) => {
+    const bad = (why) => { const e = new Error(why + ' ' + u); e.sawaBroken = true; throw e; };
+    const m = u.match(/app\.p(\d+)\.js$/);
+    if (m) { if (!new RegExp('//@@sawa-part:' + m[1] + '\\s*$').test(t)) bad('truncated'); return res; }   // الأجزاء ليست JS كاملاً وحدها — علامة النهاية تكفي
+    try { new Function(t); } catch (x) { if (x instanceof SyntaxError) bad('broken (' + x.message + ')'); }   // تحليلٌ فقط بلا تنفيذ
+    return res;
+  });
+}
 
 self.addEventListener('activate', (e) => {
   if (MOVED) {
