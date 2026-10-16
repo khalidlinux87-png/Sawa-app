@@ -240,7 +240,7 @@
         else {
           if (r.camAuto) { r.camAuto = false; setTimeout(function () { if (!r.done && r.live && !r.camOn) rToggleCam(r); }, 400); }
           // عضويّتي ما زالت قائمة؟ (قد يكون الخادم حذفها أثناء الخلفيّة) ⇒ عودةٌ فوريّة بدل انتظار المستمع
-          rRef(r, "members/" + myUid()).once("value").then(function (x) { if (!r.done && r.live && !x.val()) rRejoin(r); }).catch(function () {});
+          rRef(r, "members/" + myUid()).once("value").then(function (x) { if (r.done || !r.live) return; if (!x.val()) rRejoin(r); else if (r.state === "reconnecting" && !r.rejoining) { r.state = "live"; rPaint(r); } }).catch(function () {});
         }
       }
       var c = cur;
@@ -1588,8 +1588,10 @@
       if (!r.tick) r.tick = setInterval(function () { rTick(r); }, 1000);
       var first = true;
       // C38: حالة الشبكة — انقطاعٌ ثمّ عودة ⇒ نعيد التفاوض مع من لم يتّصل، ونتحقّق من عضويّتنا
-      r.onOnline = function () { if (r.done || !r.live) return; toast(L("عاد الإنترنت — جارٍ استئناف الغرفة…", "Back online — resuming…")); rRef(r, "members/" + me).once("value").then(function (s) { if (r.done) return; if (!s.val()) rRejoin(r); else Object.keys(r.peers).forEach(function (u) { var p = r.peers[u]; if (p.state !== "connected" && p.offerer) rNegotiate(r, p, true); }); }).catch(function () {}); };
-      r.onOffline = function () { if (r.done || !r.live) return; r.state = "reconnecting"; rPaint(r); };
+      r.onOnline = function () { if (r.done || !r.live) return; toast(L("عاد الإنترنت — جارٍ استئناف الغرفة…", "Back online — resuming…")); rRef(r, "members/" + me).once("value").then(function (s) { if (r.done) return; if (!s.val()) rRejoin(r); else { if (r.state === "reconnecting" && !r.rejoining) { r.state = "live"; rPaint(r); }   /* C64: كانت تبقى «جارٍ العودة» إلى الأبد */
+        Object.keys(r.peers).forEach(function (u) { var p = r.peers[u]; if (p.state !== "connected" && p.offerer) rNegotiate(r, p, true); }); } }).catch(function () {}); };
+      // C64: انقطاع قاعدة البيانات وحدها (شائع في الخلفيّة) والصوت ما زال يتدفّق ⇒ لا نحجب الغرفة بشاشة «انقطع الاتّصال»
+      r.onOffline = function () { if (r.done || !r.live) return; if (rMediaAlive(r)) { r.dbOff = true; return; } r.state = "reconnecting"; rPaint(r); };
       try { global.addEventListener("online", r.onOnline); global.addEventListener("offline", r.onOffline); r.offs.push(function () { global.removeEventListener("online", r.onOnline); global.removeEventListener("offline", r.onOffline); }); } catch (e) {}
       try { var ci = db().ref(".info/connected"), seenC = false; var ch = ci.on("value", function (s) { var v = !!s.val(); if (v && seenC && !r.done && r.live) r.onOnline(); else if (!v && seenC && !r.done && r.live) r.onOffline(); if (v) seenC = true; }); r.offs.push(function () { try { ci.off("value", ch); } catch (e) {} }); } catch (e) {}
       rListen(r, mine, "child_added", function (x) { onRSig(r, x.val() || {}); });
@@ -1653,7 +1655,7 @@
   // C38: عضويّتي اختفت وأنا حيّ: إمّا أخرجني المضيف (kick/me = true) أو سقطت الشبكة فحذفها onDisconnect ⇒ أعود بجلسةٍ جديدة
   function rRejoin(r) {
     if (r.done || r.rejoining) return;
-    r.rejoining = true; r.state = "reconnecting"; rPaint(r);
+    r.rejoining = true; r.rejoinAt = Date.now(); r.state = rMediaAlive(r) ? r.state : "reconnecting"; rPaint(r);
     var me = myUid();
     rRef(r, "kick/" + me).once("value").then(function (s) {
       if (r.done) return;
@@ -2242,6 +2244,9 @@
   }
   function rTick(r) {
     if (r.done) return;
+    // C64: حارس — لا تبقى الغرفة عالقةً في «جارٍ العودة»: الصوت يتدفّق ⇒ حيّة · عودةٌ معلّقة أكثر من ٢٠ ث (طلبٌ لم يرجع أثناء الانقطاع) ⇒ محاولةٌ جديدة
+    if (r.rejoining && r.rejoinAt && Date.now() - r.rejoinAt > 20000) { r.rejoining = false; rRejoin(r); }
+    else if (r.live && r.state === "reconnecting" && !r.rejoining && rMediaAlive(r)) { r.state = "live"; rPaint(r); }
     if (r.meta.endsAt) {
       var left = Math.round((r.meta.endsAt - now()) / 1000);
       if (left <= 300 && !r.warned5) { r.warned5 = true; toast(L("تبقّت ٥ دقائق على نهاية الغرفة", "5 minutes left")); }
