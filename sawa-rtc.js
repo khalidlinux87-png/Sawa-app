@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c67";
+  var VERSION = "c68";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -1534,7 +1534,8 @@
       var host = r.meta.host === me, admitted = x[1].val() === true;
       rListen(r, rRef(r, "meta"), "value", function (s) { rOnMeta(r, s.val()); });
       rListen(r, rRef(r, "kick/" + me), "value", function (s) { if (s.val() === true && !r.done) rLeave(r, "kicked"); });
-      if (!host && !admitted && r.meta.locked) throw Object.assign(new Error("locked"), { ui: L("الغرفة مقفلة — اطلب من المضيف فتحها", "The room is locked") });
+      // C68: مقفلة ⇒ لا رفضٌ صامت: يطرق الضيف الباب (req) والمضيف يرى ذلك ويسمح له (adm) إن شاء
+      if (!host && !admitted && r.meta.locked && r.meta.owner !== me) { r.knock = true; rWait(r); return; }
       if (!host && !admitted && r.meta.lobby && r.meta.owner !== me) { rWait(r); return; }
       // C38: رمز دخول (يسأل عنه قبل الميكروفون؛ القواعد تتحقّق منه عند الكتابة)
       var pinStep = (!host && !admitted && r.meta.owner !== me && r.meta.pinOn) ? rAskPin(r) : Promise.resolve();
@@ -1579,7 +1580,7 @@
   function rWait(r) {
     var me = myUid();
     r.state = "waiting"; rPaint(r);
-    rRef(r, "req/" + me).set({ name: myName() || "", ts: TS() }).catch(function (e) { log("req", e && e.message); rLeave(r, "error", { text: L("الغرفة مقفلة", "The room is locked") }); });
+    rRef(r, "req/" + me).set({ name: myName() || "", ts: TS(), knock: !!r.knock }).catch(function (e) { log("req", e && e.message); rLeave(r, "error", { text: L("الغرفة مقفلة", "The room is locked") }); });
     try { rRef(r, "req/" + me).onDisconnect().remove(); } catch (e) {}
     rListen(r, rRef(r, "adm/" + me), "value", function (s) {
       var v = s.val();
@@ -2404,13 +2405,13 @@
     rui.minB.style.visibility = r.state === "ended" ? "hidden" : "visible";
     if (center) {
       rui.cT.textContent = r.state === "ended" ? (r.endText || "") : (r.title || L("غرفة سوا", "Sawa room"));
-      rui.cS.textContent = r.state === "waiting" ? L("في غرفة الانتظار — بانتظار أن يسمح لك المضيف…", "In the waiting room — waiting for the host…") : r.state === "ended" ? "" : r.state === "reconnecting" ? L("انقطع الاتّصال — جارٍ العودة إلى الغرفة…", "Connection lost — rejoining…") : L("جارٍ الانضمام للغرفة…", "Joining the room…");
+      rui.cS.textContent = r.state === "waiting" ? (r.knock ? L("الغرفة مقفلة — أبلغنا المضيف أنّك على الباب، بانتظار أن يفتح لك…", "The room is locked — the host has been told you're here…") : L("في غرفة الانتظار — بانتظار أن يسمح لك المضيف…", "In the waiting room — waiting for the host…")) : r.state === "ended" ? "" : r.state === "reconnecting" ? L("انقطع الاتّصال — جارٍ العودة إلى الغرفة…", "Connection lost — rejoining…") : L("جارٍ الانضمام للغرفة…", "Joining the room…");
     } else rLayout(r);
     // أزرار المضيف أعلى الشاشة
     var hb = rui.hostBtns; hb.innerHTML = "";
     if (r.state === "live" && amHost(r)) {
       var mk = function (txt, on, fn, lab) { var b = el("button", "background:" + (on ? "rgba(239,68,68,.35)" : "rgba(255,255,255,.18)") + ";border:0;color:#fff;border-radius:12px;width:34px;height:32px;font-size:15px", txt); b.setAttribute("aria-label", lab); b.onclick = fn; hb.appendChild(b); };
-      mk("🔒", r.meta.locked, function () { rSetMeta("locked", !r.meta.locked); toast(r.meta.locked ? L("فُتحت الغرفة", "Room unlocked") : L("قُفلت الغرفة — لا دخول جديد", "Room locked")); }, L("قفل", "Lock"));
+      mk("🔒", r.meta.locked, function () { if (!r.meta.locked) { rLockConfirm(); return; } rSetMeta("locked", !r.meta.locked); toast(r.meta.locked ? L("فُتحت الغرفة", "Room unlocked") : L("قُفلت الغرفة — لا دخول جديد", "Room locked")); }, L("قفل", "Lock"));
       mk("⚙️", !!(r.meta.lobby || r.meta.pinOn || r.meta.audioOnly || r.meta.max || r.meta.endsAt), function () { rSettings(); }, L("إعدادات الغرفة", "Room settings"));
     }
     rPaintBanners(r);
@@ -2429,12 +2430,13 @@
   function rPaintBanners(r) {
     if (!rui.root || !r) return;
     var b = rui.banners; b.innerHTML = "";
-    if (r.state !== "live") return;
+    if (r.state !== "live" && r.state !== "reconnecting") return;   // C68: الطلبات تبقى ظاهرة أثناء إعادة الاتّصال
     var box = function (bg, bd) { return el("div", "display:flex;align-items:center;gap:8px;border-radius:12px;padding:7px 10px;background:" + bg + ";border:1px solid " + bd); };
     var btnS = function (t, bg, fn) { var x = el("button", "border:0;border-radius:9px;padding:5px 9px;font:800 11px system-ui;color:#fff;background:" + bg, t); x.onclick = fn; return x; };
     if (amHost(r)) Object.keys(r.reqs || {}).forEach(function (u) {
       var row = box(PRI + "22", PRI + "66");
-      row.appendChild(el("span", "flex:1;font:700 12px system-ui", "🚪 " + (nameOf(u) || stranger(r.reqs[u] && r.reqs[u].name)) + " " + L("في الانتظار", "is waiting")));
+      var knock = !!(r.reqs[u] && r.reqs[u].knock);
+      row.appendChild(el("span", "flex:1;font:700 12px system-ui", (knock ? "🔒 " : "🚪 ") + (nameOf(u) || stranger(r.reqs[u] && r.reqs[u].name)) + " " + (knock ? L("يطرق — الغرفة مقفلة", "is knocking — room is locked") : L("في الانتظار", "is waiting"))));
       row.appendChild(btnS(L("سماح", "Admit"), "#22c55e", function () { rAdmit(u, true); }));
       row.appendChild(btnS(L("رفض", "Deny"), LINE, function () { rAdmit(u, false); }));
       b.appendChild(row);
@@ -2614,6 +2616,15 @@
         item(body, "🔇", L("كتم الجميع", "Mute everyone"), function () { close(); rMuteAll(); });
         item(body, "⏹", L("إنهاء الغرفة للجميع", "End room for everyone"), function () { close(); rEndAll(); }, true);
       }
+    });
+  }
+  // C68: القفل بتأكيد — وحين تُقفل الغرفة يُنبَّه المضيف أنّ القادمين سيطرقون
+  function rLockConfirm() {
+    var r = rm; if (!r || !amHost(r)) return;
+    sheet(L("قفل الغرفة؟", "Lock the room?"), function (body, close) {
+      body.appendChild(el("div", "padding:0 16px 8px;color:" + MUTED + ";font:600 12px system-ui;text-align:center", L("لا يدخل أحدٌ جديد تلقائيّاً. من يفتح الرابط «يطرق الباب» وتراه هنا وتسمح له بضغطة.", "No one joins automatically. Anyone opening the link knocks, and you can admit them with a tap.")));
+      item(body, "🔒", L("قفل", "Lock"), function () { close(); rSetMeta("locked", true); toast(L("قُفلت الغرفة — القادمون يطرقون وأنت تسمح", "Room locked — newcomers knock, you admit")); }, true);
+      item(body, "↩", L("إلغاء", "Cancel"), close);
     });
   }
   function rLeaveConfirm() {
