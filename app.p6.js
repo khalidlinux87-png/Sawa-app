@@ -339,8 +339,10 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
             callLog.length === 0 && React.createElement(EmptyState, { icon: Phone, label: t("la_twjd_mkalmat_bad") }),
             callLog.map((c) => {
                 const Icon = callTypeIcons[c.type];
-                const arrowColor = c.type === "outgoing" ? "#22C55E" : "#E53935";
-                return (React.createElement("div", { key: c.id, className: "flex flex-row items-center px-4 py-2.5 border-b", style: { borderColor: "#EFEFEF" } },
+                const unanswered = c.type === "missed" || (!c.duration && c.cloud);
+                const arrowColor = c.type === "missed" ? "#E53935" : unanswered ? "#D97706" : "#22C55E";
+                // C61: الصفّ كلّه ينقر (كان الهاتف الصغير و⋮ فقط) ⇒ قائمة الخيارات: صوت · فيديو · حذف
+                return (React.createElement("div", { key: c.id, role: "button", tabIndex: 0, onClick: () => setCallMenu(c), onKeyDown: (e) => { if (e.key === "Enter") setCallMenu(c); }, className: "flex flex-row items-center px-4 py-2.5 border-b cursor-pointer", style: { borderColor: "#EFEFEF" } },
                     (() => { const ph = c.peerUid && window.SawaChat && window.SawaChat.photoOf ? window.SawaChat.photoOf(c.peerUid) : null;
                         return React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${me("3")} shrink-0`, style: { backgroundColor: colors.primaryLight, backgroundImage: ph ? `url(${ph})` : "none", backgroundSize: "cover", backgroundPosition: "center" } },
                             ph ? null : c.room || c.cid ? React.createElement(Users, { size: 19, color: colors.primaryDark }) : React.createElement(User, { size: 19, color: colors.primaryDark })); })(),
@@ -351,12 +353,13 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
                         React.createElement("div", { className: "flex flex-row items-center gap-1 mt-0.5" },
                             React.createElement(Icon, { size: 12, color: arrowColor }),
                             c.callType === "video" && React.createElement(Video, { size: 10, color: colors.textMuted }),
-                            React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } },
+                            React.createElement("span", { className: "text-xs", style: { color: c.type === "missed" ? "#E53935" : colors.textMuted } },
+                                c.label ? `${c.label} · ` : "",
                                 (c.cloud && c.timestamp ? callTimeLabel(c.timestamp) : c.time),
                                 c.duration ? ` · ${c.duration}` : "",
                                 (c.participants && c.participants.length > 0) ? ` · ${tl("مع", "with")} ${c.participants.join(tl("، ", ", "))}` : ""))),
-                    React.createElement("button", { "aria-label": c.callType === "video" ? tl("مكالمة فيديو", "Video call") : tl("مكالمة صوتية", "Voice call"), onClick: () => setActiveCall({ name: c.name, peerUid: c.peerUid, cid: c.cid, room: c.room, callType: c.callType || "audio" }), className: "w-9 h-9 flex items-center justify-center shrink-0" }, c.callType === "video" ? React.createElement(Video, { size: 19, color: colors.primary }) : React.createElement(Phone, { size: 19, color: colors.primary })),
-                    React.createElement("button", { "aria-label": t("khyarat"), onClick: () => setCallMenu(c), className: "w-7 h-7 flex items-center justify-center shrink-0" },
+                    React.createElement("button", { "aria-label": c.callType === "video" ? tl("مكالمة فيديو", "Video call") : tl("مكالمة صوتية", "Voice call"), onClick: (e) => { e.stopPropagation(); setActiveCall({ name: c.name, peerUid: c.peerUid, cid: c.cid, room: c.room, callType: c.callType || "audio" }); }, className: "w-9 h-9 flex items-center justify-center shrink-0" }, c.callType === "video" ? React.createElement(Video, { size: 19, color: colors.primary }) : React.createElement(Phone, { size: 19, color: colors.primary })),
+                    React.createElement("button", { "aria-label": t("khyarat"), onClick: (e) => { e.stopPropagation(); setCallMenu(c); }, className: "w-7 h-7 flex items-center justify-center shrink-0" },
                         React.createElement(MoreVertical, { size: 16, color: colors.textMuted }))));
             })),
         callMenu && (React.createElement(React.Fragment, null,
@@ -549,8 +552,9 @@ function ContactRow({ contact, isOnline, blocked, colors, onPress, showInvite })
 }
 function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVideoCall, onMessage, onSecret, onRename, onToggleBlock, onRemove, familyOnly, onReport, onClose }) {
     const [confirm, setConfirm] = useState(null);   // null | "block" | "remove"
-    const act = (icon, label, onPress, bg) => React.createElement("div", { className: "flex flex-col items-center gap-1.5", style: { opacity: onPress ? 1 : 0.35 } },
-        React.createElement("button", { "aria-label": label, onClick: onPress || undefined, disabled: !onPress, className: "w-13 h-13 rounded-full flex items-center justify-center", style: { width: 52, height: 52, backgroundColor: bg } }, React.createElement(icon, { size: 21, color: "#fff" })),
+    // C61: الكلمة تحت الدائرة تنقر أيضاً (كان النقر عليها لا يفعل شيئاً)
+    const act = (icon, label, onPress, bg) => React.createElement("div", { className: "flex flex-col items-center gap-1.5", style: { opacity: onPress ? 1 : 0.35, cursor: onPress ? "pointer" : "default" }, onClick: onPress || undefined },
+        React.createElement("button", { "aria-label": label, onClick: (e) => { e.stopPropagation(); if (onPress) onPress(); }, disabled: !onPress, className: "w-13 h-13 rounded-full flex items-center justify-center", style: { width: 52, height: 52, backgroundColor: bg } }, React.createElement(icon, { size: 21, color: "#fff" })),
         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, label));
     const row = (icon, label, sub, onPress, danger) => React.createElement("button", { onClick: onPress, className: "w-full flex flex-row items-center gap-3 px-3 py-3 rounded-xl", style: { backgroundColor: danger ? colors.danger + "0f" : colors.bg } },
         React.createElement(icon, { size: 17, color: danger ? colors.danger : colors.primary }),

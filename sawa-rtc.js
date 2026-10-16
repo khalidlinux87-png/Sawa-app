@@ -75,8 +75,11 @@
     if (!c || c.logged || c.silent) return; c.logged = true;
     var secs = c.connectedAt ? Math.max(1, Math.round((Date.now() - c.connectedAt) / 1000)) : 0;
     var type = c.role === "caller" ? "outgoing" : (c.connectedAt || c.declined ? "incoming" : "missed");
+    // C61: نتيجة المكالمة بكلمةٍ واضحة في السجلّ (كان السهم وحده، وبلونٍ خاطئ للواردة)
+    var label = c.connectedAt ? (c.role === "caller" ? L("صادرة", "Outgoing") : L("واردة", "Incoming"))
+      : c.role === "caller" ? L("لم يُردّ", "No answer") : c.declined ? L("رفضتَها", "Declined") : L("فائتة", "Missed");
     addLog({ id: "call-" + c.id, name: c.name || L("جهة اتّصال", "Contact"), peerUid: c.peer, callType: c.type,
-             type: type, time: L("الآن", "Now"), duration: secs ? fmt(secs) : null, timestamp: Date.now(), participants: null, cloud: true });
+             type: type, label: label, time: L("الآن", "Now"), duration: secs ? fmt(secs) : null, timestamp: Date.now(), participants: null, cloud: true });
   }
 
   // ---------- خوادم ICE (STUN + TURN إن وُجد) ----------
