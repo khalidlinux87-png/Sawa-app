@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c45";
+  var VERSION = "c65";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -83,16 +83,19 @@
   }
 
   // ---------- خوادم ICE (STUN + TURN إن وُجد) ----------
+  // C65: هل في القائمة خادم TURN؟ (هاتفان على 4G لا يتّصلان مباشرةً غالباً — بدونه لا يرى أحدهما الآخر)
+  function hasTurn(list) { return (list || []).some(function (x) { return [].concat(x.urls || x.url || []).some(function (u) { return /^turns?:/.test(String(u)); }); }); }
   var STUN = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
   var iceWarm = false;
-  function getIce() {
+  function getIce(waitMs) {
     if (iceCache && Date.now() - iceAt < 20 * 60 * 1000) return Promise.resolve(iceCache);
+    var wait = waitMs || 6000;
     return Promise.race([
       wcall("rtc.ice", {}).then(function (b) {
         var l = b && Array.isArray(b.iceServers) && b.iceServers.length ? b.iceServers : STUN;
         iceCache = l; iceAt = Date.now(); log("ice", b && b.turn ? "TURN" : "STUN"); return l;
       }),
-      new Promise(function (r) { setTimeout(function () { r(iceCache || STUN); }, 6000); })
+      new Promise(function (r) { setTimeout(function () { r(iceCache || STUN); }, wait); })
     ]).catch(function () { return iceCache || STUN; });
   }
 
@@ -427,10 +430,13 @@
   function makePc(c, ice) {
     var pc = new global.RTCPeerConnection({ iceServers: ice });
     var side = c.role === "caller" ? "ic_caller" : "ic_callee";
+    // C66: المرشّحات دفعةً كلّ ١٢٠ ms بدل كتابةٍ لكلّ مرشّح
+    c.iceBuf = [];
+    var flushBuf = function () { c.iceT = null; if (!c.iceBuf.length) return; var b = c.iceBuf; c.iceBuf = []; var j = b.length === 1 ? b[0] : { cands: b }; if (c.ref && c.live) c.ref.child(side).push(j).catch(function () {}); else c.iceOut.push(j); };
     pc.onicecandidate = function (e) {
-      if (!e.candidate || !e.candidate.candidate) return;
-      var j = iceJson(e.candidate);
-      if (c.ref && c.live) c.ref.child(side).push(j).catch(function () {}); else c.iceOut.push(j);
+      if (!e.candidate || !e.candidate.candidate) { flushBuf(); return; }
+      c.iceBuf.push(iceJson(e.candidate));
+      if (!c.iceT) c.iceT = setTimeout(flushBuf, 120);
     };
     pc.ontrack = function (e) {
       var s = e.streams && e.streams[0];
@@ -456,7 +462,9 @@
     q.forEach(function (j) { c.ref.child(side).push(j).catch(function () {}); });
   }
   function addRemoteIce(c, j) {
-    if (!c.pc || !j || !j.candidate) return;
+    if (!c.pc || !j) return;
+    if (j.cands) { j.cands.forEach(function (x) { addRemoteIce(c, x); }); return; }   // C66: دفعة
+    if (!j.candidate) return;
     if (!c.remoteSet) { c.iceIn.push(j); return; }
     c.pc.addIceCandidate(j).catch(function (e) { log("ice add", e && e.message); });
   }
@@ -676,11 +684,14 @@
     setState(c, "connecting");
     var mediaType = audioOnly ? "audio" : c.type;
     // أوّل جهازٍ يردّ يفوز (لو فتحت سوا على هاتفين)
+    // C66: الميكروفون وخوادم ICE يُجهَّزان بالتوازي مع حجز الردّ (كانا بعده — ثانيةٌ أو أكثر من «جارٍ الربط…» بلا داعٍ)
+    var mediaP = Promise.all([getMedia(mediaType), getIce(2500)]);
+    mediaP.catch(function () {});
     c.ref.child("acc").transaction(function (v) { return v ? undefined : devId; }).then(function (r) {
-      if (c.done) return;
-      if (!r.committed || r.snapshot.val() !== devId) { c.silent = true; finish(c, "elsewhere", { remote: true }); return; }
+      if (c.done) { mediaP.then(function (res) { stopStream(res[0]); }, function () {}); return; }
+      if (!r.committed || r.snapshot.val() !== devId) { c.silent = true; finish(c, "elsewhere", { remote: true }); mediaP.then(function (res) { stopStream(res[0]); }, function () {}); return; }
       if (c.inbox) c.inbox.remove().catch(function () {});
-      return Promise.all([getMedia(mediaType), getIce()]).then(function (res) {
+      return mediaP.then(function (res) {
         if (c.done) { stopStream(res[0]); return; }
         c.local = res[0]; attachLocal(c); paint(c);
         c.pc = makePc(c, res[1]);
@@ -1489,23 +1500,32 @@
     r.ref = db().ref("rooms/" + code);
     rShow(r);
     var me = myUid();
-    rRef(r, "meta").once("value").then(function (s) {
-      var m = s.val();
-      if (!m) {
-        if (!opts.create) throw Object.assign(new Error("gone"), { ui: L("الغرفة غير موجودة أو انتهت", "This room doesn't exist or has ended") });
-        m = { host: me, owner: me, title: String(r.title).slice(0, 80), ts: TS(), gc: Date.now() + 3 * 3600000, locked: false, lobby: false };
-        if (opts.big) m.big = true;   // C45   // C16: gc = متى يجوز حذفها فارغةً   // C14: المالك لا يُطرد ويستعيد الاستضافة
-        return rRef(r, "meta").set(m).then(function () { return rRef(r, "meta").once("value"); }).then(function (x) { return x.val(); });
-      }
-      return m;
-    }).then(function (m) {
+    r.t0 = Date.now();
+    // C66: الإنشاء يكتب meta مباشرةً (الرمز عشوائيّ من ٨ خانات — التصادم مستبعد؛ والقواعد تمنع الكتابة فوق غرفةٍ قائمة لغيري) ويستعمل النسخة المحلّيّة بلا إعادة قراءة
+    var metaP = opts.create
+      ? (function () {
+          var m = { host: me, owner: me, title: String(r.title).slice(0, 80), ts: TS(), gc: Date.now() + 3 * 3600000, locked: false, lobby: false };
+          if (opts.big) m.big = true;   // C45   // C16: gc = متى يجوز حذفها فارغةً   // C14: المالك لا يُطرد ويستعيد الاستضافة
+          return rRef(r, "meta").set(m).then(function () { return Object.assign({}, m, { ts: now() }); });
+        })()
+      : rRef(r, "meta").once("value").then(function (s) {
+          var m = s.val();
+          if (!m) throw Object.assign(new Error("gone"), { ui: L("الغرفة غير موجودة أو انتهت", "This room doesn't exist or has ended") });
+          return m;
+        });
+    metaP.then(function (m) {
       if (r.done) return;
       r.meta = m || {}; r.title = r.meta.title || r.title;
       if (r.meta.ended) throw Object.assign(new Error("ended"), { ui: L("انتهت هذه الغرفة", "This room has ended") });
       // C14: الميكروفون لا يُفتح قبل القبول — كان يُلتقط ثمّ ينتظر في غرفة الانتظار مفتوحاً
-      return Promise.all([rRef(r, "kick/" + me).once("value").catch(function () { return { val: function () { return null; } }; }),
-                          rRef(r, "adm/" + me).once("value").catch(function () { return { val: function () { return null; } }; }),
-                          getIce()]);
+      // C66: المضيف/المالك لا يحتاج قراءة kick/adm (رحلة أقلّ)؛ ومن لا يواجه قفلاً ولا انتظاراً ولا رمزاً يفتح ميكروفونه بالتوازي مع القراءات
+      var mine = r.meta.host === me || r.meta.owner === me;
+      var nullSnap = { val: function () { return null; } };
+      var free = mine || (!r.meta.locked && !r.meta.lobby && !r.meta.pinOn);
+      if (free) r.mediaP = rMedia(r).catch(function (e) { r.mediaErr = e; });
+      return Promise.all([mine ? nullSnap : rRef(r, "kick/" + me).once("value").catch(function () { return nullSnap; }),
+                          mine ? nullSnap : rRef(r, "adm/" + me).once("value").catch(function () { return nullSnap; }),
+                          getIce(2500)]);
     }).then(function (x) {
       if (!x || r.done) return;
       if (x[0].val() === true) throw Object.assign(new Error("kicked"), { ui: L("أخرجك المضيف من هذه الغرفة", "The host removed you from this room") });
@@ -1518,7 +1538,7 @@
       if (!host && !admitted && r.meta.lobby && r.meta.owner !== me) { rWait(r); return; }
       // C38: رمز دخول (يسأل عنه قبل الميكروفون؛ القواعد تتحقّق منه عند الكتابة)
       var pinStep = (!host && !admitted && r.meta.owner !== me && r.meta.pinOn) ? rAskPin(r) : Promise.resolve();
-      return pinStep.then(function () { return rMedia(r); }).then(function () { if (!r.done) rEnter(r); });
+      return pinStep.then(function () { return r.mediaP ? r.mediaP.then(function () { if (r.mediaErr) throw r.mediaErr; }) : rMedia(r); }).then(function () { if (!r.done) rEnter(r); });
     }).catch(function (e) {
       log("room", e && (e.name || e.message), e && e.message);
       rLeave(r, "error", { text: (e && e.ui) || mediaError(e) || L("تعذّر دخول الغرفة", "Couldn't join the room") });
@@ -1572,19 +1592,18 @@
   function rEnter(r) {
     var me = myUid(), mine = rRef(r, "sig/" + me);
     r.state = "joining"; rPaint(r);
-    mine.remove().catch(function () {}).then(function () {
-      if (r.done) return;
-      return rRef(r, "members/" + me).set({ name: myName() || "", sess: r.sess, ts: TS(), mic: r.mic, cam: false, hand: 0, low: false });
-    }).then(function () {
+    // C66: حذف إشاراتي القديمة وكتابة عضويّتي بالتوازي (كانا متتاليين)، وبلا قراءةٍ إضافيّة للأعضاء — أوّل لقطةٍ من المستمع تكفي (rWatchMembership يفحص الامتلاء)
+    Promise.all([mine.remove().catch(function () {}),
+                 rRef(r, "members/" + me).set({ name: myName() || "", sess: r.sess, ts: TS(), mic: r.mic, cam: false, hand: 0, low: false })])
+    .then(function () {
       if (r.done) return;
       r.live = true; r.joinedAt = Date.now();
       try { rRef(r, "members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
-      return rRef(r, "members").once("value");
-    }).then(function (s) {
-      if (!s || r.done) return;
-      var m = s.val() || {};
-      if (Object.keys(m).length > rMax(r)) { rLeave(r, "full", { text: L("الغرفة ممتلئة (الحدّ " + rMax(r) + ")", "The room is full (limit " + rMax(r) + ")") }); return; }
       r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); });
+      log("room live in", Date.now() - (r.t0 || Date.now()), "ms");
+      // C66: المضيف ينشر جلسته في meta (مقروءة قبل العضويّة) ⇒ الوافد يعرض عليه فور دخوله بلا انتظار أوّل لقطةٍ من قائمة الأعضاء (رحلةٌ كاملة أقلّ حتى يُسمع الصوت)
+      if (amHost(r)) rRef(r, "meta/hsess").set(r.sess).catch(function () {});
+      else if (!rBig(r) && r.meta.hsess && r.meta.host && r.meta.host !== me && !r.peers[r.meta.host]) { r.earlyHost = r.meta.host; rOffer(r, r.meta.host, r.meta.hsess); }
       if (!r.tick) r.tick = setInterval(function () { rTick(r); }, 1000);
       var first = true;
       // C38: حالة الشبكة — انقطاعٌ ثمّ عودة ⇒ نعيد التفاوض مع من لم يتّصل، ونتحقّق من عضويّتنا
@@ -1593,7 +1612,7 @@
       // C64: انقطاع قاعدة البيانات وحدها (شائع في الخلفيّة) والصوت ما زال يتدفّق ⇒ لا نحجب الغرفة بشاشة «انقطع الاتّصال»
       r.onOffline = function () { if (r.done || !r.live) return; if (rMediaAlive(r)) { r.dbOff = true; return; } r.state = "reconnecting"; rPaint(r); };
       try { global.addEventListener("online", r.onOnline); global.addEventListener("offline", r.onOffline); r.offs.push(function () { global.removeEventListener("online", r.onOnline); global.removeEventListener("offline", r.onOffline); }); } catch (e) {}
-      try { var ci = db().ref(".info/connected"), seenC = false; var ch = ci.on("value", function (s) { var v = !!s.val(); if (v && seenC && !r.done && r.live) r.onOnline(); else if (!v && seenC && !r.done && r.live) r.onOffline(); if (v) seenC = true; }); r.offs.push(function () { try { ci.off("value", ch); } catch (e) {} }); } catch (e) {}
+      try { var ci = db().ref(".info/connected"), seenC = false; var ch = ci.on("value", function (s) { var v = !!s.val(); r.dbConn = v; if (v && seenC && !r.done && r.live) r.onOnline(); else if (!v && seenC && !r.done && r.live) r.onOffline(); if (v) seenC = true; }); r.offs.push(function () { try { ci.off("value", ch); } catch (e) {} }); } catch (e) {}
       rListen(r, mine, "child_added", function (x) { onRSig(r, x.val() || {}); });
       rWatchMembership(r, true);
       rListen(r, rRef(r, "ctl/" + me), "value", function (x) { onRCtl(r, x.val() || {}); });
@@ -1615,12 +1634,14 @@
     var cancel = function () { if (r.done || !r.live) return; log("members listener cancelled → rejoin"); rRejoin(r); };
     rListen(r, rRef(r, "members"), "value", function (x) {
       var mm = x.val() || {};
+      if (first && Object.keys(mm).length > rMax(r)) { rLeave(r, "full", { text: L("الغرفة ممتلئة (الحدّ " + rMax(r) + ")", "The room is full (limit " + rMax(r) + ")") }); return; }   // C66
       if (first && rBig(r)) { first = false; sfuStart(r); }
-      if (first) {   // الوافد الجديد يعرض على من سبقه (بحسب ts الخادم)
+      if (first) {   // الوافد الجديد يعرض على من سبقه (بحسب ts الخادم) — إلا من عرضنا عليه مبكّراً (C66)
         first = false;
         var mt = mm[me] && mm[me].ts;
+        if (r.earlyHost && r.peers[r.earlyHost] && (!mm[r.earlyHost] || mm[r.earlyHost].sess !== r.peers[r.earlyHost].sess)) rDrop(r, r.earlyHost);   // C66: جلسة المضيف في meta قديمة
         Object.keys(mm).forEach(function (u) {
-          if (u === me || !mm[u] || !mm[u].sess) return;
+          if (u === me || !mm[u] || !mm[u].sess || r.peers[u]) return;
           if (!mt || mm[u].ts < mt || (mm[u].ts === mt && u < me)) rOffer(r, u, mm[u].sess);
         });
       }
@@ -1680,6 +1701,7 @@
         if (r.done) return;
         try { rRef(r, "members/" + me).onDisconnect().remove(); rRef(r, "sig/" + me).onDisconnect().remove(); } catch (e) {}
         r.state = "live"; r.rejoining = false; r.rejoins = (r.rejoins || 0) + 1; rPaint(r);
+        if (amHost(r)) rRef(r, "meta/hsess").set(r.sess).catch(function () {});   // C66
         rWatchMembership(r, false);
         toast(L("عاد الاتّصال ✓", "Reconnected ✓"));
         // أعرض على كلّ الحاضرين (أنا الأحدث) — أو جلسة SFU جديدة في الغرفة الكبيرة
@@ -1719,10 +1741,11 @@
       r.met[u] = rName(r, u);
       var p = r.peers[u];
       if (p && p.lowSent !== !!m[u].low) { p.lowSent = !!m[u].low; rSenders(r, p); }   // من فعّل «بيانات قليلة» لا نرسل له الصورة
+      // C66: الوافد يعرض أوّلاً؛ إن لم يصل عرضه خلال ٣ ثوانٍ (كانت ٦) أعرض أنا
       if (!rBig(r) && !p && m[u].sess && !r.timers["o" + u]) r.timers["o" + u] = setTimeout(function () {
         delete r.timers["o" + u];
         if (!r.done && !r.peers[u] && r.members[u] && r.members[u].sess === m[u].sess) rOffer(r, u, m[u].sess);
-      }, 6000);
+      }, 3000);
     });
     // المضيف غاب (أغلق التطبيق) ⇒ أقدم الحاضرين يتسلّم بعد مهلة
     if (r.meta.host && m[r.meta.host]) { r.hostSeen = true; clearTimeout(r.timers.claim); delete r.timers.claim; }
@@ -1964,10 +1987,13 @@
     } catch (e) {}
   }
   function rPeer(r, uid, sess, offerer) {
-    var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: new global.MediaStream(), pid: rid(6) };   // C63: pid يميّز اتّصالاً جديداً عن إعادة تفاوض
+    var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: new global.MediaStream(), pid: rid(6), t0: Date.now() };   // C63: pid يميّز اتّصالاً جديداً عن إعادة تفاوض
     var pc = p.pc = new global.RTCPeerConnection({ iceServers: r.ice || STUN });
     if (offerer) { p.at = pc.addTransceiver("audio", { direction: "sendrecv" }); p.vt = pc.addTransceiver("video", { direction: "sendrecv" }); rSenders(r, p); }
-    pc.onicecandidate = function (e) { if (e.candidate && e.candidate.candidate) rSend(r, uid, sess, { t: "ice", cand: iceJson(e.candidate) }); };
+    // C66: المرشّحات تُجمَّع وتُرسل دفعةً كلّ ١٢٠ ms (كانت كتابةً لكلّ مرشّح — ١٠ إلى ٢٠ كتابةً لكلّ طرف على شبكةٍ بطيئة)
+    p.iceOut = [];
+    var flushOut = function () { p.iceT = null; if (r.done || !p.iceOut.length) return; var b = p.iceOut; p.iceOut = []; rSend(r, uid, sess, b.length === 1 ? { t: "ice", cand: b[0] } : { t: "ice", cands: b }); };
+    pc.onicecandidate = function (e) { if (!e.candidate || !e.candidate.candidate) { flushOut(); return; } p.iceOut.push(iceJson(e.candidate)); if (!p.iceT) p.iceT = setTimeout(flushOut, 120); };
     pc.ontrack = function (e) {
       if (p.stream.getTracks().indexOf(e.track) < 0) try { p.stream.addTrack(e.track); } catch (x) {}
       e.track.onunmute = function () { rTile(r, uid); }; e.track.onmute = function () { rTile(r, uid); };
@@ -2021,8 +2047,9 @@
       if (!p || p.sess !== msg.fs || p.pc.signalingState !== "have-local-offer") return;
       p.pc.setRemoteDescription({ type: "answer", sdp: msg.sdp }).then(function () { gFlush(p); }).catch(function (e) { log("rans", e && e.message); });
     } else if (msg.t === "ice") {
-      if (!p || p.sess !== msg.fs || !msg.cand) return;
-      if (!p.remoteSet) p.iceIn.push(msg.cand); else p.pc.addIceCandidate(msg.cand).catch(function () {});
+      if (!p || p.sess !== msg.fs) return;
+      var cands = msg.cands || (msg.cand ? [msg.cand] : []);   // C66: دفعةٌ أو مرشّحٌ واحد
+      cands.forEach(function (cnd) { if (!p.remoteSet) p.iceIn.push(cnd); else p.pc.addIceCandidate(cnd).catch(function () {}); });
     }
   }
   function rDrop(r, uid) {
@@ -2247,6 +2274,35 @@
     // C64: حارس — لا تبقى الغرفة عالقةً في «جارٍ العودة»: الصوت يتدفّق ⇒ حيّة · عودةٌ معلّقة أكثر من ٢٠ ث (طلبٌ لم يرجع أثناء الانقطاع) ⇒ محاولةٌ جديدة
     if (r.rejoining && r.rejoinAt && Date.now() - r.rejoinAt > 20000) { r.rejoining = false; rRejoin(r); }
     else if (r.live && r.state === "reconnecting" && !r.rejoining && rMediaAlive(r)) { r.state = "live"; rPaint(r); }
+    // C65: دخلنا الغرفة بلا TURN (طلب الخوادم تجاوز ٦ ثوانٍ على شبكةٍ بطيئة فاكتفينا بـSTUN) ⇒ نطلبه في الخلفيّة ونرقّي الاتّصالات القائمة
+    if (r.live && !hasTurn(r.ice) && !r.iceBusy && Date.now() - (r.iceTry || 0) > 15000) {
+      r.iceTry = Date.now(); r.iceBusy = true;
+      wcall("rtc.ice", {}).then(function (b) {
+        var l = b && Array.isArray(b.iceServers) ? b.iceServers : null;
+        if (!l || !hasTurn(l) || r.done) return;
+        iceCache = l; iceAt = Date.now(); r.ice = l; log("room: TURN arrived late → upgrading links");
+        Object.keys(r.peers).forEach(function (u) { var p = r.peers[u]; if (!p.pc) return; try { p.pc.setConfiguration({ iceServers: l }); } catch (e) {} if (p.state !== "connected" && p.offerer) rNegotiate(r, p, true); });
+      }).catch(function () {}).then(function () { r.iceBusy = false; });
+    }
+    // C65: عضوٌ حاضر ولا اتّصال معه (عرضٌ ضاع: كُتب حين غاب أحدنا لحظةً فرفضته القواعد، أو حُذف مع sig) ⇒ نعيد المحاولة — كان لا يُعاد أبداً فيبقى كلٌّ وحده
+    r.tickN = (r.tickN || 0) + 1;
+    if (r.live && !r.rejoining && !rBig(r) && r.state === "live" && r.tickN % 4 === 0) {
+      var me = myUid(), nowT = Date.now(); r.noPeer = r.noPeer || {};
+      Object.keys(r.members || {}).forEach(function (u) {
+        var m = r.members[u]; if (u === me || !m || m.ghost || !m.sess) return;
+        var p = r.peers[u];
+        if (!p) {
+          if (!r.noPeer[u]) { r.noPeer[u] = nowT; return; }
+          if (nowT - r.noPeer[u] >= 8000 && !r.timers["o" + u]) { r.noPeer[u] = nowT; log("watchdog: no peer for", u, "→ offer"); r.retries = (r.retries || 0) + 1; rOffer(r, u, m.sess); }
+          return;
+        }
+        delete r.noPeer[u];
+        if (p.state === "connected" || p.sess !== m.sess) return;
+        var age = nowT - (p.t0 || nowT);
+        if (age > 25000 && !p.wdAt) { p.wdAt = nowT; log("watchdog: stuck", p.state, "with", u); r.retries = (r.retries || 0) + 1; if (p.offerer) rNegotiate(r, p, true); else { rDrop(r, u); rOffer(r, u, m.sess); } }
+        else if (p.wdAt && nowT - p.wdAt > 25000) { p.wdAt = 0; p.t0 = nowT; }
+      });
+    }
     if (r.meta.endsAt) {
       var left = Math.round((r.meta.endsAt - now()) / 1000);
       if (left <= 300 && !r.warned5) { r.warned5 = true; toast(L("تبقّت ٥ دقائق على نهاية الغرفة", "5 minutes left")); }
@@ -2489,6 +2545,49 @@
       item(body, "✕", L("إخراج من الغرفة", "Remove from room"), function () { rRemove(uid); close(); }, true);
     });
   }
+  // C65: ما يراه هذا الهاتف — لقطةٌ منه من كلّ طرف تكشف أين ينقطع الطريق
+  function rDiag() {
+    var r = rm; if (!r) return;
+    var me = myUid(), sh = function (x) { return String(x || "—").slice(-4); };
+    var nm = function (u) { return u === me ? L("أنا", "me") : rName(r, u); };
+    var lines = [], body0 = null;
+    var paint = function (srv, routes) {
+      if (!body0) return; body0.innerHTML = "";
+      var row = function (k, v, bad) { var d = el("div", "display:flex;justify-content:space-between;gap:10px;padding:7px 16px;border-top:1px solid " + LINE + ";font:600 12px system-ui"); d.appendChild(el("span", "color:" + MUTED, k)); d.appendChild(el("span", "color:" + (bad ? "#f87171" : "#e2e8f0") + ";text-align:left;direction:ltr", v)); body0.appendChild(d); lines.push(k + ": " + v); };
+      lines = [];
+      var cv = ""; try { cv = (C() && C().version) || ""; } catch (e) {}
+      row(L("الإصدار", "Version"), "rtc " + VERSION + " · chat " + cv);
+      row(L("الغرفة", "Room"), r.code + (rBig(r) ? " · SFU" : "") + (r.meta.locked ? " · 🔒" : ""));
+      row(L("حالتي", "My state"), r.state + (r.rejoining ? " (rejoining)" : ""), r.state !== "live");
+      row(L("قاعدة البيانات", "Database"), r.dbConn === false ? L("غير متّصلة", "offline") : L("متّصلة", "online"), r.dbConn === false);
+      var turn = hasTurn(r.ice);
+      row("TURN", turn ? L("متوفّر", "available") : L("غير متوفّر — قد يفشل الاتّصال بين شبكتين", "missing"), !turn);
+      var srvM = srv || {};
+      row(L("الأعضاء على الخادم", "Members on server"), Object.keys(srvM).map(function (u) { return nm(u) + "·" + sh(srvM[u] && srvM[u].sess); }).join("، ") || "—", !srvM[me]);
+      row(L("الأعضاء عندي", "Members I see"), Object.keys(r.members || {}).map(function (u) { return nm(u) + (r.members[u].ghost ? "(غائب)" : ""); }).join("، ") || "—");
+      Object.keys(r.members || {}).forEach(function (u) {
+        if (u === me) return;
+        var p = r.peers[u];
+        row(L("الاتّصال مع ", "Link to ") + nm(u), p ? (p.pc ? (p.pc.connectionState + "/" + p.pc.iceConnectionState) : p.state) + (routes && routes[u] ? " · " + routes[u] : "") + " · " + Math.round((Date.now() - (p.t0 || Date.now())) / 1000) + "s" : L("لا يوجد", "none"), !p || p.state !== "connected");
+      });
+      row(L("محاولات الحارس", "Watchdog retries"), String(r.retries || 0) + " · " + L("عودات", "rejoins") + " " + (r.rejoins || 0) + "/" + (r.softRejoins || 0));
+      var bt = el("div", "display:flex;gap:8px;padding:12px 16px");
+      var cp = el("button", "flex:1;padding:10px;border:0;border-radius:12px;background:" + LINE + ";color:#fff;font:800 12px system-ui", L("نسخ التقرير", "Copy report"));
+      cp.onclick = function () { var t = "Sawa room diag\n" + lines.join("\n"); try { navigator.clipboard.writeText(t).then(function () { toast(L("نُسخ ✓", "Copied ✓")); }, function () { toast(t); }); } catch (e) { toast(t); } };
+      var rj = el("button", "flex:1;padding:10px;border:0;border-radius:12px;background:" + PRI + ";color:#fff;font:800 12px system-ui", L("إعادة الاتّصال", "Reconnect"));
+      rj.onclick = function () { r.rejoining = false; Object.keys(r.peers).forEach(function (u) { rDrop(r, u); }); rRejoin(r); toast(L("جارٍ إعادة الاتّصال…", "Reconnecting…")); };
+      bt.appendChild(cp); bt.appendChild(rj); body0.appendChild(bt);
+    };
+    sheet(L("تشخيص الاتّصال", "Connection diagnostics"), function (body) { body0 = el("div", ""); body.appendChild(body0); paint(null, null); });
+    var routes = {};
+    var srvP = rRef(r, "members").once("value").then(function (x) { return x.val() || {}; }).catch(function () { return null; });
+    var rtP = Promise.all(Object.keys(r.peers).map(function (u) {
+      var p = r.peers[u]; if (!p.pc || !p.pc.getStats) return null;
+      return p.pc.getStats().then(function (rep) { var pair = null; rep.forEach(function (x) { if (x.type === "candidate-pair" && x.state === "succeeded" && (x.nominated || x.selected)) pair = pair || x; });
+        if (pair) { var lc = rep.get(pair.localCandidateId), rc = rep.get(pair.remoteCandidateId); routes[u] = (lc && lc.candidateType === "relay") || (rc && rc.candidateType === "relay") ? L("عبر وسيط", "relay") : L("مباشر", "direct"); } }).catch(function () {});
+    }));
+    Promise.all([srvP, rtP]).then(function (x) { paint(x[0], routes); });
+  }
   function rMore() {
     var r = rm; if (!r) return;
     sheet(null, function (body, close) {
@@ -2498,6 +2597,7 @@
       item(body, "📝", L("المحضر: قرارات · مهامّ · نقاط", "Minutes: decisions · tasks · points"), function () { close(); rOpenPanel("notes"); });
       item(body, r.low ? "🎥" : "📶", r.low ? L("إعادة الفيديو", "Video back on") : L("بيانات قليلة (صوتٌ فقط)", "Low data (audio only)"), function () { close(); rToggleLow(r); });
       if (r.camOn) item(body, "🔄", L("تبديل الكاميرا", "Flip camera"), function () { close(); rFlip(r); });
+      item(body, "🔧", L("تشخيص الاتّصال", "Connection diagnostics"), function () { close(); rDiag(); });
       if (amHost(r)) {
         item(body, "🔇", L("كتم الجميع", "Mute everyone"), function () { close(); rMuteAll(); });
         item(body, "⏹", L("إنهاء الغرفة للجميع", "End room for everyone"), function () { close(); rEndAll(); }, true);
