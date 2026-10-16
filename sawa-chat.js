@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c48";
+  var VERSION = "c50";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -318,9 +318,24 @@
     if (!myStatusRef || !global.firebase) return;
     try { myStatusRef.set({ state: stateName, ts: firebase.database.ServerValue.TIMESTAMP }); } catch (e) {}
   }
+  // C50: إشارة الخادم (طلب تواصل / قبول / طلب تأكيد رقم) — كانت الطلبات لا تظهر إلا بإشعارٍ أو بعد عودةٍ من الخلفية
+  var sigRef = null, sigSeen = -1;
+  function startSig(uid) {
+    var d = db(); if (!d) return;
+    try { if (sigRef) sigRef.off(); } catch (e) {}
+    sigSeen = -1;
+    sigRef = d.ref("sig/" + uid);
+    sigRef.on("value", function (snap) {
+      var v = snap.val() || {}; var ts = Number(v.ts || 0);
+      if (sigSeen < 0) { sigSeen = ts; return; }          // القيمة الأولى = الحالة الراهنة، لا حدث
+      if (ts <= sigSeen) return; sigSeen = ts;
+      loadRequests(); if (v.k === "reqok") refresh();
+    }, function () {});
+  }
   function startMyPresence(uid) {
     var d = db(); if (!d) { log("Realtime Database غير محمَّلة"); return; }
     stopMyPresence();
+    startSig(uid);
     myStatusRef = d.ref("status/" + uid);
     connRef = d.ref(".info/connected");
     connRef.on("value", function (snap) {
@@ -332,6 +347,7 @@
     });
   }
   function stopMyPresence() {
+    try { if (sigRef) { sigRef.off(); sigRef = null; } } catch (e) {}
     try { if (connRef) connRef.off(); } catch (e) {}
     try { if (myStatusRef) { myStatusRef.onDisconnect().cancel(); setMine("offline"); } } catch (e) {}
     connRef = null; myStatusRef = null;
