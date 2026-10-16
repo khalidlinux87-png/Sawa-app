@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c68";
+  var VERSION = "c69";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -1500,7 +1500,9 @@
     r.ref = db().ref("rooms/" + code);
     rShow(r);
     var me = myUid();
-    r.t0 = Date.now();
+    r.t0 = Date.now(); r.step = "meta"; r.tries = (opts.tries || 0);
+    if (dbUp === false && Date.now() - dbDownAt > 3000) dbNudge("join while db down");   // C69: منقطعة منذ أكثر من ٣ ثوانٍ ⇒ هزّة فوراً لا بعد ١٢
+    rJoinWatch(r, code, opts);
     // C66: الإنشاء يكتب meta مباشرةً (الرمز عشوائيّ من ٨ خانات — التصادم مستبعد؛ والقواعد تمنع الكتابة فوق غرفةٍ قائمة لغيري) ويستعمل النسخة المحلّيّة بلا إعادة قراءة
     var metaP = opts.create
       ? (function () {
@@ -1515,6 +1517,7 @@
         });
     metaP.then(function (m) {
       if (r.done) return;
+      r.step = "checks";
       r.meta = m || {}; r.title = r.meta.title || r.title;
       if (r.meta.ended) throw Object.assign(new Error("ended"), { ui: L("انتهت هذه الغرفة", "This room has ended") });
       // C14: الميكروفون لا يُفتح قبل القبول — كان يُلتقط ثمّ ينتظر في غرفة الانتظار مفتوحاً
@@ -1522,7 +1525,7 @@
       var mine = r.meta.host === me || r.meta.owner === me;
       var nullSnap = { val: function () { return null; } };
       var free = mine || (!r.meta.locked && !r.meta.lobby && !r.meta.pinOn);
-      if (free) r.mediaP = rMedia(r).catch(function (e) { r.mediaErr = e; });
+      if (free) { r.mediaAt = Date.now(); r.mediaP = rMedia(r).then(function () { r.mediaOk = true; }).catch(function (e) { r.mediaErr = e; }); }
       return Promise.all([mine ? nullSnap : rRef(r, "kick/" + me).once("value").catch(function () { return nullSnap; }),
                           mine ? nullSnap : rRef(r, "adm/" + me).once("value").catch(function () { return nullSnap; }),
                           getIce(2500)]);
@@ -1539,12 +1542,49 @@
       if (!host && !admitted && r.meta.lobby && r.meta.owner !== me) { rWait(r); return; }
       // C38: رمز دخول (يسأل عنه قبل الميكروفون؛ القواعد تتحقّق منه عند الكتابة)
       var pinStep = (!host && !admitted && r.meta.owner !== me && r.meta.pinOn) ? rAskPin(r) : Promise.resolve();
-      return pinStep.then(function () { return r.mediaP ? r.mediaP.then(function () { if (r.mediaErr) throw r.mediaErr; }) : rMedia(r); }).then(function () { if (!r.done) rEnter(r); });
+      r.step = "media";
+      return pinStep.then(function () { return r.mediaP ? r.mediaP.then(function () { if (r.mediaErr) throw r.mediaErr; }) : (r.mediaAt = Date.now(), rMedia(r).then(function () { r.mediaOk = true; })); }).then(function () { if (!r.done) { r.step = "enter"; rEnter(r); } });
     }).catch(function (e) {
       log("room", e && (e.name || e.message), e && e.message);
       rLeave(r, "error", { text: (e && e.ui) || mediaError(e) || L("تعذّر دخول الغرفة", "Couldn't join the room") });
     });
     return true;
+  }
+  function rJoinWatch(r, code, opts) {
+    var t1 = setTimeout(function () {
+      if (r.done || r.state === "live" || r.state === "waiting") return;
+      var why = rStuckWhy(r);
+      log("join stuck at", r.step, why.key, Date.now() - r.t0, "ms");
+      if (why.key === "db" && dbNudge("join stuck")) { /* الهزّة قد تكفي */ }
+      if (why.key === "media") { try { stopStream(r.local); } catch (e) {} r.local = null; }
+      // محاولةٌ واحدة من جديد بعد الهزّة
+      if (!r.tries) {
+        setTimeout(function () {
+          if (r.done || r.state === "live" || r.state === "waiting") return;
+          r.silentRetry = true; rLeave(r, "retry"); rm = null;
+          roomJoin(code, Object.assign({}, opts, { tries: 1, create: false, title: r.title }));
+        }, why.key === "db" ? 2500 : 300);
+      }
+    }, 12000);
+    var t2 = setTimeout(function () {
+      if (r.done || r.state === "live" || r.state === "waiting") return;
+      var why = rStuckWhy(r);
+      rui.cS.textContent = why.text;
+      var row = el("div", "display:flex;gap:8px;justify-content:center;margin-top:10px");
+      var again = el("button", "padding:9px 16px;border:0;border-radius:12px;background:" + PRI + ";color:#fff;font:800 13px system-ui", L("إعادة المحاولة", "Try again"));
+      again.onclick = function () { r.silentRetry = true; rLeave(r, "retry"); rm = null; dbNudge("manual"); setTimeout(function () { roomJoin(code, Object.assign({}, opts, { tries: 2, create: false, title: r.title })); }, 600); };
+      var cp = el("button", "padding:9px 12px;border:0;border-radius:12px;background:" + LINE + ";color:#fff;font:800 13px system-ui", L("نسخ التشخيص", "Copy"));
+      cp.onclick = function () { var t = "Sawa join diag: step=" + r.step + " key=" + why.key + " t=" + (Date.now() - r.t0) + "ms db=" + dbUp + " rtc " + VERSION; try { navigator.clipboard.writeText(t).then(function () { toast(L("نُسخ ✓", "Copied ✓")); }, function () { toast(t); }); } catch (e) { toast(t); } };
+      row.appendChild(again); row.appendChild(cp); rui.cS.appendChild(row);
+    }, r.tries ? 12000 : 25000);   // بعد محاولةٍ تلقائيّة فاشلة لا ننتظر طويلاً
+    r.offs.push(function () { clearTimeout(t1); clearTimeout(t2); });
+  }
+  function rStuckWhy(r) {
+    var dbBad = dbUp === false || r.step === "meta" || r.step === "checks" || r.step === "enter";
+    if (r.step === "media" || (r.mediaAt && !r.mediaOk && !r.mediaErr && Date.now() - r.mediaAt > 8000))
+      return { key: "media", text: L("الميكروفون لا يستجيب — أغلق التطبيقات التي تستعمله (أو أعد تشغيل سوا)", "Microphone isn't responding — close apps using it (or restart Sawa)") };
+    if (dbBad) return { key: "db", text: L("الاتّصال بخادم سوا متأخّر — جارٍ إعادة الاتّصال… تحقّق من الإنترنت", "Slow connection to Sawa's server — reconnecting… check your internet") };
+    return { key: "other", text: L("الدخول يتأخّر…", "Joining is taking long…") };
   }
   function rAskPin(r) {
     return new Promise(function (resolve, reject) {
@@ -2229,6 +2269,7 @@
     r = r || rm; if (!r) return;
     if (r.done) { if (rm === r) rm = null; return; }
     opts = opts || {}; r.done = true; bgAudio(false);
+    if (reason === "retry") r.silentRetry = true;
     var me = myUid(), ref = r.ref, wasHost = amHost(r), members = r.members, meta = r.meta;
     for (var k in r.timers) { clearTimeout(r.timers[k]); clearInterval(r.timers[k]); } r.timers = {};
     if (r.tick) clearInterval(r.tick); r.tick = null;
@@ -2264,6 +2305,7 @@
       participants: Object.keys(r.met).map(function (u) { return r.met[u]; }), cloud: true, room: r.code });
     if (rm === r) rm = null;
     log("rend", r.code, reason);
+    if (reason === "retry") return;   // C69: إعادة محاولةٍ صامتة — الواجهة تبقى لمحاولة الدخول التالية
     if (reason === "left" && !opts.text) { rHide(); return; }
     var tx = opts.text || (R_END[reason] && L(R_END[reason][0], R_END[reason][1])) || L("غادرت الغرفة", "You left the room");
     r.state = "ended"; r.endText = tx;
@@ -2950,8 +2992,26 @@
   // ---------- الإقلاع ----------
   var uidWaiters = [], lastUid = null;
   function whenUid(f) { if (myUid() && db()) f(); else uidWaiters.push(f); }
+  var dbUp = null, dbDownAt = 0, nudgeAt = 0;
+  function watchDb() {
+    try {
+      var d = db(); if (!d || watchDb.on) return; watchDb.on = true;
+      d.ref(".info/connected").on("value", function (s) { var v = !!s.val(); dbUp = v; if (!v) dbDownAt = dbDownAt || Date.now(); else dbDownAt = 0; });
+    } catch (e) {}
+  }
+  function dbNudge(why) {
+    var d = db(); if (!d) return false;
+    if (Date.now() - nudgeAt < 8000) return false;
+    nudgeAt = Date.now(); log("db nudge:", why);
+    try { d.goOffline(); } catch (e) {}
+    try { setTimeout(function () { try { d.goOnline(); } catch (e) {} }, 300); } catch (e) {}
+    return true;
+  }
+  // العودة من الخلفيّة وقاعدة البيانات منقطعة ⇒ هزّة بعد ثانيتين إن لم تعد وحدها
+  try { document.addEventListener("visibilitychange", function () { if (document.visibilityState !== "visible") return; setTimeout(function () { if (dbUp === false) dbNudge("resume"); }, 2000); }); } catch (e) {}
   function boot() {
     handleCallParam(); handleRoomParam();
+    setTimeout(watchDb, 1500); setInterval(watchDb, 5000);
     setInterval(function () {
       var u = myUid();
       if (u && u !== lastUid && db()) {
