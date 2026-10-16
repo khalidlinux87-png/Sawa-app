@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c52";
+  var VERSION = "c53";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -166,15 +166,18 @@
       try { if (app.setMyProfile && state.me) app.setMyProfile(profile()); } catch (e) {}
     }, 60);
   }
+  function applyPeople(b) {
+    state.me = b.me || null; state.people = b.people || []; state.loaded = true; state.error = null;
+    maybeAskName();
+    lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
+    watchPresence();
+    publish();
+  }
   function refresh() {
     if (!state.uid || state.loading) return Promise.resolve(contacts());
     state.loading = true;
     return call("people.list", {}).then(function (b) {
-      state.me = b.me || null; state.people = b.people || []; state.loaded = true; state.error = null;
-      maybeAskName();
-      lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
-      watchPresence();
-      publish();
+      applyPeople(b);
       return contacts();
     }).catch(function (e) {
       state.error = (e && e.message) || String(e); log("people.list:", state.error);
@@ -1013,8 +1016,8 @@
   var PREF_SETTERS = { archived: "setArchivedConversations", pinned: "setPinnedConversations", muted: "setMutedConversations",
     locked: "setLockedConversationIds", folders: "setChatFolders", folderOf: "setFolderAssignments", themes: "setChatThemes",
     tones: "setConversationTones", starred: "setStarredMessages", blocked: "setBlockedConversations", broadcasts: "setBroadcastLists" };
-  function loadPrefs() {
-    return call("chat.prefs", {}).then(function (b) {
+  function loadPrefs(pre) {
+    return (pre ? Promise.resolve(pre) : call("chat.prefs", {})).then(function (b) {
       prefs = b.prefs || {}; prefsLoaded = true;
       var applied = {};
       Object.keys(PREF_SETTERS).forEach(function (k) {
@@ -1762,9 +1765,9 @@
   function publishReqs() {
     try { global.dispatchEvent(new CustomEvent("sawa-requests", { detail: reqs.incoming.length + (reqs.vouches || []).length })); } catch (e) {}
   }
-  function loadRequests() {
+  function loadRequests(pre) {
     if (!state.uid) return Promise.resolve(reqs);
-    return call("code.requests", {}).then(function (b) {
+    return (pre ? Promise.resolve(pre) : call("code.requests", {})).then(function (b) {
       reqs = { incoming: b.incoming || [], outgoing: b.outgoing || [], vouches: b.vouches || [], at: Date.now() };
       publishReqs(); return reqs;
     }).catch(function (e) { log("requests:", (e && e.message) || e); return reqs; });
@@ -2881,14 +2884,21 @@
       if (c && c.uid) { try { idbP = null; if (global.indexedDB) indexedDB.deleteDatabase("sawa-media"); } catch (e) {} } }
     state.cachedUid = null;
     startMyPresence(uid);
-    refresh();
+    // C53: طلب boot واحد يحمل جهات الاتّصال والتفضيلات والطلبات معاً؛ إن تعذّر نعود للطلبات الثلاثة
+    var bootUid = uid;
+    state.loading = true;
+    call("boot", {}).then(function (b) {
+      state.loading = false; if (state.uid !== bootUid) return;
+      if (b.people) applyPeople(b.people); else refresh();
+      if (b.prefs) loadPrefs(b.prefs); else loadPrefs();
+      if (b.requests) loadRequests(b.requests); else setTimeout(loadRequests, 2500);
+    }).catch(function () { state.loading = false; if (state.uid !== bootUid) return; refresh(); loadPrefs(); setTimeout(loadRequests, 2500); });
     stopChats(); prefs = null; prefsLoaded = false; pend = {}; virtualChats = {};
     adminP = null; avWant = {}; avFetching = {};
     plain = {}; decQ = {}; mediaKeys = {}; chatsLoaded = false; missingSince = {}; keyFp = {}; knownSec = null; e2e.reset();   // C23
     e2e.load().then(function () { publishChats(); Object.keys(days).forEach(publishMessages); }, function () { publishChats(); });
-    restorePending(); startChats(uid); loadPrefs(); drainOutbox();
+    restorePending(); startChats(uid); drainOutbox();
     setTimeout(refreshPush, 3000);
-    setTimeout(loadRequests, 2500);
     setTimeout(maybeVerifyBanner, 6000);
     var cbs = readyCbs; readyCbs = [];
     cbs.forEach(function (f) { try { f(uid); } catch (e) {} });

@@ -43,6 +43,9 @@
     app  = firebase.initializeApp(FIREBASE_CONFIG);
     auth = firebase.auth();
     db   = firebase.firestore();
+    // C53: ذاكرةٌ محلّيّة لـFirestore — المحادثات والرسائل تظهر فوراً من الجهاز ثمّ تتحدّث من الخادم، وتعمل بلا شبكة.
+    //      يجب أن تُفعَّل قبل أيّ استعلام. synchronizeTabs: أكثر من تبويب بلا تعارض. الفشل (متصفّح لا يدعمها) لا يعطّل شيئاً.
+    try { db.enablePersistence({ synchronizeTabs: true }).catch(function (e) { try { console.log("[sawa-auth] persistence:", e && e.code); } catch (x) {} }); } catch (e) {}
     // تُبقي الجلسة عبر إعادة الفتح
     try { auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch (e) {}
     // يبلّغ المستمعين بكلّ تغيّر في حالة الدخول

@@ -1080,3 +1080,9 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - **ICE مسبقاً** عند الإقلاع (`getIce` بعد ٤ ثوانٍ، يُجدَّد كلّ ٢٠ دقيقة) — كان يُطلب لحظة الاتّصال فيؤخّر أوّل مكالمة.
 - اختبار: `rtctest/run.js` (+٥ C52: FEC في SDP الطرفين، أولويّة الصوت، القياس، ICE قبل الرنين) · `rtest/gtest/vctest/sfutest` كلّها PASS · `vis/boot52.js` (index الجديد يقلع، tw.css يعمل، لا أخطاء) · `synctest33 · chattest · chat14test · review1`.
 - **الرفع (Sawa-app):** `tw.css` و`index.html` (الصق الملفّ كاملاً — إن كنت عدّلت index.html يدويّاً بعد التقسيم فأخبرني) · `sawa-sync.js` · `sawa-chat.js` · `sawa-rtc.js` · `sw.js` · `BUILD.md`. لا خادم ولا قواعد.
+
+## 🗂 C53 — إقلاعٌ فوريّ من ذاكرة الجهاز + طلب boot واحد (١٦ أكتوبر) · الخادم v47-boot · sw v253 · sawa-auth c53 · sawa-chat c53
+- **ذاكرة Firestore المحلّيّة** (`enablePersistence({synchronizeTabs:true})` في `sawa-auth.js` قبل أيّ استعلام): قائمة المحادثات والرسائل كانت تنتظر الخادم عند كلّ فتح — الآن تظهر فوراً من الجهاز ثمّ تتحدّث، وتُقرأ بلا شبكة. الحجم بحدّ ٤٠ ميجابايت مع تنظيفٍ تلقائيّ (الوسائط لها مخزنها الخاصّ أصلاً). فشلها في متصفّحٍ لا يدعمها لا يعطّل شيئاً.
+- **طلب `boot` واحد** عند الإقلاع يحمل `people.list` و`chat.prefs` و`code.requests` معاً (كانت ثلاث رحلات إلى الخادم؛ على 4G كلّ رحلة نصف ثانية إلى ثانية). الخادم ينفّذها بالتوازي؛ إن تعذّر (حدّ الطلبات الفرعيّة مثلاً) يعود التطبيق للطلبات الثلاثة تلقائيّاً. `boot` في `HEAVY_OPS`.
+- اختبار: `chattest/chat2test/chat3test/chat14test` (تتحقّق من المسار البديل) · `e2eint · codetest` · `chatui/review1 · review7` (الإقلاع بـ`boot:ok` ثمّ كلّ المسارات كما كانت).
+- **ترتيب الرفع:** `worker-3.js` ← Sawa-app: `sawa-auth.js` + `sawa-chat.js` + `sw.js` + `BUILD.md`.
