@@ -433,15 +433,38 @@ function renderRichText(text, opts) {
     pushPlain(t.slice(last));
     return nodes;
 }
+// C49: المعاينة تأتي من الخادم (link.peek: عنوان/وصف/صورة من وسوم og) — ذاكرةٌ محلّيّة حتى لا يُطلب الرابط نفسه مرّتين
+const LINK_PEEK = new Map();
+function peekLink(u) {
+    const href = urlHref(u);
+    if (LINK_PEEK.has(href)) return LINK_PEEK.get(href);
+    const SS = window.SawaSync;
+    const pr = (SS && SS.call && !isSawaLink(u)) ? SS.call("link.peek", { url: href }).then((r) => (r && r.ok !== false) ? r : null).catch(() => null) : Promise.resolve(null);
+    LINK_PEEK.set(href, pr); if (LINK_PEEK.size > 300) LINK_PEEK.clear();
+    return pr;
+}
 function LinkCard({ text, mine }) {
     const { colors } = useTheme();
-    const u = urlsIn(text)[0]; if (!u) return null;
+    const u = urlsIn(text)[0];
+    const [meta, setMeta] = useState(null);
+    const [imgOk, setImgOk] = useState(true);
+    useEffect(() => { let on = true; if (u) peekLink(u).then((r) => { if (on) setMeta(r || {}); }); return () => { on = false; }; }, [u]);
+    if (!u) return null;
     let host = ""; try { host = new URL(urlHref(u)).hostname.replace(/^www\./, ""); } catch (e) { return null; }
     const sawa = isSawaLink(u);
-    return (React.createElement("button", { onClick: (e) => openUrl(u, e), className: `w-full flex ${rowStart()} items-center gap-2 rounded-xl px-2.5 py-1.5 mt-1.5`, style: { backgroundColor: mine ? "rgba(255,255,255,0.14)" : colors.bg, border: `1px solid ${mine ? "#ffffff33" : colors.border}` } },
-        React.createElement(SawaLinkIcon, { size: 13, color: mine ? "#fff" : colors.primary }),
-        React.createElement("span", { className: `flex-1 ${textStart()} text-[11px] font-bold truncate`, style: { color: mine ? "#fff" : colors.text, direction: "ltr", textAlign: isRTL() ? "right" : "left" } }, host),
-        React.createElement("span", { className: "text-[10px] shrink-0", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, sawa ? tl("فتح في سوا", "Open in Sawa") : tl("فتح ↗", "Open ↗"))));
+    const title = meta && meta.title && meta.title !== host ? meta.title : "";
+    const desc = meta && meta.desc ? meta.desc : "";
+    const image = meta && meta.image && imgOk ? meta.image : "";
+    const fg = mine ? "#fff" : colors.text, muted = mine ? "#ffffffcc" : colors.textMuted;
+    return (React.createElement("button", { onClick: (e) => openUrl(u, e), className: `w-full flex flex-col rounded-xl mt-1.5 overflow-hidden ${textStart()}`, style: { backgroundColor: mine ? "rgba(255,255,255,0.14)" : colors.bg, border: `1px solid ${mine ? "#ffffff33" : colors.border}`, maxWidth: 260 } },
+        image ? React.createElement("img", { src: image, alt: "", loading: "lazy", referrerPolicy: "no-referrer", onError: () => setImgOk(false), className: "w-full object-cover", style: { maxHeight: 130, display: "block" } }) : null,
+        React.createElement("div", { className: "px-2.5 py-1.5 w-full" },
+            title ? React.createElement("div", { className: "text-[11.5px] font-extrabold leading-4", style: { color: fg, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } }, title) : null,
+            desc ? React.createElement("div", { className: "text-[10.5px] leading-4 mt-0.5", style: { color: muted, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } }, desc) : null,
+            React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 ${title || desc ? "mt-1" : ""}` },
+                React.createElement(SawaLinkIcon, { size: 12, color: mine ? "#fff" : colors.primary }),
+                React.createElement("span", { className: "flex-1 text-[10.5px] font-bold truncate", style: { color: title ? muted : fg, direction: "ltr", textAlign: isRTL() ? "right" : "left" } }, (meta && meta.host) || host),
+                React.createElement("span", { className: "text-[10px] shrink-0", style: { color: muted } }, sawa ? tl("فتح في سوا", "Open in Sawa") : tl("فتح ↗", "Open ↗"))))));
 }
 // C47: فاصل اليوم بين الرسائل (اليوم · أمس · التاريخ) — كانت المحادثة قائمةً واحدة بلا تواريخ
 function dayKeyOf(ts) { const d = new Date(ts || 0); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); }
@@ -1036,7 +1059,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
             } }));
     }
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col relative" },
-        React.createElement(TopBar, { title: conversation.isSavedMessages ? t("rsayly_almhfwza") : conversation.name, avatar: !conversation.isSavedMessages, photo: conversation.photo || null, subtitle: isTyping ? t("ch_yktb") : (isOnline ? t("ch_mtsl_alan") : null), onBack: onBack, actions: React.createElement("div", { className: "flex flex-row items-center gap-3" },
+        React.createElement(TopBar, { title: conversation.isSavedMessages ? t("rsayly_almhfwza") : conversation.name, avatar: !conversation.isSavedMessages, photo: conversation.photo || null, subtitle: !online ? tl("أنت غير متّصل", "You're offline") : isTyping ? t("ch_yktb") : (isOnline ? t("ch_mtsl_alan") : null), onBack: onBack, actions: React.createElement("div", { className: "flex flex-row items-center gap-3" },
                 React.createElement("button", { "aria-label": t("bhth"), onClick: () => setShowSearch(!showSearch) },
                     React.createElement(Search, { size: 18, color: "#fff" })),
                 !conversation.isSavedMessages && (React.createElement("button", { "aria-label": t("atsal"), onClick: () => setShowCallChoice(!showCallChoice) },
