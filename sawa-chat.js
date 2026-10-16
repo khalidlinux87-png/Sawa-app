@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c44";
+  var VERSION = "c48";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1306,6 +1306,7 @@
     if (opts.transcript) extra.transcript = String(opts.transcript).slice(0, 1500);
     localUrls[mid] = URL.createObjectURL(src);
     var msg = { id: id, type: kind, extra: extra };
+    if (opts.fwd) msg.fwd = true;   // C48: وسيطٌ موجَّه
     var p = { msg: msg, ts: Date.now(), status: "pending", uploading: true };
     (pend[cid] = pend[cid] || []).push(p);
     publishMessages(cid); publishChats();
@@ -1413,6 +1414,22 @@
     });
   }
   var mediaTries = {};
+  // C48: توجيه رسالةٍ بمحتواها: النصّ نصّاً، والوسائط بملفّها (يُنزَّل إن لزم ثمّ يُرفع للمحادثة الهدف)
+  function forwardMessage(fromCid, id, toCid) {
+    var f = findMsg(fromCid, id); if (!f || !toCid) return Promise.resolve(null);
+    var m = f.msg; if (m.enc) m = plainOf(fromCid, m);
+    var ex = m.extra || {};
+    if (["image", "video", "file", "voice"].indexOf(m.type) < 0 || !ex.mid) { send(toCid, m.text || "", { fwd: true }); return Promise.resolve(true); }
+    toast(L("جارٍ التوجيه…", "Forwarding…"));
+    return ensureMedia(fromCid, ex.mid).then(function (url) {
+      if (!url) throw new Error("no media");
+      return fetch(url).then(function (r) { return r.blob(); });
+    }).then(function (blob) {
+      var b = (ex.mime && blob.type !== ex.mime) ? new Blob([blob], { type: ex.mime }) : blob;
+      sendMedia(toCid, { kind: m.type, blob: b, name: ex.name || null, duration: ex.duration || null, transcript: ex.transcript || null, fwd: true });
+      return true;
+    }).catch(function () { toast(L("تعذّر توجيه الوسيط", "Couldn't forward the media")); return null; });
+  }
   function retryMedia(cid, mid) { if (!mid) return; delete mediaFailed[mid]; mediaTries[mid] = 0; publishMessages(cid); return ensureMedia(cid, mid); }
   // ملفٌّ عامّ: يُنزَّل ثمّ يُفتح/يُحفظ
   function openFile(m) {
@@ -3359,7 +3376,7 @@
     send: send, edit: edit, clearChat: clearChat,
     // C4
     enablePush: enablePush, disablePush: disablePush, pushEnabled: pushEnabled, pushSupported: pushSupported, pushState: pushState, pushHelp: helpSheet,
-    sendMedia: sendMedia, openFile: openFile, markViewedOnce: markViewedOnce, ensureMedia: ensureMedia,
+    sendMedia: sendMedia, forwardMessage: forwardMessage, openFile: openFile, markViewedOnce: markViewedOnce, ensureMedia: ensureMedia,
     // C3
     createGroup: createGroup, updateGroup: updateGroup, addMembers: addMembers, removeMember: removeMember, setAdmin: setAdmin,
     leaveGroup: leaveGroup, shareGroupInvite: shareGroupInvite, joinGroup: joinGroup,

@@ -1656,10 +1656,16 @@ function AppInner() {
         setMessagesByConversation((prev) => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), msg] }));
         setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, lastMessage: "🎤 رسالة صوتية" } : c)));
     }
-    function forwardMessageToTargets(text, destinationIds) {
+    function forwardMessageToTargets(payload, destinationIds) {
+        // C48: payload قد يكون {id, text, cid} — رسالة وسائط تُوجَّه بملفّها لا باسمها
+        const src = payload && typeof payload === "object" ? payload : null;
+        const text = src ? (src.text || "") : payload;
+        const srcMsg = src && src.cid ? ((messagesByConversation[src.cid] || groupMessages[src.cid] || []).find((m) => m.id === src.id) || null) : null;
+        const media = !!(srcMsg && ["image", "video", "file", "voice"].includes(srcMsg.type) && srcMsg.cloudMid && cloudChat(src.cid));
+        const toCloud = (cid) => { if (media) window.SawaChat.forwardMessage(src.cid, src.id, cid); else cloudChat(cid).send(cid, text, { fwd: true }); };
         destinationIds.forEach((id) => {
-            if (/^contact:/.test(id) && window.SawaChat && window.SawaChat.openDm) { window.SawaChat.openDm(id.slice(8)).then((cid) => { if (cid) window.SawaChat.send(cid, text, { fwd: true }); }); return; }
-            if (cloudChat(id)) { cloudChat(id).send(id, text, { fwd: true }); return; }
+            if (/^contact:/.test(id) && window.SawaChat && window.SawaChat.openDm) { window.SawaChat.openDm(id.slice(8)).then((cid) => { if (cid) toCloud(cid); }); return; }
+            if (cloudChat(id)) { toCloud(id); return; }
             if (conversations.some((c) => c.id === id)) {
                 const msg = { id: `msg-${Date.now()}-f-${id}`, senderUserId: myUserId, text, createdAt: Date.now(), forwarded: true, status: "sent" };
                 setMessagesByConversation((prev) => ({ ...prev, [id]: [...(prev[id] || []), msg] }));
@@ -1698,6 +1704,11 @@ function AppInner() {
         else {
             setStarredMessages((prev) => prev.filter((s) => s.id !== messageId));
         }
+    }
+    function sendGroupSticker(groupId, emoji) {
+        if (cloudChat(groupId)) { cloudChat(groupId).send(groupId, emoji, { type: "sticker" }); return; }
+        const msg = { id: `gmsg-${Date.now()}-s`, senderId: myUserId, text: emoji, type: "sticker", createdAt: Date.now() };
+        setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
     }
     function sendChatSticker(conversationId, emoji) {
         if (cloudChat(conversationId)) { cloudChat(conversationId).send(conversationId, emoji, { type: "sticker" }); return; }
@@ -3588,7 +3599,7 @@ function AppInner() {
                     }
                     if (chatsTop.type === "group") {
                         const liveGroup = groups.find((g) => g.id === chatsTop.data.id) || chatsTop.data;
-                        return (React.createElement(GroupChatScreen, { group: liveGroup, messages: groupMessages[liveGroup.id] || [], myUserId: myUserId, draft: chatDrafts["g:" + liveGroup.id] || "", onSaveDraft: (v) => saveChatDraft("g:" + liveGroup.id, v), onTyping: () => { const c = cloudChat(liveGroup.id); if (c) c.typing(liveGroup.id); }, contactsForForward: (window.SawaChat && window.SawaChat.contacts ? window.SawaChat.contacts() : []), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendGroupMessage(liveGroup.id, text, replyTo),
+                        return (React.createElement(GroupChatScreen, { group: liveGroup, messages: groupMessages[liveGroup.id] || [], myUserId: myUserId, draft: chatDrafts["g:" + liveGroup.id] || "", onSaveDraft: (v) => saveChatDraft("g:" + liveGroup.id, v), onTyping: () => { const c = cloudChat(liveGroup.id); if (c) c.typing(liveGroup.id); }, onSendSticker: (emoji) => sendGroupSticker(liveGroup.id, emoji), contactsForForward: (window.SawaChat && window.SawaChat.contacts ? window.SawaChat.contacts() : []), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendGroupMessage(liveGroup.id, text, replyTo),
                             onReact: cloudChat(liveGroup.id) ? (messageId, emoji) => cloudChat(liveGroup.id).react(liveGroup.id, messageId, emoji) : null,
                             onDeleteMessage: cloudChat(liveGroup.id) ? (messageId, scope) => { scope === "all" ? cloudChat(liveGroup.id).deleteForAll(liveGroup.id, messageId) : cloudChat(liveGroup.id).deleteForMe(liveGroup.id, messageId); showToast(scope === "all" ? t("ai_hdhft_lljmya") : t("ai_hdhft_andk"), "success"); } : null,
                             contacts: cloudChat(liveGroup.id) ? people : null,
