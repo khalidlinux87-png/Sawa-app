@@ -1086,3 +1086,11 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - **طلب `boot` واحد** عند الإقلاع يحمل `people.list` و`chat.prefs` و`code.requests` معاً (كانت ثلاث رحلات إلى الخادم؛ على 4G كلّ رحلة نصف ثانية إلى ثانية). الخادم ينفّذها بالتوازي؛ إن تعذّر (حدّ الطلبات الفرعيّة مثلاً) يعود التطبيق للطلبات الثلاثة تلقائيّاً. `boot` في `HEAVY_OPS`.
 - اختبار: `chattest/chat2test/chat3test/chat14test` (تتحقّق من المسار البديل) · `e2eint · codetest` · `chatui/review1 · review7` (الإقلاع بـ`boot:ok` ثمّ كلّ المسارات كما كانت).
 - **ترتيب الرفع:** `worker-3.js` ← Sawa-app: `sawa-auth.js` + `sawa-chat.js` + `sw.js` + `BUILD.md`.
+
+## 🔑 C54 — الدخول بـGoogle داخل التطبيق المثبّت (١٦ أكتوبر) · sw v254 · sawa-sync c54 · sawa-chat c54
+- **المشكلة:** «Unable to process request due to missing initial state» عند الدخول بـGoogle من **التطبيق المثبّت (TWA)**: إعادة التوجيه تعود إلى `www.sawaaap.com/__/auth/handler` فيفتحه أندرويد في نافذةٍ جديدة داخل التطبيق وتضيع حالة Firebase في sessionStorage. (في Chrome العاديّ كان يعمل.)
+- **الحلّ:** Google Identity Services (`accounts.google.com/gsi/client`) — يعطي رمز هويّة Google مباشرةً (FedCM/نافذة) بلا مغادرة الصفحة، ثمّ `googleCredential(idToken)`: ربط الهويّة المجهولة (`linkWithCredential` — uid نفسه فلا يضيع شيء) · إن كان الحساب قائماً عند هويّةٍ أخرى ⇒ `signInWithCredential` + تبنّي عائلات الجهاز · بلا هويّة بعد ⇒ دخولٌ مباشر. `GOOGLE_CLIENT_ID` عامّ (Web client ID) — ليس سرّاً.
+- **الواجهة:** شاشة البداية تعرض زرّ Google الرسميّ (`renderGoogleButton`؛ عربيّ، pill، ≤400px) ويُخفى زرّنا القديم؛ إن لم يُحمَّل GIS خلال ١٠ ثوانٍ يبقى القديم. «السحابة والمشاركة»: `linkGoogle` في التطبيق المثبّت يجرّب `gisPrompt()` (FedCM/One Tap) أوّلاً ثمّ النافذة المنبثقة؛ في المتصفّح كما كان.
+- **تهيئة Google Cloud (تمّت):** Authorized JavaScript origins يحوي `https://www.sawaaap.com`.
+- اختبار: `synctest54.js` (٧: دخول مباشر، ربط، تبنّي، رسم الزرّ بالعربيّة، المثبّت ⇒ GIS، عدم العرض ⇒ نافذة، المتصفّح ⇒ نافذة) · `synctest33 · chattest` · لقطات التثبيت بلا أخطاء.
+- **الرفع:** `sawa-sync.js` + `sawa-chat.js` + `sw.js` + `BUILD.md`.

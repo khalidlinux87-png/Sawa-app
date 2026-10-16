@@ -975,7 +975,97 @@
       return indexMine().then(function () { toast(msg); renderPanel(); refreshMyGroups(); });
     });
   }
+  // ---------- C54: Google Identity Services ----------
+  // داخل التطبيق المثبّت (TWA/PWA) تفشل إعادة التوجيه: أندرويد يفتح رابط العودة في نافذةٍ جديدة فتضيع حالة Firebase («missing initial state»).
+  // GIS يعطينا رمز هويّة Google مباشرةً (FedCM أو نافذة) ثمّ ندخل/نربط به في Firebase بلا مغادرة الصفحة. المعرّف عامّ (ليس سرّاً).
+  var GOOGLE_CLIENT_ID = "98971055474-b7p9na5nc5sr7om6pbpj40jt00nlr45s.apps.googleusercontent.com";
+  var gsiP = null, gsiInit = false;
+  function loadGsi() {
+    if (gsiP) return gsiP;
+    gsiP = new Promise(function (res, rej) {
+      if (global.google && google.accounts && google.accounts.id) return res(google.accounts.id);
+      var s = document.createElement("script"); s.src = "https://accounts.google.com/gsi/client"; s.async = true; s.defer = true;
+      var t = setTimeout(function () { gsiP = null; rej(new Error("gsi timeout")); }, 8000);
+      s.onload = function () { clearTimeout(t); var id = global.google && google.accounts && google.accounts.id; if (id) res(id); else { gsiP = null; rej(new Error("gsi")); } };
+      s.onerror = function () { clearTimeout(t); gsiP = null; rej(new Error("gsi load")); };
+      document.head.appendChild(s);
+    });
+    return gsiP;
+  }
+  var gsiWaiters = [];
+  function gsiReady(id) {
+    if (gsiInit) return id;
+    gsiInit = true;
+    id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: function (r) {
+      var w = gsiWaiters; gsiWaiters = [];
+      if (!r || !r.credential) { w.forEach(function (f) { f(false); }); return; }
+      googleCredential(r.credential).then(function () { w.forEach(function (f) { f(true); }); }, function (e) { toast(L("تعذّر الدخول: ", "Sign-in failed: ") + ((e && (e.code || e.message)) || e)); w.forEach(function (f) { f(false); }); });
+    }, use_fedcm_for_prompt: true, itp_support: true, ux_mode: "popup", auto_select: false, cancel_on_tap_outside: true, context: "signin" });
+    return id;
+  }
+  // رمز هويّة Google ⇒ ربط الهويّة المجهولة به (لا شيء يضيع)، أو الدخول به وتبنّي عائلات هذا الجهاز إن كان الحساب قائماً
+  function googleCredential(idToken) {
+    if (!hasFirebase()) return Promise.reject({ code: "sawa/no-server" });
+    var auth = firebase.auth(), user = auth.currentUser;
+    var cred = firebase.auth.GoogleAuthProvider.credential(idToken);
+    if (user && !user.isAnonymous) return afterLinked(L("حسابك مربوطٌ سلفاً", "Already linked"));
+    indexMine();
+    if (user && user.isAnonymous && state.uid) {
+      return user.getIdToken().then(function (oldTok) {
+        return user.linkWithCredential(cred).then(function () {
+          return afterLinked(L("رُبط حسابك بـGoogle ✓ — ادخل به من أيّ جهاز", "Linked to Google ✓ — sign in with it on any device"));
+        }).catch(function (e) {
+          var code = e && e.code;
+          if (code === "auth/credential-already-in-use" || code === "auth/email-already-in-use" || code === "auth/account-exists-with-different-credential") {
+            return auth.signInWithCredential(cred).then(function () { return adoptFrom(oldTok).catch(function () { return null; }); })
+              .then(function () { return afterLinked(L("دخلتَ بحسابك على Google ✓ ونُقلت عائلات هذا الجهاز إليه", "Signed in with Google ✓ — this device's families moved to your account")); });
+          }
+          throw e;
+        });
+      });
+    }
+    return auth.signInWithCredential(cred).then(function () { return afterLinked(L("دخلتَ بحسابك على Google ✓", "Signed in with Google ✓")); });
+  }
+  // زرّ Google الرسميّ داخل حاوية (شاشة البداية) — يعيد true إن رُسم
+  function renderGoogleButton(host) {
+    return loadGsi().then(function (id) {
+      gsiReady(id);
+      host.innerHTML = "";
+      var w = Math.max(200, Math.min(400, host.clientWidth || (host.parentNode && host.parentNode.clientWidth) || 320));
+      id.renderButton(host, { type: "standard", theme: "filled_blue", size: "large", text: "continue_with", shape: "pill", locale: isAr() ? "ar" : "en", width: w, logo_alignment: "left" });
+      return true;
+    });
+  }
+  // محاولة الدخول بـGIS بلا زرّ (FedCM/One Tap) — تعيد true إن نجح الدخول، false إن لم يُعرض شيء
+  function gisPrompt() {
+    return loadGsi().then(function (id) {
+      gsiReady(id);
+      return new Promise(function (res) {
+        var done = false; gsiWaiters.push(function (ok) { if (!done) { done = true; res(ok); } });
+        try {
+          id.prompt(function (n) {
+            try { if (n && ((n.isNotDisplayed && n.isNotDisplayed()) || (n.isSkippedMoment && n.isSkippedMoment()) || (n.isDismissedMoment && n.isDismissedMoment() && n.getDismissedReason && n.getDismissedReason() !== "credential_returned"))) { if (!done) { done = true; res(false); } } } catch (e) { if (!done) { done = true; res(false); } }
+          });
+        } catch (e) { if (!done) { done = true; res(false); } }
+        setTimeout(function () { if (!done) { done = true; res(false); } }, 90000);
+      });
+    }).catch(function () { return false; });
+  }
+  function isStandaloneApp() {
+    try { if (global.matchMedia && global.matchMedia("(display-mode: standalone)").matches) return true; } catch (e) {}
+    try { if (global.navigator.standalone === true) return true; } catch (e) {}
+    try { if (String(document.referrer || "").indexOf("android-app://") === 0) return true; } catch (e) {}
+    return false;
+  }
   function linkGoogle() {
+    if (!hasFirebase()) { toast(L("تعذّر الاتصال بالخادم", "Can't reach the server")); return; }
+    // C54: في التطبيق المثبّت لا إعادة توجيه — GIS أوّلاً، وإن لم يُعرض نعود للنافذة المنبثقة
+    if (isStandaloneApp()) {
+      return gisPrompt().then(function (ok) { if (ok) return; return linkGoogleLegacy(); });
+    }
+    return linkGoogleLegacy();
+  }
+  function linkGoogleLegacy() {
     if (!hasFirebase()) { toast(L("تعذّر الاتصال بالخادم", "Can't reach the server")); return; }
     var auth = firebase.auth(), user = auth.currentUser;
     if (user && !user.isAnonymous) { toast(L("حسابك مربوطٌ سلفاً", "Already linked")); return; }
@@ -1551,7 +1641,7 @@
   global.SawaSync = {
     connect: connect, onReady: onReady, getToken: getToken,
     push: push, observe: observe, bindApp: bindApp,
-    uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, syncAuthName: syncAuthName, shareLink: shareLink,
+    uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, renderGoogleButton: renderGoogleButton, googleCredential: googleCredential, gisPrompt: gisPrompt, loadGsi: loadGsi, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, syncAuthName: syncAuthName, shareLink: shareLink,
     watchGroup: watchGroup, serverGid: serverGid,
     isCloud: function (lg) { return !!serverGid(lg); },
     call: function (op, payload) { return call(op, payload); }, toast: function (m) { toast(m); },

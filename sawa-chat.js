@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c53";
+  var VERSION = "c54";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -2607,9 +2607,22 @@
       }
       var g = bigBtn(L("المتابعة بحساب Google", "Continue with Google"), "white");
       var gi = mk("span"); gi.style.cssText = "display:grid;place-items:center"; gi.innerHTML = ONB_G; g.insertBefore(gi, g.firstChild);
+      // C54: زرّ Google الرسميّ (GIS) — يعمل داخل التطبيق المثبّت بلا إعادة توجيه؛ زرّنا القديم يبقى احتياطاً إن لم يُحمَّل
+      var gh = oc("div", "ob-gsi"); gh.style.cssText = "display:flex;justify-content:center;min-height:44px;margin-bottom:10px";
       var em = bigBtn(L("المتابعة بالبريد الإلكتروني", "Continue with email"), null, "mail");
       var gu = bigBtn(L("جرّب بدون حساب", "Try without an account"), "link");
-      ft.appendChild(g); ft.appendChild(em);
+      ft.appendChild(gh); ft.appendChild(g); ft.appendChild(em);
+      (function () {
+        var tries = 0;
+        (function tryGsi() {
+          if (!onb || onb.step !== "login") return;
+          if (S() && S().renderGoogleButton) {
+            S().renderGoogleButton(gh).then(function (ok) { if (ok && onb && onb.step === "login") { g.style.display = "none"; } }, function () { gh.style.display = "none"; });
+            return;
+          }
+          if (++tries < 40) setTimeout(tryGsi, 250); else gh.style.display = "none";
+        })();
+      })();
       if (!onbDeleteMode) { ft.appendChild(oc("div", "ob-or", L("أو", "or"))); ft.appendChild(gu); }
       var legal = oc("div", "ob-legal");
       legal.appendChild(document.createTextNode(L("بالمتابعة توافق على ", "By continuing you agree to the ")));
