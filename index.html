@@ -2,6 +2,16 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
+<!-- C52: نبدأ تنزيل أجزاء التطبيق التسعة فوراً بالتوازي مع المكتبات (كانت تنتظر اكتمال كلّ ما قبلها) -->
+<script>
+window.__sawaParts=(function(){var N=9,jobs=[];for(var i=1;i<=N;i++)(function(k){var url="./app.p"+k+".js",mark="//@@sawa-part:"+k+"\n";jobs.push(fetch(url,{cache:"no-cache"}).then(function(r){if(!r.ok)throw new Error("app.p"+k+".js: HTTP "+r.status);return r.text();}).then(function(t){if(t.slice(-mark.length)!==mark)throw new Error("app.p"+k+".js incomplete");return t.slice(0,-mark.length);}));})(i);var p=Promise.all(jobs);p.catch(function(){});return p;})();
+</script>
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link rel="preconnect" href="https://www.gstatic.com">
+<link rel="preconnect" href="https://sawa-deploy-test.khalidlinux87.workers.dev">
+<link rel="preconnect" href="https://firestore.googleapis.com">
+<link rel="preconnect" href="https://identitytoolkit.googleapis.com">
+<link rel="preconnect" href="https://sawa-test-9770f-default-rtdb.europe-west1.firebasedatabase.app">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
 <title>سوا</title>
 
@@ -14,7 +24,7 @@
 <meta name="apple-mobile-web-app-title" content="سوا">
 <meta name="mobile-web-app-capable" content="yes">
 
-<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="./tw.css">
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 
@@ -119,18 +129,21 @@
     } catch (e) {}
     Promise.all(jobs).catch(function () {}).then(function () { location.reload(); });
   }
-  var jobs = [];
-  for (var i = 1; i <= N; i++) (function (k) {
-    var url = "./app.p" + k + ".js", mark = "//@@sawa-part:" + k + "\n";
-    jobs.push(fetch(url, { cache: "no-cache" }).then(function (r) {
-      if (!r.ok) throw new Error("app.p" + k + ".js: HTTP " + r.status);
-      return r.text();
-    }).then(function (t) {
-      if (t.slice(-mark.length) !== mark) throw new Error("app.p" + k + ".js " + (ar ? "ناقص — أعد رفعه" : "incomplete — re-upload it"));
-      return t.slice(0, -mark.length);
-    }));
-  })(i);
-  Promise.all(jobs).then(function (texts) {
+  var partsP = window.__sawaParts || (function () {
+    var jobs = [];
+    for (var i = 1; i <= N; i++) (function (k) {
+      var url = "./app.p" + k + ".js", mark = "//@@sawa-part:" + k + "\n";
+      jobs.push(fetch(url, { cache: "no-cache" }).then(function (r) {
+        if (!r.ok) throw new Error("app.p" + k + ".js: HTTP " + r.status);
+        return r.text();
+      }).then(function (t) {
+        if (t.slice(-mark.length) !== mark) throw new Error("app.p" + k + ".js " + (ar ? "ناقص — أعد رفعه" : "incomplete — re-upload it"));
+        return t.slice(0, -mark.length);
+      }));
+    })(i);
+    return Promise.all(jobs);
+  })();
+  partsP.then(function (texts) {
     var s = document.createElement("script");
     s.text = texts.join("");
     document.body.appendChild(s);                 // يُنفَّذ فوراً (كما كان sawa-app.js)
