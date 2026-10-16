@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c56";
+  var VERSION = "c57";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -2734,11 +2734,17 @@
         var nm = inp.value.replace(/\s+/g, " ").trim();
         if (nm.length < 2) { err.textContent = L("اكتب اسماً من حرفين على الأقلّ", "At least 2 letters"); return; }
         nx.disabled = true; btnText(nx, "…");
-        whenReady(function () {
-          var p = nm === ((state.me && state.me.name) || "") ? Promise.resolve() : saveProfile({ name: nm });
-          p.then(function () { lsSet("sawa_name_asked", Date.now()); onbGo("code"); })
-            .catch(function (e) { err.textContent = codeErr(e); nx.disabled = false; btnText(nx, L("التالي", "Next")); });
-        });
+        // C57: لا ننتظر الخادم — الاسم يُحفظ على الجهاز ويُرسل حين تجهز الهويّة (كان الزرّ يعلق على «…» إن تأخّر الدخول المجهول)
+        if (!state.uid) {
+          lsSet("sawa_pending_name", nm); lsSet("sawa_name_asked", Date.now());
+          state.me = Object.assign({}, state.me || {}, { name: nm }); publish();
+          err.style.color = "#cfe3ff"; err.textContent = L("سيُحفظ اسمك حين يكتمل الاتّصال بالخادم", "Your name will be saved once connected");
+          setTimeout(function () { onbGo("code"); }, 600);
+          return;
+        }
+        var p = nm === ((state.me && state.me.name) || "") ? Promise.resolve() : saveProfile({ name: nm });
+        p.then(function () { lsSet("sawa_name_asked", Date.now()); onbGo("code"); })
+          .catch(function (e) { err.textContent = codeErr(e); nx.disabled = false; btnText(nx, L("التالي", "Next")); });
       };
       inp.onkeydown = function (e) { if (e.key === "Enter") nx.onclick(); };
       setTimeout(function () { try { inp.focus(); } catch (e) {} }, 80);
@@ -2749,6 +2755,9 @@
       b.appendChild(hTitle(L("هذا رمزك في سوا", "This is your Sawa code")));
       var box = oc("div", "ob-code"); box.appendChild(mk("small", "", L("رمزك", "YOUR CODE")));
       var big = mk("div", "", "… … …"); box.appendChild(big);
+      var waitNote = oc("div", "ob-p"); waitNote.style.cssText = "font-size:12px;opacity:.85;min-height:18px"; b.appendChild(waitNote);
+      var waitT = setTimeout(function () { if (!state.uid) waitNote.textContent = L("جارٍ الاتّصال بالخادم… يمكنك المتابعة وسيظهر رمزك لاحقاً في «حسابي».", "Connecting… you can continue; your code will appear later in Me."); }, 2500);
+      whenReady(function () { clearTimeout(waitT); waitNote.textContent = ""; });
       b.appendChild(box);
       b.appendChild(hSub(L("أعطه لمن تريد أن يتواصل معك. يرى اسمك فقط، ويرسل لك طلباً لا يُقبَل إلا بموافقتك.", "Give it to people you want to hear from. They see your name only and send a request you approve.")));
       var row = oc("div", "ob-row");
@@ -2945,6 +2954,8 @@
       if (c && c.uid) { try { idbP = null; if (global.indexedDB) indexedDB.deleteDatabase("sawa-media"); } catch (e) {} } }
     state.cachedUid = null;
     startMyPresence(uid);
+    // C57: اسمٌ كُتب في شاشة البداية قبل أن تجهز الهويّة
+    (function () { var pn = lsGet("sawa_pending_name", null); if (pn) { saveProfile({ name: pn }).then(function () { try { localStorage.removeItem("sawa_pending_name"); } catch (e) {} }).catch(function () {}); } })();
     // C53: طلب boot واحد يحمل جهات الاتّصال والتفضيلات والطلبات معاً؛ إن تعذّر نعود للطلبات الثلاثة
     var bootUid = uid;
     state.loading = true;

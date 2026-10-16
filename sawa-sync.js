@@ -86,10 +86,20 @@
           if (firstAuth) {
             firstAuth = false;
             if (!user) {
-              auth.signInAnonymously().catch(function (e) {
-                state.error = (e && e.message) || "تعذّر الدخول المجهول";
-                paintBadge(); resolve(null);
-              });
+              // C57: كان فشل الدخول المجهول (شبكةٌ ضعيفة لحظة الإقلاع) يترك التطبيق بلا هويّة إلى أن يُعاد تشغيله — الآن يعاد بتراجعٍ أسّيّ وعند عودة الشبكة
+              var tries = 0, anonTimer = null;
+              var tryAnon = function () {
+                anonTimer = null;
+                auth.signInAnonymously().catch(function (e) {
+                  state.error = (e && e.message) || "تعذّر الدخول المجهول";
+                  paintBadge(); if (tries === 0) resolve(null);
+                  var wait = Math.min(60000, 4000 * Math.pow(2, Math.min(tries, 4))); tries++;
+                  log("anon sign-in failed, retry in", wait, "ms:", state.error);
+                  if (!anonTimer) anonTimer = setTimeout(function () { if (!auth.currentUser) tryAnon(); }, wait);
+                });
+              };
+              try { global.addEventListener("online", function () { if (!auth.currentUser && !anonTimer) tryAnon(); }); } catch (e) {}
+              tryAnon();
               return;
             }
           }
