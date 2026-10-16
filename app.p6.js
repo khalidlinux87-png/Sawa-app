@@ -13,16 +13,20 @@ function NewCallScreen({ onCall, onBack }) {
 function DialPadScreen({ onCall, onBack }) {
     const { colors } = useTheme();
     const [number, setNumber] = useState("");
-    const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
+    // C62: رمز سوا (10 أرقام) — لا * ولا #؛ يُعرض مقسّماً 3-3-4 كما في «رمزي»
+    const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", ""];
+    const shown = number ? number.replace(/(\d{3})(\d{0,3})(\d{0,4}).*/, (m, a, b, c) => [a, b, c].filter(Boolean).join(" ")) : "";
+    const ready = number.length >= 8;
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
-        React.createElement(TopBar, { title: t("lwha_alarqam"), onBack: onBack }),
+        React.createElement(TopBar, { title: tl("اتّصل برمز سوا", "Call by Sawa code"), onBack: onBack }),
         React.createElement("div", { className: "flex-1 flex flex-col items-center justify-between p-6", style: { backgroundColor: colors.bg } },
             React.createElement("div", { className: "w-full text-center pt-4" },
-                React.createElement("span", { className: "text-2xl font-extrabold tracking-widest", style: { color: colors.text }, dir: "ltr" }, number || "—")),
-            React.createElement("div", { className: "grid grid-cols-3 gap-4 w-full max-w-xs" }, keys.map((k) => (React.createElement("button", { key: k, onClick: () => setNumber((prev) => prev + k), className: "w-16 h-16 rounded-full flex items-center justify-center mx-auto", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
+                React.createElement("span", { className: "text-2xl font-extrabold tracking-widest", style: { color: colors.text }, dir: "ltr" }, shown || "—"),
+                React.createElement("div", { className: "text-xs mt-2", style: { color: colors.textMuted } }, tl("أدخل رمز سوا الخاصّ بالشخص (10 أرقام) — تجده عنده في «جهات الاتصال ← رمزي»", "Enter the person's 10-digit Sawa code (Contacts → My code)"))),
+            React.createElement("div", { className: "grid grid-cols-3 gap-4 w-full max-w-xs" }, keys.map((k, i) => k === "" ? React.createElement("div", { key: "e" + i }) : (React.createElement("button", { key: k, onClick: () => setNumber((prev) => (prev + k).slice(0, 10)), className: "w-16 h-16 rounded-full flex items-center justify-center mx-auto", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                 React.createElement("span", { className: "text-xl font-bold", style: { color: colors.text } }, k))))),
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-4 w-full max-w-xs justify-center` },
-                React.createElement("button", { "aria-label": t("atsal"), onClick: () => number.trim() && onCall(number.trim()), disabled: !number.trim(), className: "w-16 h-16 rounded-full flex items-center justify-center", style: { backgroundColor: colors.success, opacity: number.trim() ? 1 : 0.4 } },
+                React.createElement("button", { "aria-label": t("atsal"), onClick: () => ready && onCall(number), disabled: !ready, className: "w-16 h-16 rounded-full flex items-center justify-center", style: { backgroundColor: colors.success, opacity: ready ? 1 : 0.4 } },
                     React.createElement(Phone, { size: 22, color: "#fff" })),
                 number.length > 0 && (React.createElement("button", { onClick: () => setNumber((prev) => prev.slice(0, -1)), className: "w-12 h-12 rounded-full flex items-center justify-center" },
                     React.createElement(Delete, { size: 18, color: colors.textMuted })))))));
@@ -254,7 +258,8 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
         if (v && v.room && window.SawaRTC && window.SawaRTC.enabled() && window.SawaRTC.roomJoin(v.room)) return;   // C8: سجلّ غرفة
         if (v && v.cid && window.SawaRTC && window.SawaRTC.enabled() && window.SawaRTC.groupCall(v.cid, v.callType)) return;   // C7: سجلّ مكالمة جماعيّة
         if (v && cloudCallTo(v.peerUid ? { uid: v.peerUid, name: v.name } : v.name, v.callType)) return;
-        if (v && (v.peerUid || v.uid)) { showToast(CALL_FAIL_MSG(), "error"); return; }   // C14: جهة اتّصالٍ على سوا ⇒ لا شاشة مكالمةٍ وهميّة
+        // C62: لا شاشة مكالمةٍ وهميّة أبداً (كانت «لوحة الأرقام» و«المفضّلة» تفتح واجهةً تجريبيّة تقول «يتصل…» ولا تنتهي)
+        if (v) { showToast(CALL_FAIL_MSG(), "error"); return; }
         setActiveCallRaw(v);
     };
     const [subScreen, setSubScreen] = useState(null); // null | "settings" | "speedDial"
@@ -276,7 +281,8 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
         return (React.createElement(SpeedDialScreen, { speedDialContacts: speedDialContacts, onUpdate: onUpdateSpeedDial, onCall: (name) => { setSubScreen(null); setActiveCall({ name, callType: "audio" }); }, onBack: () => setSubScreen(null) }));
     }
     if (subScreen === "dialPad") {
-        return React.createElement(DialPadScreen, { onCall: (number) => { setSubScreen(null); setActiveCall({ name: number, callType: "audio" }); }, onBack: () => setSubScreen(null) });
+        // C62: الأرقام هنا رمز سوا (10 أرقام) لا رقم هاتف — يفتح بطاقة الشخص: اتصال إن كان جهة اتّصال، أو طلب تواصل
+        return React.createElement(DialPadScreen, { onCall: (number) => { setSubScreen(null); if (window.SawaChat && window.SawaChat.findSheet) window.SawaChat.findSheet(number.replace(/\D/g, "")); else showToast(CALL_FAIL_MSG(), "error"); }, onBack: () => setSubScreen(null) });
     }
     if (subScreen === "newCall") {
         return (React.createElement(NewCallScreen, { onCall: (name, callType) => { setSubScreen(null); setActiveCall({ name, callType }); }, onBack: () => setSubScreen(null) }));

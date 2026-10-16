@@ -1957,6 +1957,30 @@ function PhoneFrame({ children, dir: framedir = "rtl" }) {
         document.head.appendChild(styleEl);
         return () => document.head.removeChild(styleEl);
     }, []);
+    // C62: على الهاتف (أو التطبيق المثبّت، أو أيّ شاشةٍ أضيق من ٦٤٠ أو أقصر من ٧٨٠) يملأ التطبيق الشاشة كلّها —
+    //      كان يُعرض داخل «بطاقة هاتف» بحوافّ زرقاء وزوايا مدوّرة (تصميم معاينة لسطح المكتب) فيضيع جزءٌ من الشاشة.
+    const fullNow = () => {
+        try {
+            const w = window.innerWidth, h = window.innerHeight;
+            const standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true || String(document.referrer || "").indexOf("android-app://") === 0;
+            const touch = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+            return standalone || touch || w < 640 || h < 780;
+        } catch (e) { return true; }
+    };
+    const [full, setFull] = useState(fullNow);
+    useEffect(() => {
+        const on = () => setFull(fullNow());
+        window.addEventListener("resize", on);
+        return () => window.removeEventListener("resize", on);
+    }, []);
+    useEffect(() => {
+        // شريط الحالة ولون خلفيّة الصفحة يطابقان التطبيق حين يملأ الشاشة
+        try { document.documentElement.style.background = document.body.style.background = full ? colors.bg : ""; } catch (e) { }
+    }, [full, colors.bg]);
+    if (full) {
+        return (React.createElement("div", { dir: framedir, className: "w-full flex flex-col", style: { height: "100%", backgroundColor: colors.bg, paddingTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)", boxSizing: "border-box" } },
+            React.createElement("div", { className: "w-full flex-1 min-h-0 flex flex-col overflow-hidden relative", style: { backgroundColor: colors.bg, transform: "translateZ(0)" } }, children)));
+    }
     return (React.createElement("div", { dir: framedir, className: "w-full flex items-center justify-center p-4", style: { height: "100vh", background: `radial-gradient(circle at 25% 15%, ${colors.primary}, ${colors.primaryDark} 70%)` } },
         React.createElement("div", { className: "w-full max-w-md flex flex-col overflow-hidden relative", style: { height: "min(700px, calc(100vh - 32px))", borderRadius: "28px", backgroundColor: colors.bg, boxShadow: "0 30px 60px rgba(0,0,0,0.45)", transform: "translateZ(0)" } }, children)));
 }
