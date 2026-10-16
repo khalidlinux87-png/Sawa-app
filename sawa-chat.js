@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c50";
+  var VERSION = "c52";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -2615,7 +2615,8 @@
       legal.appendChild(lt); legal.appendChild(document.createTextNode(L(" و", " and "))); legal.appendChild(lp);
       ft.appendChild(legal);
       g.onclick = function () {
-        if (!state.uid || !S() || !S().linkGoogle) { toast(L("جارٍ الاتّصال بالخادم… حاول بعد لحظة", "Connecting… try again in a moment")); return; }
+        // C52: لا ننتظر الهويّة المجهولة — sawa-sync يدخل بـGoogle مباشرةً إن لم تكن جاهزة
+        if (!S() || !S().linkGoogle) { toast(L("جارٍ تحميل التطبيق… حاول بعد لحظة", "Still loading… try again in a moment")); return; }
         try { Promise.resolve(S().linkGoogle()).catch(function () {}); } catch (e) {}
       };
       em.onclick = function () { onbGo("email"); };

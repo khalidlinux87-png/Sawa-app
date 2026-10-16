@@ -976,11 +976,22 @@
     });
   }
   function linkGoogle() {
-    if (!hasFirebase() || !state.uid) { toast(L("تعذّر الاتصال بالخادم", "Can't reach the server")); return; }
+    if (!hasFirebase()) { toast(L("تعذّر الاتصال بالخادم", "Can't reach the server")); return; }
     var auth = firebase.auth(), user = auth.currentUser;
     if (user && !user.isAnonymous) { toast(L("حسابك مربوطٌ سلفاً", "Already linked")); return; }
     var provider = new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
+    // C52: لا هويّة بعد (الدخول المجهول ما زال في الطريق على شبكةٍ بطيئة) ⇒ ندخل بـGoogle مباشرةً بدل «جارٍ الاتّصال بالخادم… حاول بعد لحظة»
+    if (!user || !state.uid) {
+      return auth.signInWithPopup(provider).then(function () {
+        return afterLinked(L("دخلتَ بحسابك على Google ✓", "Signed in with Google ✓"));
+      }).catch(function (e) {
+        var code = e && e.code;
+        if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment" || code === "auth/cancelled-popup-request") return auth.signInWithRedirect(provider);
+        if (code === "auth/popup-closed-by-user") return;
+        toast(L("تعذّر الدخول: ", "Sign-in failed: ") + ((e && (e.code || e.message)) || e));
+      });
+    }
     var oldTokP = user.getIdToken();
     // فهرس الهويّة الحالية أوّلاً (يلزم لتبنّيها إن احتجنا)
     indexMine();
@@ -1012,10 +1023,15 @@
   // C10: الدخول بالبريد وكلمة المرور (يعمل على الخطّة المجّانيّة — يُفعَّل مرّةً من Firebase Console ← Authentication ← Email/Password)
   //  mode "create": يربط البريد بالهويّة الحاليّة (نفس uid — لا شيء يضيع) · "signin": حسابٌ قائم ⇒ ندخل به ونتبنّى عائلات هذا الجهاز
   function linkEmail(email, pass, mode) {
-    if (!hasFirebase() || !state.uid) return Promise.reject({ code: "sawa/no-server" });
+    if (!hasFirebase()) return Promise.reject({ code: "sawa/no-server" });
     var auth = firebase.auth(), user = auth.currentUser;
     email = String(email || "").trim().toLowerCase();
     if (user && !user.isAnonymous) return Promise.reject({ code: "sawa/already-linked" });
+    // C52: لا هويّة مجهولة بعد ⇒ إنشاء/دخول مباشر بالبريد
+    if (!user || !state.uid) {
+      var direct = mode === "create" ? auth.createUserWithEmailAndPassword(email, String(pass || "")) : auth.signInWithEmailAndPassword(email, String(pass || ""));
+      return direct.then(function () { return afterLinked(mode === "create" ? L("أُنشئ حسابك بالبريد ✓ — ادخل به من أيّ جهاز", "Account created ✓ — sign in with it on any device") : L("دخلتَ بحسابك ✓", "Signed in ✓")); }).then(function () { return true; });
+    }
     var cred = firebase.auth.EmailAuthProvider.credential(email, String(pass || ""));
     if (mode === "create") {
       indexMine();

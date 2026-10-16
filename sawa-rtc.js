@@ -62,6 +62,8 @@
   // ---------- ربط التطبيق: سجلّ المكالمات + فتح المحادثة ----------
   function bindApp(fns) {
     app = fns || null;
+    // C52: خوادم ICE جاهزة قبل أوّل مكالمة (تُجدَّد كلّ ٢٠ دقيقة في getIce)
+    if (!iceWarm) { iceWarm = true; setTimeout(function () { try { getIce(); } catch (e) {} }, 4000); }
     if (app && app.setCallLog && logQueue.length) { var q = logQueue; logQueue = []; q.forEach(addLog); }
     if (app && app.setScheduledCalls && schedAt) publishSched();
   }
@@ -79,6 +81,7 @@
 
   // ---------- خوادم ICE (STUN + TURN إن وُجد) ----------
   var STUN = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
+  var iceWarm = false;
   function getIce() {
     if (iceCache && Date.now() - iceAt < 20 * 60 * 1000) return Promise.resolve(iceCache);
     return Promise.race([
@@ -88,6 +91,37 @@
       }),
       new Promise(function (r) { setTimeout(function () { r(iceCache || STUN); }, 6000); })
     ]).catch(function () { return iceCache || STUN; });
+  }
+
+  // ---------- C52: ضبط الصوت في SDP ----------
+  // useinbandfec=1: المستقبِل يرمّم الحزم الضائعة من اللاحقة · stereo=0: قناةٌ واحدة تكفي الكلام · maxaveragebitrate=32000: صوتٌ واضح بلا إسراف
+  function tuneSdp(d) {
+    try {
+      if (!d || !d.sdp) return d;
+      var sdp = d.sdp, m = sdp.match(/a=rtpmap:(\d+) opus\/48000\/2/i);
+      if (!m) return d;
+      var pt = m[1], want = "useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=32000;cbr=0";
+      var re = new RegExp("a=fmtp:" + pt + " ([^\r\n]*)");
+      if (re.test(sdp)) sdp = sdp.replace(re, function (all, params) {
+        var keep = params.split(";").filter(function (kv) { return !/^(useinbandfec|stereo|sprop-stereo|maxaveragebitrate|cbr)=/.test(kv.trim()); }).join(";");
+        return "a=fmtp:" + pt + " " + (keep ? keep + ";" : "") + want;
+      });
+      else sdp = sdp.replace(m[0], m[0] + "\r\na=fmtp:" + pt + " " + want);
+      if (typeof d.sdp === "string" && !(d instanceof global.RTCSessionDescription)) { d.sdp = sdp; return d; }
+      return { type: d.type, sdp: sdp };
+    } catch (e) { return d; }
+  }
+  // أولويّة الصوت على الصورة عند ازدحام الشبكة + تفضيل سلاسة الحركة على الدقّة في الصورة
+  function tuneSenders(pc) {
+    try {
+      pc.getSenders().forEach(function (sn) {
+        if (!sn.track || !sn.getParameters) return;
+        var pr = sn.getParameters(); if (!pr.encodings || !pr.encodings.length) pr.encodings = [{}];
+        if (sn.track.kind === "audio") { pr.encodings[0].priority = "high"; pr.encodings[0].networkPriority = "high"; }
+        else { pr.degradationPreference = "balanced"; }
+        sn.setParameters(pr).catch(function () {});
+      });
+    } catch (e) {}
   }
 
   // ---------- الوسائط ----------
@@ -303,7 +337,7 @@
     ui.rv.style.display = vid ? "block" : "none";
     ui.mid.style.visibility = vid && c.state === "connected" ? "hidden" : "visible";
     ui.topName.style.opacity = vid ? "1" : "0";
-    if (vid && c.state === "connected") ui.topName.textContent = (c.name || "") + " · " + statusText(c) + (c.route ? " · " + (c.route === "relay" ? L("عبر وسيط", "relay") : L("مباشر", "direct")) : "");
+    if (vid && c.state === "connected") ui.topName.textContent = (c.name || "") + " · " + statusText(c) + (c.route ? " · " + (c.route === "relay" ? L("عبر وسيط", "relay") : L("مباشر", "direct")) : "") + (c.q != null && c.q <= 1 ? " · " + (c.q === 0 ? L("شبكة سيّئة", "bad network") : L("شبكة ضعيفة", "weak network")) : "");
     if (ui.min) paintPill();
   }
   function paint(c) {
@@ -358,7 +392,7 @@
   }
   function setState(c, s) {
     c.state = s; paint(c);
-    if (s === "connected" && !c.tick) c.tick = setInterval(function () { paintStatus(c); }, 1000);
+    if (s === "connected" && !c.tick) { var n = 0; c.tick = setInterval(function () { paintStatus(c); if (++n % 3 === 0) cStatsTick(c); }, 1000); }
   }
   function listen(c, ref, ev, fn, onErr) {
     var h = ref.on(ev, fn, onErr || function () {});
@@ -411,9 +445,43 @@
       c.pc.getSenders().forEach(function (s) {
         if (!s.track || s.track.kind !== "video" || !s.getParameters) return;
         var p = s.getParameters(); if (!p.encodings || !p.encodings.length) p.encodings = [{}];
-        p.encodings[0].maxBitrate = 600000; s.setParameters(p).catch(function () {});
+        p.encodings[0].maxBitrate = c.lowRes ? 150000 : 600000; s.setParameters(p).catch(function () {});
       });
+      tuneSenders(c.pc);
     } catch (e) {}
+  }
+  // C52: قياس الشبكة كلّ ٣ ثوانٍ في المكالمة الثنائيّة (كما في الغرف): ضعيفة مرّتين ⇒ صورة أخفّ (320×240 · 15 إطاراً · 150 كيلوبت)، تتحسّن ٤ مرّات ⇒ تعود
+  function cStatsTick(c) {
+    if (c.done || !c.pc || c.state !== "connected") return;
+    c.pc.getStats().then(function (rep) {
+      if (c.done) return;
+      var rtt = null, lostIn = 0, recvIn = 0, lostOut = null, pair = null;
+      rep.forEach(function (x) {
+        if (x.type === "transport" && x.selectedCandidatePairId) pair = rep.get(x.selectedCandidatePairId);
+        if (x.type === "inbound-rtp" && x.kind === "audio") { lostIn += x.packetsLost || 0; recvIn += x.packetsReceived || 0; }
+        if (x.type === "remote-inbound-rtp" && x.kind === "audio") { if (typeof x.fractionLost === "number") lostOut = x.fractionLost; if (typeof x.roundTripTime === "number") rtt = x.roundTripTime * 1000; }
+      });
+      if (!pair) rep.forEach(function (x) { if (x.type === "candidate-pair" && x.state === "succeeded" && (x.selected || x.nominated)) pair = pair || x; });
+      if (pair && typeof pair.currentRoundTripTime === "number") rtt = pair.currentRoundTripTime * 1000;
+      var dl = lostIn - (c.sLost || 0), dr = recvIn - (c.sRecv || 0); c.sLost = lostIn; c.sRecv = recvIn;
+      var loss = dr + dl > 0 ? dl / (dr + dl) : 0, q = 3;
+      if (rtt != null && rtt > 700 || loss > 0.15 || (lostOut != null && lostOut > 0.15)) q = 0;
+      else if (rtt != null && rtt > 400 || loss > 0.08 || (lostOut != null && lostOut > 0.08)) q = 1;
+      else if (rtt != null && rtt > 200 || loss > 0.03 || (lostOut != null && lostOut > 0.03)) q = 2;
+      c.q = q; c.rtt = rtt; c.loss = loss;
+      c.qHist = (c.qHist || []).concat([q]).slice(-6);
+      var h = c.qHist, bad = h.length >= 2 && h.slice(-2).every(function (x) { return x <= 1; }), good = h.length >= 4 && h.slice(-4).every(function (x) { return x >= 2; });
+      var vt = c.local && c.local.getVideoTracks()[0];
+      if (bad && !c.lowRes) {
+        c.lowRes = true; capVideo(c);
+        try { if (vt) vt.applyConstraints({ width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } }).catch(function () {}); } catch (e) {}
+        if (c.type === "video" && !c.camOff) toast(L("الشبكة ضعيفة — خفّضتُ جودة الصورة ليبقى الصوت واضحاً", "Weak network — lowered video quality to keep audio clear"));
+      } else if (good && c.lowRes) {
+        c.lowRes = false; capVideo(c);
+        try { if (vt) vt.applyConstraints({ width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } }).catch(function () {}); } catch (e) {}
+      }
+      if (c === cur) paintStatus(c);
+    }).catch(function () {});
   }
   function routeInfo(c) {
     try {
@@ -456,7 +524,7 @@
     delete c.timers.restart;
     if (c.done || !c.pc || c.role !== "caller" || c.state === "connected") return;
     var n = ++c.reN;
-    c.pc.createOffer({ iceRestart: true }).then(function (o) { return c.pc.setLocalDescription(o).then(function () { return o; }); })
+    c.pc.createOffer({ iceRestart: true }).then(function (o) { return c.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); })
       .then(function (o) { return c.ref.update({ reoffer: { type: o.type, sdp: o.sdp, n: n } }); })
       .catch(function (e) { log("restart", e && e.message); });
   }
@@ -474,7 +542,7 @@
       if (c.done) { stopStream(r[0]); return; }
       c.local = r[0]; attachLocal(c); paint(c);
       c.pc = makePc(c, r[1]); addTracks(c);
-      return c.pc.createOffer().then(function (o) { return c.pc.setLocalDescription(o).then(function () { return o; }); }).then(function (o) {
+      return c.pc.createOffer().then(function (o) { return c.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); }).then(function (o) {
         if (c.done) return;
         c.ref = d.ref("calls/" + c.id);
         return c.ref.set({ from: me, to: peer, type: type, fromName: myName() || "", state: "ringing", ts: TS(), offer: sdpOf(o) });
@@ -572,7 +640,7 @@
       var n = v.reoffer.n; c.reSeen = n;
       c.pc.setRemoteDescription({ type: v.reoffer.type, sdp: v.reoffer.sdp })
         .then(function () { return c.pc.createAnswer(); })
-        .then(function (a) { return c.pc.setLocalDescription(a).then(function () { return a; }); })
+        .then(function (a) { return c.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); })
         .then(function (a) { return c.ref.update({ reanswer: { type: a.type, sdp: a.sdp, n: n } }); })
         .catch(function (e) { log("reoffer", e && e.message); });
     }
@@ -596,7 +664,7 @@
         return c.pc.setRemoteDescription(c.offer).then(function () {
           flushIceIn(c); addTracks(c);
           return c.pc.createAnswer();
-        }).then(function (a) { return c.pc.setLocalDescription(a).then(function () { return a; }); }).then(function (a) {
+        }).then(function (a) { return c.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); }).then(function (a) {
           try { c.ref.onDisconnect().update({ state: "ended" }); } catch (e) {}
           flushIceOut(c);
           c.timers.conn = setTimeout(function () { if (!c.connectedAt) finish(c, "failed"); }, CONNECT_MS);
@@ -944,7 +1012,7 @@
   function gRenegotiate(g, p, restart) {
     if (g.done || !p.pc) return;
     p.pc.createOffer(restart ? { iceRestart: true } : undefined)
-      .then(function (o) { return p.pc.setLocalDescription(o).then(function () { return o; }); })
+      .then(function (o) { return p.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); })
       .then(function (o) { gSend(g, p.uid, p.sess, { t: "offer", sdp: o.sdp }); })
       .catch(function (e) { log("goffer", e && e.message); });
   }
@@ -959,7 +1027,7 @@
       if (!p) p = gPeer(g, u, msg.fs, false);
       p.pc.setRemoteDescription({ type: "offer", sdp: msg.sdp })
         .then(function () { gFlush(p); return p.pc.createAnswer(); })
-        .then(function (a) { return p.pc.setLocalDescription(a).then(function () { return a; }); })
+        .then(function (a) { return p.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); })
         .then(function (a) { gSend(g, u, p.sess, { t: "answer", sdp: a.sdp }); })
         .catch(function (e) { log("ganswer", e && e.message); });
     } else if (msg.t === "answer") {
@@ -1639,7 +1707,7 @@
       if (r.sfu !== s || r.done) return;
       if (!b || !b.sessionId) throw new Error((b && b.error) || "sfu unavailable");
       s.sid = b.sessionId;
-      return pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).then(function () {
+      return pc.createOffer().then(function (o) { return pc.setLocalDescription(tuneSdp(o)); }).then(function () {
         s.aName = r.sess + "a";
         return wcall("sfu.push", { room: r.code, sid: s.sid, sdp: pc.localDescription.sdp, tracks: [{ mid: s.atx.mid, trackName: s.aName }] });
       }).then(function (b2) {
@@ -1757,7 +1825,7 @@
     var pc = s.pc;
     return pc.setRemoteDescription({ type: "offer", sdp: b.sdp })
       .then(function () { return pc.createAnswer(); })
-      .then(function (a) { return pc.setLocalDescription(a); })
+      .then(function (a) { return pc.setLocalDescription(tuneSdp(a)); })
       .then(function () { return wcall("sfu.reneg", { room: r.code, sid: s.sid, sdp: pc.localDescription.sdp }); });
   }
   function sfuRepull(r, uid, kind) { var s = r.sfu; if (!s) return; var k = uid + ":" + kind; if (s.pulled[k]) { s.pulled[k].trackName = "~stale"; } delete s.fails[k]; sfuSync(r); }
@@ -1773,7 +1841,7 @@
     s.vtx = pc.addTransceiver(t, { direction: "sendonly" });
     s.vName = r.sess + "v";
     s.busy = true;
-    pc.createOffer().then(function (o) { return pc.setLocalDescription(o); })
+    pc.createOffer().then(function (o) { return pc.setLocalDescription(tuneSdp(o)); })
       .then(function () { return wcall("sfu.push", { room: r.code, sid: s.sid, sdp: pc.localDescription.sdp, tracks: [{ mid: s.vtx.mid, trackName: s.vName }] }); })
       .then(function (b) { if (r.sfu !== s) return; return pc.setRemoteDescription({ type: "answer", sdp: b.sdp }); })
       .then(function () { if (r.sfu !== s) return; rMember(r, { sfu: { s: s.sid, a: s.aName, v: s.vName } }); rCap(r); })
@@ -1855,7 +1923,7 @@
   function rNegotiate(r, p, restart) {
     if (r.done || !p.pc) return;
     p.pc.createOffer(restart ? { iceRestart: true } : undefined)
-      .then(function (o) { return p.pc.setLocalDescription(o).then(function () { return o; }); })
+      .then(function (o) { return p.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); })
       .then(function (o) { rSend(r, p.uid, p.sess, { t: "offer", sdp: o.sdp }); })
       .catch(function (e) { log("roffer", e && e.message); });
   }
@@ -1874,7 +1942,7 @@
         });
         rSenders(r, p); gFlush(p);
         return p.pc.createAnswer();
-      }).then(function (a) { return p.pc.setLocalDescription(a).then(function () { return a; }); })
+      }).then(function (a) { return p.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); })
         .then(function (a) { rSend(r, u, p.sess, { t: "answer", sdp: a.sdp }); })
         .catch(function (e) { log("ranswer", e && e.message); });
     } else if (msg.t === "answer") {
@@ -1896,8 +1964,9 @@
     if (r.sfu && r.sfu.vtx) { try { var sp = r.sfu.vtx.sender.getParameters(); if (!sp.encodings || !sp.encodings.length) sp.encodings = [{}]; sp.encodings[0].maxBitrate = r.lowRes ? 150000 : 350000; r.sfu.vtx.sender.setParameters(sp).catch(function () {}); } catch (e) {} }
     var n = Object.keys(r.peers).length, br = n <= 1 ? 600000 : n <= 3 ? 400000 : 250000;
     if (r.lowRes) br = Math.min(br, 150000);   // C38
+    try { if (r.sfu && r.sfu.pc) tuneSenders(r.sfu.pc); } catch (e) {}
     Object.keys(r.peers).forEach(function (u) {
-      var p = r.peers[u]; if (!p.vt) return;
+      var p = r.peers[u]; if (p.pc) tuneSenders(p.pc); if (!p.vt) return;
       try { var pr = p.vt.sender.getParameters(); if (!pr.encodings || !pr.encodings.length) pr.encodings = [{}]; pr.encodings[0].maxBitrate = br; p.vt.sender.setParameters(pr).catch(function () {}); } catch (e) {}
     });
   }
