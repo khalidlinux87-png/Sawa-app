@@ -230,6 +230,27 @@
   }
   function resumeAudio() { try { document.querySelectorAll("#sawa-call audio, #sawa-gcall audio, #sawa-room audio").forEach(function (a) { if (a.srcObject && a.paused) a.play().catch(function () {}); }); } catch (e) {} }
   try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") resumeAudio(); }); } catch (e) {}
+  // C63: الخروج إلى تطبيقٍ آخر أثناء مكالمة/غرفة — أندرويد يوقف الكاميرا في الخلفيّة (والميكروفون يستمرّ)
+  try {
+    document.addEventListener("visibilitychange", function () {
+      var hidden = document.visibilityState === "hidden";
+      var r = rm;
+      if (r && r.live && !r.done) {
+        if (hidden) { if (r.camOn) { r.camAuto = true; rToggleCam(r); } }
+        else {
+          if (r.camAuto) { r.camAuto = false; setTimeout(function () { if (!r.done && r.live && !r.camOn) rToggleCam(r); }, 400); }
+          // عضويّتي ما زالت قائمة؟ (قد يكون الخادم حذفها أثناء الخلفيّة) ⇒ عودةٌ فوريّة بدل انتظار المستمع
+          rRef(r, "members/" + myUid()).once("value").then(function (x) { if (!r.done && r.live && !x.val()) rRejoin(r); }).catch(function () {});
+        }
+      }
+      var c = cur;
+      if (c && !c.done && c.type === "video" && c.local && !hidden) {
+        // الكاميرا انتهت في الخلفيّة ⇒ نفتحها من جديد بالاتّجاه نفسه
+        var vt = c.local.getVideoTracks()[0];
+        if (vt && vt.readyState === "ended" && !c.switching) { c.facing = c.facing === "user" ? "environment" : "user"; switchCam(); }
+      }
+    });
+  } catch (e) {}
   // C28: «وضع الأذن» — على السمّاعة العاديّة تسودّ الشاشة بعد ٥ ثوانٍ (المتصفّح لا يطفئها ولا يصل إلى حسّاس القرب)،
   //      فلا تلمسها الوجنة، وتعود بالضغط المطوّل أو بتحويل الصوت إلى المكبّر أو بانتهاء المكالمة.
   var earT = null, earEl = null;
@@ -1421,6 +1442,12 @@
   //  شبكة مباشرة ≤ ٨ أشخاص و≤ ٤ كاميرات (حتّى SFU). الصوت والصورة قناتان ثابتتان من البداية ⇒ تشغيل الكاميرا بلا إعادة تفاوض.
   // ============================================================
   var ROOM_MAX = 8, ROOM_CAMS = 4, HOST_GRACE = global.__sawaRoomGraceMs || 12000;
+  function ghostMs() { return global.__sawaGhostMs || 45000; }   // C63: مهلة العضو الغائب عن RTDB وصوته مازال يصل
+  function pcAlive(pc) { try { return !!pc && (pc.connectionState === "connected" || pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed"); } catch (e) { return false; } }
+  function rMediaAlive(r) {
+    if (rBig(r)) return !!(r.sfu && pcAlive(r.sfu.pc));
+    return Object.keys(r.peers).some(function (u) { return pcAlive(r.peers[u].pc); });
+  }
   var SFU_MAX = 30, SFU_CAMS = 6;
   function rBig(r) { return !!(r && r.meta && r.meta.big); }
   function rCap0(r) { return rBig(r) ? SFU_MAX : ROOM_MAX; }
@@ -1579,6 +1606,9 @@
   // C38: مستمعو العضويّة (members/chat/rx تتطلّب أن أكون عضواً): حين تسقط عضويّتي يلغيها الخادم (permission_denied)
   //      ⇒ هذا هو مؤشّر الانقطاع الحقيقيّ، فنعود بـrRejoin ثمّ نعيد الاستماع
   function rWatchMembership(r, firstTime) {
+    // C63: إزالة مستمعي الدورة السابقة قبل إعادة الاستماع (كانوا يتراكمون مع كلّ عودة ⇒ رسائل الدردشة تتكرّر)
+    if (r.memOffs) { r.memOffs.forEach(function (f) { try { f(); } catch (e) {} }); }
+    var n0 = r.offs.length;
     var me = myUid(), first = !!firstTime;
     var cancel = function () { if (r.done || !r.live) return; log("members listener cancelled → rejoin"); rRejoin(r); };
     rListen(r, rRef(r, "members"), "value", function (x) {
@@ -1595,8 +1625,10 @@
       onRMembers(r, mm);
     }, cancel);
     var joinTs = Date.now() - 5000;
-    rListen(r, rRef(r, "chat"), "child_added", function (x) { onRChat(r, x.key, x.val() || {}); });
+    r.chatSeen = r.chatSeen || {};
+    rListen(r, rRef(r, "chat"), "child_added", function (x) { if (r.chatSeen[x.key]) return; r.chatSeen[x.key] = 1; onRChat(r, x.key, x.val() || {}); });
     rListen(r, rRef(r, "rx"), "child_added", function (x) { var v = x.val() || {}; if ((v.ts || 0) > joinTs + (srvOffset || 0) - 10000) rFloat(v.e); });
+    r.memOffs = r.offs.slice(n0);
   }
   function rWatchReqs(r) {
     if (r.reqOff) { r.reqOff(); r.reqOff = null; }
@@ -1626,6 +1658,19 @@
     rRef(r, "kick/" + me).once("value").then(function (s) {
       if (r.done) return;
       if (s.val() === true) { rLeave(r, "kicked"); return; }
+      // C63: الصوت ما زال يتدفّق (انقطع اتّصال قاعدة البيانات وحده — شائع حين يكون التطبيق في الخلفيّة) ⇒ نعيد تسجيل عضويّتنا بالجلسة نفسها فلا يُسقطنا أحد
+      if (rMediaAlive(r)) {
+        // سجلّي السابق كاملاً (في الغرفة الكبيرة فيه معرّفات مساراتي على الوسيط sfu — بدونها يغلق الآخرون صوتي)
+        var rec = Object.assign({}, (r.members && r.members[me]) || {}, { name: myName() || "", sess: r.sess, ts: TS(), mic: r.mic, cam: r.camOn, hand: r.hand, low: r.low });
+        delete rec.ghost;
+        return rRef(r, "members/" + me).set(rec).then(function () {
+          if (r.done) return;
+          try { rRef(r, "members/" + me).onDisconnect().remove(); rRef(r, "sig/" + me).onDisconnect().remove(); } catch (e) {}
+          r.state = "live"; r.rejoining = false; r.softRejoins = (r.softRejoins || 0) + 1; rPaint(r);
+          rWatchMembership(r, false);
+          log("soft rejoin (media alive)");
+        });
+      }
       Object.keys(r.peers).forEach(function (u) { rDrop(r, u); });
       sfuStop(r);
       r.sess = rid(8);
@@ -1648,6 +1693,23 @@
     if (r.done) return;
     var me = myUid();
     if (r.live && !m[me]) { rRejoin(r); return; }   // أزالني المضيف أو سقطت الشبكة — rRejoin تفرّق بينهما
+    // C63: عضوٌ اختفى من القائمة وصوته ما زال يصل (انقطع اتّصاله بقاعدة البيانات فقط — تطبيقٌ آخر أمامه) ⇒ يبقى ٤٥ ثانية ولا نقطع الصوت
+    var prev = r.members || {}, nowT = Date.now();
+    Object.keys(r.peers).forEach(function (u) {
+      var p = r.peers[u];
+      if (m[u]) { p.ghost = 0; return; }
+      var alive = p.sfu ? !!(r.sfu && pcAlive(r.sfu.pc) && r.sfu.pulled[u + ":a"] && r.sfu.pulled[u + ":a"].track && r.sfu.pulled[u + ":a"].track.readyState === "live") : pcAlive(p.pc);   // الغرفة الكبيرة: صوته يصلنا عبر الوسيط
+      if (!prev[u] || prev[u].sess !== p.sess || !alive || (r.kicked && r.kicked[u])) return;
+      if (!p.ghost) p.ghost = nowT;
+      var left = ghostMs() - (nowT - p.ghost);
+      if (left <= 0) return;
+      m[u] = Object.assign({}, prev[u], { ghost: true });
+      if (!r.timers["gh" + u]) r.timers["gh" + u] = setTimeout(function () {
+        delete r.timers["gh" + u];
+        if (r.done) return;
+        rRef(r, "members").once("value").then(function (x) { onRMembers(r, x.val() || {}); }).catch(function () {});
+      }, left + 200);
+    });
     r.members = m;
     Object.keys(r.peers).forEach(function (u) { var p = r.peers[u]; if (!m[u] || m[u].sess !== p.sess) rDrop(r, u); });
     Object.keys(m).forEach(function (u) {
@@ -1900,7 +1962,7 @@
     } catch (e) {}
   }
   function rPeer(r, uid, sess, offerer) {
-    var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: new global.MediaStream() };
+    var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: new global.MediaStream(), pid: rid(6) };   // C63: pid يميّز اتّصالاً جديداً عن إعادة تفاوض
     var pc = p.pc = new global.RTCPeerConnection({ iceServers: r.ice || STUN });
     if (offerer) { p.at = pc.addTransceiver("audio", { direction: "sendrecv" }); p.vt = pc.addTransceiver("video", { direction: "sendrecv" }); rSenders(r, p); }
     pc.onicecandidate = function (e) { if (e.candidate && e.candidate.candidate) rSend(r, uid, sess, { t: "ice", cand: iceJson(e.candidate) }); };
@@ -1914,6 +1976,7 @@
       if (r.done || r.peers[uid] !== p) return;
       if (s === "connected") { p.state = "connected"; clearTimeout(p.lost); p.lost = null; rCap(r); rTile(r, uid); }
       else if (s === "disconnected" || s === "failed") {
+        if (p.ghost) { clearTimeout(r.timers["gh" + uid]); delete r.timers["gh" + uid]; var mm = Object.assign({}, r.members); delete mm[uid]; p.ghost = 0; rDrop(r, uid); onRMembers(r, mm); return; }   // C63
         p.state = "reconnecting"; rTile(r, uid);
         if (p.offerer) setTimeout(function () { if (r.peers[uid] === p && p.state !== "connected") rNegotiate(r, p, true); }, s === "failed" ? 0 : 3000);
         if (!p.lost) p.lost = setTimeout(function () { if (r.peers[uid] === p && p.state !== "connected") { p.state = "lost"; rTile(r, uid); } }, LOST_MS);
@@ -1927,16 +1990,20 @@
     if (r.done || !p.pc) return;
     p.pc.createOffer(restart ? { iceRestart: true } : undefined)
       .then(function (o) { return p.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); })
-      .then(function (o) { rSend(r, p.uid, p.sess, { t: "offer", sdp: o.sdp }); })
+      .then(function (o) { rSend(r, p.uid, p.sess, { t: "offer", sdp: o.sdp, pid: p.pid }); })
       .catch(function (e) { log("roffer", e && e.message); });
   }
   function onRSig(r, msg) {
     if (r.done || msg.tsn !== r.sess || !msg.from) return;
     var u = msg.from, p = r.peers[u];
+    if (msg.t === "bye") { if (p && p.sess === msg.fs) { clearTimeout(r.timers["gh" + u]); delete r.timers["gh" + u]; rDrop(r, u); if (r.members[u] && r.members[u].ghost) { var mm = Object.assign({}, r.members); delete mm[u]; onRMembers(r, mm); } } return; }   // C63
     if (msg.t === "offer") {
       if (p && p.sess !== msg.fs) { rDrop(r, u); p = null; }
+      // C63: عرضٌ من اتّصالٍ جديد عند الطرف الآخر (أسقطني بعد مهلة الغياب ثمّ عاد يعرض) ⇒ اتّصالٌ جديد هنا أيضاً لا إعادة تفاوضٍ على القديم
+      if (p && msg.pid && p.rpid && p.rpid !== msg.pid) { rDrop(r, u); p = null; }
       if (p && p.pc.signalingState === "have-local-offer") { if (myUid() < u) { rDrop(r, u); p = null; } else return; }
       if (!p) p = rPeer(r, u, msg.fs, false);
+      if (msg.pid) p.rpid = msg.pid;
       p.pc.setRemoteDescription({ type: "offer", sdp: msg.sdp }).then(function () {
         p.pc.getTransceivers().forEach(function (t) {
           var k = t.receiver && t.receiver.track && t.receiver.track.kind;
@@ -2120,7 +2187,7 @@
   function rMuteAll() { rHost(null, function (r) { Object.keys(r.members).forEach(function (u) { if (u !== myUid() && r.members[u].mic !== false) rCtl(u, "mute"); }); toast(L("كُتم الجميع", "Everyone muted")); }); }
   function rLowerAll() { rHost(null, function (r) { Object.keys(r.members).forEach(function (u) { if (r.members[u].hand) { if (u === myUid()) rToggleHand(r); else rCtl(u, "lower"); } }); }); }
   function rAdmit(uid, yes) { rHost(null, function (r) { rRef(r, "adm/" + uid).set(!!yes).catch(function () {}); rRef(r, "req/" + uid).remove().catch(function () {}); }); }
-  function rRemove(uid) { rHost(null, function (r) { rRef(r, "kick/" + uid).set(true).then(function () { return rRef(r, "members/" + uid).remove(); }).catch(function (e) { log("kick", e && e.message); }); toast(L("أُزيل ", "Removed ") + rName(r, uid)); }); }
+  function rRemove(uid) { rHost(null, function (r) { (r.kicked = r.kicked || {})[uid] = 1; rRef(r, "kick/" + uid).set(true).then(function () { return rRef(r, "members/" + uid).remove(); }).catch(function (e) { log("kick", e && e.message); }); toast(L("أُزيل ", "Removed ") + rName(r, uid)); }); }
   function rMakeHost(uid) { rHost(null, function (r) { rRef(r, "meta/host").set(uid).catch(function () {}); toast(L("انتقلت الاستضافة إلى ", "Host is now ") + rName(r, uid)); }); }
   function rSetMeta(k, v) { rHost(null, function (r) { rRef(r, "meta/" + k).set(v).catch(function (e) { log("meta", e && e.message); }); }); }
   function rEndAll() { rHost(null, function (r) { rRef(r, "meta/ended").set(true).catch(function () {}); }); }
@@ -2136,6 +2203,8 @@
     for (var k in r.timers) { clearTimeout(r.timers[k]); clearInterval(r.timers[k]); } r.timers = {};
     if (r.tick) clearInterval(r.tick); r.tick = null;
     r.offs.forEach(function (f) { f(); }); r.offs = [];
+    // C63: وداعٌ صريح لكلّ من أتّصل به ⇒ يزيلونني فوراً (لا ينتظرون مهلة الغائب)
+    if (r.live && reason !== "kicked" && reason !== "ended" && reason !== "full" && r.members && r.members[me] && !r.members[me].ghost) Object.keys(r.peers).forEach(function (u) { var pp = r.peers[u]; if (pp && pp.sess && r.members[u] && !r.members[u].ghost) rSend(r, u, pp.sess, { t: "bye" }); });
     Object.keys(r.peers).forEach(function (u) { try { r.peers[u].pc.close(); } catch (e) {} });
     sfuStop(r);
     stopStream(r.local); try { if (r.camTrack) r.camTrack.stop(); } catch (e) {}
@@ -2782,7 +2851,7 @@
     // C8: الغرف
     roomCreate: roomCreate, roomJoin: roomJoin, prejoin: roomPrejoin, roomJoinPrompt: roomJoinPrompt, roomLink: roomLink, newRoomCode: newCode, roomLeave: function () { if (rm) rLeave(rm, "left"); },
     room: function () { var r = rm; return r ? { code: r.code, state: r.state, host: r.meta.host, title: r.title, members: Object.keys(r.members), mic: r.mic, cam: r.camOn, hand: !!r.hand, low: r.low,
-      locked: !!r.meta.locked, lobby: !!r.meta.lobby, chat: r.chat.length, speaker: r.speaker, max: rMax(r), myQ: r.myQ == null ? null : r.myQ, lowRes: !!r.lowRes, rejoins: r.rejoins || 0, sess: r.sess, audioOnly: !!r.meta.audioOnly, pinOn: !!r.meta.pinOn, lockAt: r.meta.lockAt || null, big: rBig(r), sfu: r.sfu ? { sid: r.sfu.sid || null, state: r.sfu.state, ready: !!r.sfu.ready, pulled: Object.keys(r.sfu.pulled).sort() } : null, endText: r.endText || null, peers: Object.keys(r.peers).map(function (u) { return { uid: u, state: r.peers[u].state, q: r.peers[u].q == null ? null : r.peers[u].q }; }) } : null; },
+      locked: !!r.meta.locked, lobby: !!r.meta.lobby, chat: r.chat.length, speaker: r.speaker, max: rMax(r), myQ: r.myQ == null ? null : r.myQ, lowRes: !!r.lowRes, rejoins: r.rejoins || 0, softRejoins: r.softRejoins || 0, sess: r.sess, audioOnly: !!r.meta.audioOnly, pinOn: !!r.meta.pinOn, lockAt: r.meta.lockAt || null, big: rBig(r), sfu: r.sfu ? { sid: r.sfu.sid || null, state: r.sfu.state, ready: !!r.sfu.ready, pulled: Object.keys(r.sfu.pulled).sort() } : null, endText: r.endText || null, peers: Object.keys(r.peers).map(function (u) { return { uid: u, state: r.peers[u].state, q: r.peers[u].q == null ? null : r.peers[u].q }; }) } : null; },
     _rm: function () { return rm; }, _r: { prejoin: roomPrejoin, toggleMic: rToggleMic, toggleCam: rToggleCam, hand: rToggleHand, low: rToggleLow, chat: rSendChat, react: rReact, admit: rAdmit, remove: rRemove,
       makeHost: rMakeHost, ctl: rCtl, muteAll: rMuteAll, lowerAll: rLowerAll, meta: rSetMeta, endAll: rEndAll, summary: rSummaryText, panel: rOpenPanel, settings: rSettings, max: rMax, rejoin: function () { if (rm) rRejoin(rm); }, bigToggle: rBigToggle, sfuRestart: function () { if (rm) sfuRestart(rm, 100); }, adapt: function (q) { if (rm) rAdapt(rm, q); }, stats: function () { if (rm) rStatsTick(rm); } },
     _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming
