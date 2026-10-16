@@ -1067,3 +1067,16 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - **النتيجة (N=1000، CPU 4×):** الفتح **1998 ← 255 ms**. التحقّق: ٦٠ بطاقة أوّلاً ← ٢٤٠ بعد ثلاث تمريرات ← البحث يصل إلى آخر شخص.
 - اختبار: `vis/perf/list51.run.js` + `famtest33 · metest13c · evscreentest · c7apptest` + لقطات `vis/fam` بلا أخطاء.
 - **الرفع:** `app.p3.js` + `sw.js`.
+
+## 🚀 C52 — سرعة الإقلاع والاتّصال بالخادم · جودة المكالمات (١٦ أكتوبر) · sw v252 · index.html · tw.css · sawa-sync c52 · sawa-chat c52 · sawa-rtc c52
+**الإقلاع (لماذا «جارٍ الاتّصال بالخادم… حاول بعد لحظة»):** زرّ Google في شاشة البداية كان يشترط اكتمال **الدخول المجهول** أوّلاً (طلبٌ إلى Google يستغرق ثوانيَ على 4G)، وقبلها كان المتصفّح ينزّل مترجم Tailwind من CDN (~٣٩٠ كيلوبايت يُشغَّل على الهاتف ويفحص الصفحة باستمرار) ثمّ React ثمّ Firebase ثمّ ملفّات سوا **ثمّ** يبدأ تنزيل أجزاء التطبيق التسعة.
+- `index.html`: (١) تنزيل الأجزاء التسعة يبدأ من أوّل سطرٍ في `<head>` بالتوازي مع المكتبات (`window.__sawaParts`؛ المحمِّل السفليّ يستعمله ويحتفظ بمنطق الإصلاح الذاتيّ) · (٢) **`tw.css` مجمَّع (٢٢ كيلوبايت) بدل `cdn.tailwindcss.com`** — يُبنى بـ`twbuild/` (المحتوى: كلّ ملفّات sawa + index، وقائمة أمانٍ لهوامش `ml/mr-*` التي تُبنى ديناميكيّاً) · (٣) `preconnect` إلى unpkg وgstatic والـWorker وFirestore وIdentity وRTDB.
+- `sawa-sync`: `linkGoogle`/`linkEmail` تعملان قبل الهويّة المجهولة — دخولٌ مباشر (`signInWithPopup/Redirect`، `createUser/signInWithEmailAndPassword`). `sawa-chat`: زرّ Google لا ينتظر `state.uid`.
+- `sw.js`: يخزّن `tw.css` مسبقاً.
+**جودة المكالمات (`sawa-rtc`):**
+- **Opus FEC** في كلّ SDP محلّيّ (ثنائيّ، جماعيّ، غرف، SFU): `useinbandfec=1` (ترميم الحزم الضائعة من اللاحقة — يحسّن الصوت على شبكةٍ تفقد الحزم)، `stereo=0`، `maxaveragebitrate=32000` (`tuneSdp`).
+- **أولويّة الصوت** على الصورة عند الازدحام (`priority/networkPriority=high`) و`degradationPreference=balanced` للصورة (`tuneSenders`) — في الثنائيّة والغرف.
+- **تكيّف الجودة في المكالمة الثنائيّة** (كانت ٦٠٠ كيلوبت ثابتة بلا قياس): `getStats` كلّ ٣ ثوانٍ (RTT وفقد الحزم في الاتّجاهين) ⇒ ضعيفة مرّتين: 320×240 · 15 إطاراً · 150 كيلوبت + «الشبكة ضعيفة — خفّضتُ جودة الصورة ليبقى الصوت واضحاً»؛ تتحسّن ٤ مرّات: تعود 640×480. مؤشّر «شبكة ضعيفة/سيّئة» في شريط الفيديو.
+- **ICE مسبقاً** عند الإقلاع (`getIce` بعد ٤ ثوانٍ، يُجدَّد كلّ ٢٠ دقيقة) — كان يُطلب لحظة الاتّصال فيؤخّر أوّل مكالمة.
+- اختبار: `rtctest/run.js` (+٥ C52: FEC في SDP الطرفين، أولويّة الصوت، القياس، ICE قبل الرنين) · `rtest/gtest/vctest/sfutest` كلّها PASS · `vis/boot52.js` (index الجديد يقلع، tw.css يعمل، لا أخطاء) · `synctest33 · chattest · chat14test · review1`.
+- **الرفع (Sawa-app):** `tw.css` و`index.html` (الصق الملفّ كاملاً — إن كنت عدّلت index.html يدويّاً بعد التقسيم فأخبرني) · `sawa-sync.js` · `sawa-chat.js` · `sawa-rtc.js` · `sw.js` · `BUILD.md`. لا خادم ولا قواعد.
