@@ -895,6 +895,9 @@ function FamilyGroupDetailScreen({ group, persons, relations = [], favorites, ot
         return true;
     });
     const proximityOrder = { "A***": 0, "A**": 1, "A*": 2, "A": 3, B: 4, C: 5 };
+    // C51: نافذة عرض للقائمة — أوّل ٦٠ ثمّ ٦٠ أخرى كلّما اقترب التمرير من الأسفل؛ تعود للبداية عند تغيّر البحث/التصفية
+    const [listN, setListN] = useState(60);
+    useEffect(() => { setListN(60); }, [searchQuery, filteredPersons.length]);
     const sortedPersons = [...filteredPersons].sort((a, b) => {
         var _a, _b;
         if (sortBy === "proximity")
@@ -962,7 +965,7 @@ function FamilyGroupDetailScreen({ group, persons, relations = [], favorites, ot
                 React.createElement(CheckCheck, { size: 16, color: colors.success || colors.primary })),
             canEdit && (React.createElement("button", { onClick: () => setConfirmBulkDelete(true), "aria-label": t("hdhf") },
                 React.createElement(Trash2, { size: 16, color: colors.danger }))))),
-        React.createElement("div", { className: "flex-1 overflow-y-auto p-4 pt-3", style: { backgroundColor: colors.bg, paddingBottom: canEdit ? 140 : 90 } },
+        React.createElement("div", { className: "flex-1 overflow-y-auto p-4 pt-3", style: { backgroundColor: colors.bg, paddingBottom: canEdit ? 140 : 90 }, onScroll: (e) => { const el = e.currentTarget; if (listN < sortedPersons.length && el.scrollHeight - el.scrollTop - el.clientHeight < 600) setListN((n) => n + 60); } },
             // شرح يُفتح عند الطلب: النظام لا يحتاج تعلّماً للاستعمال،
             // لكن من يتساءل "من أين جاءت هذه المدد؟" يجد الجواب
             showProximityHelp && React.createElement("div", { className: "rounded-2xl p-3.5 mb-3", style: { backgroundColor: colors.primaryLight } },
@@ -1042,7 +1045,7 @@ function FamilyGroupDetailScreen({ group, persons, relations = [], favorites, ot
                         t("ft_aktb_slsltk")),
                     React.createElement(FamButton, { variant: "soft", icon: GitBranch, label: t("adf_slsla_nsb"), onPress: function () { setShowChainAdd(true); } }))),
             persons.length > 0 && filteredPersons.length === 0 && React.createElement(EmptyState, { icon: Search, label: t("la_twjd_ntayj_mtabqa") }),
-            sortedPersons.map((p) => {
+            sortedPersons.slice(0, listN).map((p) => {
                 var _a;
                 const fav = (_a = favorites[p.id]) !== null && _a !== void 0 ? _a : p.favorite;
                 const showContact = p.alive && p.proximity && !hasNoProximityPerson(p);
