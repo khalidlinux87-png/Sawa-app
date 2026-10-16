@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c57";
+  var VERSION = "c59";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -2262,6 +2262,24 @@
     paint();
     return { go: go, focus: function () { try { em.focus(); } catch (e) {} } };
   }
+  // C59: الضيف لم يكن يجد الربط بـGoogle إلا في «السحابة والمشاركة» — ورقةٌ واحدة بالخيارين
+  function linkSheet() {
+    var a = S() && S().authInfo ? S().authInfo() : null;
+    if (a && !a.anon && a.uid) { toast(L("حسابك مربوطٌ سلفاً", "Already linked") + (a.email ? " — " + a.email : "")); return false; }
+    var s = sheet(L("اربط حسابك", "Link your account"));
+    s.box.appendChild(note(L("حسابك الآن «ضيف» على هذا الهاتف فقط. اربطه بـGoogle أو بالبريد لتدخل به من أيّ جهاز ولا تضيع محادثاتك ورمزك إن غيّرت هاتفك.",
+      "Your account is a guest on this phone only. Link it to Google or email to sign in from any device and keep your chats and code."), "#9a6700", "#fdf3d8"));
+    var gh = mk("div", "display:flex;justify-content:center;min-height:44px;margin:12px 0 8px");
+    var g = mkBtn(L("المتابعة بحساب Google", "Continue with Google"), "primary");
+    s.box.appendChild(gh); s.box.appendChild(g);
+    g.onclick = function () { if (!S() || !S().linkGoogle) { toast(L("جارٍ تحميل التطبيق… حاول بعد لحظة", "Still loading… try again")); return; } s.close(); try { Promise.resolve(S().linkGoogle()).catch(function () {}); } catch (e) {} };
+    if (S() && S().renderGoogleButton) S().renderGoogleButton(gh).then(function (ok) { if (ok) g.style.display = "none"; }, function () { gh.style.display = "none"; }); else gh.style.display = "none";
+    var em = mkBtn(L("بالبريد الإلكتروني", "With email")); em.style.marginTop = "8px"; em.onclick = function () { s.close(); emailSheet(); }; s.box.appendChild(em);
+    var c = mkBtn(L("لاحقاً", "Later"), "ghost"); c.style.marginTop = "6px"; c.onclick = s.close; s.box.appendChild(c);
+    // بعد نجاح الربط تُغلق الورقة وحدها
+    var t = setInterval(function () { var x = authNow(); if (!document.body.contains(s.ov)) { clearInterval(t); return; } if (x && !x.anon && x.uid) { clearInterval(t); s.close(); refresh(); } }, 700);
+    return true;
+  }
   function emailSheet() {
     var a = S() && S().authInfo ? S().authInfo() : null;
     if (a && !a.anon) { toast(L("حسابك مربوطٌ سلفاً", "Already linked") + (a.email ? " — " + a.email : "")); return false; }
@@ -2323,7 +2341,10 @@
       try { if (global.indexedDB) indexedDB.deleteDatabase("firebaseLocalStorageDb"); } catch (e) {}
       try { if (global.indexedDB) indexedDB.deleteDatabase("sawa-media"); } catch (e) {}   // C14: الصور والصوتيّات المنزّلة أيضاً (كما تعد نافذة الحذف)
       try { if (global.indexedDB) indexedDB.deleteDatabase("sawa-e2e"); } catch (e) {}   // C23: مفاتيح المحادثات السرّيّة
-      setTimeout(function () { try { global.location.replace(global.location.pathname); } catch (e) {} }, 700);
+      // C58: ذاكرة Firestore المحلّيّة (C53) وأيّ مخزنٍ آخر — حتى لا تبقى محادثات الحساب السابق على الجهاز
+      try { if (global.indexedDB && indexedDB.databases) indexedDB.databases().then(function (l) { (l || []).forEach(function (d) { if (d && d.name) try { indexedDB.deleteDatabase(d.name); } catch (e) {} }); }).catch(function () {}); } catch (e) {}
+      try { if (global.indexedDB) indexedDB.deleteDatabase("firestore/[DEFAULT]/sawa-test-9770f/main"); } catch (e) {}
+      setTimeout(function () { try { global.location.replace(global.location.pathname); } catch (e) {} }, 900);
     };
     try { firebase.auth().signOut().then(done, done); } catch (e) { done(); }
   }
@@ -2336,8 +2357,23 @@
       s.box.appendChild(note(L("حسابك «ضيف» غير مربوط بـGoogle أو بالبريد — إن خرجت فلن تستطيع العودة إليه أبداً، وتضيع محادثاتك ورمزك.",
         "Your guest account isn't linked to Google or email — signing out loses it forever."), "#b42318", "#fdecec"));
       var lk = mkBtn(L("اربط حسابك أوّلاً", "Link your account first"), "primary");
-      lk.onclick = function () { s.close(); emailSheet(); };
+      lk.onclick = function () { s.close(); linkSheet(); };
       s.box.appendChild(lk);
+      // C58: كان الضيف بلا سبيلٍ للخروج إلا الربط — الآن خيارٌ صريح بتأكيدٍ ثانٍ (مثلاً للدخول بحسابٍ آخر على هذا الجهاز)
+      var out = mkBtn(L("الخروج وترك هذا الحساب", "Sign out and leave this account"), "danger"); out.style.marginTop = "8px";
+      out.onclick = function () {
+        out.style.display = "none"; lk.style.display = "none";
+        s.box.insertBefore(note(L("تأكيد أخير: ستُمسح محادثاتك ورمزك وجهات اتّصالك من هذا الجهاز، ولا تُستعاد. ما وصل الآخرين يبقى عندهم.",
+          "Last confirmation: your chats, code and contacts are erased from this device and cannot be recovered. What others received stays with them."), "#b42318", "#fdecec"), c0);
+        var yes = mkBtn(L("نعم — اخرج ولا تحتفظ بشيء", "Yes — sign out and keep nothing"), "danger"); yes.style.marginTop = "6px";
+        yes.onclick = function () {
+          yes.disabled = true; yes.textContent = "…";
+          var stop = function () { try { stopMyPresence(); } catch (e) {} wipeLocal(); };
+          Promise.race([disablePush().catch(function () {}), new Promise(function (r) { setTimeout(r, 4000); })]).then(stop, stop);
+        };
+        s.box.insertBefore(yes, c0);
+      };
+      s.box.appendChild(out);
       var c0 = mkBtn(L("إلغاء", "Cancel")); c0.style.marginTop = "8px"; c0.onclick = function () { s.close(); }; s.box.appendChild(c0);
       return true;
     }
@@ -3485,7 +3521,7 @@
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
     _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,
     // C10
-    codeSheet: codeSheet, findSheet: findSheet, verifySheet: verifySheet, requestsSheet: requestsSheet, emailSheet: emailSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, reportSheet: reportSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },
+    codeSheet: codeSheet, findSheet: findSheet, verifySheet: verifySheet, requestsSheet: requestsSheet, emailSheet: emailSheet, linkSheet: linkSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, reportSheet: reportSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },
     requestCount: function () { return reqs.incoming.length; }, fmtCode: fmtCode, codeValid: codeValid,
     retryFailed: retryFailed, discardFailed: discardFailed, failedSheet: failedSheet,   // C14
     retryMedia: retryMedia,   // C18
