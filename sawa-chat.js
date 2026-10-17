@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c72";
+  var VERSION = "c73";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -44,6 +44,17 @@
   } catch (e) {}
   // C72: داخل تطبيق أندرويد الأصليّ (WebView + SawaNativeBridge) — الإشعارات عبر FCM الأصليّ لا Web Push
   function NB() { try { return global.SawaNativeBridge || null; } catch (e) { return null; } }
+  // C73: نداءٌ للجسر الأصليّ ينتظر ردّه عبر __sawaNativeCb (السجلّ مشترك مع sawa-sync)
+  function nativeAsk(method, args, ms) {
+    return new Promise(function (res) {
+      var c = global.__sawaNatCbs = global.__sawaNatCbs || {};
+      if (!global.__sawaNativeCb) global.__sawaNativeCb = function (id, r) { var f = c[id]; delete c[id]; if (f) f(r || {}); };
+      var id = method + "_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+      var to = setTimeout(function () { delete c[id]; res({ ok: false, error: "timeout" }); }, ms || 120000);
+      c[id] = function (r) { clearTimeout(to); res(r || {}); };
+      try { var b = NB(), a = args || []; if (a.length === 0) b[method](id); else if (a.length === 1) b[method](a[0], id); else b[method](a[0], a[1], id); } catch (e) { clearTimeout(to); delete c[id]; res({ ok: false, error: String(e) }); }
+    });
+  }
   function swDispatch(msg) {   // يمرّر رسالةً كأنّها من عامل الخدمة (المستمعون نفسهم في sawa-chat و sawa-rtc)
     try { if (global.navigator && navigator.serviceWorker && navigator.serviceWorker.dispatchEvent) { navigator.serviceWorker.dispatchEvent(new MessageEvent("message", { data: msg })); return true; } } catch (e) {}
     return false;
@@ -492,7 +503,18 @@
     return jsqrP;
   }
   function scanSupported() { return !!(global.navigator && navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
+  // C73: في تطبيق أندرويد الأصليّ نستعمل ماسح Google (أسرع ولا يطلب إذن الكاميرا)، وإن لم يتوفّر نعود إلى ماسح الصفحة
   function scanQr() {
+    if (NB() && NB().scanQr) {
+      return nativeAsk("scanQr", [], 180000).then(function (r) {
+        if (r.ok && r.value) return r.value;
+        if (r.cancelled) return null;
+        return scanQrWeb();
+      });
+    }
+    return scanQrWeb();
+  }
+  function scanQrWeb() {
     if (!scanSupported()) return Promise.reject(new Error(L("الكاميرا غير متاحة في هذا المتصفّح — الصق الرابط بدلاً منه", "Camera isn't available here — paste the link instead")));
     return new Promise(function (resolve, reject) {
       var stream, done = false, det = null, detFails = 0, canvas = null, ctx = null;

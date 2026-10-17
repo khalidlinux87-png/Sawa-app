@@ -1054,6 +1054,52 @@ function ReferralSection({ myCode, redeemedCode, onRedeem }) {
                 t("ps_sdg_msjl"))))));
 }
 const MY_SAFETY_NUMBER = "2D23 4077 97D6 FD4D 1345"; // بصمة أمان تجريبية ثابتة — تُقارَن يدوياً مع جهة الاتصال عبر قناة آمنة أخرى
+// C73: قفل التطبيق في تطبيق أندرويد الأصليّ — بالبصمة أو قفل شاشة الهاتف (يتحقّق منه الهاتف نفسه، لا رمزٌ يُحفظ هنا)
+function NativeAppLockCard() {
+    const { colors } = useTheme();
+    const nb = (typeof window !== "undefined" && window.SawaNativeBridge && window.SawaNativeBridge.appLockState) ? window.SawaNativeBridge : null;
+    const read = () => { try { return nb ? JSON.parse(nb.appLockState()) : null; } catch (e) { return null; } };
+    const [st, setSt] = useState(read);
+    const [busy, setBusy] = useState(false);
+    const [msg, setMsg] = useState("");
+    useEffect(() => {
+        if (!nb) return;
+        const prev = window.__sawaNativeLock;
+        window.__sawaNativeLock = (o) => { setSt(o || read()); if (typeof prev === "function") { try { prev(o); } catch (e) {} } };
+        return () => { window.__sawaNativeLock = prev; };
+    }, []);
+    if (!nb || !st) return null;
+    const ask = (on, after) => {
+        if (busy) return;
+        setBusy(true); setMsg("");
+        const c = window.__sawaNatCbs = window.__sawaNatCbs || {};
+        if (!window.__sawaNativeCb) window.__sawaNativeCb = (id, r) => { const f = c[id]; delete c[id]; if (f) f(r || {}); };
+        const id = "lock_" + Date.now();
+        const to = setTimeout(() => { delete c[id]; setBusy(false); }, 120000);
+        c[id] = (r) => {
+            clearTimeout(to); setBusy(false); setSt(read());
+            if (!r.ok) {
+                const e = String(r.error || "");
+                if (e === "no-screen-lock") setMsg(tl("فعّل قفل شاشة الهاتف (بصمة أو رمز) من إعدادات الهاتف أوّلاً", "Set a screen lock (fingerprint or PIN) in your phone settings first"));
+                else if (!/e(10|13|5):/.test(e)) setMsg(tl("لم يكتمل التحقّق", "Verification didn't complete"));
+            }
+        };
+        try { nb.setAppLock(!!on, after, id); } catch (e) { clearTimeout(to); delete c[id]; setBusy(false); }
+    };
+    const opts = [{ v: 0, l: tl("فوراً", "Immediately") }, { v: 60000, l: tl("بعد دقيقة", "After 1 min") }, { v: 300000, l: tl("بعد ٥ دقائق", "After 5 min") }, { v: 1800000, l: tl("بعد ٣٠ دقيقة", "After 30 min") }];
+    return React.createElement(Card, null,
+        React.createElement("div", { className: `flex ${rowStart()} items-center gap-2.5` },
+            React.createElement("button", { onClick: () => ask(!st.on, st.after || 60000), disabled: busy || (!st.available && !st.on), className: "w-11 h-6 rounded-full relative shrink-0", style: { backgroundColor: st.on ? colors.primary : colors.border, opacity: busy ? 0.6 : 1 }, "aria-label": tl("قفل التطبيق", "App lock") },
+                React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [st.on ? "right" : "left"]: 2 } })),
+            React.createElement("span", { className: `text-sm font-bold flex-1 ${textStart()}`, style: { color: colors.text } }, tl("قفل التطبيق بالبصمة", "Fingerprint app lock")),
+            React.createElement(Lock, { size: 16, color: colors.textMuted })),
+        React.createElement("p", { className: `text-[10px] mt-2 ${textStart()}`, style: { color: colors.textMuted } },
+            st.available || st.on
+                ? tl("يُفتح سوا بالبصمة أو برمز قفل الهاتف. المكالمات والإشعارات تصلك وهو مقفل، والردّ على مكالمة لا ينتظر القفل.", "Sawa opens with your fingerprint or phone PIN. Calls and notifications still arrive while locked.")
+                : tl("يحتاج قفل شاشة على الهاتف (بصمة أو رمز أو نمط). فعّله من إعدادات الهاتف ثمّ عُد هنا.", "Needs a phone screen lock (fingerprint, PIN or pattern).")),
+        st.on && React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mt-3` }, opts.map((o) => React.createElement("button", { key: o.v, onClick: () => { if (o.v !== st.after) ask(true, o.v); }, disabled: busy, className: "rounded-full px-3 py-1.5 text-xs border", style: { backgroundColor: st.after === o.v ? colors.primary : colors.card, color: st.after === o.v ? "#fff" : colors.text, borderColor: st.after === o.v ? colors.primary : colors.border } }, o.l))),
+        msg && React.createElement("p", { className: `text-[11px] mt-2 font-bold ${textStart()}`, style: { color: "#c0392b" } }, msg));
+}
 function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiometricEnabled, autoLockDelay, setAutoLockDelay, remainingCodes, onLockNow, onOpenSessions, profilePhoto, setProfilePhoto, interfaceLanguage, setInterfaceLanguage, pinLockEnabled, setPinLockEnabled, browserNotifEnabled, onToggleBrowserNotif, statusOption, setStatusOption, customStatusMessage, setCustomStatusMessage, redeemedReferralCode, onRedeemReferral, blockUnsolicited, setBlockUnsolicited, identityVerified, chatBackupEnabled, setChatBackupEnabled, onDeleteKeys, backendLinked, onUnlink, }) {
     const { colors, isDark, toggleDark, accentKey, setAccentKey, accentThemes, fontScale, setFontScale, highContrast, setHighContrast, dataSaver, setDataSaver } = useTheme();
     const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
@@ -1142,6 +1188,7 @@ function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiome
                     t("ps_tbqa_lk"),
                     remainingCodes,
                     t("ps_mn_10_rmwz")))),
+            React.createElement(NativeAppLockCard, null),
             React.createElement(Card, null,
                 React.createElement("div", { className: `flex ${rowStart()} items-center gap-2.5` },
                     React.createElement("button", { onClick: onToggleBrowserNotif, className: "w-11 h-6 rounded-full relative", style: { backgroundColor: browserNotifEnabled ? colors.primary : colors.border } },

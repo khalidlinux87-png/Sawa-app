@@ -1039,8 +1039,9 @@
   // زرّ Google الرسميّ داخل حاوية (شاشة البداية) — يعيد true إن رُسم
   // C72: داخل تطبيق أندرويد الأصليّ — Google تمنع الدخول من WebView؛ نطلب الحساب من الهاتف نفسه (Credential Manager) ثمّ نكمل بالرمز كما في GIS
   function NB() { try { return global.SawaNativeBridge || null; } catch (e) { return null; } }
-  var natCbs = {}, natSeq = 0;
-  global.__sawaNativeCb = function (id, r) { var f = natCbs[id]; delete natCbs[id]; if (f) f(r || {}); };
+  // C73: سجلّ ردود الجسر الأصليّ مشترك بين الملفّات (الدخول، القفل، ماسح QR)
+  var natCbs = global.__sawaNatCbs = global.__sawaNatCbs || {}, natSeq = 0;
+  global.__sawaNativeCb = function (id, r) { var c = global.__sawaNatCbs || {}, f = c[id]; delete c[id]; if (f) f(r || {}); };
   function nativeGoogle() {
     return new Promise(function (res, rej) {
       var id = "g" + (++natSeq) + "_" + Date.now();
