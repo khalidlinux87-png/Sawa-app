@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c62";
+  var VERSION = "c71";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1633,6 +1633,16 @@
     var fix = mkBtn(L("إعادة تسجيل هذا الجهاز", "Re-register this device")); fix.style.marginTop = "8px";
     var en = mkBtn(st === "denied" ? L("كيف أفتح الإشعارات؟", "How do I unblock?") : L("تفعيل الإشعارات", "Turn on notifications"), "primary"); en.style.marginTop = "8px";
     if (st === "granted") box.appendChild(test); else box.appendChild(en);
+    // C71: الاختبار الحقيقيّ — التطبيق مغلق. يُرسل الخادم بعد ١٥ ثانية؛ أغلق سوا الآن وانتظر
+    var bg = mkBtn(L("🕒 اختبار والتطبيق مغلق (بعد ١٥ ثانية)", "🕒 Test with the app closed (in 15s)")); bg.style.marginTop = "8px";
+    bg.onclick = function () {
+      bg.disabled = true; bg.textContent = "…";
+      call("push.test", { delay: 15000 }).then(function () {
+        bg.textContent = L("أُرسل ✓ — أغلق سوا الآن (زرّ الرئيسيّة) وانتظر ١٥ ثانية", "Queued ✓ — close Sawa now (Home) and wait 15s");
+        toast(L("أغلق التطبيق الآن — سيصلك إشعار بعد ١٥ ثانية إن كانت الإشعارات تعمل في الخلفيّة", "Close the app now — a notification should arrive in 15s"));
+      }, function (e) { bg.disabled = false; bg.textContent = L("🕒 اختبار والتطبيق مغلق (بعد ١٥ ثانية)", "🕒 Test with the app closed (in 15s)"); toast((e && e.message) || String(e)); });
+    };
+    if (st === "granted") box.appendChild(bg);
     if (st === "granted") box.appendChild(fix);
     var tips = note(sa
       ? L("إن قال الخادم «وصل» ولم يظهر شيء على هاتفك:\n١) اضغط مطوّلاً على أيقونة سوا ← «معلومات التطبيق» ← «الإشعارات» ← مسموح.\n٢) في «معلومات التطبيق» أيضاً: «البطاريّة» ← «بلا قيود» (هواتف Tecno/Infinix/Xiaomi/Huawei توقف الخلفية).\n٣) Chrome ← ⋮ ← الإعدادات ← إعدادات الموقع ← الإشعارات ← sawaaap.com مسموح.\nالمكالمات تصل كإشعارٍ يرنّ؛ اضغطه لترُدّ.",
