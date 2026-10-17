@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c69";
+  var VERSION = "c70";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -118,14 +118,26 @@
     } catch (e) { return d; }
   }
   // أولويّة الصوت على الصورة عند ازدحام الشبكة + تفضيل سلاسة الحركة على الدقّة في الصورة
-  function tuneSenders(pc) {
+  // C70: تعديلات المُرسِل تُسلسَل (getParameters ⇒ setParameters بلا تداخل) — تعديلان متزامنان على المُرسِل نفسه يُفشِل الثاني بـ«parameters stale» فتضيع الأولويّة أحياناً
+  function senderTune(sn, fn) {
+    if (!sn || !sn.getParameters) return;
+    var run = function () {
+      try {
+        var pr = sn.getParameters(); if (!pr.encodings || !pr.encodings.length) pr.encodings = [{}];
+        fn(pr);
+        return sn.setParameters(pr).catch(function () {});
+      } catch (e) { return Promise.resolve(); }
+    };
+    sn.__q = (sn.__q || Promise.resolve()).then(run, run);
+  }
+  function tuneSenders(pc, videoBitrate) {
     try {
       pc.getSenders().forEach(function (sn) {
-        if (!sn.track || !sn.getParameters) return;
-        var pr = sn.getParameters(); if (!pr.encodings || !pr.encodings.length) pr.encodings = [{}];
-        if (sn.track.kind === "audio") { pr.encodings[0].priority = "high"; pr.encodings[0].networkPriority = "high"; }
-        else { pr.degradationPreference = "balanced"; }
-        sn.setParameters(pr).catch(function () {});
+        if (!sn.track) return;
+        senderTune(sn, function (pr) {
+          if (sn.track && sn.track.kind === "audio") { pr.encodings[0].priority = "high"; pr.encodings[0].networkPriority = "high"; }
+          else { pr.degradationPreference = "balanced"; if (videoBitrate) pr.encodings[0].maxBitrate = videoBitrate; }
+        });
       });
     } catch (e) {}
   }
@@ -472,16 +484,7 @@
   function addTracks(c) {
     c.local.getTracks().forEach(function (t) { c.pc.addTrack(t, c.local); });
   }
-  function capVideo(c) {
-    try {
-      c.pc.getSenders().forEach(function (s) {
-        if (!s.track || s.track.kind !== "video" || !s.getParameters) return;
-        var p = s.getParameters(); if (!p.encodings || !p.encodings.length) p.encodings = [{}];
-        p.encodings[0].maxBitrate = c.lowRes ? 150000 : 600000; s.setParameters(p).catch(function () {});
-      });
-      tuneSenders(c.pc);
-    } catch (e) {}
-  }
+  function capVideo(c) { try { tuneSenders(c.pc, c.lowRes ? 150000 : 600000); } catch (e) {} }
   // C52: قياس الشبكة كلّ ٣ ثوانٍ في المكالمة الثنائيّة (كما في الغرف): ضعيفة مرّتين ⇒ صورة أخفّ (320×240 · 15 إطاراً · 150 كيلوبت)، تتحسّن ٤ مرّات ⇒ تعود
   function cStatsTick(c) {
     if (c.done || !c.pc || c.state !== "connected") return;
@@ -1552,7 +1555,7 @@
   }
   function rJoinWatch(r, code, opts) {
     var t1 = setTimeout(function () {
-      if (r.done || r.state === "live" || r.state === "waiting") return;
+      if (r.done || r.live || r.state === "live" || r.state === "waiting") return;
       var why = rStuckWhy(r);
       log("join stuck at", r.step, why.key, Date.now() - r.t0, "ms");
       if (why.key === "db" && dbNudge("join stuck")) { /* الهزّة قد تكفي */ }
@@ -1567,7 +1570,7 @@
       }
     }, 12000);
     var t2 = setTimeout(function () {
-      if (r.done || r.state === "live" || r.state === "waiting") return;
+      if (r.done || r.live || r.state === "live" || r.state === "waiting") return;
       var why = rStuckWhy(r);
       rui.cS.textContent = why.text;
       var row = el("div", "display:flex;gap:8px;justify-content:center;margin-top:10px");
@@ -2101,14 +2104,11 @@
     rTile(r, uid);
   }
   function rCap(r) {
-    if (r.sfu && r.sfu.vtx) { try { var sp = r.sfu.vtx.sender.getParameters(); if (!sp.encodings || !sp.encodings.length) sp.encodings = [{}]; sp.encodings[0].maxBitrate = r.lowRes ? 150000 : 350000; r.sfu.vtx.sender.setParameters(sp).catch(function () {}); } catch (e) {} }
     var n = Object.keys(r.peers).length, br = n <= 1 ? 600000 : n <= 3 ? 400000 : 250000;
     if (r.lowRes) br = Math.min(br, 150000);   // C38
-    try { if (r.sfu && r.sfu.pc) tuneSenders(r.sfu.pc); } catch (e) {}
-    Object.keys(r.peers).forEach(function (u) {
-      var p = r.peers[u]; if (p.pc) tuneSenders(p.pc); if (!p.vt) return;
-      try { var pr = p.vt.sender.getParameters(); if (!pr.encodings || !pr.encodings.length) pr.encodings = [{}]; pr.encodings[0].maxBitrate = br; p.vt.sender.setParameters(pr).catch(function () {}); } catch (e) {}
-    });
+    // C70: تعديلٌ واحد مُسلسَل لكلّ مُرسِل (كان تعديلان متداخلان ⇒ «parameters stale»)
+    try { if (r.sfu && r.sfu.pc) tuneSenders(r.sfu.pc, r.lowRes ? 150000 : 350000); } catch (e) {}
+    Object.keys(r.peers).forEach(function (u) { var p = r.peers[u]; if (p.pc) tuneSenders(p.pc, br); });
   }
 
   // ---------- C38: جودة الشبكة (getStats كلّ ٣ ثوانٍ): 3 ممتاز · 2 جيّد · 1 ضعيف · 0 سيّئ ----------
@@ -2275,12 +2275,12 @@
     if (r.tick) clearInterval(r.tick); r.tick = null;
     r.offs.forEach(function (f) { f(); }); r.offs = [];
     // C63: وداعٌ صريح لكلّ من أتّصل به ⇒ يزيلونني فوراً (لا ينتظرون مهلة الغائب)
-    if (r.live && reason !== "kicked" && reason !== "ended" && reason !== "full" && r.members && r.members[me] && !r.members[me].ghost) Object.keys(r.peers).forEach(function (u) { var pp = r.peers[u]; if (pp && pp.sess && r.members[u] && !r.members[u].ghost) rSend(r, u, pp.sess, { t: "bye" }); });
+    if (r.live && reason !== "kicked" && reason !== "ended" && reason !== "full" && reason !== "retry" && r.members && r.members[me] && !r.members[me].ghost) Object.keys(r.peers).forEach(function (u) { var pp = r.peers[u]; if (pp && pp.sess && r.members[u] && !r.members[u].ghost) rSend(r, u, pp.sess, { t: "bye" }); });
     Object.keys(r.peers).forEach(function (u) { try { r.peers[u].pc.close(); } catch (e) {} });
     sfuStop(r);
     stopStream(r.local); try { if (r.camTrack) r.camTrack.stop(); } catch (e) {}
     stopTone(); wakeOff();
-    if (ref && me) {
+    if (ref && me && reason !== "retry") {   // C70: إعادة المحاولة الصامتة لا تحذف شيئاً من الخادم
       try { ref.child("members/" + me).onDisconnect().cancel(); ref.child("sig/" + me).onDisconnect().cancel(); ref.child("req/" + me).onDisconnect().cancel(); } catch (e) {}
       if (r.state === "waiting") ref.child("req/" + me).remove().catch(function () {});
       if (r.live && reason !== "kicked") {
@@ -2300,7 +2300,7 @@
         }).catch(function () {});
       }
     }
-    if (r.live) addLog({ id: "room-" + r.code + "-" + r.sess, name: "🎥 " + (r.title || L("غرفة سوا", "Sawa room")), callType: "video", type: "outgoing",
+    if (r.live && reason !== "retry") addLog({ id: "room-" + r.code + "-" + r.sess, name: "🎥 " + (r.title || L("غرفة سوا", "Sawa room")), callType: "video", type: "outgoing",
       time: L("الآن", "Now"), duration: r.joinedAt ? fmt(Math.max(1, Math.round((Date.now() - r.joinedAt) / 1000))) : null, timestamp: Date.now(),
       participants: Object.keys(r.met).map(function (u) { return r.met[u]; }), cloud: true, room: r.code });
     if (rm === r) rm = null;
