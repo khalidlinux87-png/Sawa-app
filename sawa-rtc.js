@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c71";
+  var VERSION = "c72";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -258,9 +258,16 @@
   }
   // زرّ «إنهاء» في الإشعار ⇒ عامل الخدمة يرسل sawa-hangup
   try { if (global.navigator && navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", function (ev) { var m = ev.data || {}; if (m.type === "sawa-hangup" && ongoingEnd) { try { ongoingEnd(); } catch (e) {} } }); } catch (e) {}
+  // C72: تطبيق أندرويد الأصليّ — خدمةٌ أماميّة حقيقيّة (CallService) بدل الصوت الخافت وإشعار عامل الخدمة
+  function NB() { try { return global.SawaNativeBridge || null; } catch (e) { return null; } }
+  var wantAnswer = {};
+  global.__sawaNativeHangup = function () { if (ongoingEnd) { try { ongoingEnd(); } catch (e) {} } };
+  global.__sawaNativeDecline = function (id) { if (cur && cur.id === id && cur.state === "incoming") decline(); };
+  function nativeCallDone(id) { try { if (NB() && id) NB().callDone(String(id)); } catch (e) {} }
   function bgAudio(on, title, onEnd) {
     ongoingEnd = on ? onEnd : null;
-    keepAlive(!!on); ongoingNote(!!on, title);
+    if (NB()) { try { NB().setInCall(!!on, String(title || "")); } catch (e) {} }
+    else { keepAlive(!!on); ongoingNote(!!on, title); }
     try {
       var ms = navigator.mediaSession; if (!ms) return;
       if (!on) { try { ms.metadata = null; } catch (e) {} ms.playbackState = "none"; ["hangup", "pause", "play", "stop"].forEach(function (a) { try { ms.setActionHandler(a, null); } catch (e) {} }); return; }
@@ -689,7 +696,10 @@
       }
       var c = cur = newCall({ id: id, role: "callee", peer: v.from, name: name, type: v.type === "video" ? "video" : "audio", state: "incoming", ref: ref, inbox: inbox, offer: v.offer });
       c.live = true;
-      show(c); playTone("ring");
+      show(c);
+      // C72: التطبيق الأصليّ في الخلفيّة يرنّ بنغمة الهاتف — لا نرنّ مرّتين
+      if (!(NB() && document.visibilityState === "hidden")) playTone("ring");
+      if (wantAnswer[id]) { delete wantAnswer[id]; setTimeout(function () { if (cur === c && c.state === "incoming") accept(false); }, 250); }
       listen(c, ref, "value", function (s) { onCalleeValue(c, s.val()); }, function () { finish(c, "remote", { remote: true }); });
       c.timers.ring = setTimeout(function () { if (c.state === "incoming") finish(c, "missed", { remote: true }); }, RING_MS + 5000);
       getIce();   // تجهيزٌ مسبق
@@ -712,6 +722,7 @@
   }
   function accept(audioOnly) {
     var c = cur; if (!c || c.role !== "callee" || c.state !== "incoming") return;
+    nativeCallDone(c.id);   // C72: أوقف رنين الهاتف
     stopTone(); clearTimeout(c.timers.ring);
     setState(c, "connecting");
     var mediaType = audioOnly ? "audio" : c.type;
@@ -794,6 +805,7 @@
   };
   function finish(c, reason, opts) {
     if (!c || c.done) return;
+    if (c.role === "callee") nativeCallDone(c.id);   // C72
     opts = opts || {}; c.done = true; clearCallNotifications(); earOff(); bgAudio(false);
     clearTimers(c); stopTone(); wakeOff();
     c.offs.forEach(function (f) { f(); }); c.offs = [];
@@ -3005,14 +3017,21 @@
     var id = null;
     try { id = new URLSearchParams(global.location.search).get("call"); } catch (e) {}
     if (!id) return;
-    try { var u = new URL(global.location.href); u.searchParams.delete("call"); global.history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + u.hash); } catch (e) {}
+    try { if (new URLSearchParams(global.location.search).get("answer") === "1") wantAnswer[id] = 1; } catch (e) {}   // C72: «ردّ» من شاشة الهاتف
+    try { var u = new URL(global.location.href); u.searchParams.delete("call"); u.searchParams.delete("answer"); global.history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + u.hash); } catch (e) {}
     whenUid(function () { setTimeout(function () { if (/^[gs]/.test(id)) groupIncoming(id); else incoming(id); }, 300); });
   }
   try {
     if (global.navigator && navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", function (ev) {
       var m = ev.data || {};
-      if ((m.type === "sawa-open" || m.type === "sawa-push") && m.data && m.data.t === "call" && m.data.call)
-        whenUid(function () { if (m.data.gid) groupIncoming(m.data.gid, { from: m.data.from, fromName: m.data.fromName }); else incoming(m.data.call); });
+      if ((m.type === "sawa-open" || m.type === "sawa-push") && m.data && m.data.t === "call" && m.data.call) {
+        if (m.data.answer) wantAnswer[m.data.call] = 1;
+        whenUid(function () {
+          if (m.data.gid) { groupIncoming(m.data.gid, { from: m.data.from, fromName: m.data.fromName }); return; }
+          if (m.data.answer && cur && cur.id === m.data.call && cur.state === "incoming") { delete wantAnswer[m.data.call]; accept(false); return; }
+          incoming(m.data.call);
+        });
+      }
       if (m.type === "sawa-push" && m.data && m.data.t === "sched") schedRefresh(true);
       if (m.type === "sawa-open" && m.data && m.data.room) whenUid(function () { roomPrejoin(m.data.room); });
     });

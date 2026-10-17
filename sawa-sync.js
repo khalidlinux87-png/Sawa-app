@@ -1037,7 +1037,29 @@
     return auth.signInWithCredential(cred).then(function () { return afterLinked(L("دخلتَ بحسابك على Google ✓", "Signed in with Google ✓")); });
   }
   // زرّ Google الرسميّ داخل حاوية (شاشة البداية) — يعيد true إن رُسم
+  // C72: داخل تطبيق أندرويد الأصليّ — Google تمنع الدخول من WebView؛ نطلب الحساب من الهاتف نفسه (Credential Manager) ثمّ نكمل بالرمز كما في GIS
+  function NB() { try { return global.SawaNativeBridge || null; } catch (e) { return null; } }
+  var natCbs = {}, natSeq = 0;
+  global.__sawaNativeCb = function (id, r) { var f = natCbs[id]; delete natCbs[id]; if (f) f(r || {}); };
+  function nativeGoogle() {
+    return new Promise(function (res, rej) {
+      var id = "g" + (++natSeq) + "_" + Date.now();
+      var to = setTimeout(function () { delete natCbs[id]; rej(new Error("timeout")); }, 120000);
+      natCbs[id] = function (r) {
+        clearTimeout(to);
+        if (r.ok && r.idToken) res(r.idToken);
+        else rej(new Error(r.error || "cancelled"));
+      };
+      try { NB().googleSignIn(id); } catch (e) { clearTimeout(to); delete natCbs[id]; rej(e); }
+    }).then(function (tok) { return googleCredential(tok); }, function (e) {
+      var m = String((e && e.message) || e);
+      if (/Cancel/i.test(m)) return;   // أغلق المستخدم النافذة
+      if (/NoCredential/i.test(m)) { toast(L("لا يوجد حساب Google على هذا الهاتف — أضفه من إعدادات الهاتف ← الحسابات", "No Google account on this phone — add one in Settings → Accounts")); return; }
+      toast(L("تعذّر الدخول بـGoogle: ", "Google sign-in failed: ") + m.slice(0, 120));
+    });
+  }
   function renderGoogleButton(host) {
+    if (NB()) return Promise.reject(new Error("native"));   // زرّنا الاحتياطيّ يظهر ويستدعي linkGoogle ⇒ الدخول الأصليّ
     return loadGsi().then(function (id) {
       gsiReady(id);
       host.innerHTML = "";
@@ -1062,6 +1084,7 @@
     }).catch(function () { return false; });
   }
   function isStandaloneApp() {
+    if (NB()) return true;
     try { if (global.matchMedia && global.matchMedia("(display-mode: standalone)").matches) return true; } catch (e) {}
     try { if (global.navigator.standalone === true) return true; } catch (e) {}
     try { if (String(document.referrer || "").indexOf("android-app://") === 0) return true; } catch (e) {}
@@ -1069,6 +1092,7 @@
   }
   function linkGoogle() {
     if (!hasFirebase()) { toast(L("تعذّر الاتصال بالخادم", "Can't reach the server")); return; }
+    if (NB()) return nativeGoogle();
     // C54: في التطبيق المثبّت لا إعادة توجيه — GIS أوّلاً، وإن لم يُعرض نعود للنافذة المنبثقة
     if (isStandaloneApp()) {
       return gisPrompt().then(function (ok) { if (ok) return; return linkGoogleLegacy(); });

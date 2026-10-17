@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c71";
+  var VERSION = "c72";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -42,7 +42,36 @@
     global.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); instPrompt = e; try { global.dispatchEvent(new CustomEvent("sawa-install-state")); } catch (x) {} });
     global.addEventListener("appinstalled", function () { instPrompt = null; lsSet("sawa_installed", Date.now()); try { global.dispatchEvent(new CustomEvent("sawa-install-state")); } catch (x) {} });
   } catch (e) {}
+  // C72: داخل تطبيق أندرويد الأصليّ (WebView + SawaNativeBridge) — الإشعارات عبر FCM الأصليّ لا Web Push
+  function NB() { try { return global.SawaNativeBridge || null; } catch (e) { return null; } }
+  function swDispatch(msg) {   // يمرّر رسالةً كأنّها من عامل الخدمة (المستمعون نفسهم في sawa-chat و sawa-rtc)
+    try { if (global.navigator && navigator.serviceWorker && navigator.serviceWorker.dispatchEvent) { navigator.serviceWorker.dispatchEvent(new MessageEvent("message", { data: msg })); return true; } } catch (e) {}
+    return false;
+  }
+  global.__sawaNativePush = function (j) { try { var d = typeof j === "string" ? JSON.parse(j) : j; if (d) swDispatch({ type: "sawa-push", data: d }); } catch (e) {} };
+  // رابطٌ وصل التطبيقَ وهو مفتوح (نقر إشعار/ردّ على مكالمة/رابط سوا) ⇒ نعالجه في مكانه بلا إعادة تحميل
+  global.__sawaNativeOpen = function (url) {
+    try {
+      var u = new URL(url, global.location.href), p = u.searchParams, d = null;
+      if (p.get("call")) d = { t: "call", call: p.get("call"), answer: p.get("answer") === "1" ? 1 : 0 };
+      else if (p.get("room")) d = { room: p.get("room") };
+      else if (p.get("chat")) d = { cid: p.get("chat") };
+      else if (p.get("requests")) d = { t: "req" };
+      else if (p.get("contact")) return false;   // دعوة: تحميلٌ كامل يعالجها
+      if (d) return swDispatch({ type: "sawa-open", data: d });
+      return true;
+    } catch (e) { return false; }
+  };
+  var natTokWait = [];
+  global.__sawaNativeToken = function (tok) {
+    var w = natTokWait; natTokWait = []; w.forEach(function (f) { try { f(tok); } catch (e) {} });
+    // رمزٌ جديد من أندرويد (تجديد) ⇒ تسجيلٌ فوريّ
+    try { if (tok && state.uid && pushState() === "granted") registerToken(tok).catch(function () {}); } catch (e) {}
+  };
+  var natPermWait = [];
+  global.__sawaNativePerm = function (st) { var w = natPermWait; natPermWait = []; w.forEach(function (f) { try { f(st); } catch (e) {} }); emitPush(); };
   function isStandalone() {
+    if (NB()) return true;
     try { if (global.matchMedia && global.matchMedia("(display-mode: standalone)").matches) return true; } catch (e) {}
     try { if (global.navigator.standalone === true) return true; } catch (e) {}
     try { if (String(document.referrer || "").indexOf("android-app://") === 0) return true; } catch (e) {}
@@ -1496,10 +1525,17 @@
   // ==================================================================
   var VAPID_KEY = "BIXTjlI7zsibBBqZXkdIGu7tEnqVKf9Rf63v20ZdfNiNs6jj5olbf-a1SJ1SpnNm3OcC807QpPEUR7GrwMAuGdw";   // ← مفتاح Web Push العامّ (Firebase Console ← Cloud Messaging ← Web Push certificates)
   function pushSupported() {
+    if (NB()) return true;
     try { return !!(VAPID_KEY && global.navigator && navigator.serviceWorker && global.PushManager && global.Notification && firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()); }
     catch (e) { return false; }
   }
   function pushToken() {
+    if (NB()) return new Promise(function (res, rej) {
+      var t = ""; try { t = NB().fcmToken(); } catch (e) {}
+      if (t) return res(t);
+      var to = setTimeout(function () { rej(new Error("no native token")); }, 20000);
+      natTokWait.push(function (x) { clearTimeout(to); if (x) res(x); else rej(new Error("no native token")); });
+    });
     return navigator.serviceWorker.ready.then(function (reg) { return firebase.messaging().getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg }); });
   }
   function registerToken(tok) {
@@ -1510,6 +1546,7 @@
   }
   function isIOS() { return /iPhone|iPad|iPod/.test(navigator.userAgent || ""); }
   function pushState() {   // "granted" | "default" | "denied" | "off" (سُمح ثمّ أوقفه المستخدم من سوا) | "unsupported"
+    if (NB()) { var np = "default"; try { np = NB().notifPermission() || "default"; } catch (e) {} if (np === "granted" && lsGet("sawa_push_off", 0)) return "off"; return np; }
     if (!pushSupported()) return "unsupported";
     var p; try { p = Notification.permission; } catch (e) { return "unsupported"; }
     if (p === "granted" && lsGet("sawa_push_off", 0)) return "off";
@@ -1524,6 +1561,23 @@
           "Notifications are blocked for Sawa. Do both, then reopen Sawa:\n1) Long-press the Sawa icon → App info → Notifications → Allow.\n2) Open Chrome → ⋮ → Settings → Site settings → Notifications → find sawaaap.com → Allow (or remove it from the Blocked list).");
   }
   function enablePush() {
+    if (NB()) {   // C72: إذن أندرويد ثمّ رمز FCM الأصليّ
+      try { localStorage.removeItem("sawa_push_off"); } catch (e) {}
+      return new Promise(function (res) {
+        var done = false, fin = function (st) {
+          if (done) return; done = true;
+          if (st !== "granted") { emitPush(); toast(L("لم تُفعَّل الإشعارات — فعّلها من إعدادات التطبيق", "Notifications weren't turned on")); return res(false); }
+          lsSet("sawa_push", {});
+          pushToken().then(registerToken).then(function () { toast(L("الإشعارات مفعّلة ✓", "Notifications on ✓")); hideBanner(); emitPush(); res(true); },
+            function (e) { toast(L("تعذّر تفعيل الإشعارات: ", "Couldn't enable notifications: ") + ((e && e.message) || e)); res(false); });
+        };
+        natPermWait.push(fin);
+        try { NB().requestNotifPermission(); } catch (e) { fin("denied"); }
+        // صفحة الإعدادات لا ترجع بنتيجة ⇒ نفحص عند العودة إلى التطبيق
+        var chk = setInterval(function () { if (done) { clearInterval(chk); return; } if (pushState() === "granted") { clearInterval(chk); fin("granted"); } }, 1500);
+        setTimeout(function () { clearInterval(chk); if (!done) fin(pushState()); }, 60000);
+      });
+    }
     if (!VAPID_KEY) { toast(L("الإشعارات لم تُفعَّل بعد في هذا الإصدار", "Notifications aren't set up in this version yet")); return Promise.resolve(false); }
     if (!pushSupported()) { toast(L("هذا المتصفّح لا يدعم الإشعارات" + (isIOS() ? " — على آيفون ثبّت التطبيق على الشاشة الرئيسيّة أوّلاً" : ""), "This browser doesn't support notifications")); return Promise.resolve(false); }
     var perm0; try { perm0 = Notification.permission; } catch (e) {}
@@ -1577,6 +1631,7 @@
     if (st === "default" || st === "denied") return maybeBanner(st);
     if (st !== "granted") return;
     var prev = lsGet("sawa_push", {});
+    if (NB()) { pushToken().then(registerToken).catch(function (e) { log("native token:", (e && e.message) || e); }); return; }   // C72: أندرويد يجدّد رمزه وحده (onNewToken)
     resubFlagged().then(function (flag) {
       if (flag) return rotateToken("subscription changed");
       if (prev.token && prev.ts && Date.now() - prev.ts > PUSH_ROTATE_MS && navigator.onLine !== false) return rotateToken("weekly");
@@ -1623,7 +1678,8 @@
     var row = function (k, v, good) { var r = mk("div", "display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f6;font:600 13px system-ui"); r.appendChild(mk("span", "color:#5b6b7c", k)); r.appendChild(mk("span", "color:" + (good === true ? "#2e7d5b" : good === false ? "#b42318" : "#1A1A2E") + ";text-align:" + (isAr() ? "left" : "right"), v)); return r; };
     var st = pushState(), sup = pushSupported(), reg = lsGet("sawa_push", {}), sa = isStandalone();
     var box = s.box;
-    box.appendChild(row(L("طريقة الفتح", "Opened as"), sa ? L("تطبيقٌ مثبّت", "Installed app") : L("متصفّح", "Browser")));
+    var nbp = ""; try { nbp = NB() ? NB().platform() : ""; } catch (e) {}
+    box.appendChild(row(L("طريقة الفتح", "Opened as"), nbp ? L("تطبيق أندرويد الأصليّ ", "Native Android app ") + nbp.replace("android/", "v") : sa ? L("تطبيقٌ مثبّت", "Installed app") : L("متصفّح", "Browser")));
     box.appendChild(row(L("دعم المتصفّح", "Browser support"), sup ? L("مدعوم ✓", "Supported ✓") : L("غير مدعوم", "Not supported"), sup));
     box.appendChild(row(L("إذن الإشعارات", "Permission"), st === "granted" ? L("مسموح ✓", "Granted ✓") : st === "denied" ? L("محظور ✗", "Blocked ✗") : st === "off" ? L("موقوف من سوا", "Off in Sawa") : st === "default" ? L("لم يُطلب بعد", "Not asked yet") : "—", st === "granted" ? true : st === "default" ? null : false));
     box.appendChild(row(L("هذا الجهاز مسجّل", "This device registered"), reg.token && reg.uid === state.uid ? L("نعم ✓ — ", "Yes ✓ — ") + timeAgo(reg.ts || 0) : L("لا ✗", "No ✗"), !!(reg.token && reg.uid === state.uid)));
