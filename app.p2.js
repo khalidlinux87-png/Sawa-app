@@ -1854,6 +1854,11 @@ function describeKinship(aId, bId, persons, relations) {
     return null;
 }
 // C75: القرابة كما تُعرض لشخص — المحسوبة بوصفها الكامل («الأخ الشقيق»، «بنت ابن العم»)، وإلّا المخزَّنة
+// C80: الاسم الأوّل — إلّا المركّب: «أم كلثوم»، «عبد الله»، «أبو بكر» (كان يظهر «أبناء أم»)
+function shortName(n) {
+    const w = String(n || "").trim().split(/\s+/);
+    return (w.length > 1 && /^(أم|ام|أبو|ابو|أبي|عبد|ست|نور|سيد|شيخ)$/.test(w[0])) ? w[0] + " " + w[1] : w[0];
+}
 function personKinLabel(p) {
     if (!p) return "";
     if (p.kinLabel && isRTL()) return p.kinLabel;

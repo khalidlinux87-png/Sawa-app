@@ -2262,6 +2262,7 @@ function FamilyTreeScreen({ onChangeParent, groupId, persons, relations, canEdit
     const [changingParent, setChangingParent] = useState(null);   // C79: { child, gender }
     const [endingRelId, setEndingRelId] = useState(null); // خطوة التأكيد قبل إنهاء الزواج
     const [linkPicker, setLinkPicker] = useState(null); // {person, relKey} للربط بموجود
+    const [linkQ, setLinkQ] = useState("");   // C80: بحثٌ في «ربط فلان»
     const [bulkFor, setBulkFor] = useState(null); // الشخص المُضاف له عدة أقارب
     // العلاقات القابلة للإضافة من بطاقة الشخص مباشرة
     // مفصولة بالجنس مثل بقية المسارات — فلا يُسأل عن الجنس بعد الاختيار
@@ -2617,7 +2618,8 @@ function FamilyTreeScreen({ onChangeParent, groupId, persons, relations, canEdit
         //      فيبدو الخطّ النازل تحت غير والديه (وكلّ صفّ يُمرَّر وحده فيزداد الانزياح).
         const renderBranch = ({ parent, coParent, children, step }) => {
                 // مفتاح الطيّ يخصّ الفرع لا الوالد — وإلا طُويت فروع الزوجات معاً
-                const branchKey = `${parent.id}|${coParent || "x"}`;
+                // C80: فرع «من زواجٍ آخر» بمفتاحٍ خاصّ — كان يشارك مفتاح فرع الوالد نفسه (`id|x`) فيتداخل الطيّ بينهما
+                const branchKey = step ? `${parent.id}|step` : `${parent.id}|${coParent || "x"}`;
                 // C76: قرار الفرع نفسه يغلب طيَّ الوالد — كان النقر يكتب مفتاح الفرع والطيّ التلقائيّ مكتوبٌ على الوالد فيبقى مطويّاً أبداً
                 const isCollapsed = (branchKey in foldNow) ? !!foldNow[branchKey] : !!foldNow[parent.id];   // C33: الطيّ التلقائيّ و«طيّ الكلّ» يكتبان معرّف الوالد
                 // الآن بعد إضافة حقل الجنس الصريح، نستخدم الصيغة النحوية
@@ -2646,7 +2648,7 @@ function FamilyTreeScreen({ onChangeParent, groupId, persons, relations, canEdit
                             background: isCollapsed ? famGrad(colors) : colors.card,
                             boxShadow: famShadow(isDark),
                             whiteSpace: "nowrap",
-                        } }, isCollapsed ? t(spouseLabel ? "ft_mzyd_abna_zwja" : "ft_mzyd_abna", { n: children.length, name: parent.local_name.split(" ")[0], spouseLabel }) : t("abna_local_name_spouseLabel", { local_name: parent.local_name, spouseLabel, length: children.length })),
+                        } }, isCollapsed ? t(spouseLabel ? "ft_mzyd_abna_zwja" : "ft_mzyd_abna", { n: children.length, name: shortName(parent.local_name), spouseLabel }) : t("abna_local_name_spouseLabel", { local_name: parent.local_name, spouseLabel, length: children.length })),
                     isCollapsed ? (markHidden(children), null) : (React.createElement("div", { className: "px-1.5 pt-1.5", style: { borderTop: `2px solid ${colors.primary}33`, borderRadius: 14, minWidth: 0 } }, renderGeneration(children, depth + 1)))));
             };
         const branchUnit = (b) => units.findIndex((u) => u.person.id === b.parent.id || u.spouses.some((s) => s.person.id === b.parent.id));
@@ -2962,22 +2964,32 @@ function FamilyTreeScreen({ onChangeParent, groupId, persons, relations, canEdit
                 }),
                 React.createElement(FamRow, { icon: LinkIcon, tone: "violet", title: t("rbt_bshkhs_mwjwd"), sub: t("idha_kan_alqryb_mdafa"), last: true, onPress: () => { setLinkPicker({ person: nodeMenu, relKey: "spouse" }); setNodeMenu(null); } })))),
         linkPicker && (React.createElement(React.Fragment, null,
-            React.createElement("div", { onClick: () => setLinkPicker(null), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.35)" } }),
+            React.createElement("div", { onClick: () => { setLinkPicker(null); setLinkQ(""); }, style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.35)" } }),
             React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", left: 16, right: 16, top: "14%", bottom: "14%", zIndex: 41, backgroundColor: colors.card, borderRadius: 20, display: "flex", flexDirection: "column" } },
                 React.createElement("div", { className: "px-4 pt-4 pb-2 shrink-0" },
                     React.createElement("p", { className: "text-sm font-extrabold text-center", style: { color: colors.text } },
                         t("ft_rbt"),
                         linkPicker.person.local_name),
                     React.createElement("p", { className: "text-[10px] text-center mt-0.5", style: { color: colors.textMuted } }, t("akhtr_nwa_alalaqa_thm")),
-                    React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-1.5 justify-center mt-3` }, QUICK_RELATIONS.map((r) => (React.createElement(Chip, { key: r.key, label: r.label, active: linkPicker.relKey === r.key, onPress: () => setLinkPicker((s) => ({ ...s, relKey: r.key })) }))))),
+                    React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-1.5 justify-center mt-3` }, QUICK_RELATIONS
+                        // C80: الزواج بحسب جنس الشخص (لا «زوج» لرجل) — وكان «زوج» و«زوجة» يُضاءان معاً لأنّ مفتاحهما واحد
+                        .filter((r) => !(r.key === "spouse" || r.key === "ex_spouse") || (KINSHIP_GENDER_DEFAULTS[r.kinship] || "male") !== (linkPicker.person.gender === "female" ? "female" : "male"))
+                        .map((r) => (React.createElement(Chip, { key: r.kinship, label: r.label, active: linkPicker.relKey === r.key && (!linkPicker.kin || linkPicker.kin === r.kinship), onPress: () => setLinkPicker((s) => ({ ...s, relKey: r.key, kin: r.kinship })) })))),
+                    React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mt-3 rounded-xl px-3`, style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
+                        React.createElement(Search, { size: 14, color: colors.textMuted }),
+                        React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: linkQ, onChange: (e) => setLinkQ(e.target.value), placeholder: tl("ابحث بالاسم…", "Search by name…"), className: "flex-1 py-2 text-[12px] bg-transparent outline-none", style: { color: colors.text, minWidth: 0 } }),
+                        linkQ && React.createElement("button", { "aria-label": tl("مسح", "Clear"), onClick: () => setLinkQ(""), style: { background: "none", border: 0 } }, React.createElement(X, { size: 14, color: colors.textMuted })))),
                 React.createElement("div", { className: "flex-1 overflow-y-auto px-3", style: { minHeight: 0 } },
                     React.createElement("p", { className: `text-[10px] font-bold ${textStart()} px-2 pb-1`, style: { color: colors.textMuted } }, t("akhtr_alshkhs_mrtbwn_mn")),
-                    treeSorted.filter((x) => x.id !== linkPicker.person.id).map((x) => {
+                    treeSorted.filter((x) => x.id !== linkPicker.person.id)
+                        .filter((x) => { const qn = normalizeArabicName(linkQ || ""); return !qn || normalizeArabicName(x.local_name).includes(qn) || normalizeArabicName(treeLineage(x)).includes(qn); })
+                        .sort((a, b) => { const qn = normalizeArabicName(linkQ || ""); if (!qn) return 0; const r = (p) => normalizeArabicName(p.local_name).startsWith(qn) ? 0 : normalizeArabicName(p.local_name).includes(qn) ? 1 : 2; return r(a) - r(b); })
+                        .map((x) => {
                         var _a;
                         return (React.createElement("button", { key: x.id, onClick: () => {
                                 const edge = relationFromCard(linkPicker.person.id, x.id, linkPicker.relKey);
                                 onAddRelation(groupId, edge.source, edge.target, edge.type);
-                                setLinkPicker(null);
+                                setLinkPicker(null); setLinkQ("");
                             }, className: `w-full flex ${rowStart()} items-center gap-3 px-2 py-2.5 rounded-xl mb-1` },
                             React.createElement("div", { className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primaryLight } },
                                 React.createElement("span", { className: "text-xs font-bold", style: { color: colors.primaryDark } }, (_a = x.local_name) === null || _a === void 0 ? void 0 : _a.charAt(0))),
@@ -2986,7 +2998,7 @@ function FamilyTreeScreen({ onChangeParent, groupId, persons, relations, canEdit
                                 React.createElement("p", { className: "text-[10px]", style: { color: colors.textMuted } }, personKinLabel(x)))));
                     })),
                 React.createElement("div", { className: "p-4 shrink-0", style: { borderTop: `1px solid ${colors.border}` } },
-                    React.createElement("button", { onClick: () => setLinkPicker(null), className: "w-full py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: colors.bg, color: colors.textMuted, border: `1px solid ${colors.border}` } }, t("ilgha")))))),
+                    React.createElement("button", { onClick: () => { setLinkPicker(null); setLinkQ(""); }, className: "w-full py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: colors.bg, color: colors.textMuted, border: `1px solid ${colors.border}` } }, t("ilgha")))))),
         // C34: أدوات التكبير عائمة في الشجرة الكاملة (كما في تطبيقات الخرائط)
         viewMode === "full" && React.createElement("div", { className: "absolute flex flex-col items-center gap-1.5", style: { bottom: 18, [isRTL() ? "left" : "right"]: 14, zIndex: 12 } },
             React.createElement("button", { onClick: () => {
