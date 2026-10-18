@@ -886,6 +886,8 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
     const SCm = window.SawaChat;
     // C24: «فحص الاتّصال» لمدير التطبيق وحده (الخادم يقرّر)
     const [isAdm, setIsAdm] = useState(() => !!(SCm && SCm.adminCached && SCm.adminCached()));
+    const [updAvail, setUpdAvail] = useState(() => !!(SCm && SCm.updateAvailable && SCm.updateAvailable()));
+    useEffect(() => { const on = (e) => setUpdAvail(!!(e.detail && e.detail.available)); window.addEventListener("sawa-update-state", on); return () => window.removeEventListener("sawa-update-state", on); }, []);
     useEffect(() => { let on = true; if (SCm && SCm.checkAdmin) SCm.checkAdmin().then((v) => { if (on) setIsAdm(!!v); }); return () => { on = false; }; }, [myProfile && myProfile.uid]);
     const myDisplayName = cloudMe ? (myProfile.name || myProfile.googleName || "") : "";
     const editMe = () => { if (cloudMe && window.SawaChat.editProfile()) return; onOpenSettings(); };
@@ -930,6 +932,8 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         // الجسر (B5): لوحة السحابة والمشاركة (رفع، Google، روابط، استعادة) — sawa-sync.js
         // فحص الاتّصال (diag.html): يعمل داخل التطبيق المثبّت أيضاً — زرّ «رجوع إلى سوا» في أسفله
         ...(isAdm ? [{ key: "diag", label: tl("فحص الاتّصال (للمدير)", "Connection check (admin)"), icon: Wifi, onPress: () => { location.href = "./diag.html"; }, color: "#64748B" }] : []),
+        // C83: تحديث التطبيق لكلّ مستخدم — النسخة، ما الجديد، وتحديثٌ قسريّ آمن
+        ...(SCm && SCm.updateSheet ? [{ key: "update", label: updAvail ? tl("تحديث التطبيق • نسخةٌ جديدة ✨", "App update • new ✨") : tl("تحديث التطبيق", "App update"), icon: RotateCcw, onPress: () => SCm.updateSheet(), color: updAvail ? "#D97706" : "#2F80C8" }] : []),
         // C11: صفحاتٌ عامّة على الموقع (Google Play يطلب رابطيها)
         { key: "legal", label: tl("الخصوصيّة والشروط", "Privacy & terms"), icon: ShieldCheck, onPress: () => { location.href = "/privacy"; }, color: "#64748B" },
         { key: "cloud", label: t("me_rfa_alshjra"), icon: Cloud, onPress: () => { if (window.SawaSync) (window.SawaSync.openPanel ? window.SawaSync.openPanel() : window.SawaSync.uploadCurrent()); }, color: "#187854" },

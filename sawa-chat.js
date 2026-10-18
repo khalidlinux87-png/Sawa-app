@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c82";
+  var VERSION = "c83";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1807,6 +1807,73 @@
   // C9: تحديثات التطبيق — sw.js «المخزون أوّلاً»؛ نسخةٌ جديدة ⇒ تُحمَّل في الخلفيّة ثمّ:
   //   خلال ثوانٍ من الفتح ⇒ إعادة تحميلٍ تلقائيّة · غير ذلك ⇒ شريط «تحديث جديد» (لا نقطع مكالمةً أو كتابة)
   // ==================================================================
+  // C83: «تحديث التطبيق» لكلّ مستخدم — نسخة الجهاز ونسخة الخادم و«ما الجديد» وتحديثٌ قسريّ آمن (لا يمسّ الحساب ولا البيانات)
+  var upd = { local: null, server: null, notes: "", checkedAt: 0, available: false, bar: null, inCall: function () { return false; } };
+  function swLocalVersion() {
+    return new Promise(function (res) {
+      try {
+        var sw = navigator.serviceWorker; if (!sw || !sw.controller) return res(null);
+        var done = false, on = function (ev) { var d = ev.data || {}; if (d.type === "sawa-version" && !done) { done = true; sw.removeEventListener("message", on); res(d.version || null); } };
+        sw.addEventListener("message", on); sw.controller.postMessage({ type: "sawa-version" });
+        setTimeout(function () { if (!done) { done = true; sw.removeEventListener("message", on); res(null); } }, 2500);
+      } catch (e) { res(null); }
+    });
+  }
+  function checkUpdate(silent) {
+    return Promise.all([
+      fetch("/sw.js?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : ""; }).catch(function () { return ""; }),
+      swLocalVersion()
+    ]).then(function (x) {
+      var m = x[0].match(/sawa-v\d+/), n = x[0].match(/const NOTES = '([^']*)'/);
+      upd.server = m ? m[0] : upd.server; upd.notes = n ? n[1].replace(/\\n/g, "\n") : upd.notes;
+      upd.local = x[1] || upd.local; upd.checkedAt = Date.now();
+      var was = upd.available;
+      upd.available = !!(upd.server && upd.local && upd.server !== upd.local);
+      try { global.dispatchEvent(new CustomEvent("sawa-update-state", { detail: { available: upd.available } })); } catch (e) {}
+      // إشعار التحديث لأيّ مستخدم: شريطٌ أعلى الشاشة (مرّةً لكلّ نسخة)
+      if (upd.available && !was && !silent && upd.bar && lsGet("sawa_upd_dismissed", "") !== upd.server) upd.bar();
+      return upd;
+    });
+  }
+  function forceUpdate() {
+    if (upd.inCall() && !global.confirm(L("ستنتهي المكالمة الحاليّة. تحديث الآن؟", "This will end the current call. Update now?"))) return;
+    var jobs = [];
+    try {
+      if (global.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k.indexOf("sawa-") === 0; }).map(function (k) { return caches.delete(k); })); }));
+      if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+    } catch (e) {}
+    Promise.all(jobs).catch(function () {}).then(function () { global.location.replace("/?fresh=" + Date.now()); });
+  }
+  function updateSheet() {
+    var s = sheet(L("🔄 تحديث التطبيق", "🔄 App update"));
+    var box = s.box;
+    var row = function (k, v, good) { var r = mk("div", "display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f6;font:600 13px system-ui"); r.appendChild(mk("span", "color:#5b6b7c", k)); r.appendChild(mk("span", "color:" + (good === false ? "#b45309" : good ? "#2e7d5b" : "#1f2d3d") + ";text-align:end", v)); return r; };
+    var body = mk("div"); box.appendChild(body);
+    var draw = function () {
+      body.innerHTML = "";
+      var nbp = ""; try { nbp = NB() ? NB().platform() : ""; } catch (e) {}
+      body.appendChild(row(L("نسخة سوا على جهازك", "Version on this device"), (upd.local || "…").replace("sawa-", ""), upd.local ? !upd.available : null));
+      body.appendChild(row(L("أحدث نسخة", "Latest version"), (upd.server || "…").replace("sawa-", "")));
+      if (nbp) body.appendChild(row(L("تطبيق أندرويد", "Android app"), nbp.replace("android/", "v")));
+      body.appendChild(row(L("آخر فحص", "Last checked"), upd.checkedAt ? timeAgo(upd.checkedAt) : "…"));
+      body.appendChild(note(upd.available ? L("✨ نسخةٌ جديدة متاحة — اضغط «تحديث الآن».", "✨ A new version is available — tap Update now.")
+        : upd.local ? L("✓ لديك أحدث نسخة.", "✓ You're up to date.") : L("جارٍ الفحص…", "Checking…"), upd.available ? "#8a5a00" : "#2e7d5b", upd.available ? "#fff6e5" : "#eaf7f0"));
+      if (upd.notes) { var nn = note(L("ما الجديد: ", "What's new: ") + upd.notes); nn.style.whiteSpace = "pre-line"; nn.style.marginTop = "8px"; body.appendChild(nn); }
+    };
+    draw();
+    var go = mkBtn(L("تحديث الآن", "Update now"), "primary"); go.style.marginTop = "12px";
+    go.onclick = function () { go.disabled = true; go.textContent = "…"; forceUpdate(); };
+    var chk = mkBtn(L("التحقّق من وجود تحديث", "Check for updates")); chk.style.marginTop = "8px";
+    chk.onclick = function () { chk.disabled = true; chk.textContent = "…"; checkUpdate(true).then(function () { draw(); chk.disabled = false; chk.textContent = L("التحقّق من وجود تحديث", "Check for updates"); }); };
+    box.appendChild(go); box.appendChild(chk);
+    box.appendChild(note(L("«تحديث الآن» يجلب أحدث ملفّات سوا من الخادم ويعيد فتح التطبيق — لا يمسّ حسابك ولا محادثاتك ولا شجرتك.", "Update now fetches the latest Sawa files and reopens the app — your account and data stay.")));
+    var closeB = mkBtn(L("إغلاق", "Close"), "ghost"); closeB.style.marginTop = "6px"; closeB.onclick = s.close; box.appendChild(closeB);
+    checkUpdate(true).then(draw);
+    return s;
+  }
+  // فحصٌ بعد الفتح بقليل، وكلّ ١٠ دقائق والتطبيق ظاهر
+  setTimeout(function () { checkUpdate(false); }, 6000);
+  setInterval(function () { if (document.visibilityState === "visible") checkUpdate(false); }, 10 * 60000);
   (function swUpdates() {
     try { if (!global.navigator || !navigator.serviceWorker) return; } catch (e) { return; }
     var t0 = Date.now(), had = !!navigator.serviceWorker.controller, reloading = false, upEl = null, lastCheck = Date.now();
@@ -1818,10 +1885,12 @@
       var txt = document.createElement("div"); txt.style.flex = "1"; txt.textContent = L("✨ نسخةٌ جديدة من سوا جاهزة", "✨ A new version of Sawa is ready");
       var yes = btn(L("تحديث", "Update"), true); yes.style.background = "#fff"; yes.style.color = "#2F80C8";
       var no = btn(L("لاحقاً", "Later")); no.style.color = "#e3f0fb";
-      yes.onclick = function () { if (inCall() && !global.confirm(L("ستنتهي المكالمة الحاليّة. تحديث الآن؟", "This will end the current call. Update now?"))) return; reload(); };
-      no.onclick = function () { try { upEl.remove(); } catch (e) {} upEl = null; };
+      // C83: إن لم يتبدّل عامل الخدمة بعد (التحديث لم يُنزَّل) فإعادة التحميل لا تكفي ⇒ تحديثٌ قسريّ
+      yes.onclick = function () { if (upd.available && navigator.serviceWorker && !reloading) { forceUpdate(); return; } if (inCall() && !global.confirm(L("ستنتهي المكالمة الحاليّة. تحديث الآن؟", "This will end the current call. Update now?"))) return; reload(); };
+      no.onclick = function () { if (upd.server) lsSet("sawa_upd_dismissed", upd.server); try { upEl.remove(); } catch (e) {} upEl = null; };
       upEl.appendChild(txt); upEl.appendChild(yes); upEl.appendChild(no); document.body.appendChild(upEl);
     }
+    upd.bar = bar; upd.inCall = inCall;
     navigator.serviceWorker.addEventListener("controllerchange", function () {
       if (!had) { had = true; return; }            // أوّل تثبيتٍ لعامل الخدمة: لا شيء تغيّر في الصفحة
       if (Date.now() - t0 < 10000 && !inCall()) return reload();
@@ -3663,7 +3732,7 @@
     isCloud: isCloud, enabled: function () { return !!state.uid; }, openChat: openChat, closeChat: closeChat,
     send: send, edit: edit, clearChat: clearChat,
     // C4
-    enablePush: enablePush, disablePush: disablePush, pushEnabled: pushEnabled, pushSupported: pushSupported, pushState: pushState, pushHelp: helpSheet, pushCheckSheet: pushCheckSheet,
+    enablePush: enablePush, disablePush: disablePush, pushEnabled: pushEnabled, pushSupported: pushSupported, pushState: pushState, pushHelp: helpSheet, pushCheckSheet: pushCheckSheet, updateSheet: updateSheet, checkUpdate: checkUpdate, forceUpdate: forceUpdate, updateAvailable: function () { return upd.available; },
     sendMedia: sendMedia, forwardMessage: forwardMessage, openFile: openFile, markViewedOnce: markViewedOnce, ensureMedia: ensureMedia,
     // C3
     createGroup: createGroup, updateGroup: updateGroup, addMembers: addMembers, removeMember: removeMember, setAdmin: setAdmin,
