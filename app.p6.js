@@ -169,6 +169,7 @@ function ScheduledRoomsScreen({ rooms = [], onJoin, onCancel, onNew, onBack }) {
     const linkOf = (r) => r.link || (window.SawaRTC && window.SawaRTC.roomLink ? window.SawaRTC.roomLink(r.code) : "?room=" + r.code);
     const copy = (r) => { const l = linkOf(r); try { navigator.clipboard.writeText(l).then(() => showToast(tl("نُسخ الرابط ✓", "Link copied ✓"), "success"), () => window.prompt(tl("انسخ الرابط:", "Copy:"), l)); } catch (e) { window.prompt(tl("انسخ الرابط:", "Copy:"), l); } };
     const share = (r) => { const l = linkOf(r), txt = tl("أدعوك إلى غرفة سوا «" + r.title + "» — ", "Join my Sawa room «" + r.title + "» — ") + new Date(r.at).toLocaleString(loc(), { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+        try { if (window.SawaRTC && window.SawaRTC.schedPublish) { window.SawaRTC.schedPublish({ code: r.code, title: r.title, at: r.at }); return; } } catch (e) { }
         try { if (navigator.share) { navigator.share({ title: r.title, text: txt, url: l }).catch(() => { }); return; } } catch (e) { } copy(r); };
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col" },
         React.createElement(TopBar, { title: tl("الغرف المجدولة", "Scheduled rooms"), onBack: onBack, actions: React.createElement("button", { "aria-label": tl("جدولة غرفة", "Schedule a room"), onClick: onNew, className: `${ms("2")}` },
@@ -194,7 +195,10 @@ function ScheduledRoomsScreen({ rooms = [], onJoin, onCancel, onNew, onBack }) {
                 st.k !== "past" && React.createElement("div", { className: `flex ${rowStart()} gap-2 mt-2.5` },
                     React.createElement("button", { onClick: () => onJoin(r.code), className: "flex-1 rounded-xl py-2.5", style: { backgroundColor: st.k === "live" || st.live ? "#16a34a" : colors.primary } },
                         React.createElement("span", { className: "text-xs font-extrabold text-white" }, st.k === "live" ? tl("ادخل الآن", "Join now") : tl("دخول الغرفة", "Enter room"))),
-                    (r.mine !== false) && React.createElement("button", { "aria-label": tl("إلغاء الموعد", "Cancel"), onClick: () => { if (window.confirm(tl("إلغاء موعد «" + r.title + "»؟", "Cancel «" + r.title + "»?"))) onCancel(r.id); }, className: "rounded-xl py-2 px-3 border", style: { borderColor: colors.danger } },
+                    React.createElement("button", { onClick: () => share(r), className: `flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2.5 px-3.5 border`, style: { borderColor: colors.primary } },
+                        React.createElement(Share2, { size: 14, color: colors.primary }),
+                        React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.primary } }, tl("نشر", "Share"))),
+                    React.createElement("button", { "aria-label": r.mine === false ? tl("إزالة من مواعيدي", "Remove") : tl("إلغاء الموعد", "Cancel"), onClick: () => { if (window.confirm(r.mine === false ? tl("إزالة «" + r.title + "» من مواعيدك؟", "Remove «" + r.title + "»?") : tl("إلغاء موعد «" + r.title + "» للجميع؟", "Cancel «" + r.title + "» for everyone?"))) onCancel(r.id); }, className: "rounded-xl py-2 px-3 border", style: { borderColor: colors.danger } },
                         React.createElement(Trash2, { size: 14, color: colors.danger })))))))));
 }
 function SpeedDialScreen({ speedDialContacts, onUpdate, onCall, onBack }) {
