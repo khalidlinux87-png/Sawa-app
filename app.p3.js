@@ -1343,10 +1343,11 @@ function FamilyGroupDetailScreen({ meId, onPickMe, group, persons, relations = [
             React.createElement("span", { className: "w-8 h-8 rounded-xl flex items-center justify-center", style: { backgroundColor: item.key === "tree" ? colors.primary + "14" : "transparent" } }, React.createElement(item.icon, { size: 17, color: item.key === "tree" ? colors.primary : colors.textMuted })),
             React.createElement("span", { className: "text-[9.5px] font-bold", style: { color: item.key === "tree" ? colors.primary : colors.textMuted } }, item.label)))))));
 }
-function FamilyPersonDetailScreen({ person, persons = [], relations = [], favorites, otherGroups = [], linkedGroupName, linkedPersonName, canEdit = true, onToggleFav, onEdit, onDelete, onOpenLinkedPerson, onSimulateProximity, onMarkContact, onCreateInLaws, onClearFacts, onBack, }) {
+function FamilyPersonDetailScreen({ onChangeParent, person, persons = [], relations = [], favorites, otherGroups = [], linkedGroupName, linkedPersonName, canEdit = true, onToggleFav, onEdit, onDelete, onOpenLinkedPerson, onSimulateProximity, onMarkContact, onCreateInLaws, onClearFacts, onBack, }) {
     var _a, _b, _c;
     const { colors, isDark } = useTheme();
     const [showEditForm, setShowEditForm] = useState(false);
+    const [changingParentD, setChangingParentD] = useState(null);   // C79
     // لا نحمّل النصوص إلا لمتوفّى: لا طلب شبكة في بطاقة حيّ
     const [duaa, setDuaa] = useState(DUAA_FALLBACK);
     React.useEffect(() => {
@@ -1420,6 +1421,16 @@ function FamilyPersonDetailScreen({ person, persons = [], relations = [], favori
                 person.birthYear && kv(tl("سنة الميلاد", "Born"), String(person.birthYear), Calendar)),
             linkedGroupName && React.createElement(FamCard, { style: { paddingTop: 2, paddingBottom: 2 } },
                 React.createElement(FamRow, { icon: LinkIcon, last: true, onPress: onOpenLinkedPerson, title: t("fp_nfs") + (linkedPersonName || t("fp_shkhs")) + t("fp_bmjmwaa") + linkedGroupName, sub: t("fp_almtzamnwn") })),
+            // C79: الأب والأمّ — عرضٌ وتغيير
+            onChangeParent && (() => {
+                const rowsP = ["male", "female"].map((g) => {
+                    const cur = relations.find((x) => x.type === "parent" && x.target === person.id && ((persons.find((pp) => pp.id === x.source) || {}).gender === "female") === (g === "female"));
+                    const curP = cur && persons.find((pp) => pp.id === cur.source);
+                    return React.createElement(FamRow, { key: "pp-" + g, icon: RotateCcw, last: g === "female", title: (g === "female" ? tl("الأم: ", "Mother: ") : tl("الأب: ", "Father: ")) + (curP ? curP.local_name : tl("غير مسجَّل", "not set")), sub: curP ? tl("اضغط للتغيير أو الإزالة", "Tap to change or remove") : tl("اضغط لاختيار شخصٍ من الشجرة", "Tap to pick someone from the tree"), onPress: () => setChangingParentD(g) });
+                });
+                return React.createElement(FamCard, { style: { paddingTop: 2, paddingBottom: 2 } }, rowsP);
+            })(),
+            changingParentD && React.createElement(ChangeParentSheet, { persons: persons, relations: relations, child: person, gender: changingParentD, onPick: (pid) => onChangeParent(person.id, changingParentD, pid), onClose: () => setChangingParentD(null) }),
             // C74: الأصهار لمن دخل العائلة بالزواج فقط (زوجة/زوج، زوجة الابن، زوج البنت…) — كانت تظهر على الأخ الشقيق،
             //      وعائلة أخيك هي عائلتك. والنصّ بحسب الجنس.
             !linkedGroupName && person.alive && canEdit && onCreateInLaws && /زوج/.test(person.kinship || "") && React.createElement(FamCard, { style: { paddingTop: 2, paddingBottom: 2 } },
@@ -1559,6 +1570,44 @@ function FamilyStatsScreen({ persons, relations, onBack }) {
                         " \u2014 \u0645\u0627 \u062A\u0648\u0627\u0635\u0644\u062A \u0645\u0639\u0647 \u0645\u0646 ",
                         daysSinceLongest,
                         " \u064A\u0648\u0645\u060C \u0623\u0637\u0648\u0644 \u0645\u062F\u0629 \u0628\u0627\u0644\u0639\u0627\u0626\u0644\u0629")))))));
+}
+// C79: «تغيير الأب/الأم» — اختيار والدٍ آخر لشخصٍ واحد (لا يمسّ إخوته)، أو إزالة الربط الخاطئ.
+//      المرشّحون من الجنس المناسب، ولا أحد من نسل الشخص (دورة)، وزوجات الأب / أزواج الأم أوّلاً.
+function ChangeParentSheet({ persons = [], relations = [], child, gender, onPick, onClose }) {
+    const { colors } = useTheme();
+    const [q, setQ] = useState("");
+    const female = gender === "female";
+    const byId = {}; persons.forEach((p) => { byId[p.id] = p; });
+    const parentsOf = (id) => relations.filter((r) => r.type === "parent" && r.target === id).map((r) => r.source);
+    const current = parentsOf(child.id).find((pid) => (byId[pid] && byId[pid].gender === "female") === female) || null;
+    const other = parentsOf(child.id).find((pid) => pid !== current) || null;
+    // النسل: لا يصير أحدهم والداً
+    const desc = new Set([child.id]);
+    const stack = [child.id];
+    while (stack.length) { const x = stack.pop(); relations.forEach((r) => { if (r.type === "parent" && r.source === x && !desc.has(r.target)) { desc.add(r.target); stack.push(r.target); } }); }
+    const spousesOfOther = new Set(other ? relations.filter((r) => (r.type === "spouse" || r.type === "ex_spouse") && (r.source === other || r.target === other)).map((r) => (r.source === other ? r.target : r.source)) : []);
+    const { lineageLabel } = buildLineageHelpers(persons, relations);
+    const qn = normalizeArabicName(q || "");
+    const cands = persons.filter((p) => !desc.has(p.id) && (p.gender === "female") === female)
+        .filter((p) => !qn || normalizeArabicName(p.local_name).includes(qn) || normalizeArabicName(lineageLabel(p)).includes(qn))
+        .sort((a, b) => (spousesOfOther.has(b.id) - spousesOfOther.has(a.id)) || (b.id === current) - (a.id === current) || a.local_name.localeCompare(b.local_name, "ar"));
+    const nm = child.local_name.split(" ")[0];
+    return React.createElement(FamSheet, { title: female ? tl("أمّ " + nm, nm + "'s mother") : tl("أبو " + nm, nm + "'s father"), subtitle: current ? tl("الحاليّ: " + (byId[current] ? byId[current].local_name : "؟"), "Current: " + (byId[current] ? byId[current].local_name : "?")) : tl("غير مسجَّل", "Not set"), onClose, z: 45 },
+        React.createElement("p", { className: `text-[11px] mb-2 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } },
+            tl("يتغيّر لـ" + nm + " وحده — إخوته يبقون كما هم. ولإضافة شخصٍ غير موجود: أزل الربط ثمّ أضفه من بطاقته.", "Changes " + nm + " only — siblings stay as they are.")),
+        React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-2 rounded-xl px-3`, style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
+            React.createElement(Search, { size: 14, color: colors.textMuted }),
+            React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: q, onChange: (e) => setQ(e.target.value), placeholder: tl("ابحث بالاسم…", "Search by name…"), className: "flex-1 py-2 text-[12px] bg-transparent outline-none", style: { color: colors.text, minWidth: 0 } })),
+        cands.length === 0 && React.createElement("p", { className: "text-[11px] text-center py-3", style: { color: colors.textMuted } }, tl("لا أحد بهذا الاسم", "No one by that name")),
+        cands.map((p) => React.createElement("button", { key: p.id, disabled: p.id === current, onClick: () => { onPick(p.id); onClose(); }, className: `w-full flex ${rowStart()} items-center gap-3 py-2.5 ${textStart()}`, style: { borderBottom: `1px solid ${colors.border}`, background: "none", opacity: p.id === current ? 0.55 : 1 } },
+            React.createElement(FamAvatar, { name: p.local_name, photo: p.photo, size: 34, gray: p.alive === false }),
+            React.createElement("div", { className: "flex-1 min-w-0" },
+                React.createElement("p", { className: "text-[13px] font-bold truncate", style: { color: colors.text } }, lineageLabel(p)),
+                React.createElement("p", { className: "text-[10.5px]", style: { color: spousesOfOther.has(p.id) ? colors.primary : colors.textMuted } },
+                    p.id === current ? tl("الحاليّ", "Current") : spousesOfOther.has(p.id) ? (female ? tl("زوجة والده", "Father's wife") : tl("زوج والدته", "Mother's husband")) : personKinLabel(p))),
+            p.id === current && React.createElement(Check, { size: 16, color: colors.primary }))),
+        current && React.createElement("button", { onClick: () => { onPick(null); onClose(); }, className: "w-full mt-3 text-[12px] font-bold py-2.5 rounded-xl", style: { color: colors.danger, backgroundColor: colors.danger + "12", border: 0 } },
+            female ? tl("إزالة ربط الأم (" + (byId[current] ? byId[current].local_name : "") + ")", "Remove mother link") : tl("إزالة ربط الأب (" + (byId[current] ? byId[current].local_name : "") + ")", "Remove father link")));
 }
 function FamilyRelationsManagerSheet({ persons, relations, onDeleteRelation, onEndMarriage, onClose }) {
     const { colors } = useTheme();
@@ -2169,7 +2218,7 @@ function normalizeArabicName(name) {
         .replace(/\s+/g, " ");
 }
 
-function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRelation, onDeleteRelation, onEndMarriage, onOpenPerson, onMarkContact, onQuickSchedule, onOpenStats, onAddRelativeTo, onAddRelativesBulk, onOpenInLaws, onInheritParents, allGroupPersons = {}, onBack, }) {
+function FamilyTreeScreen({ onChangeParent, groupId, persons, relations, canEdit = true, onAddRelation, onDeleteRelation, onEndMarriage, onOpenPerson, onMarkContact, onQuickSchedule, onOpenStats, onAddRelativeTo, onAddRelativesBulk, onOpenInLaws, onInheritParents, allGroupPersons = {}, onBack, }) {
     var _a, _b, _c, _d;
     const { colors, isDark } = useTheme();
     const [showAddRelation, setShowAddRelation] = useState(false);
@@ -2210,6 +2259,7 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
         }
     }, [persons, relations, onInheritParents]);
     const [nodeMenu, setNodeMenu] = useState(null); // الشخص المضغوط في الشجرة
+    const [changingParent, setChangingParent] = useState(null);   // C79: { child, gender }
     const [endingRelId, setEndingRelId] = useState(null); // خطوة التأكيد قبل إنهاء الزواج
     const [linkPicker, setLinkPicker] = useState(null); // {person, relKey} للربط بموجود
     const [bulkFor, setBulkFor] = useState(null); // الشخص المُضاف له عدة أقارب
@@ -2904,6 +2954,12 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
                     return React.createElement(FamRow, { key: r.id, icon: Users2, tone: "danger", title: t("ft_anha_maa", { name: other.local_name }), sub: t("ft_anha_alzwaj_hint"), onPress: () => setEndingRelId(r.id) });
                 }),
                 React.createElement(FamRow, { icon: Users2, title: t("idafa_ada_aqarb_dfaa"), sub: t("asma_mfswla_bfwasl_mthl"), onPress: () => { setBulkFor(nodeMenu); setNodeMenu(null); }, right: React.createElement(Plus, { size: 15, color: colors.primary }) }),
+                canEdit && onChangeParent && ["male", "female"].map((g) => {
+                    const cur = relations.find((x) => x.type === "parent" && x.target === nodeMenu.id && ((persons.find((pp) => pp.id === x.source) || {}).gender === "female") === (g === "female"));
+                    const curP = cur && persons.find((pp) => pp.id === cur.source);
+                    if (!curP) return null;   // غير المسجَّل يُضاف من «أب/أم» أعلاه
+                    return React.createElement(FamRow, { key: "cp-" + g, icon: RotateCcw, title: g === "female" ? tl("تغيير الأم", "Change mother") : tl("تغيير الأب", "Change father"), sub: tl("الحاليّ: ", "Current: ") + curP.local_name, onPress: () => { const c = nodeMenu; setNodeMenu(null); setChangingParent({ child: c, gender: g }); } });
+                }),
                 React.createElement(FamRow, { icon: LinkIcon, tone: "violet", title: t("rbt_bshkhs_mwjwd"), sub: t("idha_kan_alqryb_mdafa"), last: true, onPress: () => { setLinkPicker({ person: nodeMenu, relKey: "spouse" }); setNodeMenu(null); } })))),
         linkPicker && (React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setLinkPicker(null), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.35)" } }),
@@ -3105,6 +3161,7 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
                     React.createElement("p", { className: `text-[10px] ${textStart()}`, style: { color: colors.textMuted } }, t("adght_ay_asm_thm"))),
                 React.createElement("div", { className: "flex flex-row flex-wrap justify-center gap-2" }, unlinkedPersons.map((p) => (React.createElement("button", { key: p.id, onClick: () => setLinkPicker({ person: p, relKey: "child" }), className: "shrink-0" },
                     React.createElement(PersonCardButton, { p: p })))))))),
+        changingParent && React.createElement(ChangeParentSheet, { persons: persons, relations: relations, child: changingParent.child, gender: changingParent.gender, onPick: (pid) => onChangeParent(groupId, changingParent.child.id, changingParent.gender, pid), onClose: () => setChangingParent(null) }),
         showManageRelations && (React.createElement(FamilyRelationsManagerSheet, { persons: persons, relations: relations, onDeleteRelation: (relationId) => onDeleteRelation(relationId), onEndMarriage: onEndMarriage, onClose: () => setShowManageRelations(false) }))));
 }
 //@@sawa-part:3

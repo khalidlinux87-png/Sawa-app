@@ -2997,6 +2997,29 @@ function AppInner() {
         logActivity(groupId, t("rbtt_alaqa_qraba_byn", { sourceName, targetName }));
         showToast(t("tm_rbt_alalaqa"), "success");
     }
+    // C79: تغيير أب/أمّ شخصٍ واحد (أو إزالته) — حذف حافّة الوالد من ذلك الجنس ثمّ إضافة الجديدة
+    function changeParent(groupId, childId, gender, newParentId) {
+        const list = groupPersons[groupId] || [];
+        const genderOf = (id) => ((list.find((p) => p.id === id) || {}).gender === "female" ? "female" : "male");
+        const want = gender === "female" ? "female" : "male";
+        if (newParentId && wouldCreateParentCycle(groupId, newParentId, childId)) { showToast(t("la_ymkn_itmam_hdha"), "error"); return; }
+        if (newParentId && kinshipRelations.some((r) => r.groupId === groupId && r.type !== "parent" && ((r.source === newParentId && r.target === childId) || (r.source === childId && r.target === newParentId)))) {
+            showToast(t("fyh_alaqa_msjla_asla"), "error"); return;
+        }
+        setKinshipRelations((prev) => {
+            let next = prev.filter((r) => !(r.groupId === groupId && r.type === "parent" && r.target === childId && genderOf(r.source) === want));
+            if (newParentId) {
+                next = [...next, { id: `k-${Date.now()}-cp`, groupId, source: newParentId, target: childId, type: "parent" }];
+                const sp = inferSpouseFromParents(groupId, childId, next);
+                if (sp) next = [...next, sp];
+            }
+            return next;
+        });
+        const cn = (list.find((p) => p.id === childId) || {}).local_name || t("ai_shkhs");
+        const pn = newParentId ? ((list.find((p) => p.id === newParentId) || {}).local_name || "") : "";
+        logActivity(groupId, newParentId ? tl((want === "female" ? "صارت أمّ " : "صار أبو ") + cn + ": " + pn, cn + "'s parent changed") : tl("أُزيل ربط " + (want === "female" ? "أمّ " : "أبي ") + cn, "Parent link removed"));
+        showToast(newParentId ? tl("تمّ — " + pn + (want === "female" ? " أمّ " : " أبو ") + cn, "Done") : tl("أُزيل الربط", "Link removed"), "success");
+    }
     function deleteKinshipRelation(relationId) {
         var _a, _b;
         const relation = kinshipRelations.find((r) => r.id === relationId);
@@ -3437,7 +3460,7 @@ function AppInner() {
         const linkedPerson = linkedTo ? (groupPersons[linkedTo.groupId] || []).find((p) => p.id === linkedTo.personId) : null;
         const roleForPerson = (_d = familyGroups.find((g) => g.id === currentGroupIdForPerson)) === null || _d === void 0 ? void 0 : _d.role;
         const canEditPerson = roleForPerson !== "viewer";
-        discoverContent = (React.createElement(FamilyPersonDetailScreen, { person: freshPerson, persons: famPersons[currentGroupIdForPerson] || [], relations: kinshipRelations.filter((r) => r.groupId === currentGroupIdForPerson), favorites: familyFavorites, otherGroups: otherGroupsForPerson, linkedGroupName: linkedGroupName, linkedPersonName: linkedPerson === null || linkedPerson === void 0 ? void 0 : linkedPerson.local_name, canEdit: canEditPerson, onToggleFav: toggleFamilyFav, onEdit: (personId, data) => editPerson(currentGroupIdForPerson, personId, data), onDelete: (personId) => { deletePerson(currentGroupIdForPerson, personId); setDiscoverStack(discoverStack.slice(0, -1)); }, onOpenLinkedPerson: () => linkedTo && linkedPerson && setDiscoverStack([...discoverStack, { type: "personDetail", data: linkedPerson, groupId: linkedTo.groupId }]), onCreateInLaws: (p) => createInLawsGroup(discoverTop.groupId, p), onClearFacts: (pid) => {
+        discoverContent = (React.createElement(FamilyPersonDetailScreen, { onChangeParent: canEditPerson ? (childId, g, pid) => changeParent(currentGroupIdForPerson, childId, g, pid) : null, person: freshPerson, persons: famPersons[currentGroupIdForPerson] || [], relations: kinshipRelations.filter((r) => r.groupId === currentGroupIdForPerson), favorites: familyFavorites, otherGroups: otherGroupsForPerson, linkedGroupName: linkedGroupName, linkedPersonName: linkedPerson === null || linkedPerson === void 0 ? void 0 : linkedPerson.local_name, canEdit: canEditPerson, onToggleFav: toggleFamilyFav, onEdit: (personId, data) => editPerson(currentGroupIdForPerson, personId, data), onDelete: (personId) => { deletePerson(currentGroupIdForPerson, personId); setDiscoverStack(discoverStack.slice(0, -1)); }, onOpenLinkedPerson: () => linkedTo && linkedPerson && setDiscoverStack([...discoverStack, { type: "personDetail", data: linkedPerson, groupId: linkedTo.groupId }]), onCreateInLaws: (p) => createInLawsGroup(discoverTop.groupId, p), onClearFacts: (pid) => {
                 const gid = currentGroupIdForPerson;
                 setGroupPersons((prev) => ({
                     ...prev,
@@ -3448,7 +3471,7 @@ function AppInner() {
     }
     else if (discoverTop.type === "tree") {
         const canEditTree = famCanEdit(discoverTop.data);
-        discoverContent = (React.createElement(FamilyTreeScreen, { groupId: discoverTop.data.id, persons: famPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), canEdit: canEditTree, onAddRelation: addKinshipRelation, onDeleteRelation: deleteKinshipRelation, onEndMarriage: endMarriage, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: discoverTop.data.id }]), onMarkContact: (personId) => markContactNow(discoverTop.data.id, personId), onQuickSchedule: (personId) => { setPreselectedSchedulePersonId(personId); setShowAddSchedule(true); }, onOpenStats: () => setDiscoverStack([...discoverStack, { type: "stats", data: discoverTop.data }]), onAddRelativeTo: (gid, person, relKey, kinship, gender) => setGapAddPreset({
+        discoverContent = (React.createElement(FamilyTreeScreen, { groupId: discoverTop.data.id, persons: famPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), canEdit: canEditTree, onAddRelation: addKinshipRelation, onChangeParent: changeParent, onDeleteRelation: deleteKinshipRelation, onEndMarriage: endMarriage, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: discoverTop.data.id }]), onMarkContact: (personId) => markContactNow(discoverTop.data.id, personId), onQuickSchedule: (personId) => { setPreselectedSchedulePersonId(personId); setShowAddSchedule(true); }, onOpenStats: () => setDiscoverStack([...discoverStack, { type: "stats", data: discoverTop.data }]), onAddRelativeTo: (gid, person, relKey, kinship, gender) => setGapAddPreset({
                 groupId: gid,
                 relatedToId: person.id,
                 relationType: relKey,
