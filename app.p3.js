@@ -1565,6 +1565,7 @@ function FamilyRelationsManagerSheet({ persons, relations, onDeleteRelation, onE
     const [confirmingId, setConfirmingId] = useState(null);
     const [endingId, setEndingId] = useState(null);
     const [filter, setFilter] = useState("suspect"); // suspect | inferred | manual | all
+    const [relQ, setRelQ] = useState("");   // C78: بحثٌ بالاسم داخل التبويب
     function personName(id) { var _a; return ((_a = persons.find((p) => p.id === id)) === null || _a === void 0 ? void 0 : _a.local_name) || t("rs_shkhs_mhdhwf"); }
     // سنة الميلاد قد تكون فارغة أو نصّاً — نُرجع null بدل NaN يتسلّل للمقارنات
     function birthYearOf(p) {
@@ -1639,9 +1640,11 @@ function FamilyRelationsManagerSheet({ persons, relations, onDeleteRelation, onE
         { k: "manual", label: "أدخلتها", n: manual.length },
         { k: "all", label: "الكل", n: relations.length },
     ];
-    const shown = filter === "suspect" ? suspects
+    const shown0 = filter === "suspect" ? suspects
         : filter === "inferred" ? inferred
             : filter === "manual" ? manual : enriched;
+    const relQn = normalizeArabicName(relQ || "");
+    const shown = !relQn ? shown0 : shown0.filter((r) => normalizeArabicName(personName(r.source)).includes(relQn) || normalizeArabicName(personName(r.target)).includes(relQn));
     return (React.createElement(FamSheet, { title: t("mrajaa_alaqat_alqraba"), onClose: onClose, z: 30, maxHeight: "92%" },
         React.createElement("div", { className: "pt-1" },
             suspects.length > 0 && filter !== "suspect" && (React.createElement("button", { onClick: () => setFilter("suspect"), className: `w-full rounded-xl p-2.5 mb-3 flex ${rowStart()} items-center gap-2`, style: { backgroundColor: colors.danger + "18", border: `1px solid ${colors.danger}55` } },
@@ -1662,7 +1665,11 @@ function FamilyRelationsManagerSheet({ persons, relations, onDeleteRelation, onE
                 : filter === "inferred" ? "أنشأها النظام تلقائياً من علاقات أخرى"
                     : filter === "manual" ? "علاقات أدخلتها بنفسك"
                         : "كل العلاقات المسجَّلة"),
-            shown.length === 0 && (React.createElement(EmptyState, { icon: GitBranch, label: filter === "suspect" ? "لا علاقات مشبوهة — الشجرة سليمة" : "لا علاقات هنا" })),
+            shown0.length > 0 && React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-3 rounded-xl px-3`, style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
+                React.createElement(Search, { size: 14, color: colors.textMuted }),
+                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: relQ, onChange: (e) => setRelQ(e.target.value), placeholder: tl("ابحث باسم أحد الطرفين…", "Search by either person…"), className: "flex-1 py-2 text-[12px] bg-transparent outline-none", style: { color: colors.text, minWidth: 0 } }),
+                relQ && React.createElement("button", { "aria-label": tl("مسح", "Clear"), onClick: () => setRelQ(""), style: { background: "none", border: 0 } }, React.createElement(X, { size: 14, color: colors.textMuted }))),
+            shown.length === 0 && (React.createElement(EmptyState, { icon: GitBranch, label: relQn && shown0.length ? tl("لا علاقة بهذا الاسم في هذا التبويب", "No relation with that name here") : filter === "suspect" ? "لا علاقات مشبوهة — الشجرة سليمة" : "لا علاقات هنا" })),
             shown.map((r) => (React.createElement(FamCard, { key: r.id, className: "mb-2" },
                 React.createElement("div", { className: `flex ${rowStart()} items-start justify-between gap-2` },
                     React.createElement("div", { className: `flex-1 ${textStart()} min-w-0` },
