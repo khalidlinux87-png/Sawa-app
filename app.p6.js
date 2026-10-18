@@ -484,7 +484,8 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
             !q && view === "all" && SC && SC.findSheet && React.createElement("div", { className: "flex flex-row gap-2 px-4 mt-1 mb-2" },
                 quick(UserPlus, tl("أدخل رمز شخص", "Enter a code"), () => SC.findSheet()),
                 quick(QrCode, tl("رمزي", "My code"), () => SC.codeSheet()),
-                quick(Share2, tl("دعوة صديق", "Invite a friend"), () => SC.shareInvite && SC.shareInvite())),
+                quick(Share2, tl("دعوة صديق", "Invite a friend"), () => SC.shareInvite && SC.shareInvite()),
+                SC.phoneContactsSheet && quick(Smartphone, tl("جهات الهاتف", "Phone contacts"), () => SC.phoneContactsSheet())),
             sawaContacts.length > 0 && letters.map((letter) => (React.createElement("div", { key: letter, ref: (el) => (sectionRefs.current[letter] = el) },
                 React.createElement("div", { className: "px-4 py-1 mt-2", style: { backgroundColor: colors.border + "44" } },
                     React.createElement("span", { className: "text-[11px] font-extrabold", style: { color: colors.textMuted } }, letter)),
@@ -591,7 +592,12 @@ function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVid
                 React.createElement("span", { className: "text-lg font-extrabold text-center", style: { color: colors.text } }, contact.name),
                 contact.nick && contact.realName && contact.realName !== contact.nick && React.createElement("span", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } }, tl("اسمه في سوا: ", "Sawa name: ") + contact.realName),
                 React.createElement("span", { className: "text-xs mt-1", style: { color: blocked ? colors.danger : isOnline ? "#22C55E" : colors.textMuted } }, blocked ? tl("🚫 محظور — لا تصلك رسائله ولا مكالماته", "🚫 Blocked") : contactSubtitle(contact, isOnline)),
-                contact.families && contact.families.length > 0 && React.createElement("span", { className: "text-[11px] mt-0.5 text-center", style: { color: colors.textMuted } }, contact.families.map((f) => f.name).join(" · "))),
+                contact.families && contact.families.length > 0 && React.createElement("span", { className: "text-[11px] mt-0.5 text-center", style: { color: colors.textMuted } }, contact.families.map((f) => f.name).join(" · ")),
+                // C88: رمز سوا (١٠ أرقام) بدل الوسم القديم — نقرةٌ تنسخه
+                contact.code && React.createElement("button", { onClick: () => { const f = String(contact.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3"); try { navigator.clipboard.writeText(f); } catch (e) { } try { window.SawaSync.toast(tl("نُسخ الرمز ✓", "Code copied ✓")); } catch (e) { } }, className: "mt-1.5 flex flex-row items-center gap-1.5 px-2.5 py-1 rounded-full", style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
+                    React.createElement(QrCode, { size: 12, color: colors.primary }),
+                    React.createElement("span", { className: "text-[12px] font-extrabold", dir: "ltr", style: { color: colors.text, letterSpacing: 1 } }, String(contact.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3")),
+                    React.createElement(Copy, { size: 11, color: colors.textMuted }))),
             React.createElement("div", { className: "flex flex-row justify-center gap-5 mb-5" },
                 act(MessageCircle, t("rsala"), blocked ? null : onMessage, colors.primary),
                 act(Phone, t("atsal"), blocked ? null : onCall, colors.success || "#22C55E"),
@@ -649,7 +655,9 @@ function AddContactSheet({ colors, onClose }) {
 // المتاح: اتصال عادي من شبكة الهاتف، ودعوة عبر SMS.
 function NonSawaContactSheet({ contact, colors, onClose }) {
     const phone = (contact && contact.phone) || "";
-    const inviteText = "تعال نتواصل على سوا — " + SAWA_INVITE_URL;
+    // C88: الدعوة تحمل رمزي في سوا ورابط إضافتي مباشرةً (إن عُرف الرمز)
+    const SCn = window.SawaChat, myC = SCn && SCn.profile ? (SCn.profile() || {}).code : null;
+    const inviteText = myC && SCn.smsText ? SCn.smsText(myC) : "تعال نتواصل على سوا — " + SAWA_INVITE_URL;
     return (React.createElement(React.Fragment, null,
         React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", zIndex: 40 } }),
         React.createElement("div", { className: "absolute left-0 right-0 bottom-0 rounded-t-3xl pb-8 pt-5 px-6", style: { backgroundColor: colors.card, zIndex: 50 } },
