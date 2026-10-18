@@ -798,6 +798,7 @@ function FamilyChainAddSheet({ existingPersons, relations = [], onSave, onClose 
 function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGroups = [], presetRelatedToId, presetRelationType, presetKinship, presetGender, onSave, onDelete, onClose, }) {
     var _a, _b, _c, _d, _e, _f, _g;
     const { colors } = useTheme();
+    const [relSearch, setRelSearch] = useState("");   // C77
     const isEdit = !!person;
     // ── الأم في بيت متعدّد الزوجات ───────────────────────────────
     // v138 ربطت الأم عند إضافة السلسلة فقط. من أُضيف قبلها أو بغيرها
@@ -1087,7 +1088,21 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                         t("pf_hw")),
                     React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mb-3` }, KINSHIP_RELATION_TYPES.map((rel) => React.createElement(Chip, { key: rel.key, label: t(rel.labelKey), active: relationType === rel.key, onPress: () => setRelationType(rel.key) }))),
                     React.createElement("label", { className: `text-[11px] font-bold mb-1.5 block ${textStart()}`, style: { color: colors.textMuted } }, t("alshkhs_almrtbt_bh_mrtbwn")),
-                    React.createElement("div", { className: "mb-2", style: { maxHeight: 190, overflowY: "auto" } }, lineageSorted.map((p) => (React.createElement("button", { key: p.id, onClick: () => setRelatedToId(p.id), className: `w-full flex ${rowStart()} items-center gap-2 px-2.5 py-2 rounded-xl mb-1 ${textStart()}`, style: {
+                    // C77: بحثٌ بالاسم في قائمة «الشخص المرتبط به» — تطول القائمة في الشجرة الكبيرة
+                    React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-2 rounded-xl px-3`, style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
+                        React.createElement(Search, { size: 14, color: colors.textMuted }),
+                        React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: relSearch, onChange: (e) => setRelSearch(e.target.value), placeholder: tl("ابحث بالاسم…", "Search by name…"), className: "flex-1 py-2 text-[12px] bg-transparent outline-none", style: { color: colors.text, minWidth: 0 } }),
+                        relSearch && React.createElement("button", { "aria-label": tl("مسح", "Clear"), onClick: () => setRelSearch(""), style: { background: "none", border: 0 } }, React.createElement(X, { size: 14, color: colors.textMuted }))),
+                    React.createElement("div", { className: "mb-2", style: { maxHeight: 190, overflowY: "auto" } }, (() => {
+                        const qn = normalizeArabicName(relSearch || "");
+                        // من يبدأ اسمه بالبحث أوّلاً، ثمّ من في اسمه، ثمّ من في نسبه
+                        const rank = (p) => { const n = normalizeArabicName(p.local_name); return n.startsWith(qn) ? 0 : n.includes(qn) ? 1 : normalizeArabicName(lineageLabel(p)).includes(qn) ? 2 : 9; };
+                        const list = !qn ? lineageSorted : lineageSorted.filter((p) => rank(p) < 9).sort((a, b) => rank(a) - rank(b));
+                        // المختار يبقى ظاهراً وإن لم يطابق البحث
+                        const sel = relatedToId && !list.some((p) => p.id === relatedToId) ? lineageSorted.filter((p) => p.id === relatedToId) : [];
+                        const shown = sel.concat(list);
+                        return shown.length ? shown : [null];
+                    })().map((p) => !p ? React.createElement("p", { key: "none", className: "text-[11px] text-center py-3", style: { color: colors.textMuted } }, tl("لا أحد بهذا الاسم", "No one by that name")) : (React.createElement("button", { key: p.id, onClick: () => setRelatedToId(p.id), className: `w-full flex ${rowStart()} items-center gap-2 px-2.5 py-2 rounded-xl mb-1 ${textStart()}`, style: {
                             backgroundColor: relatedToId === p.id ? colors.primaryLight : colors.bg,
                             border: `1px solid ${relatedToId === p.id ? colors.primary : colors.border}`,
                         } },
