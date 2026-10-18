@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c82";
+  var VERSION = "c85";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -2844,8 +2844,7 @@
   }
   function rShareLink() {
     var r = rm; if (!r) return; var lk = roomLink(r.code);
-    if (navigator.share) navigator.share({ title: r.title || "سوا", text: L("انضمّ إلى غرفة سوا «", "Join the Sawa room “") + (r.title || "") + L("»", "”"), url: lk }).catch(function () {});
-    else rCopyLink();
+    shareOut(r.title || "سوا", L("انضمّ إلى غرفة سوا «", "Join the Sawa room “") + (r.title || "") + L("» ", "” ") + lk);
   }
   function rShowQr() {
     var r = rm; if (!r) return;
@@ -3017,8 +3016,112 @@
         tt.textContent = m.title || L("غرفة سوا", "Sawa room");
         var hn = nameOf(m.host);
         sub.textContent = (hn ? L("المضيف: ", "Host: ") + hn : L("المضيف ليس في جهات اتّصالك", "The host isn't in your contacts")) + (m.lobby ? L(" · بموافقة المضيف", " · host approval") : "");
+        // C84: غرفةٌ مجدولة ⇒ بطاقة الموعد، وتُضاف إلى «مواعيدي» عند من فتح الرابط (مع التذكير)
+        if (m.sched && m.sched > Date.now() - 60000) schedCard(box, go, no, code, m);
       }).catch(function () { sub.textContent = ""; });
     } catch (e) {}
+  }
+
+  // ============================================================
+  //  C84: بطاقة الموعد للغرف المجدولة + «نشر» (كلّ التطبيقات · داخل سوا · نسخ · QR)
+  // ============================================================
+  var WD_AR = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  var MO_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+  function schedWhen(at) {
+    var d = new Date(at), n = new Date(), t = new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
+    var day0 = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(), dd = Math.round((day0 - t) / 86400000);
+    var h = d.getHours(), mm = pad2(d.getMinutes());
+    if (!isAr()) return (dd === 0 ? "Today" : dd === 1 ? "Tomorrow" : d.toDateString()) + " " + pad2(h) + ":" + mm;
+    var ap = h < 12 ? "صباحاً" : "مساءً", h12 = h % 12 || 12;
+    var dayTx = dd === 0 ? "اليوم" : dd === 1 ? "غداً" : WD_AR[d.getDay()] + " " + d.getDate() + " " + MO_AR[d.getMonth()];
+    return dayTx + " · " + h12 + ":" + mm + " " + ap;
+  }
+  function schedLeft(at) {
+    var m = Math.round((at - Date.now()) / 60000);
+    if (m <= 0) return L("حان الموعد", "Starting now");
+    if (m < 60) return L("بعد ", "in ") + m + L(" دقيقة", " min");
+    var h = Math.floor(m / 60); if (h < 48) return L("بعد ", "in ") + h + L(" ساعة", " h");
+    return L("بعد ", "in ") + Math.round(h / 24) + L(" يوم", " days");
+  }
+  function schedCard(box, go, no, code, m) {
+    var card = el("div", "margin:12px 0 2px;padding:12px;border-radius:16px;background:#EFF6FF;border:1px solid #BFDBFE;text-align:center");
+    card.appendChild(el("div", "font:800 15px system-ui;color:#1E3A8A", "📅 " + schedWhen(m.sched)));
+    var left = el("div", "font:700 12px system-ui;color:#2563EB;margin-top:3px", schedLeft(m.sched)); card.appendChild(left);
+    var st = el("div", "font:700 12px system-ui;color:#6B7280;margin-top:6px", "…"); card.appendChild(st);
+    box.insertBefore(card, box.children[4] || null);
+    var tick = setInterval(function () { if (!card.isConnected) { clearInterval(tick); return; } left.textContent = schedLeft(m.sched); }, 30000);
+    var soon = m.sched - Date.now() < 10 * 60000;
+    if (!soon) { go.textContent = L("ادخل الآن قبل الموعد", "Enter early"); go.style.background = "#f3f4f6"; go.style.color = "#1A1A2E"; go.style.boxShadow = "none"; no.textContent = L("حسناً", "OK"); }
+    if (m.host === myUid()) { st.textContent = L("أنت المضيف — هذا موعدك", "You're the host"); return; }
+    if (!myUid() || !enabled()) { st.textContent = L("سجّل الدخول لإضافتها إلى مواعيدك", "Sign in to add it to your schedule"); return; }
+    wcall("sched.join", { room: code }).then(function (b) {
+      if (b && b.joined) {
+        if (b.item) { schedItems = schedItems.filter(function (x) { return x.id !== b.item.id; }).concat([b.item]); publishSched(); }
+        st.textContent = L("✓ أُضيفت إلى مواعيدك — سيصلك تذكير قبلها", "✓ Added to your schedule — you'll get a reminder");
+        st.style.color = "#059669";
+      } else st.textContent = b && b.reason === "full" ? L("اكتمل عدد المدعوّين", "Invite list is full") : "";
+    }).catch(function (e) { st.textContent = L("تعذّرت الإضافة إلى مواعيدك", "Couldn't add to your schedule"); log("sched.join", e && e.message); });
+  }
+  function schedText(o) {
+    return "📅 " + L("دعوة إلى غرفة سوا", "Invite to a Sawa room") + (o.title ? " «" + o.title + "»" : "") + "\n" +
+      "🕒 " + schedWhen(o.at) + "\n" + L("اضغط الرابط لإضافتها إلى مواعيدك والانضمام:", "Tap to add it to your schedule and join:") + "\n" + roomLink(o.code);
+  }
+  function shareOut(title, text) {
+    var nb = global.SawaNativeBridge;
+    if (nb && nb.share) { try { nb.share(title || "سوا", text); return Promise.resolve(true); } catch (e) {} }
+    if (navigator.share) return navigator.share({ title: title || "سوا", text: text }).then(function () { return true; }, function () { return false; });
+    return copyOut(text);
+  }
+  function copyOut(text) {
+    try { return navigator.clipboard.writeText(text).then(function () { toast(L("نُسخ", "Copied")); return true; }, function () { toast(text); return false; }); } catch (e) { toast(text); return Promise.resolve(false); }
+  }
+  // يُرسل النصّ إلى محادثات مختارة داخل سوا (رسالةٌ ثنائيّة لكلّ شخص، أو المجموعات المختارة)
+  function sendInSawa(text, done) {
+    var me = myUid(), picked = {}, list = [], chats = [];
+    try { list = C().contacts().filter(function (c) { return c.uid && c.uid !== me; }); } catch (e) {}
+    try { var cm = C()._chats() || {}; chats = Object.keys(cm).map(function (k) { var c = cm[k] || {}; return { id: k, name: c.name, type: c.type, left: c.left }; })
+      .filter(function (c) { return (c.type === "group" || c.type === "family") && !c.left; }); } catch (e) {}
+    sheet(L("إرسال في سوا", "Send in Sawa"), function (body, close) {
+      var q = el("input", "margin:0 16px 8px;width:calc(100% - 32px);box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1px solid " + LINE + ";background:rgba(255,255,255,.06);color:#fff;font:600 13px system-ui");
+      q.placeholder = L("بحث بالاسم…", "Search…"); body.appendChild(q);
+      var rows = [];
+      var add = function (key, label) { var b = item(body, "◻️", label, function () { picked[key] = !picked[key]; b.firstChild.textContent = picked[key] ? "☑️" : "◻️"; }); b._tx = label.toLowerCase(); rows.push(b); };
+      chats.forEach(function (c) { add("c:" + c.id, "👥 " + (c.name || L("مجموعة", "Group"))); });
+      list.forEach(function (c) { var fam = (c.families || []).map(function (f) { return f.name; }).join("، "); add("u:" + c.uid, (c.name || "") + (fam ? " · " + fam : "")); });
+      if (!rows.length) body.appendChild(el("div", "padding:20px;text-align:center;color:" + MUTED + ";font:600 12px system-ui", L("لا جهات اتّصال بعد", "No contacts yet")));
+      q.oninput = function () { var v = q.value.trim().toLowerCase(); rows.forEach(function (b) { b.style.display = !v || b._tx.indexOf(v) >= 0 ? "" : "none"; }); };
+      var send = el("button", "position:sticky;bottom:0;margin:12px 16px 4px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px system-ui", L("إرسال", "Send"));
+      send.onclick = function () {
+        var keys = Object.keys(picked).filter(function (k) { return picked[k]; });
+        if (!keys.length) { toast(L("اختر محادثة على الأقلّ", "Pick at least one")); return; }
+        keys.forEach(function (k) {
+          if (k.slice(0, 2) === "c:") { try { C().send(k.slice(2), text); } catch (e) {} }
+          else C().openDm(k.slice(2)).then(function (cid) { if (cid) C().send(cid, text); });
+        });
+        toast(L("أُرسلت إلى ", "Sent to ") + keys.length); close(); if (done) done();
+      };
+      body.appendChild(send);
+    });
+  }
+  // o = { code, title, at }
+  function schedPublish(o) {
+    if (!o || !cleanCode(o.code)) { toast(L("لا رابط لهذه الغرفة", "No link for this room")); return; }
+    var text = schedText(o);
+    sheet(L("نشر الغرفة", "Share the room"), function (body, close) {
+      var pv = el("div", "margin:0 16px 10px;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.06);font:600 12.5px system-ui;white-space:pre-wrap;line-height:1.7;color:#e2e8f0;word-break:break-all", text);
+      body.appendChild(pv);
+      item(body, "📤", L("مشاركة إلى التطبيقات (واتساب، تيليجرام…)", "Share to apps (WhatsApp, Telegram…)"), function () { close(); shareOut(o.title, text); });
+      item(body, "💬", L("إرسال في سوا", "Send in Sawa"), function () { close(); sendInSawa(text); });
+      item(body, "📋", L("نسخ الرابط والنصّ", "Copy link & text"), function () { close(); copyOut(text); });
+      item(body, "🔳", L("رمز QR", "QR code"), function () {
+        close();
+        sheet(L("امسح لإضافتها إلى مواعيدك", "Scan to add it"), function (b2) {
+          var q = el("div", "width:220px;height:220px;margin:6px auto 10px;background:#fff;border-radius:16px;padding:10px;box-sizing:content-box"); b2.appendChild(q);
+          b2.appendChild(el("div", "text-align:center;font:700 12px system-ui;color:" + MUTED + ";padding:0 16px 12px", (o.title || "") + " · " + schedWhen(o.at)));
+          try { C().qrLib().then(function (Q) { new Q(q, { text: roomLink(o.code), width: 220, height: 220, colorDark: "#1A1A2E", colorLight: "#FFFFFF", correctLevel: Q.CorrectLevel.M }); }).catch(function (e) { q.textContent = (e && e.message) || "QR"; }); } catch (e) {}
+        });
+      });
+    });
   }
 
   // ---------- من الإشعار ----------
@@ -3033,7 +3136,8 @@
   try {
     if (global.navigator && navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", function (ev) {
       var m = ev.data || {};
-      if ((m.type === "sawa-open" || m.type === "sawa-push") && m.data && m.data.t === "call" && m.data.call) {
+      if (m.type === "sawa-push" && m.data && m.data.t === "call" && /^test_/.test(String(m.data.call || ""))) { toast(L("وصل اختبار المكالمة ✓ — أغلق التطبيق وأعد الاختبار لترى الرنين", "Test call received ✓")); return; }   // C85
+      if ((m.type === "sawa-open" || m.type === "sawa-push") && m.data && m.data.t === "call" && m.data.call && !/^test_/.test(String(m.data.call))) {
         if (m.data.answer) wantAnswer[m.data.call] = 1;
         whenUid(function () {
           if (m.data.gid) { groupIncoming(m.data.gid, { from: m.data.from, fromName: m.data.fromName }); return; }
@@ -3092,7 +3196,7 @@
     group: function () { var g = gc; return g ? { gid: g.gid, type: g.type, vc: !!g.vc, state: g.state, role: g.role, title: g.title, members: Object.keys(g.members || {}),
       peers: Object.keys(g.peers).map(function (u) { return { uid: u, state: g.peers[u].state }; }) } : null; },
     // C7: المجدولة
-    schedRefresh: schedRefresh, schedSave: schedSave, schedRemove: schedRemove, schedStart: schedStart,
+    schedRefresh: schedRefresh, schedSave: schedSave, schedRemove: schedRemove, schedStart: schedStart, schedPublish: schedPublish, shareOut: shareOut, schedWhen: schedWhen,
     // C8: الغرف
     roomCreate: roomCreate, roomJoin: roomJoin, prejoin: roomPrejoin, roomJoinPrompt: roomJoinPrompt, roomLink: roomLink, newRoomCode: newCode, roomLeave: function () { if (rm) rLeave(rm, "left"); },
     room: function () { var r = rm; return r ? { code: r.code, state: r.state, host: r.meta.host, title: r.title, members: Object.keys(r.members), mic: r.mic, cam: r.camOn, hand: !!r.hand, low: r.low,

@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c83";
+  var VERSION = "c85";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -44,6 +44,18 @@
   } catch (e) {}
   // C72: داخل تطبيق أندرويد الأصليّ (WebView + SawaNativeBridge) — الإشعارات عبر FCM الأصليّ لا Web Push
   function NB() { try { return global.SawaNativeBridge || null; } catch (e) { return null; } }
+  // C84: WebView في تطبيق أندرويد لا يعرف navigator.share ⇒ نوصله بقائمة المشاركة الأصليّة (واتساب، تيليجرام…)
+  try {
+    if (NB() && NB().share && global.navigator && !global.navigator.share) {
+      global.navigator.share = function (d) {
+        d = d || {};
+        var parts = [d.text, d.url].filter(function (x) { return x; });
+        if (d.url && d.text && String(d.text).indexOf(d.url) >= 0) parts = [d.text];
+        if (!parts.length) return Promise.reject(new TypeError("nothing to share"));
+        try { NB().share(d.title || "سوا", parts.join("\n")); return Promise.resolve(); } catch (e) { return Promise.reject(e); }
+      };
+    }
+  } catch (e) {}
   // C73: نداءٌ للجسر الأصليّ ينتظر ردّه عبر __sawaNativeCb (السجلّ مشترك مع sawa-sync)
   function nativeAsk(method, args, ms) {
     return new Promise(function (res) {
@@ -493,15 +505,22 @@
   function loadJsQr() {
     if (global.jsQR) return Promise.resolve(global.jsQR);
     if (jsqrP) return jsqrP;
+    // C84: عدّة مصادر — cdnjs أوّلاً (هو نفسه مصدر أداة رسم QR التي تعمل)، ثمّ jsdelivr ثمّ unpkg
+    var SRC = ["https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js", "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js", "https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"];
     jsqrP = new Promise(function (res, rej) {
-      var sc = document.createElement("script");
-      sc.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
-      sc.onload = function () { global.jsQR ? res(global.jsQR) : rej(new Error("jsQR")); };
-      sc.onerror = function () { jsqrP = null; rej(new Error(L("تعذّر تحميل قارئ QR — تحقّق من الاتّصال", "Couldn't load the QR reader — check your connection"))); };
-      document.head.appendChild(sc);
+      (function next(i) {
+        if (global.jsQR) return res(global.jsQR);
+        if (i >= SRC.length) { jsqrP = null; return rej(new Error(L("تعذّر تحميل قارئ QR — تحقّق من الاتّصال", "Couldn't load the QR reader — check your connection"))); }
+        var sc = document.createElement("script"), t = setTimeout(function () { sc.onload = sc.onerror = null; next(i + 1); }, 12000);
+        sc.src = SRC[i];
+        sc.onload = function () { clearTimeout(t); global.jsQR ? res(global.jsQR) : next(i + 1); };
+        sc.onerror = function () { clearTimeout(t); next(i + 1); };
+        document.head.appendChild(sc);
+      })(0);
     });
     return jsqrP;
   }
+  var lastScanErr = "";
   function scanSupported() { return !!(global.navigator && navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
   // C73: في تطبيق أندرويد الأصليّ نستعمل ماسح Google (أسرع ولا يطلب إذن الكاميرا)، وإن لم يتوفّر نعود إلى ماسح الصفحة
   function scanQr() {
@@ -509,6 +528,12 @@
       return nativeAsk("scanQr", [], 180000).then(function (r) {
         if (r.ok && r.value) return r.value;
         if (r.cancelled) return null;
+        // C84: لا نُخفي سبب فشل ماسح Google — غالباً أوّل استعمال (يُنزَّل في الخلفيّة) أو خدمات Google قديمة
+        var er = String(r.error || "");
+        log("native scan", er);
+        toast(/download|unavailable|module|\b14\b/i.test(er) ? L("ماسح Google يُجهَّز لأوّل مرّة — نفتح الكاميرا الآن", "Google scanner is still downloading — using the camera")
+                                                               : L("ماسح Google لم يعمل — نفتح الكاميرا", "Google scanner failed — using the camera"));
+        lastScanErr = er;
         return scanQrWeb();
       });
     }
@@ -572,11 +597,31 @@
     if ((m = t.match(/[?&]code=(\d{10})/)) || (m = t.replace(/[\s-]/g, "").match(/^(\d{10})$/))) { findSheet(m[1]); return "code"; }
     var tok = tokenFrom(t);
     if (tok) { whenReady(function () { linkConfirm("contact", tok); }); return "contact"; }
-    toast(L("هذا الرمز ليس من سوا", "That isn't a Sawa code")); return null;
+    // C84: دعوة العائلة (?join=) وبقيّة روابط سوا (محادثة/طلبات…) — تُفتح كما لو ضُغط الرابط
+    var u = null; try { u = new URL(t); } catch (e) {}
+    if (u && /(^|\.)sawaaap\.com$/i.test(u.hostname) || (u && u.origin === global.location.origin)) {
+      if (u.searchParams.get("join")) {
+        if (global.confirm(L("هذا رابط دعوة للانضمام إلى عائلة في «صلة رحم». الانضمام؟", "This is a family invite. Join?"))) global.location.assign(global.location.origin + "/?join=" + encodeURIComponent(u.searchParams.get("join")));
+        return "join";
+      }
+      if (global.__sawaNativeOpen && global.__sawaNativeOpen(u.href) && (u.searchParams.get("chat") || u.searchParams.get("call") || u.searchParams.get("requests"))) return "link";
+      if (!u.search || u.search === "?") { toast(L("هذا رابط موقع سوا", "That's the Sawa website")); return "site"; }
+      global.location.assign(global.location.origin + "/" + u.search); return "link";
+    }
+    scannedSheet(t); return null;
+  }
+  // رمزٌ ليس من سوا: نعرض ما قُرئ بدل رسالةٍ مبهمة (فيُعرف أنّ الكاميرا قرأت فعلاً)
+  function scannedSheet(t) {
+    var s = sheet(L("قُرئ الرمز", "Code scanned"));
+    s.box.appendChild(note(L("هذا الرمز ليس من سوا. محتواه:", "This isn't a Sawa code. It contains:")));
+    var pre = mk("div", "margin:8px 0;padding:10px;border-radius:12px;background:#f3f4f6;color:#111827;font:600 13px system-ui;direction:ltr;text-align:left;word-break:break-all;white-space:pre-wrap;max-height:40vh;overflow:auto");
+    pre.textContent = t; s.box.appendChild(pre);
+    var b1 = mkBtn(L("نسخ", "Copy")); b1.onclick = function () { copyText(t); s.close(); }; s.box.appendChild(b1);
+    if (/^https?:\/\//i.test(t)) { var b2 = mkBtn(L("فتح الرابط", "Open link"), "primary"); b2.style.marginTop = "8px"; b2.onclick = function () { s.close(); try { if (NB() && NB().openExternal) NB().openExternal(t); else global.open(t, "_blank"); } catch (e) {} }; s.box.appendChild(b2); }
   }
   function scanAny() {
     return scanQr().then(function (txt) { return txt ? routeScanned(txt) : null; })
-      .catch(function (e) { toast((e && e.message) || String(e)); return null; });
+      .catch(function (e) { toast(((e && e.message) || String(e)) + (lastScanErr ? " · " + lastScanErr.slice(0, 80) : "")); return null; });
   }
   function scanAndAdd() { return scanAny(); }
 
@@ -1562,7 +1607,8 @@
   }
   function registerToken(tok) {
     var prev = lsGet("sawa_push", {});
-    if (prev.token === tok && prev.uid === state.uid) return Promise.resolve(true);
+    // C84: نجدّد التسجيل كلّ ٣ أيّام ولو لم يتغيّر الرمز — الخادم يحذف الأجهزة القديمة (٦٠ يوماً/أكثر من ٥)، وكان الهاتف يظنّ نفسه مسجّلاً للأبد
+    if (prev.token === tok && prev.uid === state.uid && Date.now() - (prev.ts || 0) < 3 * 86400000) return Promise.resolve(true);
     return call("push.register", { token: tok, ua: (navigator.userAgent || "").slice(0, 150), prevUid: prev.uid && prev.uid !== state.uid ? prev.uid : null })
       .then(function () { lsSet("sawa_push", { token: tok, uid: state.uid, ts: Date.now() }); return true; });
   }
@@ -1729,6 +1775,17 @@
         item(hw ? L("التشغيل التلقائيّ / إدارة تشغيل التطبيقات ← سوا: يدويّ وكلّ المفاتيح مفعّلة", "Auto-launch: Sawa manual, all toggles on") : L("التشغيل في الخلفيّة", "Background launch"), null, "launch",
           hw ? L("في هاتف " + (bs.maker || "") + " هذا الإعداد هو الأهمّ: بدونه لا تصل الإشعارات إلّا والتطبيق مفتوح", "On this phone this matters most") : "");
         if (!bs.fcm) phone.appendChild(note(L("لا رمز إشعارات من Google على هذا الهاتف بعد — اضغط «إعادة تسجيل هذا الجهاز».", "No Google push token yet — tap Re-register."), "#b42318", "#fdecec"));
+        // C84: آخر إشعارٍ وصل الهاتف فعلاً (يسجّله التطبيق الأصليّ لحظة الاستلام) — يفصل «لم يصل أصلاً» عن «وصل ولم يظهر»
+        var lp = bs.lastPush || null;
+        phone.appendChild(note(lp && lp.ts
+          ? L("📥 آخر إشعار وصل هذا الهاتف: ", "📥 Last push received: ") + timeAgo(lp.ts) + " (" + (lp.t || "?") + (lp.fg ? L(" · والتطبيق مفتوح", " · app open") : L(" · والتطبيق مغلق ✓", " · app closed ✓")) + ")" + (lp.shown === false ? L(" — لكنّ الهاتف منع عرضه ✗", " — but the phone blocked showing it ✗") : "")
+          : L("📥 لم يصل هذا الهاتفَ أيّ إشعار منذ تثبيت هذه النسخة.", "📥 No push has reached this phone since this version was installed."), lp && lp.ts ? "#2e7d5b" : "#b45309", lp && lp.ts ? "#eaf6ef" : "#fff7e6"));
+        var lr = bs.lastRing || null;   // C85: آخر مكالمة واردة — كيف عُرضت
+        if (lr && lr.ts) {
+          var mtx = { callstyle: L("شاشة مكالمة ✓", "call screen ✓"), plain: L("إشعار رنين (بلا شاشة كاملة)", "ringing notification"), message: L("إشعار عاديّ فقط", "plain notification only"), none: L("لم يُعرض ✗", "not shown ✗") }[lr.mode] || lr.mode;
+          var good = lr.mode === "callstyle";
+          phone.appendChild(note(L("📞 آخر مكالمة وصلت الهاتف: ", "📞 Last incoming call: ") + timeAgo(lr.ts) + " — " + mtx + (lr.fsi === false ? L(" · «إشعارات ملء الشاشة» غير مسموحة", " · full-screen not allowed") : "") + (lr.err ? " · " + lr.err : ""), good ? "#2e7d5b" : "#b45309", good ? "#eaf6ef" : "#fff7e6"));
+        }
       };
       drawPhone();
       var onVis = function () { if (document.visibilityState === "visible" && document.body.contains(phone)) drawPhone(); else if (!document.body.contains(phone)) document.removeEventListener("visibilitychange", onVis); };
@@ -1749,6 +1806,18 @@
       }, function (e) { bg.disabled = false; bg.textContent = L("🕒 اختبار والتطبيق مغلق (بعد ١٥ ثانية)", "🕒 Test with the app closed (in 15s)"); toast((e && e.message) || String(e)); });
     };
     if (st === "granted") box.appendChild(bg);
+    // C85: الإشعار التجريبيّ يصل والمكالمة لا ⇒ اختبارٌ بشكل المكالمة نفسه (رنين وشاشة كاملة)
+    if (st === "granted" && NB()) {
+      var cb = mkBtn(L("📞 اختبار مكالمة والتطبيق مغلق (بعد ١٥ ثانية)", "📞 Test a call with the app closed (in 15s)")); cb.style.marginTop = "8px";
+      cb.onclick = function () {
+        cb.disabled = true; cb.textContent = "…";
+        call("push.test", { delay: 15000, kind: "call" }).then(function () {
+          cb.textContent = L("أُرسل ✓ — أغلق سوا الآن (زرّ الرئيسيّة) وانتظر الرنين", "Queued ✓ — close Sawa now and wait for the ring");
+          toast(L("أغلق التطبيق الآن — يجب أن يرنّ الهاتف بعد ١٥ ثانية", "Close the app now — the phone should ring in 15s"));
+        }, function (e) { cb.disabled = false; cb.textContent = L("📞 اختبار مكالمة والتطبيق مغلق (بعد ١٥ ثانية)", "📞 Test a call with the app closed (in 15s)"); toast((e && e.message) || String(e)); });
+      };
+      box.appendChild(cb);
+    }
     if (st === "granted") box.appendChild(fix);
     var tips = note(sa
       ? L("إن قال الخادم «وصل» ولم يظهر شيء على هاتفك:\n١) اضغط مطوّلاً على أيقونة سوا ← «معلومات التطبيق» ← «الإشعارات» ← مسموح.\n٢) في «معلومات التطبيق» أيضاً: «البطاريّة» ← «بلا قيود» (هواتف Tecno/Infinix/Xiaomi/Huawei توقف الخلفية).\n٣) Chrome ← ⋮ ← الإعدادات ← إعدادات الموقع ← الإشعارات ← sawaaap.com مسموح.\nالمكالمات تصل كإشعارٍ يرنّ؛ اضغطه لترُدّ.",
@@ -1756,13 +1825,22 @@
       : L("للمكالمات والرسائل والتطبيق مغلق: ثبّت سوا على الشاشة الرئيسيّة وفعّل الإشعارات، وفي «معلومات التطبيق» اجعل البطاريّة «بلا قيود».", "For calls and messages while closed: install Sawa to the home screen, allow notifications, and set Battery → Unrestricted in App info."), "#5b6b7c", "#f5f7fa");
     tips.style.whiteSpace = "pre-line"; tips.style.marginTop = "12px"; box.appendChild(tips);
     var closeB = mkBtn(L("إغلاق", "Close"), "ghost"); closeB.style.marginTop = "6px"; closeB.onclick = s.close; box.appendChild(closeB);
+    var myTail = ""; try { myTail = NB() && NB().fcmToken ? String(NB().fcmToken() || "").slice(-8) : String((reg && reg.token) || "").slice(-8); } catch (e) {}
+    var markMine = function (list) {   // C84: أيّ أجهزة الخادم هو هذا الهاتف؟ إن لم يكن بينها ⇒ هذا سبب عدم الوصول
+      if (!myTail || !list) return;
+      var mine = list.some(function (r) { return r.tail === myTail; });
+      out.appendChild(note(mine ? L("📱 هذا الهاتف مسجّلٌ عند الخادم ✓ (…" + myTail.slice(-4) + ")", "📱 This phone is registered on the server ✓")
+                              : L("📱 رمز هذا الهاتف ليس بين أجهزتك عند الخادم ✗ — لذلك لا تصله الإشعارات. اضغط «إعادة تسجيل هذا الجهاز».", "📱 This phone's token isn't on the server ✗ — tap Re-register."),
+                          mine ? "#2e7d5b" : "#b42318", mine ? "#eaf6ef" : "#fdecec"));
+    };
     function runTest(label) {
       test.disabled = true; test.textContent = L("جارٍ الإرسال…", "Sending…"); out.innerHTML = "";
       return call("push.test", {}).then(function (b) {
         srv.lastChild.textContent = String(b.devices || 0);
         if (!b.devices) { out.appendChild(note(L("لا جهاز مسجّلاً عند الخادم — اضغط «إعادة تسجيل هذا الجهاز».", "No device registered on the server — tap Re-register."), "#b42318", "#fdecec")); return; }
+        markMine(b.results);
         (b.results || []).forEach(function (r) {
-          out.appendChild(note((r.ok ? "✓ " : "✗ ") + (r.ua || L("جهاز", "device")) + " · " + timeAgo(r.ts || 0) + (r.ok ? L(" — أرسله الخادم. إن لم يظهر خلال ١٠ ثوانٍ فالمشكلة في إعدادات الهاتف (انظر أدناه).", " — sent by the server. If nothing shows in 10 s, the phone's settings block it (see below).") : r.err === "gone" ? L(" — رمزٌ ميّت (حُذف) — أعد التسجيل.", " — dead token (removed) — re-register.") : " — " + r.err), r.ok ? "#2e7d5b" : "#b42318", r.ok ? "#eaf6ef" : "#fdecec"));
+          out.appendChild(note((r.ok ? "✓ " : "✗ ") + (myTail && r.tail === myTail ? L("📱 هذا الهاتف · ", "📱 this phone · ") : "") + (r.ua || L("جهاز", "device")) + " · " + timeAgo(r.ts || 0) + (r.ok ? L(" — أرسله الخادم. إن لم يظهر خلال ١٠ ثوانٍ فالمشكلة في إعدادات الهاتف (انظر أدناه).", " — sent by the server. If nothing shows in 10 s, the phone's settings block it (see below).") : r.err === "gone" ? L(" — رمزٌ ميّت (حُذف) — أعد التسجيل.", " — dead token (removed) — re-register.") : " — " + r.err), r.ok ? "#2e7d5b" : "#b42318", r.ok ? "#eaf6ef" : "#fdecec"));
         });
       }).catch(function (e) { out.appendChild(note(L("تعذّر الاختبار: ", "Test failed: ") + ((e && e.message) || e), "#b42318", "#fdecec")); })
         .then(function () { test.disabled = false; test.textContent = L("أرسل إشعاراً تجريبيّاً الآن", "Send a test notification now"); });
@@ -1777,7 +1855,7 @@
     };
     en.onclick = function () { s.close(); if (st === "denied") helpSheet(); else enablePush().then(function (ok) { if (ok) pushCheckSheet(); }); };
     // عدد الأجهزة عند الخادم (بلا إرسال)
-    if (st === "granted") call("push.test", { dry: true }).then(function (b) { srv.lastChild.textContent = String(b.devices || 0); srv.lastChild.style.color = b.devices ? "#2e7d5b" : "#b42318"; }).catch(function () { srv.lastChild.textContent = "؟"; });
+    if (st === "granted") call("push.test", { dry: true }).then(function (b) { srv.lastChild.textContent = String(b.devices || 0); srv.lastChild.style.color = b.devices ? "#2e7d5b" : "#b42318"; if (b.tails) markMine(b.tails); }).catch(function () { srv.lastChild.textContent = "؟"; });
     else srv.lastChild.textContent = "—";
     return s;
   }
@@ -2012,6 +2090,7 @@
     global.prompt(L("انسخ:", "Copy:"), t);
   }
   function shareText(t) {
+    try { if (NB() && NB().share) { NB().share("سوا", t); return Promise.resolve(); } } catch (e) {}   // C84: WebView لا يعرف navigator.share
     try { if (navigator.share) return navigator.share({ title: "سوا", text: t }).catch(function () {}); } catch (e) {}
     copyText(t);
   }
