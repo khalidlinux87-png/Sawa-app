@@ -549,7 +549,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                             React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
                                 React.createElement("p", { className: "text-xs font-bold text-white truncate" }, m.local_name),
                                 React.createElement("p", { className: "text-[10px]", style: { color: late ? "#ef4444" : "#64748b" } },
-                                    kinshipLabel(m.kinship),
+                                    personKinLabel(m),
                                     late ? t("rm_takhr_altwasl") : ""))));
                     })),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2 p-4 shrink-0`, style: { borderTop: "1px solid #334155" } },
@@ -1107,37 +1107,22 @@ function AppInner() {
     // انقضى) يولّد إشعاراً حقيقياً بمركز الإشعارات — بدل ما تحتاج تدخل شاشة
     // "مواعيد" بنفسك لتكتشف الاستحقاق. يشتغل مرة وحدة عند التحميل (محاكاة
     // لما كان بيصير بالخلفية على السيرفر بتطبيق حقيقي)
-    useEffect(() => {
-        const now = Date.now();
-        const dueNow = schedules.filter((s) => s.dueTimestamp && s.dueTimestamp <= now && !s.notified);
-        if (dueNow.length === 0)
-            return;
-        const newNotifs = dueNow.map((s) => {
-            const person = (groupPersons[s.groupId] || []).find((p) => p.id === s.personId);
-            return {
-                id: `n-sched-${s.id}`, type: "schedule",
-                title: t("ai_mwad_mstihq"),
-                body: t("fam_ntf_time_for", { action: actionLabel(s.action) || t("ai_altwasl"), name: (person === null || person === void 0 ? void 0 : person.local_name) || t("ai_qrybk") }),
-                read: false,
-            };
-        });
-        setNotifications((prev) => [...newNotifs, ...prev]);
-        setSchedules((prev) => prev.map((s) => (dueNow.some((d) => d.id === s.id) ? { ...s, notified: true } : s)));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    // C75: أُزيل تنبيهٌ ثانٍ للمواعيد كان يكرّر الإشعار نفسه (n-sched) ولا يتجدّد في الدورة التالية — الذي يليه يكفي.
+
     // تحقّق تلقائي حقيقي لأعياد الميلاد القريبة (خلال 3 أيام) — إشعار استباقي
     // فعلي بدون ما تحتاج تفتح شاشة الاقتراحات لتكتشفه. نتتبّع سنة آخر إشعار
     // لكل قريب (notifiedBirthdayYear) عشان ما نكرّر نفس التنبيه بنفس السنة
     useEffect(() => {
-        const today = new Date();
+        // C75: منتصف الليل لا «الآن» — وإلّا عُدّ عيد ميلاد اليوم ماضياً فانتقل إلى السنة القادمة ولم يُنبَّه به
+        const now0 = new Date(), today = new Date(now0.getFullYear(), now0.getMonth(), now0.getDate());
         const newNotifs = [];
         const toMark = []; // { groupId, personId, year }
         const dueMark = []; // معرّفات المواعيد التي أُشعِر بها في دورتها هذه
         Object.entries(groupPersons).forEach(([groupId, persons]) => {
             persons.forEach((p) => {
-                if (!p.alive || !p.birthday)
+                if (!p.alive || !p.birthday || isSelfPerson(p))
                     return;
-                const [bMonth, bDay] = p.birthday.split("-").map(Number);
+                const [bMonth, bDay] = String(p.birthday).split("-").map(Number);
                 const thisYearBday = new Date(today.getFullYear(), bMonth - 1, bDay);
                 if (thisYearBday < today)
                     thisYearBday.setFullYear(today.getFullYear() + 1);
@@ -1193,7 +1178,36 @@ function AppInner() {
     // تفقد أعضاءها وإعداداتها عند إعادة التحميل.
     const [members, setMembers] = usePersistedState("members", initialMembers);
     const [kinshipRelations, setKinshipRelations] = usePersistedState("kinshipRelations", initialKinship);
-    const [activityLog, setActivityLog] = useState([]); // { id, groupId, text, ts }
+    // C75: «من أنا في هذه الشجرة؟» لكلّ عائلة على هذا الجهاز — صاحب الشجرة هو «نفسي»، ومن انضمّ يختار نفسه.
+    const [famMe, setFamMe] = usePersistedState("famMe", {});
+    // C75: القرابة المحسوبة من الصلات لكلّ عائلة (للعرض والتذكير). ما يُكتب يبقى في groupPersons كما هو.
+    const famPersons = useMemo(() => {
+        const out = {};
+        Object.keys(groupPersons || {}).forEach((gid) => {
+            const list = groupPersons[gid] || [];
+            const rels = kinshipRelations.filter((r) => r.groupId === gid);
+            const ownerSelf = list.find(isSelfPerson);
+            // من انضمّ ولم يختر نفسه بعد: إن طابق اسمُ حسابه شخصاً واحداً في الشجرة فهو هو (يستطيع التغيير)
+            const g = (familyGroups || []).find((x) => x.id === gid);
+            let guess = null;
+            if (g && g.role && g.role !== "owner" && !famMe[gid]) {
+                const nm = normalizeArabicName(myAccountName() || "");
+                const hits = nm ? list.filter((p) => normalizeArabicName(p.local_name) === nm || normalizeArabicName(String(p.local_name).split(" ")[0]) === nm) : [];
+                if (hits.length === 1 && !isSelfPerson(hits[0])) guess = hits[0].id;
+            }
+            const meId = (famMe[gid] && list.some((p) => p.id === famMe[gid])) ? famMe[gid] : (guess || (ownerSelf && ownerSelf.id));
+            let kin = {};
+            try { kin = meId ? kinCompute(list, rels, meId) : {}; } catch (e) { kin = {}; }
+            out[gid] = list.map((p) => {
+                const k = kin[p.id];
+                if (p.id === meId) return { ...p, kinship: SELF_KINSHIP, kinLabel: null, kinAlso: [], kinComputed: true, kinStored: p.kinship, kinSection: "self" };
+                if (!k) return (ownerSelf && meId !== ownerSelf.id && p.id === ownerSelf.id) ? { ...p, kinship: "أخرى", kinStored: p.kinship } : p;
+                return { ...p, kinship: k.kinship, kinLabel: k.label !== k.kinship ? k.label : null, kinAlso: k.also, proximity: k.proximity, kinSection: k.section, kinComputed: true, kinStored: p.kinship };
+            });
+        });
+        return out;
+    }, [groupPersons, kinshipRelations, famMe, familyGroups]);
+    const [activityLog, setActivityLog] = usePersistedState("famActivityLog", []); // { id, groupId, text, ts } — C75: يُحفظ (كان يضيع عند كلّ فتح فيبدو السجلّ فارغاً دائماً)
     const [groupSettings, setGroupSettings] = usePersistedState("groupSettings", initialSettings);
     // الجسر (B5): يُعطي sawa-sync.js مُحدِّثات الحالة ليطبّق بيانات الخادم (القراءة، الاستعادة، الانضمام)
     useEffect(() => { if (window.SawaSync && window.SawaSync.bindApp) window.SawaSync.bindApp({ setFamilyGroups, setGroupPersons, setKinshipRelations, setCurrentGroupId, setGroupSettings, setMembers, setEvents, setSchedules }); }, []);
@@ -2488,7 +2502,8 @@ function AppInner() {
     function addRelativesBulk(groupId, person, sel, names, decisions = {}) {
         const relKey = sel.key;
         // الصلة نسبةً لصاحب الشجرة لا للشخص المُضاف إليه
-        const derived = deriveKinship(person.kinship, relKey, sel.gender);
+        const rawAnchor = (groupPersons[groupId] || []).find((x) => x.id === person.id) || person;
+        const derived = kinPreview(groupPersons[groupId] || [], kinshipRelations.filter((r) => r.groupId === groupId), rawAnchor, relKey, sel.gender) || deriveKinship(rawAnchor.kinship, relKey, sel.gender);   // C75
         const existing = groupPersons[groupId] || [];
         const reusedId = (n) => {
             var _a;
@@ -2507,7 +2522,8 @@ function AppInner() {
         // اتجاه العلاقة من منظور صاحب البطاقة
         const edges = ids.map((id) => relKey === "parent" ? { source: id, target: person.id, type: "parent" }
             : relKey === "child" ? { source: person.id, target: id, type: "parent" }
-                : { source: person.id, target: id, type: relKey });
+                : (relKey === "sibling" && sel.half) ? { source: person.id, target: id, type: "sibling", half: sel.half }   // C75
+                    : { source: person.id, target: id, type: relKey });
         // حدّ الوالدين: لا يتجاوز اثنين مع الموجود سلفاً
         if (relKey === "parent") {
             const already = kinshipRelations.filter((r) => r.groupId === groupId && r.type === "parent" && r.target === person.id).length;
@@ -2564,7 +2580,7 @@ function AppInner() {
             : t("adyf_qryb_l", { length: created.length, local_name: person.local_name }), "success");
     }
     function logActivity(groupId, text) {
-        setActivityLog((prev) => [{ id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, groupId, text, ts: Date.now() }, ...prev]);
+        setActivityLog((prev) => [{ id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, groupId, text, ts: Date.now() }, ...(prev || [])].slice(0, 300));
     }
     function addPerson(groupId, data) {
         var _a;
@@ -2680,7 +2696,13 @@ function AppInner() {
     }
     function editPerson(groupId, personId, data) {
         var _a;
-        const { linkedTo, motherApplicable, motherId, motherCandidateIds, ...personData } = data;
+        const { linkedTo, motherApplicable, motherId, motherCandidateIds, kinLabel, kinAlso, kinComputed, kinStored, kinSection, ...personData0 } = data;
+        // C75: القرابة المعروضة محسوبةٌ من منظورك — لا تُكتب فوق المخزَّنة (وإلّا كتب المنضمّ منظوره عند الجميع).
+        //      تُحفظ فقط إن غيّرها المستخدم فعلاً لشخصٍ بلا طريقٍ في الشجرة.
+        const viewP = ((famPersons[groupId] || []).find((p) => p.id === personId)) || {};
+        const personData = { ...personData0 };
+        if (viewP.kinComputed && personData.kinship === viewP.kinship) { delete personData.kinship; delete personData.proximity; }
+        if (viewP.kinComputed && personData.proximity === viewP.proximity) delete personData.proximity;
         // حافة الأمومة تُوفَّق هنا لا في بيانات الشخص: نحذف أيّ أمومة من
         // زوجات الأب ثم نضيف المختارة. لا نمسّ أبوّة الأب ولا غيرها.
         if (motherApplicable) {
@@ -2805,9 +2827,25 @@ function AppInner() {
     }
     // من كان أخاً لشخص، فوالدا ذلك الشخص والداه. نشتقّ الأبوّة الناقصة
     // تلقائياً — وإلا ظهر الإخوة بلا والد رغم ارتباطهم بمن له والد.
+    // C75: الأخوّة غير الشقيقة (half) لا تنقل إلّا والدها المشترك — «من الأب» ينقل الأب وحده
     function inferParentsForSiblings(groupId, personId, relsSnapshot) {
+        const full = inferParentsForSiblingsFull(groupId, personId, relsSnapshot);
+        const all = [...relsSnapshot, ...full], added = [];
+        const genderOf = (id) => { const p = (groupPersons[groupId] || []).find((x) => x.id === id); return p && p.gender; };
+        all.filter((r) => r.groupId === groupId && r.type === "sibling" && r.half && (r.source === personId || r.target === personId)).forEach((r) => {
+            const want = r.half === "mother" ? "female" : "male";
+            const parentOf = (id) => [...all, ...added].find((x) => x.groupId === groupId && x.type === "parent" && x.target === id && genderOf(x.source) === want);
+            [[r.source, r.target], [r.target, r.source]].forEach(([a, b]) => {
+                const pa = parentOf(a);
+                if (!pa || parentOf(b)) return;
+                added.push({ id: `k-${Date.now()}-${added.length}-half`, groupId, source: pa.source, target: b, type: "parent", inferred: "half-sibling-parent" });
+            });
+        });
+        return [...full, ...added];
+    }
+    function inferParentsForSiblingsFull(groupId, personId, relsSnapshot) {
         const sibEdges = relsSnapshot
-            .filter((r) => r.groupId === groupId && r.type === "sibling")
+            .filter((r) => r.groupId === groupId && r.type === "sibling" && !r.half)
             .map((r) => [r.source, r.target]);
         // كل من يتصل به عبر سلسلة أخوّة
         const group = new Set([personId]);
@@ -3237,6 +3275,17 @@ function AppInner() {
         // ⛔ طابعٌ رقميّ لا نصّ منسَّق: يُفرز، ويُترجم عند الرسم، ويُقارَن
         const ts = typeof dateTimestamp === "number" ? dateTimestamp : Date.now();
         setEvents((prev) => [{ id: `e-${Date.now()}`, groupId, personId, type, title, desc: desc || "", dateTimestamp: ts }, ...prev]);
+        // C75: حدث «وفاة» يُسجّل القريب متوفّى (كانت التذكيرات والمواعيد تستمرّ له)، و«مرض/عملية» تجعل حالته «مريض»
+        const target = personId && (groupPersons[groupId] || []).find((p) => p.id === personId);
+        if (target && type === "death" && target.alive !== false) {
+            const d = new Date(ts), iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+            setGroupPersons((prev) => ({ ...prev, [groupId]: (prev[groupId] || []).map((p) => p.id === personId ? { ...p, alive: false, death_date: p.death_date || iso, status_detail: null } : p) }));
+            setSchedules((prev) => prev.filter((sc) => sc.personId !== personId));
+            showToast(tl("سُجّل " + target.local_name + (target.gender === "female" ? " متوفّاة — رحمها الله، وأُوقفت مواعيد التواصل معها" : " متوفّى — رحمه الله، وأُوقفت مواعيد التواصل معه"), target.local_name + " marked as deceased"), "info");
+            return;
+        }
+        if (target && (type === "sickness" || type === "surgery") && target.alive !== false && !target.status_detail)
+            setGroupPersons((prev) => ({ ...prev, [groupId]: (prev[groupId] || []).map((p) => p.id === personId ? { ...p, status_detail: "sick" } : p) }));
         showToast(t("fam_evt_added", { action: eventSuggestedActionLabel(type) }), "success");
     }
     function cycleMemberRole(groupId, userId) {
@@ -3271,7 +3320,7 @@ function AppInner() {
     const discoverTop = liveFam && liveFam !== discoverTop0.data ? { ...discoverTop0, data: liveFam } : discoverTop0;
     let discoverContent;
     if (!discoverTop) {
-        discoverContent = (React.createElement(DiscoverHomeScreen, { personCount: totalPersons, groupPersons: groupPersons, onOpenFamily: () => setDiscoverStack([{ type: "groups" }]), onOpenMoments: () => { setMomentsReturnTab(null); setDiscoverStack([{ type: "moments" }]); }, onOpenErsal: () => setDiscoverStack([{ type: "ersal" }]), onOpenTaxi: () => setDiscoverStack([{ type: "taxi" }]), onOpenWallet: () => setStack(["wallet"]) }));
+        discoverContent = (React.createElement(DiscoverHomeScreen, { personCount: totalPersons, groupPersons: famPersons, onOpenFamily: () => setDiscoverStack([{ type: "groups" }]), onOpenMoments: () => { setMomentsReturnTab(null); setDiscoverStack([{ type: "moments" }]); }, onOpenErsal: () => setDiscoverStack([{ type: "ersal" }]), onOpenTaxi: () => setDiscoverStack([{ type: "taxi" }]), onOpenWallet: () => setStack(["wallet"]) }));
     }
     else if (discoverTop.type === "moments") {
         discoverContent = React.createElement(MomentsScreen, { posts: momentsPosts, myUserId: myUserId, onAddPost: addMomentPost, onToggleLike: toggleMomentLike, onAddComment: addMomentComment, onDeletePost: deleteMomentPost, onViewPost: viewMomentPost, onReplyPrivately: replyToMomentPrivately, onVotePoll: voteMomentPoll, onBack: () => { setDiscoverStack([]); if (momentsReturnTab) { const back = momentsReturnTab; setMomentsReturnTab(null); setTab(back); } } });
@@ -3283,7 +3332,7 @@ function AppInner() {
         discoverContent = (React.createElement(TaxiScreen, { ride: taxiRide, tripsHistory: taxiTripsHistory, scheduledRides: scheduledTaxiRides, onRequestRide: requestTaxiRide, onScheduleRide: scheduleRide, onCancelScheduledRide: cancelScheduledRide, onTriggerScheduledRide: triggerScheduledRide, onCancelRide: cancelTaxiRide, onNewRide: () => setTaxiRide(null), onRateDriver: rateDriverTrip, onBack: () => setDiscoverStack([]) }));
     }
     else if (discoverTop.type === "groups") {
-        discoverContent = (React.createElement(FamilyGroupsScreen, { groups: familyGroups, groupPersons: groupPersons, currentGroupId: currentGroupId, onSetCurrent: setCurrentGroupId, proxEnabled: proxEnabled, onEnableProx: enableProx, onDisableProx: () => setProxEnabled(false), proxRadius: proxRadius, onSetProxRadius: (r) => { setProxRadius(r); try { localStorage.setItem(SAWA_STORE_PREFIX + "ui.proxRadius", JSON.stringify(r)); } catch (e) { } }, // ⛔ قائمة ← تفصيل ← رجوعٌ إلى القائمة. كان الاختيار يُفرغ المكدّس في
+        discoverContent = (React.createElement(FamilyGroupsScreen, { groups: familyGroups, groupPersons: famPersons, currentGroupId: currentGroupId, onSetCurrent: setCurrentGroupId, proxEnabled: proxEnabled, onEnableProx: enableProx, onDisableProx: () => setProxEnabled(false), proxRadius: proxRadius, onSetProxRadius: (r) => { setProxRadius(r); try { localStorage.setItem(SAWA_STORE_PREFIX + "ui.proxRadius", JSON.stringify(r)); } catch (e) { } }, // ⛔ قائمة ← تفصيل ← رجوعٌ إلى القائمة. كان الاختيار يُفرغ المكدّس في
             // أرحام ظنّاً أنّه «تبديل»، فينقطع الطريق ويرجع السهم إلى الجذر.
             onOpenGroup: (g) => {
                 if (IS_RAHIM)
@@ -3303,8 +3352,8 @@ function AppInner() {
     }
     else if (discoverTop.type === "groupDetail") {
         const group = discoverTop.data;
-        const otherGroups = familyGroups.filter((g) => g.id !== group.id).map((g) => ({ groupId: g.id, groupName: g.name, persons: groupPersons[g.id] || [] }));
-        discoverContent = (React.createElement(FamilyGroupDetailScreen, { key: group.id + ":" + (discoverTop.filter || "all"), initialFilterStatus: discoverTop.filter || "all", group: group, persons: groupPersons[group.id] || [], favorites: familyFavorites, otherGroups: otherGroups, onToggleFav: toggleFamilyFav, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: group.id }]), onOpenGroups: IS_RAHIM ? () => setDiscoverStack(groupsStackFrom(discoverStack)) : undefined,
+        const otherGroups = familyGroups.filter((g) => g.id !== group.id).map((g) => ({ groupId: g.id, groupName: g.name, persons: famPersons[g.id] || [] }));
+        discoverContent = (React.createElement(FamilyGroupDetailScreen, { meId: famMe[group.id] || (((famPersons[group.id] || []).find((p) => p.kinship === SELF_KINSHIP && p.kinStored !== SELF_KINSHIP)) || {}).id || null, onPickMe: (pid) => setFamMe((prev) => { const o = { ...(prev || {}) }; if (pid) o[group.id] = pid; else delete o[group.id]; return o; }), key: group.id + ":" + (discoverTop.filter || "all"), initialFilterStatus: discoverTop.filter || "all", group: group, persons: famPersons[group.id] || [], favorites: familyFavorites, otherGroups: otherGroups, onToggleFav: toggleFamilyFav, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: group.id }]), onOpenGroups: IS_RAHIM ? () => setDiscoverStack(groupsStackFrom(discoverStack)) : undefined,
             // ⛔ الشاشة نفسها جذرٌ في أرحام ومحطّةٌ في سوا — السهم يتبع المكدّس
             onBack: discoverStack.length ? () => setDiscoverStack(discoverStack.slice(0, -1)) : undefined, onAddPerson: (data) => addPerson(group.id, data), onAddPersonChain: (chainNames, groupsOfRelatives, targetIndex, matchDecisions, firstGender, firstIsSelf) => addPersonChain(group.id, chainNames, groupsOfRelatives, targetIndex, matchDecisions, firstGender, firstIsSelf), onMergePersons: (keepId, removeId) => mergePersons(keepId, removeId), relations: kinshipRelations.filter((r) => r.groupId === group.id), onAddRelativesBulk: addRelativesBulk, onDeletePerson: (pid) => deletePerson(group.id, pid), onDeletePersonsBulk: (ids) => {
                 const gid = group.id;
@@ -3348,7 +3397,7 @@ function AppInner() {
                     var _a;
                     const days = daysSinceRef(p);
                     return (i + 1) + ". " + lineageLabel(p) + "\n"
-                        + t("ai_alsla") + kinshipLabel(p.kinship) + t("ai_alqrb") + (p.proximity || "—")
+                        + t("ai_alsla") + personKinLabel(p) + t("ai_alqrb") + (p.proximity || "—")
                         + (((_a = p.contacts) === null || _a === void 0 ? void 0 : _a.phone) ? " · " + p.contacts.phone : "")
                         + (p.alive
                             ? t("ai_akhr_twasl") + (days === Infinity ? t("ai_la_ywjd") : days + t("ai_ywm"))
@@ -3381,14 +3430,14 @@ function AppInner() {
         // نجيب النسخة الحديثة من الشخص من groupPersons بدل الاعتماد على
         // discoverTop.data (لقطة قديمة محفوظة وقت التنقّل لهذي الشاشة) — بدون
         // هذا، أي تعديل (خصوصاً توثيق الوفاة) ما كان ينعكس على نفس الشاشة فوراً
-        const freshPerson = (groupPersons[currentGroupIdForPerson] || []).find((p) => p.id === discoverTop.data.id) || discoverTop.data;
+        const freshPerson = (famPersons[currentGroupIdForPerson] || []).find((p) => p.id === discoverTop.data.id) || discoverTop.data;
         const otherGroupsForPerson = familyGroups.filter((g) => g.id !== currentGroupIdForPerson).map((g) => ({ groupId: g.id, groupName: g.name, persons: groupPersons[g.id] || [] }));
         const linkedTo = freshPerson.linkedTo;
         const linkedGroupName = linkedTo ? (_c = familyGroups.find((g) => g.id === linkedTo.groupId)) === null || _c === void 0 ? void 0 : _c.name : null;
         const linkedPerson = linkedTo ? (groupPersons[linkedTo.groupId] || []).find((p) => p.id === linkedTo.personId) : null;
         const roleForPerson = (_d = familyGroups.find((g) => g.id === currentGroupIdForPerson)) === null || _d === void 0 ? void 0 : _d.role;
         const canEditPerson = roleForPerson !== "viewer";
-        discoverContent = (React.createElement(FamilyPersonDetailScreen, { person: freshPerson, persons: groupPersons[currentGroupIdForPerson] || [], relations: kinshipRelations.filter((r) => r.groupId === currentGroupIdForPerson), favorites: familyFavorites, otherGroups: otherGroupsForPerson, linkedGroupName: linkedGroupName, linkedPersonName: linkedPerson === null || linkedPerson === void 0 ? void 0 : linkedPerson.local_name, canEdit: canEditPerson, onToggleFav: toggleFamilyFav, onEdit: (personId, data) => editPerson(currentGroupIdForPerson, personId, data), onDelete: (personId) => { deletePerson(currentGroupIdForPerson, personId); setDiscoverStack(discoverStack.slice(0, -1)); }, onOpenLinkedPerson: () => linkedTo && linkedPerson && setDiscoverStack([...discoverStack, { type: "personDetail", data: linkedPerson, groupId: linkedTo.groupId }]), onCreateInLaws: (p) => createInLawsGroup(discoverTop.groupId, p), onClearFacts: (pid) => {
+        discoverContent = (React.createElement(FamilyPersonDetailScreen, { person: freshPerson, persons: famPersons[currentGroupIdForPerson] || [], relations: kinshipRelations.filter((r) => r.groupId === currentGroupIdForPerson), favorites: familyFavorites, otherGroups: otherGroupsForPerson, linkedGroupName: linkedGroupName, linkedPersonName: linkedPerson === null || linkedPerson === void 0 ? void 0 : linkedPerson.local_name, canEdit: canEditPerson, onToggleFav: toggleFamilyFav, onEdit: (personId, data) => editPerson(currentGroupIdForPerson, personId, data), onDelete: (personId) => { deletePerson(currentGroupIdForPerson, personId); setDiscoverStack(discoverStack.slice(0, -1)); }, onOpenLinkedPerson: () => linkedTo && linkedPerson && setDiscoverStack([...discoverStack, { type: "personDetail", data: linkedPerson, groupId: linkedTo.groupId }]), onCreateInLaws: (p) => createInLawsGroup(discoverTop.groupId, p), onClearFacts: (pid) => {
                 const gid = currentGroupIdForPerson;
                 setGroupPersons((prev) => ({
                     ...prev,
@@ -3399,13 +3448,14 @@ function AppInner() {
     }
     else if (discoverTop.type === "tree") {
         const canEditTree = famCanEdit(discoverTop.data);
-        discoverContent = (React.createElement(FamilyTreeScreen, { groupId: discoverTop.data.id, persons: groupPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), canEdit: canEditTree, onAddRelation: addKinshipRelation, onDeleteRelation: deleteKinshipRelation, onEndMarriage: endMarriage, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: discoverTop.data.id }]), onMarkContact: (personId) => markContactNow(discoverTop.data.id, personId), onQuickSchedule: (personId) => { setPreselectedSchedulePersonId(personId); setShowAddSchedule(true); }, onOpenStats: () => setDiscoverStack([...discoverStack, { type: "stats", data: discoverTop.data }]), onAddRelativeTo: (gid, person, relKey, kinship, gender) => setGapAddPreset({
+        discoverContent = (React.createElement(FamilyTreeScreen, { groupId: discoverTop.data.id, persons: famPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), canEdit: canEditTree, onAddRelation: addKinshipRelation, onDeleteRelation: deleteKinshipRelation, onEndMarriage: endMarriage, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: discoverTop.data.id }]), onMarkContact: (personId) => markContactNow(discoverTop.data.id, personId), onQuickSchedule: (personId) => { setPreselectedSchedulePersonId(personId); setShowAddSchedule(true); }, onOpenStats: () => setDiscoverStack([...discoverStack, { type: "stats", data: discoverTop.data }]), onAddRelativeTo: (gid, person, relKey, kinship, gender) => setGapAddPreset({
                 groupId: gid,
                 relatedToId: person.id,
                 relationType: relKey,
-                presetKinship: kinship,
+                // C75: ما يُخزَّن منسوبٌ لصاحب الشجرة دائماً (العرض يُحسب لكلّ مستخدم)
+                presetKinship: kinPreview(groupPersons[gid] || [], kinshipRelations.filter((r) => r.groupId === gid), (groupPersons[gid] || []).find((x) => x.id === person.id), relKey, gender || "male") || kinship,
                 presetGender: gender || null,
-            }), onAddRelativesBulk: addRelativesBulk, allGroupPersons: groupPersons, onInheritParents: () => inferSpousesAndParents(discoverTop.data.id, true), onOpenInLaws: (gid, person) => {
+            }), onAddRelativesBulk: addRelativesBulk, allGroupPersons: famPersons, onInheritParents: () => inferSpousesAndParents(discoverTop.data.id, true), onOpenInLaws: (gid, person) => {
                 var _a;
                 if ((_a = person.linkedTo) === null || _a === void 0 ? void 0 : _a.groupId) {
                     // مرتبطة سلفاً — ننتقل لمجموعة أهلها
@@ -3421,14 +3471,14 @@ function AppInner() {
             }, onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
     }
     else if (discoverTop.type === "stats") {
-        discoverContent = (React.createElement(FamilyStatsScreen, { persons: groupPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
+        discoverContent = (React.createElement(FamilyStatsScreen, { persons: famPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
     }
     else if (discoverTop.type === "suggestions") {
         discoverContent = (React.createElement(FamilySuggestionsScreen, { // ⛔ أثرٌ كامل لا قفزة: قرار خالد أن يقود السهم من مركز العائلة إلى
             // قائمة العوائل دائماً. ويتحقّق باصطناع الأثر لا باستثناءٍ في السهم.
             onOpenFamily: IS_RAHIM ? () => setDiscoverStack([{ type: "groups" }, { type: "groupDetail", data: discoverTop.data }]) : undefined,
             // ⛔ بلا relatedToId لا تُنشأ صلة — والنموذج يفتح على «نفسي»
-            onStartSelf: () => setGapAddPreset({ groupId: discoverTop.data.id, relatedToId: null, relationType: null, presetKinship: SELF_KINSHIP }), groupId: discoverTop.data.id, persons: groupPersons[discoverTop.data.id] || [], relations: kinshipRelations, events: events, dismissed: dismissedSuggestions, onDismiss: (id) => setDismissedSuggestions((prev) => ({ ...prev, [id]: true })), onExecute: (id) => setDismissedSuggestions((prev) => ({ ...prev, [id]: true })), onQuickStatus: (personId, statusValue) => quickUpdateStatus(discoverTop.data.id, personId, statusValue), onConfirmNone: (personId, kind) => {
+            onStartSelf: () => setGapAddPreset({ groupId: discoverTop.data.id, relatedToId: null, relationType: null, presetKinship: SELF_KINSHIP }), groupId: discoverTop.data.id, persons: famPersons[discoverTop.data.id] || [], relations: kinshipRelations, events: events, dismissed: dismissedSuggestions, onDismiss: (id) => setDismissedSuggestions((prev) => ({ ...prev, [id]: true })), onExecute: (id) => setDismissedSuggestions((prev) => ({ ...prev, [id]: true })), onQuickStatus: (personId, statusValue) => quickUpdateStatus(discoverTop.data.id, personId, statusValue), onConfirmNone: (personId, kind) => {
                 var _a;
                 const gid = discoverTop.data.id;
                 const nm = ((_a = (groupPersons[gid] || []).find((p) => p.id === personId)) === null || _a === void 0 ? void 0 : _a.local_name) || t("ai_alqryb");
@@ -3465,12 +3515,12 @@ function AppInner() {
             }), onBack: discoverStack.length ? () => setDiscoverStack(discoverStack.slice(0, -1)) : undefined }));
     }
     else if (discoverTop.type === "schedules") {
-        discoverContent = (React.createElement(FamilySchedulesScreen, { groupId: discoverTop.data.id, schedules: schedules, persons: groupPersons[discoverTop.data.id] || [], canAdd: discoverTop.data.role === "owner" || discoverTop.data.role === "admin", onComplete: completeSchedule, onAdd: () => { setEditingSchedule(null); setShowAddSchedule(true); }, onEdit: (sch) => { setEditingSchedule(sch); setShowAddSchedule(true); }, onDelete: deleteSchedule, onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
+        discoverContent = (React.createElement(FamilySchedulesScreen, { groupId: discoverTop.data.id, schedules: schedules, persons: famPersons[discoverTop.data.id] || [], canAdd: discoverTop.data.role === "owner" || discoverTop.data.role === "admin", onComplete: completeSchedule, onAdd: () => { setEditingSchedule(null); setShowAddSchedule(true); }, onEdit: (sch) => { setEditingSchedule(sch); setShowAddSchedule(true); }, onDelete: deleteSchedule, onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
     }
     else if (discoverTop.type === "events") {
         const group = discoverTop.data;
         const canAddEvent = group.role === "owner" || group.role === "admin" || ((_f = groupSettings[group.id]) === null || _f === void 0 ? void 0 : _f.allowMemberEvents);
-        discoverContent = React.createElement(FamilyEventsScreen, { groupId: group.id, events: events, persons: groupPersons[group.id] || [], canAdd: canAddEvent, onAdd: () => { setEditingEvent(null); setShowAddEvent(true); }, onEdit: (ev) => { setEditingEvent(ev); setShowAddEvent(true); }, onDelete: deleteEvent, onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) });
+        discoverContent = React.createElement(FamilyEventsScreen, { groupId: group.id, events: events, persons: famPersons[group.id] || [], canAdd: canAddEvent, onAdd: () => { setEditingEvent(null); setShowAddEvent(true); }, onEdit: (ev) => { setEditingEvent(ev); setShowAddEvent(true); }, onDelete: deleteEvent, onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) });
     }
     else if (discoverTop.type === "members") {
         const group = discoverTop.data;
@@ -3570,7 +3620,7 @@ function AppInner() {
                         return React.createElement(PlaceholderTab, { icon: CloudOff, title: t("almhadthat"), note: "\u0627\u0631\u0628\u0637 \u062D\u0633\u0627\u0628\u0643 \u0628\u0627\u0644\u0633\u064A\u0631\u0641\u0631 \u0645\u0646 \u0634\u0627\u0634\u0629 \u062D\u0633\u0627\u0628\u064A \u0644\u062A\u062A\u0645\u0643\u0651\u0646 \u0645\u0646 \u0627\u0633\u062A\u062E\u062F\u0627\u0645 \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0627\u062A" });
                     }
                     if (!chatsTop) {
-                        return (React.createElement(ConversationsListScreen, { onOpenFamilyPerson: (p) => { const gid = Object.keys(groupPersons).find((k) => (groupPersons[k] || []).some((x) => x.id === p.id)); const g = familyGroups.find((x) => x.id === gid); if (!g) return; setTab("discover"); setDiscoverStack([{ type: "groups" }, { type: "groupDetail", data: g }, { type: "personDetail", data: p, groupId: gid }]); }, chatDrafts: chatDrafts, conversations: conversations, groups: groups, broadcastLists: broadcastLists, lockedConversationIds: lockedConversationIds, connectionState: "connected", onOpenChat: (c) => { setChatsStack([{ type: "chat", data: Object.assign({}, c, { unreadOnOpen: c.unread || 0 }) }]); markConversationRead(c.id); }, onOpenGroup: (g) => { setChatsStack([{ type: "group", data: Object.assign({}, g, { unreadOnOpen: g.unread || 0 }) }]); markGroupRead(g.id); }, onOpenBroadcastList: (b) => setChatsStack([{ type: "broadcast", data: b }]), onNewConversation: () => setChatsStack([{ type: "new" }]), onNewGroup: () => setChatsStack([{ type: "newGroup" }]), onNewBroadcastList: () => setChatsStack([{ type: "newBroadcast" }]), onOpenLockedChats: () => setChatsStack([{ type: "lockedChats" }]), onOpenStarredMessages: () => setChatsStack([{ type: "starredMessages" }]), onlineContacts: onlineContacts, onScanQr: scanQrContact, onOpenSearch: () => setChatsStack([{ type: "search" }]), chatFolders: chatFolders, folderAssignments: folderAssignments, onOpenChatSettings: () => setChatsStack([{ type: "chatSettings" }]), typingConversations: typingConversations, momentsPosts: momentsPosts, familyPersons: Object.values(groupPersons).flat(), onOpenMoments: () => { setMomentsReturnTab("chats"); setTab("discover"); setDiscoverStack([{ type: "moments" }]); }, onOpenRoom: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomCreate())) setActiveRoom(generateRoomCode()); }, onJoinRoomCode: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoinPrompt())) showToast("سجّل الدخول أوّلاً للانضمام إلى غرفة", "info"); }, onScheduleRoom: () => setSchedulingRoom(true), onOpenScheduledRooms: () => setRoomsListOpen(true), scheduledRooms: scheduledRooms, onJoinScheduled: (code) => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoin(code))) setActiveRoom(code); }, onCancelScheduled: (id) => { const sr = scheduledRooms.find((r) => r.id === id); if (sr && sr.cloud && window.SawaRTC) window.SawaRTC.schedRemove(id); else setScheduledRooms((p) => p.filter((r) => r.id !== id)); showToast(t("alghy_almwad"), "info"); }, myName: t("ai_ana"), groupPersons: groupPersons, groupSchedules: groupSchedules, showStoriesRow: showStoriesRow, showFamilyReminders: showFamilyReminders, onOpenArchived: () => setChatsStack([{ type: "archived" }]), pinnedConversations: pinnedConversations, onPinConv: (id) => {
+                        return (React.createElement(ConversationsListScreen, { onOpenFamilyPerson: (p) => { const gid = Object.keys(groupPersons).find((k) => (groupPersons[k] || []).some((x) => x.id === p.id)); const g = familyGroups.find((x) => x.id === gid); if (!g) return; setTab("discover"); setDiscoverStack([{ type: "groups" }, { type: "groupDetail", data: g }, { type: "personDetail", data: p, groupId: gid }]); }, chatDrafts: chatDrafts, conversations: conversations, groups: groups, broadcastLists: broadcastLists, lockedConversationIds: lockedConversationIds, connectionState: "connected", onOpenChat: (c) => { setChatsStack([{ type: "chat", data: Object.assign({}, c, { unreadOnOpen: c.unread || 0 }) }]); markConversationRead(c.id); }, onOpenGroup: (g) => { setChatsStack([{ type: "group", data: Object.assign({}, g, { unreadOnOpen: g.unread || 0 }) }]); markGroupRead(g.id); }, onOpenBroadcastList: (b) => setChatsStack([{ type: "broadcast", data: b }]), onNewConversation: () => setChatsStack([{ type: "new" }]), onNewGroup: () => setChatsStack([{ type: "newGroup" }]), onNewBroadcastList: () => setChatsStack([{ type: "newBroadcast" }]), onOpenLockedChats: () => setChatsStack([{ type: "lockedChats" }]), onOpenStarredMessages: () => setChatsStack([{ type: "starredMessages" }]), onlineContacts: onlineContacts, onScanQr: scanQrContact, onOpenSearch: () => setChatsStack([{ type: "search" }]), chatFolders: chatFolders, folderAssignments: folderAssignments, onOpenChatSettings: () => setChatsStack([{ type: "chatSettings" }]), typingConversations: typingConversations, momentsPosts: momentsPosts, familyPersons: Object.values(famPersons).flat(), onOpenMoments: () => { setMomentsReturnTab("chats"); setTab("discover"); setDiscoverStack([{ type: "moments" }]); }, onOpenRoom: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomCreate())) setActiveRoom(generateRoomCode()); }, onJoinRoomCode: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoinPrompt())) showToast("سجّل الدخول أوّلاً للانضمام إلى غرفة", "info"); }, onScheduleRoom: () => setSchedulingRoom(true), onOpenScheduledRooms: () => setRoomsListOpen(true), scheduledRooms: scheduledRooms, onJoinScheduled: (code) => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoin(code))) setActiveRoom(code); }, onCancelScheduled: (id) => { const sr = scheduledRooms.find((r) => r.id === id); if (sr && sr.cloud && window.SawaRTC) window.SawaRTC.schedRemove(id); else setScheduledRooms((p) => p.filter((r) => r.id !== id)); showToast(t("alghy_almwad"), "info"); }, myName: t("ai_ana"), groupPersons: famPersons, groupSchedules: groupSchedules, showStoriesRow: showStoriesRow, showFamilyReminders: showFamilyReminders, onOpenArchived: () => setChatsStack([{ type: "archived" }]), pinnedConversations: pinnedConversations, onPinConv: (id) => {
                                 setPinnedConversations((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
                                 showToast(pinnedConversations.includes(id) ? t("ai_ilgha_altthbyt") : t("ai_tm_altthbyt"), "success");
                             }, onToggleReadConv: (id) => {
@@ -3709,7 +3759,7 @@ function AppInner() {
                     React.createElement("span", { className: "text-[12px] mt-1 whitespace-nowrap leading-tight", style: { color: active ? colors.primary : colors.textMuted, fontWeight: active ? 800 : 600 } }, t(IS_RAHIM && tabItem.key === "discover" ? "sla_alrhm" : tabItem.labelKey)),
                     active && React.createElement("div", { className: "w-1.5 h-1.5 rounded-full mt-0.5", style: { backgroundColor: colors.primary } })));
             }))))),
-        showAddSchedule && (() => { const schGid = (editingSchedule && editingSchedule.groupId) || (discoverTop && (discoverTop.type === "schedules" || discoverTop.type === "tree") && discoverTop.data && discoverTop.data.id) || (discoverTop && discoverTop.type === "personDetail" && discoverTop.groupId) || currentGroupId; return React.createElement(FamilyAddScheduleSheet, { persons: (groupPersons[schGid] || []).filter((p) => !isSelfPerson(p)), relations: kinshipRelations.filter((r) => r.groupId === schGid), preselectedPersonId: preselectedSchedulePersonId, initial: editingSchedule, onSave: (personId, action, freqKey) => (editingSchedule ? updateSchedule(editingSchedule.id, personId, action, freqKey) : addSchedule(schGid, personId, action, freqKey)), onClose: () => { setShowAddSchedule(false); setPreselectedSchedulePersonId(null); setEditingSchedule(null); } }); })(),
+        showAddSchedule && (() => { const schGid = (editingSchedule && editingSchedule.groupId) || (discoverTop && (discoverTop.type === "schedules" || discoverTop.type === "tree") && discoverTop.data && discoverTop.data.id) || (discoverTop && discoverTop.type === "personDetail" && discoverTop.groupId) || currentGroupId; return React.createElement(FamilyAddScheduleSheet, { allPersons: famPersons[schGid] || [], persons: (famPersons[schGid] || []).filter((p) => !isSelfPerson(p) && (p.alive !== false || (editingSchedule && editingSchedule.personId === p.id))), relations: kinshipRelations.filter((r) => r.groupId === schGid), preselectedPersonId: preselectedSchedulePersonId, initial: editingSchedule, onSave: (personId, action, freqKey) => (editingSchedule ? updateSchedule(editingSchedule.id, personId, action, freqKey) : addSchedule(schGid, personId, action, freqKey)), onClose: () => { setShowAddSchedule(false); setPreselectedSchedulePersonId(null); setEditingSchedule(null); } }); })(),
         showAddEvent && (() => { const evGid = (editingEvent && editingEvent.groupId) || (discoverTop && discoverTop.type === "events" && discoverTop.data && discoverTop.data.id) || (discoverTop && discoverTop.type === "personDetail" && discoverTop.groupId) || currentGroupId; return React.createElement(FamilyAddEventSheet, { persons: groupPersons[evGid] || [], relations: kinshipRelations.filter((r) => r.groupId === evGid), initial: editingEvent, onSave: (personId, type, title, ts, desc) => (editingEvent ? updateEvent(editingEvent.id, personId, type, title, ts, desc) : addEvent(evGid, personId, type, title, ts, desc)), onClose: () => { setShowAddEvent(false); setEditingEvent(null); } }); })(),
         bulkAddPreset && (React.createElement(QuickRelativesSheet, { person: bulkAddPreset.person, existingPersons: groupPersons[bulkAddPreset.groupId] || [], relations: kinshipRelations.filter((r) => r.groupId === bulkAddPreset.groupId), startRel: bulkAddPreset.startRel, onSave: (p, sel, names, decisions) => addRelativesBulk(bulkAddPreset.groupId, p, sel, names, decisions), onClose: () => setBulkAddPreset(null) })),
         gapAddPreset && (React.createElement(FamilyPersonFormSheet, { persons: groupPersons[gapAddPreset.groupId] || [], relations: kinshipRelations.filter((r) => r.groupId === gapAddPreset.groupId), presetRelatedToId: gapAddPreset.relatedToId, presetRelationType: gapAddPreset.relationType, presetKinship: gapAddPreset.presetKinship, presetGender: gapAddPreset.presetGender || null, onSave: (data) => addPerson(gapAddPreset.groupId, data), onClose: () => setGapAddPreset(null) })),

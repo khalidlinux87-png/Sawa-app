@@ -1109,7 +1109,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                 React.createElement("span", { className: `flex-1 text-[11px] ${textStart()}`, style: { color: overdue ? "#ef4444" : colors.accent } },
                     fp.local_name,
                     " \u2014 ",
-                    kinshipLabel(fp.kinship),
+                    personKinLabel(fp),
                     t("ch_akhr_twasl"),
                     days === 0 ? t("ch_alywm") : days + t("ch_ywm")),
                 React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full", style: { backgroundColor: overdue ? "#ef444420" : colors.accent + "20", color: overdue ? "#ef4444" : colors.accent } },
@@ -1345,15 +1345,7 @@ const GROUP_ADMIN_ACTIONS = ["تسمية المجموعة", "إدارة الأع
 // C24: نافذة أدوات المجموعة (استطلاع · فاتورة · تبرّعات · مهامّ) — من الأسفل، بعنوانٍ وزرّ إغلاق، وتُغلق بالضغط خارجها أو بزرّ الرجوع
 function ToolSheet({ title, onClose, children }) {
     const { colors } = useTheme();
-    useEffect(() => {
-        const k = (e) => { if (e.key === "Escape") onClose(); };
-        window.addEventListener("keydown", k);
-        // زرّ الرجوع في أندرويد يغلق النافذة بدل أن يخرج من المحادثة
-        let popped = false;
-        const pop = () => { popped = true; onClose(); };
-        try { history.pushState({ sawaSheet: 1 }, ""); window.addEventListener("popstate", pop); } catch (e) { }
-        return () => { window.removeEventListener("keydown", k); window.removeEventListener("popstate", pop); if (!popped) { try { if (history.state && history.state.sawaSheet) history.back(); } catch (e) { } } };
-    }, []);
+    useSheetBack(onClose);   // C75: المكدّس المشترك — زرّ الرجوع يغلق النافذة العليا وحدها
     return (React.createElement(React.Fragment, null,
         React.createElement("div", { onClick: onClose, className: "sawa-fade-in", style: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.42)", zIndex: 40 } }),
         React.createElement("div", { role: "dialog", "aria-modal": "true", "aria-label": title, className: "sawa-pop-in", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 41, backgroundColor: colors.card, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: "86vh", display: "flex", flexDirection: "column", paddingBottom: "env(safe-area-inset-bottom, 0px)", boxShadow: "0 -8px 30px rgba(0,0,0,0.18)" } },

@@ -526,17 +526,53 @@ function famCssOnce() {
     el.textContent = ".fam-in:focus{box-shadow:0 0 0 2px var(--fam-ring)!important;outline:none}.fam-in::placeholder{opacity:.7}";
     document.head.appendChild(el);
 }
+// C75: مكدّسٌ واحد للأوراق مع سجلّ المتصفّح — «رجوع» يغلق الورقة العليا فقط.
+//      كانت كلّ ورقة تضيف خطوةً وتعود عند إغلاقها؛ فحين تُغلق ورقةٌ وتُفتح أخرى مكانها (قائمة الشخص ← «إضافة قريب»)
+//      كانت عودة الأولى تصل الثانية كضغطة «رجوع» فتغلقها فوراً — فلا يعمل «إضافة قريب» من بطاقة الشجرة.
+const FAM_SHEETS = [];
+let famSheetSkipPop = 0;
+let famSheetReusable = 0;
+let famSheetPopBound = false;
+function famSheetBindPop() {
+    if (famSheetPopBound) return;
+    famSheetPopBound = true;
+    window.addEventListener("popstate", () => {
+        if (famSheetSkipPop > 0) { famSheetSkipPop--; return; }
+        const top = FAM_SHEETS[FAM_SHEETS.length - 1];
+        if (top) { top.popped = true; try { top.close(); } catch (e) { } }
+    });
+}
+function useSheetBack(onClose) {
+    const closeRef = useRef(onClose);
+    closeRef.current = onClose;
+    useEffect(() => {
+        const k = (e) => { if (e.key === "Escape" && FAM_SHEETS[FAM_SHEETS.length - 1] === me) closeRef.current(); };
+        window.addEventListener("keydown", k);
+        const me = { close: () => closeRef.current(), popped: false };
+        try {
+            famSheetBindPop();
+            // خطوةٌ لكلّ ورقة — وإن أُغلقت ورقةٌ للتوّ نرث خطوتها بدل أن نعود ثمّ نتقدّم
+            if (famSheetReusable > 0) famSheetReusable--;
+            else history.pushState({ sawaSheet: 1 }, "");
+        } catch (e) { }
+        FAM_SHEETS.push(me);
+        return () => {
+            window.removeEventListener("keydown", k);
+            const i = FAM_SHEETS.indexOf(me); if (i >= 0) FAM_SHEETS.splice(i, 1);
+            if (me.popped) return;
+            famSheetReusable++;
+            setTimeout(() => {
+                if (famSheetReusable <= 0) return;   // ورثتها ورقةٌ جديدة
+                famSheetReusable--;
+                try { if (history.state && history.state.sawaSheet) { famSheetSkipPop++; history.back(); } } catch (e) { }
+            }, 0);
+        };
+    }, []);
+}
 function FamSheet({ title, subtitle, onClose, children, footer, maxHeight = "92%", z = 40, hero }) {
     const { colors } = useTheme();
     famCssOnce();
-    useEffect(() => {
-        const k = (e) => { if (e.key === "Escape") onClose(); };
-        window.addEventListener("keydown", k);
-        let popped = false;
-        const pop = () => { popped = true; onClose(); };
-        try { history.pushState({ sawaSheet: 1 }, ""); window.addEventListener("popstate", pop); } catch (e) { }
-        return () => { window.removeEventListener("keydown", k); window.removeEventListener("popstate", pop); if (!popped) { try { if (history.state && history.state.sawaSheet) history.back(); } catch (e) { } } };
-    }, []);
+    useSheetBack(onClose);
     return (React.createElement(React.Fragment, null,
         React.createElement("div", { onClick: onClose, className: "sawa-fade-in", style: { position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.45)", zIndex: z } }),
         React.createElement("div", { role: "dialog", "aria-modal": "true", "aria-label": title, className: "sawa-pop-in", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: z + 1, backgroundColor: colors.card, borderTopLeftRadius: 30, borderTopRightRadius: 30, maxHeight: maxHeight, display: "flex", flexDirection: "column", paddingBottom: "env(safe-area-inset-bottom, 0px)", boxShadow: "0 -10px 30px rgba(0,0,0,0.14)", "--fam-ring": colors.primary + "55" } },
@@ -1384,7 +1420,16 @@ const KINSHIP_SECTIONS = [
     },
 ];
 function proximityForKinship(kinship) {
-    return KINSHIP_PROXIMITY[kinship] || "A*";
+    if (KINSHIP_PROXIMITY[kinship]) return KINSHIP_PROXIMITY[kinship];
+    // C75: القرابات المركّبة («بنت ابن ابن العم»، «زوجة ابن العم»): كلّ «ابن/بنت/زوج/زوجة» قبل قرابةٍ معروفة تُنزلها درجة
+    const DOWN = { "A***": "A**", "A**": "A*", "A*": "A", "A": "B", "B": "C", "C": "C" };
+    let k = String(kinship || ""), steps = 0;
+    while (/^(ابن|بنت|زوج|زوجة|طليق|طليقة) /.test(k) && steps < 6) {
+        k = k.replace(/^(ابن|بنت|زوج|زوجة|طليق|طليقة) /, "");
+        steps++;
+        if (KINSHIP_PROXIMITY[k]) { let p = KINSHIP_PROXIMITY[k]; for (let i = 0; i < steps; i++) p = DOWN[p]; return p; }
+    }
+    return "A*";
 }
 // ============================================================
 // فرع العائلة — مشتقّ من الصلة كالدرجة والجنس، لا يُسأل عنه.
@@ -1808,4 +1853,11 @@ function describeKinship(aId, bId, persons, relations) {
     }
     return null;
 }
+// C75: القرابة كما تُعرض لشخص — المحسوبة بوصفها الكامل («الأخ الشقيق»، «بنت ابن العم»)، وإلّا المخزَّنة
+function personKinLabel(p) {
+    if (!p) return "";
+    if (p.kinLabel && isRTL()) return p.kinLabel;
+    return kinshipLabel(p.kinship);
+}
+function personKinAlso(p) { return (p && p.kinAlso && p.kinAlso.length && isRTL()) ? p.kinAlso : []; }
 //@@sawa-part:2

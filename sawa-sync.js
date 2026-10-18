@@ -241,7 +241,7 @@
     ((gp && gp[localGid]) || []).forEach(function (p) { if (p && p.id) persons[p.id] = personToFields(p); });
     (rels || []).forEach(function (r) {
       if (r && r.id && r.groupId === localGid)
-        relations[r.id] = { source: r.source, target: r.target, type: r.type, inferred: r.inferred || null };
+        relations[r.id] = { source: r.source, target: r.target, type: r.type, inferred: r.inferred || null, half: r.half || null };
     });
     return { persons: persons, relations: relations, events: events };
   }
@@ -262,8 +262,9 @@
       var r = snap.relations[id], b = base.relations[id];
       var addPayload = { groupId: sg, relationId: id, type: r.type, from: r.source, to: r.target };
       if (r.inferred) addPayload.inferred = r.inferred;
+      if (r.half) addPayload.half = r.half;   // C75: أخوّة من الأب/من الأم
       if (!b) { enqueue("relation.add", addPayload); n++; continue; }
-      if (b.source !== r.source || b.target !== r.target) {
+      if (b.source !== r.source || b.target !== r.target || (b.half || null) !== (r.half || null)) {
         enqueue("relation.remove", { groupId: sg, relationId: id });
         enqueue("relation.add", addPayload); n++;
       } else if (b.type !== r.type) {
@@ -710,6 +711,7 @@
     return list.map(function (r) {
       var o = { id: r.id, groupId: lg, source: r.source, target: r.target, type: r.type };
       if (r.inferred) o.inferred = r.inferred;
+      if (r.half) o.half = r.half;
       return o;
     });
   }
@@ -841,6 +843,7 @@
         relations: groupRels.map(function (r) {
           var o = { localId: r.id, fromLocalId: r.source, toLocalId: r.target, type: r.type };
           if (r.inferred) o.inferred = r.inferred;
+          if (r.half) o.half = r.half;
           return o;
         })
       }
@@ -1607,7 +1610,7 @@
   }
   function relFromDoc(gid, id, data) {
     return { id: id, groupId: gid, source: data.from, target: data.to, type: data.type,
-             inferred: data.inferred, deleted: data.deleted === true };
+             inferred: data.inferred, half: data.half, deleted: data.deleted === true };
   }
   function relToServer(r) { return { groupId: r.groupId, type: r.type, from: r.source, to: r.target }; }
 
