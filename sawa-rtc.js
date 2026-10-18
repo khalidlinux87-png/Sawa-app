@@ -3196,7 +3196,7 @@
     group: function () { var g = gc; return g ? { gid: g.gid, type: g.type, vc: !!g.vc, state: g.state, role: g.role, title: g.title, members: Object.keys(g.members || {}),
       peers: Object.keys(g.peers).map(function (u) { return { uid: u, state: g.peers[u].state }; }) } : null; },
     // C7: المجدولة
-    schedRefresh: schedRefresh, schedSave: schedSave, schedRemove: schedRemove, schedStart: schedStart, schedPublish: schedPublish, shareOut: shareOut, schedWhen: schedWhen,
+    schedRefresh: schedRefresh, schedSave: schedSave, schedRemove: schedRemove, schedStart: schedStart, schedPublish: schedPublish, shareOut: shareOut, schedWhen: schedWhen, sendInSawa: sendInSawa,
     // C8: الغرف
     roomCreate: roomCreate, roomJoin: roomJoin, prejoin: roomPrejoin, roomJoinPrompt: roomJoinPrompt, roomLink: roomLink, newRoomCode: newCode, roomLeave: function () { if (rm) rLeave(rm, "left"); },
     room: function () { var r = rm; return r ? { code: r.code, state: r.state, host: r.meta.host, title: r.title, members: Object.keys(r.members), mic: r.mic, cam: r.camOn, hand: !!r.hand, low: r.low,
