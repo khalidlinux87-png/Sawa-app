@@ -68,7 +68,7 @@ function FamilySuggestionsScreen({ groupId, persons, relations, events, dismisse
                 suggestions.push({
                     id: `sugg-contact-${p.id}`,
                     title: p.lastContactDate ? t("ma_twaslt_ma_mn", { local_name: p.local_name, daysSinceContact }) : tl("لم تسجّل تواصلاً مع " + p.local_name + " بعد", "No contact recorded with " + p.local_name + " yet"),
-                    reason: t("fs_tjawzt_almda", { level: proximityLabels[p.proximity], days: proximityContactDays[p.proximity] || 30 }),
+                    reason: t("fs_tjawzt_almda", { level: proxLabel(p.proximity), days: proximityContactDays[p.proximity] || 30 }),
                 });
             }
         }
@@ -402,16 +402,17 @@ function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, se
                         React.createElement(Eye, { size: 15, color: "#fff" }), t("mb_link_view")),
                     canManage && React.createElement("button", { onClick: () => onShare && onShare("editor"), className: `flex-1 flex ${rowStart()} items-center justify-center gap-1.5 rounded-2xl px-3 py-3 text-xs font-bold`, style: { backgroundColor: colors.primary + "14", color: colors.primary } },
                         React.createElement(Pencil, { size: 14, color: colors.primary }), t("mb_link_edit"))))),
-            !cloud && canManage && React.createElement("p", { className: `text-[11px] px-1 pb-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, t("mb_not_cloud")),
+            // C74: عائلةٌ على هذا الجهاز فقط — كانت تقول «ارفعها من السحابة والمشاركة» بلا زرّ، ثمّ «المشاركة الحيّة… قريباً»
+            //      والمشاركة موجودة فعلاً. الآن زرٌّ واحد يرفعها ويفتح الدعوة.
             !cloud && React.createElement(FamCard, null,
-                React.createElement("div", { className: `text-[14px] font-extrabold ${textStart()}`, style: { color: colors.text } }, t("inv_aqarbk")),
-                React.createElement("p", { className: `text-[11.5px] mt-1 mb-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, t("inv_shrh", { app: appName() })),
-                React.createElement(FamButton, { icon: Share2, label: t("inv_zr"), onPress: inviteRelative }),
-                React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mt-3` },
-                    React.createElement(FamChip, { tone: "muted", label: t("qryba") }),
-                    React.createElement("span", { className: `flex-1 text-[10.5px] leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, t("inv_qryban")))),
+                React.createElement("div", { className: `text-[14px] font-extrabold ${textStart()}`, style: { color: colors.text } }, tl("شارك العائلة مع أهلك", "Share this family")),
+                React.createElement("p", { className: `text-[11.5px] mt-1 mb-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } },
+                    canManage ? tl("العائلة الآن على جهازك فقط. ارفعها إلى السحابة لتصل أهلك برابط دعوة: يرونها، ويعدّلون إن سمحتَ لهم، وتبقى شجرةً واحدة للجميع.", "This family is only on this device. Put it in the cloud to invite relatives with a link.")
+                        : tl("العائلة على جهازك فقط. يستطيع مالكها رفعها ودعوتك إليها.", "This family is only on this device.")),
+                canManage && window.SawaSync && React.createElement(FamButton, { icon: Cloud, label: tl("ارفعها وادعُ أهلك", "Upload and invite"), onPress: () => { try { window.SawaSync.openPanel ? window.SawaSync.openPanel() : window.SawaSync.uploadCurrent(); } catch (e) { } } }),
+                React.createElement("button", { onClick: inviteRelative, className: `w-full mt-2 text-[11.5px] font-bold py-2 ${textStart()}`, style: { color: colors.primary, background: "none", border: 0 } }, tl("أو أرسل رابط التطبيق لقريبٍ ليبدأ شجرته", "Or send the app link to a relative"))),
             canManage && (React.createElement(FamCard, { style: { paddingTop: 4, paddingBottom: 4 } },
-                React.createElement("div", { className: `flex ${rowStart()} items-center gap-3 py-3`, style: { borderBottom: `1px solid ${colors.border}` } },
+                cloud && React.createElement("div", { className: `flex ${rowStart()} items-center gap-3 py-3`, style: { borderBottom: `1px solid ${colors.border}` } },
                     React.createElement("div", { className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "14" } }, React.createElement(Calendar, { size: 17, color: colors.primary })),
                     React.createElement("div", { className: `flex-1 ${textStart()}` },
                         React.createElement("div", { className: "text-[13.5px] font-bold", style: { color: colors.text } }, t("alsmah_llaada_bidafa_ahdath"))),
@@ -422,7 +423,7 @@ function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, se
                 cloud && React.createElement("div", { className: `text-[13px] font-extrabold mb-2 px-0.5 ${textStart()}`, style: { color: colors.text } }, t("mb_alaada", { n: list.length })),
                 cloud && canManage && list.length > 1 && React.createElement("p", { className: `text-[10.5px] mb-2 px-0.5 ${textStart()}`, style: { color: colors.textMuted } }, t("mb_tap_role")),
                 list.map((m) => (React.createElement(FamCard, { key: m.userId, className: `flex ${rowStart()} items-center gap-3` },
-                React.createElement(FamAvatar, { name: (m.me ? (m.name && !m.anon ? m.name : t("ant")) : m.name) || "؟", size: 42 }),
+                React.createElement(FamAvatar, { name: (m.me || m.userId === "u-1" ? (m.name && !m.anon && m.name !== "أنت" ? m.name : (myAccountName() || "؟")) : m.name) || "؟", size: 42 }),
                 React.createElement("span", { className: `flex-1 min-w-0 truncate text-[14px] ${textStart()}`, style: { color: colors.text, fontWeight: m.me ? 800 : 600 } }, (m.userId === "u-1" || m.me) ? t("ant") + (m.me && m.name && !m.anon ? " · " + m.name : "") : m.name),
                 canManage && m.role !== "owner" && !m.me ? (React.createElement("button", { onClick: () => onCycleRole(groupId, m.userId) },
                     React.createElement(Badge, { variant: "neutral", label: roleLabel(m.role) }))) : (React.createElement(Badge, { variant: m.role === "owner" ? "success" : "neutral", label: roleLabel(m.role) })),
@@ -1042,9 +1043,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                 React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, t(kinship === SELF_KINSHIP ? "pf_nfsy_la_qrb" : "pf_sabq_la_qrb")))) : (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-4 px-3.5 py-2.5 rounded-2xl`, style: { backgroundColor: colors.primary + "0a" } },
                 React.createElement("span", { className: "text-xs font-bold", style: { color: colors.textMuted } }, t("drja_alqrb")),
                 React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.primary } },
-                    proximityForKinship(kinship),
-                    " \u2014 ",
-                    proximityLabels[proximityForKinship(kinship)]),
+                    proxLabel(proximityForKinship(kinship))),   // C74: لا رموز داخليّة (A**) أمام المستخدم
                 React.createElement("span", { className: `text-[10px] flex-1 ${textEnd()}`, style: { color: colors.textMuted } },
                     t("pf_tdhkyr_kl"),
                     proximityContactDays[proximityForKinship(kinship)],
@@ -1465,7 +1464,7 @@ function SwipeableConvCard({ children, onArchive, onMute, onPin, onDelete, isMut
             } }, children)));
 }
 
-const FamilyReminderCard = React.memo(function FamilyReminderCard({ groupPersons, groupSchedules, onStartChat, conversations }) {
+const FamilyReminderCard = React.memo(function FamilyReminderCard({ onOpenPerson,  groupPersons, groupSchedules, onStartChat, conversations }) {
     const { colors } = useTheme();
     const [dismissed, setDismissed] = usePersistedState("dismissedReminders", []);
     const [dragX, setDragX] = useState(0);
@@ -1497,10 +1496,14 @@ const FamilyReminderCard = React.memo(function FamilyReminderCard({ groupPersons
     if (overdue.length === 0 && dueSchedules.length === 0)
         return null;
     const urgentPerson = overdue[0];
-    const days = urgentPerson ? daysSinceContact(urgentPerson.lastContactDate) : 0;
+    const days = urgentPerson ? daysSinceRef(urgentPerson) : 0;
+    const neverLogged = !!urgentPerson && !urgentPerson.lastContactDate;
     const limit = urgentPerson ? (proximityContactDays[urgentPerson.proximity] || 30) : 0;
     const isVeryLate = days > limit * 1.5;
     function handleChat(person) {
+        // C74: كانت تفتح محادثةً وهميّة محلّيّة لقريبٍ بلا حساب في سوا (تبدو مُرسَلة ولا تصل أحداً).
+        //      الآن تفتح بطاقة القريب: اتّصال · واتساب · رسالة · «تواصلتُ معه» — كلّها حقيقيّة.
+        if (onOpenPerson) { onOpenPerson(person); return; }
         // ابحث عن محادثة موجودة بنفس الاسم أو أنشئ جديدة
         const existing = conversations === null || conversations === void 0 ? void 0 : conversations.find(c => c.name && person.local_name && c.name.includes(person.local_name.split(" ")[0]));
         if (existing && onStartChat) {
@@ -1521,18 +1524,16 @@ const FamilyReminderCard = React.memo(function FamilyReminderCard({ groupPersons
             React.createElement("div", { className: `flex-1 ${textStart()} min-w-0` },
                 React.createElement("p", { className: "text-xs font-extrabold", style: { color: isVeryLate ? "#ef4444" : colors.accent } }, isVeryLate ? "⚠️ تجاوزت حد التواصل!" : "💛 حان وقت التواصل"),
                 React.createElement("p", { className: "text-[11px] mt-0.5", style: { color: colors.text } },
-                    t("lm_ttwasl_ma"),
-                    " ",
+                    neverLogged
+                        ? tl("لم تسجّل تواصلاً مع ", "No contact logged with ")
+                        : t("lm_ttwasl_ma") + " ",
                     React.createElement("b", null, urgentPerson.local_name),
                     " ",
-                    t("mndh"),
-                    " ",
-                    React.createElement("b", null,
-                        days,
-                        " \u064A\u0648\u0645"),
-                    overdue.length > 1 && ` (و${overdue.length - 1} آخرين)`)),
+                    neverLogged ? tl("منذ أضفته قبل ", "since you added them ") : t("mndh") + " ",
+                    React.createElement("b", null, daysAr(days)),
+                    overdue.length > 1 && tl(` (و${othersAr(overdue.length - 1)})`, ` (+${overdue.length - 1} more)`))),
             React.createElement("div", { className: "flex flex-col gap-1 shrink-0" },
-                React.createElement("button", { onClick: () => handleChat(urgentPerson), className: "px-3 py-1.5 rounded-xl text-[10px] font-extrabold", style: { backgroundColor: isVeryLate ? "#ef4444" : colors.accent, color: "#fff" } }, t("raslh_alan")),
+                React.createElement("button", { onClick: () => handleChat(urgentPerson), className: "px-3 py-1.5 rounded-xl text-[10px] font-extrabold", style: { backgroundColor: isVeryLate ? "#ef4444" : colors.accent, color: "#fff" } }, onOpenPerson ? tl("تواصل الآن", "Reach out") : t("raslh_alan")),
                 React.createElement("button", { onClick: () => setDismissed(d => [...d, urgentPerson.id]), className: "text-[10px] text-center", style: { color: colors.textMuted } }, t("lahqa_2"))))),
         dueSchedules.map(s => {
             var _a;
@@ -1601,7 +1602,7 @@ function ArchivedChatsScreen({ conversations, archivedIds, mutedIds, onOpenChat,
                     mutedIds.includes(c.id) && React.createElement(BellOff, { size: 13, color: colors.textMuted, className: `shrink-0 ${ms("1.5")}` })),
                 React.createElement("button", { onClick: () => onUnarchive(c.id), className: `px-2.5 py-1.5 rounded-xl text-[10px] font-bold shrink-0 ${me("2")}`, style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("astaada"))))))));
 }
-function ConversationsListScreen({ onOpenScheduledRooms, chatDrafts = {}, conversations, groups, broadcastLists, lockedConversationIds, connectionState, onOpenChat, onOpenGroup, onOpenBroadcastList, onNewConversation, onNewGroup, onNewBroadcastList, onOpenLockedChats, onOpenStarredMessages, onScanQr, onOpenSearch, onlineContacts, chatFolders, folderAssignments, onOpenChatSettings, typingConversations = [], momentsPosts = [], familyPersons = [], onOpenMoments, onOpenRoom, myName, groupPersons = {}, groupSchedules = {}, archivedConversations = [], mutedConversations = [], onArchiveConv, onMuteConv, showStoriesRow = true, showFamilyReminders = true, onOpenArchived, pinnedConversations = [], onPinConv, onDeleteConv, onToggleReadConv, onScheduleRoom, onJoinRoomCode, scheduledRooms = [], onJoinScheduled, onCancelScheduled, }) {
+function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, chatDrafts = {}, conversations, groups, broadcastLists, lockedConversationIds, connectionState, onOpenChat, onOpenGroup, onOpenBroadcastList, onNewConversation, onNewGroup, onNewBroadcastList, onOpenLockedChats, onOpenStarredMessages, onScanQr, onOpenSearch, onlineContacts, chatFolders, folderAssignments, onOpenChatSettings, typingConversations = [], momentsPosts = [], familyPersons = [], onOpenMoments, onOpenRoom, myName, groupPersons = {}, groupSchedules = {}, archivedConversations = [], mutedConversations = [], onArchiveConv, onMuteConv, showStoriesRow = true, showFamilyReminders = true, onOpenArchived, pinnedConversations = [], onPinConv, onDeleteConv, onToggleReadConv, onScheduleRoom, onJoinRoomCode, scheduledRooms = [], onJoinScheduled, onCancelScheduled, }) {
     const { colors } = useTheme();
     const { showToast } = useToast();
     const [showNewMenu, setShowNewMenu] = useState(false);
@@ -1663,6 +1664,9 @@ function ConversationsListScreen({ onOpenScheduledRooms, chatDrafts = {}, conver
         return base;
     }, [visibleConversations, activeTab, pinnedConversations, familyNames, searchQuery]);
     const tabGroups = useMemo(() => {
+        // C74: مجموعات العائلات (محادثة «آل علي») تظهر في «عائلة» — كانت تقول «ما في محادثات مع أفراد العائلة» ومجموعتها موجودة
+        if (activeTab === "family")
+            return groups.filter((g) => g.kind === "family");
         if (activeTab !== "all" && activeTab !== "groups")
             return [];
         const q = searchQuery.trim().toLowerCase();
@@ -1679,13 +1683,19 @@ function ConversationsListScreen({ onOpenScheduledRooms, chatDrafts = {}, conver
     const tabBroadcasts = activeTab === "all" ? broadcastLists : [];
     // بادج عدد المتأخرين في صلة الرحم
     const overdueCount = useMemo(() => getOverduePersons(groupPersons).length, [groupPersons]);
+    const familyUnread = useMemo(() => {
+        const convU = visibleConversations.filter((c) => !c.isSavedMessages && familyNames.some((fn) => (c.name || "").toLowerCase().includes(fn))).reduce((n, c) => n + (c.unread || 0), 0);
+        const grpU = groups.filter((g) => g.kind === "family").reduce((n, g) => n + (g.unread || 0), 0);
+        return convU + grpU;
+    }, [visibleConversations, groups, familyNames]);
     const unreadCount = useMemo(() => visibleConversations.filter(c => c.unread > 0).length, [visibleConversations]);
     const TABS = [
         { key: "all", label: t("tab_alkl") },
         { key: "unread", label: t("tab_ghyr_mqrwaa"), badge: unreadCount },
         { key: "starred", label: t("tab_almfdla") },
         { key: "groups", label: t("tab_mjmwaat") },
-        { key: "family", label: t("tab_aayla"), badge: overdueCount, badgeColor: "#ef4444" },
+        // C74: الشارة = رسائل العائلة غير المقروءة (كانت عدد المتأخَّر تواصلهم — وهذا في بطاقة التذكير فوقها)
+        { key: "family", label: t("tab_aayla"), badge: familyUnread },
     ];
     // مناسبات قادمة خلال 7 أيام من صلة الرحم
     const upcomingBirthdays = familyPersons.filter((p) => {
@@ -1809,7 +1819,7 @@ function ConversationsListScreen({ onOpenScheduledRooms, chatDrafts = {}, conver
                 lastScrollY.current = currentY;
             } },
             showStoriesRow && (React.createElement(StoriesRow, { momentsPosts: momentsPosts, onOpenMoments: onOpenMoments, conversations: conversations, onOpenChat: onOpenChat, myName: myName })),
-            showFamilyReminders && (React.createElement(FamilyReminderCard, { groupPersons: groupPersons, groupSchedules: groupSchedules, conversations: conversations, onStartChat: onOpenChat })),
+            showFamilyReminders && (React.createElement(FamilyReminderCard, { groupPersons: groupPersons, groupSchedules: groupSchedules, conversations: conversations, onStartChat: onOpenChat, onOpenPerson: onOpenFamilyPerson })),
             activeTab === "groups" && (React.createElement("div", { className: `flex ${rowStart()} items-center justify-between px-4 py-2`, style: { borderBottom: `1px solid ${colors.border}` } },
                 React.createElement("button", { onClick: onNewGroup, className: `flex ${rowStart()} items-center gap-1.5 px-3 py-1.5 rounded-xl`, style: { backgroundColor: colors.primaryLight } },
                     React.createElement(Plus, { size: 14, color: colors.primary }),
@@ -1833,7 +1843,7 @@ function ConversationsListScreen({ onOpenScheduledRooms, chatDrafts = {}, conver
                 visibleConversations.length === 0 && groups.length === 0 && broadcastLists.length === 0 && React.createElement(EmptyState, { icon: MessageCircle, label: t("la_twjd_mhadthat_bad") }),
                 activeTab === "starred" && tabConversations.length === 0 && React.createElement(EmptyState, { icon: Star, label: t("ma_hfzt_ay_mhadtha") }),
                 activeTab === "unread" && tabConversations.length === 0 && React.createElement(EmptyState, { icon: MessageCircle, label: t("kl_almhadthat_mqrwa") }),
-                activeTab === "family" && tabConversations.length === 0 && (React.createElement("div", { className: "flex flex-col items-center gap-3 mt-8" },
+                activeTab === "family" && tabConversations.length === 0 && tabGroups.length === 0 && (React.createElement("div", { className: "flex flex-col items-center gap-3 mt-8" },
                     React.createElement(EmptyState, { icon: Heart, label: t("ma_fy_mhadthat_ma") }),
                     React.createElement("p", { className: "text-[11px] text-center px-8", style: { color: colors.textMuted } }, t("adf_arqam_afrad_aayltk")))),
                 activeTab === "groups" && tabGroups.length === 0 && (React.createElement("div", { className: "flex flex-col items-center gap-3 mt-8" },

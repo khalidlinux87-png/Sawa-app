@@ -52,6 +52,8 @@ const KINSHIP_RELATION_DEFAULTS = {
 // نطاق وحدة: مفاتيح لا نصوص — تُترجَم وقت الرسم عبر roleLabel()
 const roleLabelKeys = { owner: "rl_owner", admin: "rl_admin", editor: "rl_admin", member: "rl_member", viewer: "rl_viewer" };
 const roleLabel = (r) => (roleLabelKeys[r] ? t(roleLabelKeys[r]) : r);
+function myAccountName() { try { const p = window.SawaChat && window.SawaChat.me && window.SawaChat.me() && window.SawaChat.profile ? window.SawaChat.profile() : null; return (p && (p.name || p.displayName)) || ""; } catch (e) { return ""; } }
+function membersCountLabel(nStr) { const x = nStr + t("fg_frd_fasl"); return isRTL() ? arCountFix(x) : x; }   // C74: «٧ أفراد ·»
 // استدلال افتراضي للجنس من صلة القرابة المُختارة — يمكن للمستخدم تغييره
 // يدوياً؛ "أخرى" و"ابن العم/الخال" بلا استدلال واضح فنتركها بلا افتراض
 const KINSHIP_GENDER_DEFAULTS = {
@@ -260,7 +262,7 @@ function FamilyGroupsScreen({ groups, groupPersons, currentGroupId, onSetCurrent
                     React.createElement("div", { className: "mx-auto mb-3 rounded-full flex items-center justify-center", style: { width: 64, height: 64, background: famGrad(colors) } }, React.createElement(UsersRound, { size: 30, color: "#fff" })),
                     React.createElement("p", { className: "text-[15px] font-extrabold mb-1", style: { color: colors.text } }, tl("ابدأ عائلتك الأولى", "Start your first family")),
                     React.createElement("p", { className: "text-[11.5px] leading-relaxed mb-4", style: { color: colors.textMuted } }, tl("أضف أقاربك، وستذكّرك سوا بالتواصل معهم وبمناسباتهم.", "Add your relatives and Sawa will remind you to keep in touch.")),
-                    React.createElement(FamButton, { label: t("mjmwaa_jdyda"), icon: Plus, onPress: () => setShowCreate(true) })),
+                    React.createElement(FamButton, { label: tl("عائلة جديدة", "New family"), icon: Plus, onPress: () => setShowCreate(true) })),
                 groups.map((g) => {
                     const list = groupPersons[g.id] || [];
                     const overdueN = list.filter(isContactOverdue).length;   // العدّ بـisContactOverdue نفسها التي يصفّي بها فلتر «متأخّر»
@@ -274,7 +276,7 @@ function FamilyGroupsScreen({ groups, groupPersons, currentGroupId, onSetCurrent
                                         React.createElement("span", { className: "text-[14.5px] font-extrabold truncate", style: { color: colors.text } }, g.name),
                                         isCurrent && React.createElement(FamChip, { tone: "ok", label: t("alhalya") })),
                                     g.description && React.createElement("div", { className: "text-[11px] mt-0.5 truncate", style: { color: colors.textMuted } }, g.description),
-                                    React.createElement("div", { className: "text-[11.5px] mt-0.5", style: { color: colors.textMuted } }, n(list.length), t("fg_frd_fasl"), roleLabel(g.role)))),
+                                    React.createElement("div", { className: "text-[11.5px] mt-0.5", style: { color: colors.textMuted } }, membersCountLabel(n(list.length)), roleLabel(g.role)))),
                             onDeleteGroup && g.role === "owner"
                                 ? React.createElement("button", { "aria-label": t("fg_khyarat"), onClick: () => { setMenuFor(g.id); setRenameText(g.name); setConfirming(false); }, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.bg } }, React.createElement(MoreHorizontal, { size: 17, color: colors.textMuted }))
                                 : React.createElement(ChevronLeft, { size: 18, color: colors.textMuted, className: "shrink-0", style: { transform: isRTL() ? "none" : "scaleX(-1)" } })),
@@ -299,15 +301,15 @@ function FamilyGroupsScreen({ groups, groupPersons, currentGroupId, onSetCurrent
                             React.createElement("div", { className: "text-[11.5px] mt-0.5 truncate", style: { color: colors.textMuted } }, kinshipLabel(p.kinship), " · ", contactAgoLabel(p.lastContactDate))),
                         React.createElement(FamChip, { tone: "warn", icon: Phone, label: tl("اتّصل", "Call") })))),
                 overdueAll.length > 4 && React.createElement("p", { className: `text-[11px] px-1 ${textStart()}`, style: { color: colors.textMuted } }, tl("و" + n(overdueAll.length - 4) + " آخرون — افتح العائلة ثمّ «متأخّر»", "+" + n(overdueAll.length - 4) + " more — open the family, then “Overdue”")))),
-        React.createElement(FamFab, { label: groups.length === 0 ? t("mjmwaa_jdyda") : null, ariaLabel: t("mjmwaa_jdyda"), onPress: () => setShowCreate(true) }),
-        showCreate && React.createElement(FamSheet, { title: t("mjmwaa_jdyda"), subtitle: tl("اسمٌ تعرفها به: آل فلان، عائلة الزوجة…", "A name you know it by"), onClose: () => { setShowCreate(false); setName(""); }, maxHeight: "60%",
+        React.createElement(FamFab, { label: groups.length === 0 ? tl("عائلة جديدة", "New family") : null, ariaLabel: tl("عائلة جديدة", "New family"), onPress: () => setShowCreate(true) }),
+        showCreate && React.createElement(FamSheet, { title: tl("عائلة جديدة", "New family"), subtitle: tl("اسمٌ تعرفها به: آل فلان، عائلة الزوجة…", "A name you know it by"), onClose: () => { setShowCreate(false); setName(""); }, maxHeight: "60%",
             footer: React.createElement(FamButton, { label: t("takyd"), icon: Check, disabled: !name.trim(), onPress: () => { if (name.trim()) { onCreateGroup(name.trim()); setName(""); setShowCreate(false); } } }) },
-            React.createElement(FamLabel, null, t("asm_almjmwaa")),
-            React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: name, onChange: (e) => setName(e.target.value), onKeyDown: (e) => { if (e.key === "Enter" && name.trim()) { onCreateGroup(name.trim()); setName(""); setShowCreate(false); } }, placeholder: t("asm_almjmwaa"), className: "fam-in w-full px-3.5 py-3 text-sm", style: famInput(colors), autoFocus: true })),
-        menuGroup && React.createElement(FamSheet, { title: menuGroup.name, subtitle: n((groupPersons[menuGroup.id] || []).length) + t("fg_frd_fasl") + roleLabel(menuGroup.role), onClose: () => setMenuFor(null), maxHeight: "72%" },
+            React.createElement(FamLabel, null, tl("اسم العائلة", "Family name")),
+            React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: name, onChange: (e) => setName(e.target.value), onKeyDown: (e) => { if (e.key === "Enter" && name.trim()) { onCreateGroup(name.trim()); setName(""); setShowCreate(false); } }, placeholder: tl("اسم العائلة", "Family name"), className: "fam-in w-full px-3.5 py-3 text-sm", style: famInput(colors), autoFocus: true })),
+        menuGroup && React.createElement(FamSheet, { title: menuGroup.name, subtitle: membersCountLabel(n((groupPersons[menuGroup.id] || []).length)) + roleLabel(menuGroup.role), onClose: () => setMenuFor(null), maxHeight: "72%" },
             React.createElement(FamLabel, null, t("fg_iada_tsmya")),
             React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-4` },
-                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: renameText, onChange: (e) => setRenameText(e.target.value), placeholder: t("asm_almjmwaa"), className: "fam-in flex-1 min-w-0 px-3.5 py-3 text-sm", style: famInput(colors) }),
+                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: renameText, onChange: (e) => setRenameText(e.target.value), placeholder: tl("اسم العائلة", "Family name"), className: "fam-in flex-1 min-w-0 px-3.5 py-3 text-sm", style: famInput(colors) }),
                 React.createElement("button", { "aria-label": t("takyd"), disabled: !renameText.trim() || renameText.trim() === menuGroup.name, onClick: () => { onRenameGroup(menuGroup.id, renameText.trim()); setMenuFor(null); }, className: "w-12 rounded-2xl flex items-center justify-center shrink-0", style: { background: famGrad(colors), opacity: (!renameText.trim() || renameText.trim() === menuGroup.name) ? 0.4 : 1 } }, React.createElement(Check, { size: 18, color: "#fff" }))),
             menuGroup.id !== currentGroupId && React.createElement(FamButton, { variant: "soft", label: t("tayyn_khalya"), icon: Star, onPress: () => { onSetCurrent(menuGroup.id); setMenuFor(null); }, className: "mb-3" }),
             !confirming
@@ -767,7 +769,7 @@ function AdvancedSearchScreen({ persons, relations = [], onBack, onOpenPerson })
                         React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-0.5 flex-wrap` },
                             React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } }, kinshipLabel(p.kinship)),
                             React.createElement("span", { style: { color: colors.border } }, "\u00B7"),
-                            React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } }, proximityLabels[p.proximity]),
+                            React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } }, proxLabel(p.proximity)),
                             branchForKinship(p.kinship) !== "both" && (React.createElement(React.Fragment, null,
                                 React.createElement("span", { style: { color: colors.border } }, "\u00B7"),
                                 React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } }, t(branchLabelKeys[branchForKinship(p.kinship)])))),
@@ -830,7 +832,8 @@ function FamilyGroupDetailScreen({ group, persons, relations = [], favorites, ot
     const mismatchedCount = persons.filter((p) => p.proximity !== proximityForKinship(p.kinship)).length;
     // من ليس له أي علاقة — لا يظهر في الشجرة إطلاقاً
     const linkedIds = new Set(relations.flatMap((r) => [r.source, r.target]));
-    const unlinkedCount = persons.filter((p) => !linkedIds.has(p.id)).length;
+    // C74: «نفسي» وحدها ليست قريباً بلا علاقة — هي أصل الشجرة (كان أوّل ما يظهر بعد إضافة نفسك تحذيرٌ عنك)
+    const unlinkedCount = persons.length < 2 ? 0 : persons.filter((p) => !linkedIds.has(p.id)).length;
     // والدان مسجَّلان لنفس الشخص بلا رابط زواج — بيانات أُدخلت قبل الاستنتاج التلقائي
     const missingSpouseLinks = (() => {
         const byChild = {};
@@ -915,7 +918,8 @@ function FamilyGroupDetailScreen({ group, persons, relations = [], favorites, ot
     // C34: النمط الحديث — رأس متدرّج يحوي البحث، شرائح مستديرة، بطاقات ناعمة، وزرّ إضافة عائم
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col relative", style: { backgroundColor: colors.bg } },
         React.createElement(FamHeader, { title: group.name, onBack: onBack, compact: true,
-            subtitle: nL(persons.length) + t("fg_frd_fasl") + t("ft_dwrk") + roleLabel(group.role) + (!canEdit ? " · " + (canAddEvents ? t("fg_tdyf_alahdath") : t("fg_mshahda_fqt")) : ""),
+            // C74: كان يظهر «دورك: مشاهدة فقط · · مشاهدة فقط» — الدور يكفي، ويُضاف «تضيف الأحداث» وحده إن سُمح
+            subtitle: membersCountLabel(nL(persons.length)) + t("ft_dwrk") + roleLabel(group.role) + (!canEdit && canAddEvents ? t("fg_tdyf_alahdath") : ""),
             // ⛔ حين تُطوى قائمة المجموعات وتصير هذه الشاشة جذراً، يبقى هذا
             // الزرّ سبيلها الوحيد — وفيه الإنشاء والتسمية والحذف.
             actions: React.createElement(React.Fragment, null,
@@ -1009,11 +1013,15 @@ function FamilyGroupDetailScreen({ group, persons, relations = [], favorites, ot
                         ] })),
                 React.createElement("button", { onClick: () => setShowSort(true), className: `shrink-0 mb-1 flex ${rowStart()} items-center gap-1 rounded-full px-3 py-1.5 text-[11.5px] font-bold`, style: { backgroundColor: colors.card, color: colors.primary, boxShadow: famShadow(isDark) } },
                     React.createElement(ChevronsDownUp, { size: 12 }), (SORTS.find((o) => o.key === sortBy) || SORTS[0]).label)),
+            // C74: من انضمّ إلى شجرة غيره يرى القرابات منسوبةً لصاحبها («الوالد» = والد صاحب الشجرة) — نقولها صراحةً
+            group.role && group.role !== "owner" && !selectionMode && (() => { const owner = persons.find(isSelfPerson); return owner ? React.createElement("div", { className: `flex ${rowStart()} items-start gap-2 px-3.5 py-2.5 rounded-2xl mb-2`, style: { backgroundColor: colors.primary + "0d" } },
+                React.createElement(Info, { size: 14, color: colors.primary, className: "mt-0.5 shrink-0" }),
+                React.createElement("span", { className: `flex-1 ${textStart()} text-[11px] font-bold leading-relaxed`, style: { color: colors.primary } },
+                    tl("هذه شجرة " + owner.local_name + ": القرابات منسوبةٌ إليه («الوالد» = والد " + owner.local_name + ").", "This is " + owner.local_name + "'s tree: relations are relative to them."))) : null; })(),
             unlinkedCount > 0 && !selectionMode && (React.createElement("button", { onClick: onOpenTree, className: `w-full flex ${rowStart()} items-center gap-2 px-3.5 py-2.5 rounded-2xl mb-2`, style: { backgroundColor: famTone("warn", isDark).bg } },
                 React.createElement(GitBranch, { size: 14, color: colors.accent }),
                 React.createElement("span", { className: `flex-1 ${textStart()} text-[11px] font-bold`, style: { color: colors.accent } },
-                    unlinkedCount,
-                    t("fg_bla_alaqa")),
+                    (isRTL() ? arCountFix : (x) => x)(unlinkedCount + t("fg_bla_alaqa"))),
                 React.createElement(ChevronLeft, { size: 13, color: colors.accent, style: { transform: "scaleX(-1)" } }))),
             !selectionMode && sortedPersons.length > 0 && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-2.5 px-0.5` },
                 React.createElement("p", { className: `text-[11px] font-bold flex-1 ${textStart()}`, style: { color: colors.textMuted } }, (filterProximity !== "all" || filterStatus !== "all" || searchQuery.trim())
@@ -1193,8 +1201,12 @@ function FamilyPersonDetailScreen({ person, persons = [], relations = [], favori
                 person.birthYear && kv(tl("سنة الميلاد", "Born"), String(person.birthYear), Calendar)),
             linkedGroupName && React.createElement(FamCard, { style: { paddingTop: 2, paddingBottom: 2 } },
                 React.createElement(FamRow, { icon: LinkIcon, last: true, onPress: onOpenLinkedPerson, title: t("fp_nfs") + (linkedPersonName || t("fp_shkhs")) + t("fp_bmjmwaa") + linkedGroupName, sub: t("fp_almtzamnwn") })),
-            !linkedGroupName && person.alive && canEdit && onCreateInLaws && React.createElement(FamCard, { style: { paddingTop: 2, paddingBottom: 2 } },
-                React.createElement(FamRow, { icon: Users2, tone: "warn", last: true, onPress: () => onCreateInLaws(person), title: t("idafa_aaylth_aayltha_alashar"), sub: t("mjmwaa_mstqla_lwaldh_wikhwth") })),
+            // C74: الأصهار لمن دخل العائلة بالزواج فقط (زوجة/زوج، زوجة الابن، زوج البنت…) — كانت تظهر على الأخ الشقيق،
+            //      وعائلة أخيك هي عائلتك. والنصّ بحسب الجنس.
+            !linkedGroupName && person.alive && canEdit && onCreateInLaws && /زوج/.test(person.kinship || "") && React.createElement(FamCard, { style: { paddingTop: 2, paddingBottom: 2 } },
+                React.createElement(FamRow, { icon: Users2, tone: "warn", last: true, onPress: () => onCreateInLaws(person),
+                    title: person.gender === "female" ? tl("إضافة عائلتها (الأصهار)", "Add her family (in-laws)") : tl("إضافة عائلته (الأصهار)", "Add his family (in-laws)"),
+                    sub: person.gender === "female" ? tl("مجموعة مستقلة لوالدها وإخوتها وأسلافها — تبقى صلة الرحم شاملة للطرفين", "A separate group for her father, siblings and ancestors") : t("mjmwaa_mstqla_lwaldh_wikhwth") })),
             (person.noChildren || person.neverMarried) && (React.createElement(FamCard, { className: `flex ${rowStart()} items-start gap-2` },
                 React.createElement(Info, { size: 15, color: colors.textMuted, className: "mt-0.5 shrink-0" }),
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
@@ -1764,9 +1776,7 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
                     React.createElement("p", { className: `text-[11px] font-bold ${textStart()} mb-1`, style: { color: colors.primaryDark } }, t("adyf_fy_hdhh_aljlsa")),
                     savedBatches.map((b, i2) => (React.createElement("p", { key: i2, className: `text-[10px] ${textStart()}`, style: { color: colors.primaryDark } },
                         "\u2713 ",
-                        b.count,
-                        " ",
-                        b.label)))),
+                        tl(arCountFix(b.count + " " + b.label), b.count + " " + b.label))))),
                 React.createElement("button", { onClick: onClose, className: "w-full mt-2 py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: colors.card, color: colors.textMuted, border: `1px solid ${colors.border}` } }, t("inha")))))));
 }
 // ============================================================
@@ -2784,24 +2794,51 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
                     }
                     return d;
                 };
-                const depthOf = (id) => {
-                    var _a, _b;
+                // C74: rawDepth يعدّ الأسلاف (0 = الأعلى) فكانت الأجيال مقلوبة: الأب في «الجيل الأقرب» والابن في «الأجداد».
+                //      الآن الجيل نسبةً لك: +1 الوالدان · +2 الأجداد · 0 جيلك · −1 الأبناء. ومن بلا والدين يرث جيل أخيه أو زوجه.
+                const linkedDepth = (id, seen) => {
+                    var _a;
                     if ((_a = parentsOfMap[id]) === null || _a === void 0 ? void 0 : _a.length)
                         return rawDepth(id);
-                    const sib = siblingEdges.find(([a, b]) => a === id || b === id);
-                    if (sib) {
-                        const other = sib[0] === id ? sib[1] : sib[0];
-                        if ((_b = parentsOfMap[other]) === null || _b === void 0 ? void 0 : _b.length)
-                            return rawDepth(other);
+                    if (seen.has(id)) return null;
+                    seen.add(id);
+                    for (const [a, b] of siblingEdges) {
+                        if (a !== id && b !== id) continue;
+                        const d = linkedDepth(a === id ? b : a, seen);
+                        if (d != null) return d;
                     }
-                    return rawDepth(id);
+                    for (const r of relations) {
+                        if (r.type !== "spouse" && r.type !== "ex_spouse") continue;
+                        if (r.source !== id && r.target !== id) continue;
+                        const d = linkedDepth(r.source === id ? r.target : r.source, seen);
+                        if (d != null) return d;
+                    }
+                    // من بلا أصل: إن كان له أبناء مسجَّلون فهو فوقهم بجيل
+                    const kid = relations.find((r) => r.type === "parent" && r.source === id);
+                    if (kid) { const d = linkedDepth(kid.target, seen); if (d != null) return d - 1; }
+                    return null;
                 };
+                const depthOf = (id) => { const d = linkedDepth(id, new Set()); return d == null ? rawDepth(id) : d; };
+                const selfP = persons.find(isSelfPerson);
+                const base = selfP ? depthOf(selfP.id) : null;
+                // جيلٌ نسبيّ: موجبٌ للأعلى (الوالدان +1)، وبلا «نفسي» نعدّ من الأعلى (الأقدم أوّلاً)
+                const genOf = (id) => base != null ? base - depthOf(id) : -depthOf(id);
                 const byGen = {};
-                persons.forEach((p) => { var _a; var _b; ((_a = byGen[_b = depthOf(p.id)]) !== null && _a !== void 0 ? _a : (byGen[_b] = [])).push(p); });
-                const LABELS = [t("ft_aljyl_alaqrb"), t("jyl_alwaldyn"), t("jyl_alajdad"), t("alslf_alawl"), t("alslf_althany")];
-                return Object.keys(byGen).sort((a, b) => a - b).map((g) => (React.createElement("div", { key: g, className: "mb-3" },
+                persons.forEach((p) => { const g = genOf(p.id); (byGen[g] || (byGen[g] = [])).push(p); });
+                const genLabel = (g) => {
+                    if (base == null) return tl("الجيل " + (1 - g), "Generation " + (1 - g));
+                    if (g === 0) return tl("جيلك", "Your generation");
+                    if (g === 1) return t("jyl_alwaldyn");
+                    if (g === 2) return t("jyl_alajdad");
+                    if (g === 3) return t("alslf_alawl");
+                    if (g === 4) return t("alslf_althany");
+                    if (g === -1) return tl("جيل الأبناء", "Children");
+                    if (g === -2) return tl("جيل الأحفاد", "Grandchildren");
+                    return g > 0 ? tl("أسلاف أبعد", "Earlier ancestors") : tl("أحفاد الأحفاد", "Great-grandchildren");
+                };
+                return Object.keys(byGen).map(Number).sort((a, b) => b - a).map((g) => (React.createElement("div", { key: g, className: "mb-3" },
                     React.createElement("p", { className: `text-[11px] font-extrabold ${textStart()} mb-2 px-1`, style: { color: colors.primary } },
-                        LABELS[g] || t("aljyl", { g }),
+                        genLabel(g),
                         " (",
                         byGen[g].length,
                         ")"),
@@ -2815,7 +2852,7 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
                             React.createElement("p", { className: "text-[10.5px]", style: { color: colors.textMuted } },
                                 kinshipLabel(p.kinship),
                                 p.alive === false ? t("ft_mtwfa") : "")),
-                        p.proximity && React.createElement(FamChip, { tone: "muted", label: p.proximity })))))));
+                        p.proximity && !hasNoProximityPerson(p) && React.createElement(FamChip, { tone: "muted", label: proxLabel(p.proximity) })))))));
             })())) : viewMode === "focus" && focusData ? (React.createElement(FocusView, { data: focusData, onGo: goFocus, onOpenMenu: setNodeMenu, colors: colors, onAddRelative: (relKey) => {
                     if (!canEdit)
                         return;

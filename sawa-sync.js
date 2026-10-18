@@ -52,7 +52,7 @@
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   function lsRead(key, fb) { return lsGet("sawa:" + key, fb); } // مخازن التطبيق (البادئة sawa:)
   function isAr() { try { return (localStorage.getItem("sawaLang") || "ar") === "ar"; } catch (e) { return true; } }
-  function L(ar, en) { return isAr() ? ar : en; }
+  function L(ar, en) { return isAr() ? (typeof global.arCountFix === "function" ? global.arCountFix(ar) : ar) : en; }   // C74: قواعد العدد
   function clock() { var d = new Date(); return [d.getHours(), d.getMinutes(), d.getSeconds()].map(function (n) { return (n < 10 ? "0" : "") + n; }).join(":"); }
   function hasFirebase() { return !!(global.firebase && firebase.auth && global.SawaAuth); }
 
@@ -503,6 +503,7 @@
         if (!(f in r)) continue;
         m[f] = r[f];
       }
+      if (!m.lastContactDate && !m.addedAt) m.addedAt = Date.now();   // C74: من انضمّ قبل هذا الإصلاح
       out.push(m); seen[p.id] = 1;
     });
     remoteList.forEach(function (r) {
@@ -510,6 +511,7 @@
       var m = { id: r.id };
       for (var j = 0; j < SYNC_FIELDS.length; j++) { var f = SYNC_FIELDS[j]; if (f in r) m[f] = r[f]; }
       if (m.alive === undefined) m.alive = true;
+      m.addedAt = Date.now();   // C74: مرجع تذكير التواصل على هذا الجهاز (lastContactDate خاصٌّ بكلّ مستخدم)
       out.push(m);
     });
     return out;
@@ -1235,6 +1237,9 @@
     // إن كانت العائلة المفتوحة غير مربوطة وفارغةً أو هي الشجرة نفسها: نربطها بدل إنشاء عائلةٍ ثانية بالاسم نفسه
     var cur = currentLocalGid(), gp = lastGp || lsRead("groupPersons", {}), rels = lastRels || lsRead("kinshipRelations", []);
     var curIds = (((gp || {})[cur]) || []).map(function (p) { return p.id; });
+    // C74: العائلة المفتوحة يجب أن تكون موجودةً فعلاً على الجهاز — بعد حذف كلّ العائلات كان المعرّف القديم يُربط
+    //      فتختفي العائلة المنضمّ إليها («ابدأ عائلتك الأولى») وبياناتها محفوظةٌ تحت معرّفٍ لا عائلة له.
+    if (cur && localGroupIds().indexOf(cur) < 0) cur = "";
     if (cur && !serverGid(cur)) {
       return serverPersonIds(sg).then(function (ids) {
         if (!curIds.length || overlap(curIds, ids) >= 0.5) {
@@ -1242,6 +1247,16 @@
           // C33: مشاهدٌ لا يستطيع رفع ما ليس على الخادم ⇒ لا نربط شجرته بها كي لا تُمحى أشخاصه المحلّيّون
           if (extra.length && (role || "viewer") === "viewer") return createRestored(sg, name, role);
           setMap(cur, sg);
+          // C74: العائلة الفارغة (أو باسمها الافتراضيّ) تأخذ اسم العائلة المنضمّ إليها ودورك فيها — كانت تبقى «عائلتي»
+          app.setFamilyGroups(function (prev) {
+            return (prev || []).map(function (g) {
+              if (!g || g.id !== cur) return g;
+              var o = {}; for (var k in g) o[k] = g[k];
+              if (name && (!curIds.length || !g.name || g.name === "عائلتي")) o.name = name;
+              o.role = appRole(role || "viewer");
+              return o;
+            });
+          });
           // خطّ الأساس = ما عند الخادم فقط: ما يزيد محلّيّاً يُرفع (كان يُحذف «حُذف في الخادم»)
           var snapAll = snapshot(cur, gp, rels), onServer = {}; ids.forEach(function (id) { onServer[id] = 1; });
           var b0 = { persons: {}, relations: {}, events: snapAll.events };

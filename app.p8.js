@@ -1267,7 +1267,11 @@ function AppInner() {
                 setDailyCycle(next);
             }
             const pick = pool[next.idx] || pool[0];
-            timer = setTimeout(function () { setDailyCard(pick); }, 900);
+            // C74: مرّةً في اليوم — كانت تظهر عند كلّ فتح للتطبيق، وتغطّي صفحة الانضمام إلى عائلة/غرفة/مكالمة
+            if (next.shownDay === key) return;
+            if (/[?&](join|call|room|contact|group|code|answer)=/.test(location.search || "")) return;
+            const shownNext = { ...next, shownDay: key };
+            timer = setTimeout(function () { setDailyCard(pick); setDailyCycle(shownNext); }, 900);
         });
         return function () { cancelled = true; if (timer) clearTimeout(timer); };
     }, []);
@@ -2362,9 +2366,12 @@ function AppInner() {
         // بدل إنشاء نسخة — فتتصل السلسلة بشجرته القائمة بدل شجرة موازية.
         const reusedId = (name) => {
             var _a;
-            if (matchDecisions[name.trim().toLowerCase()] !== "same")
+            // C74: القرار مُفهرَس بالاسم المُطبَّع (normalizeArabicName) — كانت المطابقة هنا بلا تطبيع فـ«أحمد»
+            //      لا تجد «احمد» فيُنشأ والدٌ ثانٍ رغم اختيار «هو نفسه»
+            const low = normalizeArabicName(name);
+            if (matchDecisions[low] !== "same" && matchDecisions[name.trim().toLowerCase()] !== "same")
                 return null;
-            return ((_a = existing.find((p) => p.local_name.trim().toLowerCase() === name.trim().toLowerCase())) === null || _a === void 0 ? void 0 : _a.id) || null;
+            return ((_a = existing.find((p) => normalizeArabicName(p.local_name) === low)) === null || _a === void 0 ? void 0 : _a.id) || null;
         };
         const newId = () => `gp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         const chainIds = chainNames.map((name) => reusedId(name) || newId());
@@ -2376,7 +2383,7 @@ function AppInner() {
             gender: i === 0 ? firstGender : "male",
             proximity: proximityForKinship(i === 0 ? (firstIsSelf ? "نفسي" : (firstGender === "female" ? "البنت" : "الابن")) : kinshipForIndex(i)),
             alive: true, favorite: false, locations: [],
-            lastContactDate: Date.now(), contacts: null, notes: "", linkedTo: null,
+            lastContactDate: null, addedAt: Date.now(), contacts: null, notes: "", linkedTo: null,
         }))
             .filter(Boolean);
         const targetId = (_a = chainIds[targetIndex]) !== null && _a !== void 0 ? _a : chainIds[0];
@@ -2419,7 +2426,7 @@ function AppInner() {
                     extraPersons.push({
                         id: ids[i], local_name: name, kinship: g.kinship, gender: g.gender, // ⛔ تخزين مُعرِّف
                         proximity: proximityForKinship(g.kinship), alive: true, favorite: false,
-                        locations: [], lastContactDate: Date.now(), contacts: null, notes: "", linkedTo: null,
+                        locations: [], lastContactDate: null, addedAt: Date.now(), contacts: null, notes: "", linkedTo: null,
                     });
                 }
                 newRelations.push({
@@ -2494,7 +2501,7 @@ function AppInner() {
             .map((n, i) => (reusedId(n) ? null : {
             id: ids[i], local_name: n, kinship: derived, gender: sel.gender,
             proximity: proximityForKinship(derived), alive: true, favorite: false, locations: [],
-            lastContactDate: Date.now(), contacts: null, notes: "", linkedTo: null,
+            lastContactDate: null, addedAt: Date.now(), contacts: null, notes: "", linkedTo: null,
         }))
             .filter(Boolean);
         // اتجاه العلاقة من منظور صاحب البطاقة
@@ -2576,11 +2583,11 @@ function AppInner() {
             const rel = kinshipRelations.find((r) => r.groupId === groupId && r.type === "parent" && r.target === pid);
             if (!rel)
                 return null;
-            return ((_b = (_a = existing.find((p) => p.id === rel.source)) === null || _a === void 0 ? void 0 : _a.local_name) === null || _b === void 0 ? void 0 : _b.trim()) || null;
+            return ((_b = (_a = existing.find((p) => p.id === rel.source)) === null || _a === void 0 ? void 0 : _a.local_name) === null || _b === void 0 ? void 0 : normalizeArabicName(_b)) || null;
         };
         (ancestorChain || []).forEach((nm, i) => {
             const expectedParent = (ancestorChain[i + 1] || "").trim(); // الاسم الأعلى في السلسلة
-            const sameName = existing.filter((p) => p.local_name.trim() === nm.trim());
+            const sameName = existing.filter((p) => normalizeArabicName(p.local_name) === normalizeArabicName(nm));   // C74: أحمد = احمد
             let found = null;
             if (sameName.length === 1 && !expectedParent) {
                 // اسم فريد ولا سلف بعده — نقبله
@@ -2588,7 +2595,7 @@ function AppInner() {
             }
             else if (expectedParent) {
                 // نقبل من يطابق والده الاسم المتوقَّع، أو من لا والد له بعد
-                found = sameName.find((p) => parentNameOf(p.id) === expectedParent)
+                found = sameName.find((p) => parentNameOf(p.id) === normalizeArabicName(expectedParent))
                     || sameName.find((p) => parentNameOf(p.id) === null) || null;
             }
             else if (sameName.length > 1) {
@@ -2610,12 +2617,12 @@ function AppInner() {
                 gender: "male", // الأصول في النسب ذكور
                 proximity: proximityForKinship(kin),
                 alive: true, favorite: false, locations: [],
-                lastContactDate: Date.now(), contacts: null, notes: "", linkedTo: null,
+                lastContactDate: null, addedAt: Date.now(), contacts: null, notes: "", linkedTo: null,
             });
         });
         const newPerson = {
             id: newPersonId, alive: true, favorite: false, locations: [],
-            lastContactDate: Date.now(), // نفترض التواصل حديث عند الإضافة، أساس منطقي لحساب الاقتراحات لاحقاً
+            lastContactDate: null, addedAt: Date.now(), // C74: الإضافة ليست تواصلاً — وقتها مرجعٌ للتذكير فقط
             linkedTo: linkedTo || null,
             ...personData,
         };
@@ -3254,8 +3261,14 @@ function AppInner() {
     const rahimRootGroup = IS_RAHIM
         ? (familyGroups.find((g) => g.id === currentGroupId) || familyGroups[0] || null)
         : null;
-    const discoverTop = discoverStack[discoverStack.length - 1]
+    const discoverTop0 = discoverStack[discoverStack.length - 1]
         || (IS_RAHIM ? (rahimRootGroup ? { type: "suggestions", data: rahimRootGroup } : { type: "groups" }) : null);
+    // C74: الشاشات تأخذ العائلة من المكدّس (نسخةٌ لحظة الفتح) ⇒ تغيّر الدور أو الاسم من السحابة لا يظهر حتّى تخرج وتعود.
+    //      نستبدلها بالعائلة الحيّة من familyGroups لكلّ شاشات العائلة.
+    const FAM_TOP_TYPES = ["groupDetail", "tree", "schedules", "members", "events", "stats", "suggestions", "activityLog"];
+    const liveFam = discoverTop0 && FAM_TOP_TYPES.indexOf(discoverTop0.type) >= 0 && discoverTop0.data && discoverTop0.data.id
+        ? familyGroups.find((g) => g.id === discoverTop0.data.id) : null;
+    const discoverTop = liveFam && liveFam !== discoverTop0.data ? { ...discoverTop0, data: liveFam } : discoverTop0;
     let discoverContent;
     if (!discoverTop) {
         discoverContent = (React.createElement(DiscoverHomeScreen, { personCount: totalPersons, groupPersons: groupPersons, onOpenFamily: () => setDiscoverStack([{ type: "groups" }]), onOpenMoments: () => { setMomentsReturnTab(null); setDiscoverStack([{ type: "moments" }]); }, onOpenErsal: () => setDiscoverStack([{ type: "ersal" }]), onOpenTaxi: () => setDiscoverStack([{ type: "taxi" }]), onOpenWallet: () => setStack(["wallet"]) }));
@@ -3333,7 +3346,7 @@ function AppInner() {
                     + t("ai_aladad") + list.length + "\n" + "=".repeat(40) + "\n\n";
                 const body = list.map((p, i) => {
                     var _a;
-                    const days = daysSinceContact(p.lastContactDate);
+                    const days = daysSinceRef(p);
                     return (i + 1) + ". " + lineageLabel(p) + "\n"
                         + t("ai_alsla") + kinshipLabel(p.kinship) + t("ai_alqrb") + (p.proximity || "—")
                         + (((_a = p.contacts) === null || _a === void 0 ? void 0 : _a.phone) ? " · " + p.contacts.phone : "")
@@ -3358,9 +3371,9 @@ function AppInner() {
                     return;
                 }
                 const top = overdue
-                    .sort((a, b) => daysSinceContact(b.lastContactDate) - daysSinceContact(a.lastContactDate))
+                    .sort((a, b) => daysSinceRef(b) - daysSinceRef(a))
                     .slice(0, 3);
-                showToast(t("alawla_baltwasl", { names: top.map((p) => p.local_name + " (" + daysSinceContact(p.lastContactDate) + t("hrf_ywm") + ")").join(t("fasl_qayma")) }), "info");
+                showToast(t("alawla_baltwasl", { names: top.map((p) => p.local_name + " (" + daysSinceRef(p) + t("hrf_ywm") + ")").join(t("fasl_qayma")) }), "info");
             }, onOpenTree: () => setDiscoverStack([...discoverStack, { type: "tree", data: group }]), onOpenSuggestions: () => setDiscoverStack([...discoverStack, { type: "suggestions", data: group }]), onOpenSchedules: () => setDiscoverStack([...discoverStack, { type: "schedules", data: group }]), onOpenEvents: () => setDiscoverStack([...discoverStack, { type: "events", data: group }]), onOpenMembers: () => setDiscoverStack([...discoverStack, { type: "members", data: group }]) }));
     }
     else if (discoverTop.type === "personDetail") {
@@ -3557,7 +3570,7 @@ function AppInner() {
                         return React.createElement(PlaceholderTab, { icon: CloudOff, title: t("almhadthat"), note: "\u0627\u0631\u0628\u0637 \u062D\u0633\u0627\u0628\u0643 \u0628\u0627\u0644\u0633\u064A\u0631\u0641\u0631 \u0645\u0646 \u0634\u0627\u0634\u0629 \u062D\u0633\u0627\u0628\u064A \u0644\u062A\u062A\u0645\u0643\u0651\u0646 \u0645\u0646 \u0627\u0633\u062A\u062E\u062F\u0627\u0645 \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0627\u062A" });
                     }
                     if (!chatsTop) {
-                        return (React.createElement(ConversationsListScreen, { chatDrafts: chatDrafts, conversations: conversations, groups: groups, broadcastLists: broadcastLists, lockedConversationIds: lockedConversationIds, connectionState: "connected", onOpenChat: (c) => { setChatsStack([{ type: "chat", data: Object.assign({}, c, { unreadOnOpen: c.unread || 0 }) }]); markConversationRead(c.id); }, onOpenGroup: (g) => { setChatsStack([{ type: "group", data: Object.assign({}, g, { unreadOnOpen: g.unread || 0 }) }]); markGroupRead(g.id); }, onOpenBroadcastList: (b) => setChatsStack([{ type: "broadcast", data: b }]), onNewConversation: () => setChatsStack([{ type: "new" }]), onNewGroup: () => setChatsStack([{ type: "newGroup" }]), onNewBroadcastList: () => setChatsStack([{ type: "newBroadcast" }]), onOpenLockedChats: () => setChatsStack([{ type: "lockedChats" }]), onOpenStarredMessages: () => setChatsStack([{ type: "starredMessages" }]), onlineContacts: onlineContacts, onScanQr: scanQrContact, onOpenSearch: () => setChatsStack([{ type: "search" }]), chatFolders: chatFolders, folderAssignments: folderAssignments, onOpenChatSettings: () => setChatsStack([{ type: "chatSettings" }]), typingConversations: typingConversations, momentsPosts: momentsPosts, familyPersons: Object.values(groupPersons).flat(), onOpenMoments: () => { setMomentsReturnTab("chats"); setTab("discover"); setDiscoverStack([{ type: "moments" }]); }, onOpenRoom: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomCreate())) setActiveRoom(generateRoomCode()); }, onJoinRoomCode: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoinPrompt())) showToast("سجّل الدخول أوّلاً للانضمام إلى غرفة", "info"); }, onScheduleRoom: () => setSchedulingRoom(true), onOpenScheduledRooms: () => setRoomsListOpen(true), scheduledRooms: scheduledRooms, onJoinScheduled: (code) => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoin(code))) setActiveRoom(code); }, onCancelScheduled: (id) => { const sr = scheduledRooms.find((r) => r.id === id); if (sr && sr.cloud && window.SawaRTC) window.SawaRTC.schedRemove(id); else setScheduledRooms((p) => p.filter((r) => r.id !== id)); showToast(t("alghy_almwad"), "info"); }, myName: t("ai_ana"), groupPersons: groupPersons, groupSchedules: groupSchedules, showStoriesRow: showStoriesRow, showFamilyReminders: showFamilyReminders, onOpenArchived: () => setChatsStack([{ type: "archived" }]), pinnedConversations: pinnedConversations, onPinConv: (id) => {
+                        return (React.createElement(ConversationsListScreen, { onOpenFamilyPerson: (p) => { const gid = Object.keys(groupPersons).find((k) => (groupPersons[k] || []).some((x) => x.id === p.id)); const g = familyGroups.find((x) => x.id === gid); if (!g) return; setTab("discover"); setDiscoverStack([{ type: "groups" }, { type: "groupDetail", data: g }, { type: "personDetail", data: p, groupId: gid }]); }, chatDrafts: chatDrafts, conversations: conversations, groups: groups, broadcastLists: broadcastLists, lockedConversationIds: lockedConversationIds, connectionState: "connected", onOpenChat: (c) => { setChatsStack([{ type: "chat", data: Object.assign({}, c, { unreadOnOpen: c.unread || 0 }) }]); markConversationRead(c.id); }, onOpenGroup: (g) => { setChatsStack([{ type: "group", data: Object.assign({}, g, { unreadOnOpen: g.unread || 0 }) }]); markGroupRead(g.id); }, onOpenBroadcastList: (b) => setChatsStack([{ type: "broadcast", data: b }]), onNewConversation: () => setChatsStack([{ type: "new" }]), onNewGroup: () => setChatsStack([{ type: "newGroup" }]), onNewBroadcastList: () => setChatsStack([{ type: "newBroadcast" }]), onOpenLockedChats: () => setChatsStack([{ type: "lockedChats" }]), onOpenStarredMessages: () => setChatsStack([{ type: "starredMessages" }]), onlineContacts: onlineContacts, onScanQr: scanQrContact, onOpenSearch: () => setChatsStack([{ type: "search" }]), chatFolders: chatFolders, folderAssignments: folderAssignments, onOpenChatSettings: () => setChatsStack([{ type: "chatSettings" }]), typingConversations: typingConversations, momentsPosts: momentsPosts, familyPersons: Object.values(groupPersons).flat(), onOpenMoments: () => { setMomentsReturnTab("chats"); setTab("discover"); setDiscoverStack([{ type: "moments" }]); }, onOpenRoom: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomCreate())) setActiveRoom(generateRoomCode()); }, onJoinRoomCode: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoinPrompt())) showToast("سجّل الدخول أوّلاً للانضمام إلى غرفة", "info"); }, onScheduleRoom: () => setSchedulingRoom(true), onOpenScheduledRooms: () => setRoomsListOpen(true), scheduledRooms: scheduledRooms, onJoinScheduled: (code) => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoin(code))) setActiveRoom(code); }, onCancelScheduled: (id) => { const sr = scheduledRooms.find((r) => r.id === id); if (sr && sr.cloud && window.SawaRTC) window.SawaRTC.schedRemove(id); else setScheduledRooms((p) => p.filter((r) => r.id !== id)); showToast(t("alghy_almwad"), "info"); }, myName: t("ai_ana"), groupPersons: groupPersons, groupSchedules: groupSchedules, showStoriesRow: showStoriesRow, showFamilyReminders: showFamilyReminders, onOpenArchived: () => setChatsStack([{ type: "archived" }]), pinnedConversations: pinnedConversations, onPinConv: (id) => {
                                 setPinnedConversations((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
                                 showToast(pinnedConversations.includes(id) ? t("ai_ilgha_altthbyt") : t("ai_tm_altthbyt"), "success");
                             }, onToggleReadConv: (id) => {

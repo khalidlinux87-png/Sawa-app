@@ -6,7 +6,7 @@ function t(key, params) {
         return key;
     if (params)
         Object.keys(params).forEach(k => { s = s.replace(new RegExp('{' + k + '}', 'g'), params[k] == null ? "" : params[k]); });
-    return s;
+    return (params && isRTL() !== false) ? arCountFix(s) : s;
 }
 function setLocale(lang) { try {
     window.__SAWA_LANG = lang;
@@ -556,8 +556,10 @@ function FamSheet({ title, subtitle, onClose, children, footer, maxHeight = "92%
 function FamAction({ icon: Icon, label, onPress, bg, href }) {
     const { colors } = useTheme();
     const Tag = href ? "a" : "button";
-    return React.createElement("div", { className: "flex flex-col items-center gap-1.5", style: { opacity: (onPress || href) ? 1 : 0.4 } },
-        React.createElement(Tag, { "aria-label": label, href: href, onClick: onPress, disabled: !(onPress || href), className: "rounded-full flex items-center justify-center active:scale-95 transition-transform", style: { width: 50, height: 50, backgroundColor: bg || colors.primary, boxShadow: `0 6px 14px ${(bg || colors.primary)}55` } }, React.createElement(Icon, { size: 21, color: "#fff" })),
+    const on = !!(onPress || href);
+    // C74: الزرّ يشمل الدائرة واسمها — كان النقر على الكلمة («تعديل»، «مفضّلة») لا يفعل شيئاً
+    return React.createElement(Tag, { "aria-label": label, href: href, onClick: onPress, disabled: !on, className: "flex flex-col items-center gap-1.5 active:scale-95 transition-transform", style: { opacity: on ? 1 : 0.4, background: "none", border: 0, padding: 0, textDecoration: "none" } },
+        React.createElement("span", { className: "rounded-full flex items-center justify-center", style: { width: 50, height: 50, backgroundColor: bg || colors.primary, boxShadow: `0 6px 14px ${(bg || colors.primary)}55` } }, React.createElement(Icon, { size: 21, color: "#fff" })),
         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, label));
 }
 // صفّ قائمة داخل بطاقة: أيقونة + عنوان + وصف + سهم
@@ -956,7 +958,7 @@ const SHOW_E2E_UI = false;
 //      دعوة بمكافأة، حالة لا تصل لأحد، مفاتيح تشفير غير موجودة…). الشيفرة باقية خلف هذا المفتاح.
 const RELEASE_UI = true;
 // C10: نصٌّ بلغتين لما يُضاف حديثاً (العربيّة افتراضيّاً)
-function tl(ar, en) { return isRTL() ? ar : en; }
+function tl(ar, en) { return isRTL() ? arCountFix(ar) : en; }
 // C10: عدد طلبات التواصل الواردة (من SawaChat — حدث sawa-requests)
 function useSawaRequests() {
     const [n, setN] = React.useState(() => { try { return window.SawaChat && window.SawaChat.requestCount ? window.SawaChat.requestCount() : 0; } catch (e) { return 0; } });
@@ -1306,6 +1308,8 @@ const proximityLabels = {
     "B": "الدرجة الخامسة",
     "C": "الدرجة السادسة",
 };
+const PROX_LABELS_EN = { "A***": "1st degree", "A**": "2nd degree", "A*": "3rd degree", "A": "4th degree", "B": "5th degree", "C": "6th degree" };
+function proxLabel(code) { return code ? tl(proximityLabels[code] || "", PROX_LABELS_EN[code] || "") : ""; }
 const proximityContactDays = {
     "A***": 7, // الوالدان والأبناء
     "A**": 10, // الإخوة والأخوات
@@ -1452,6 +1456,12 @@ function personInCity(p, city) {
 // دوال مساعدة لربط صلة الرحم بالمحادثات
 // ============================================================
 // حساب عدد الأيام منذ آخر تواصل
+// C74: مرجع حساب التأخّر — آخر تواصلٍ مسجَّل، وإلّا وقت الإضافة (أو وقت وصول الشخص من شجرةٍ مشتركة).
+//      كانت الإضافة تُسجَّل «تواصلاً اليوم»، ومن ينضمّ إلى عائلةٍ مشتركة يرى الجميع متأخّرين «منذ Infinity يوم».
+function daysAr(n) { return arCountFix(n + " يوم"); }
+function othersAr(n) { return n === 1 ? "واحدٍ آخر" : n === 2 ? "اثنين آخرين" : n + " آخرين"; }
+function contactRef(p) { return (p && (p.lastContactDate || p.addedAt)) || null; }
+function daysSinceRef(p) { return daysSinceContact(contactRef(p)); }
 function daysSinceContact(lastContactDate) {
     if (!lastContactDate)
         return Infinity;
@@ -1489,7 +1499,9 @@ function isContactOverdue(person) {
     if (!person.alive || !person.proximity)
         return false;
     const limit = proximityContactDays[person.proximity] || 30;
-    const days = daysSinceContact(person.lastContactDate);
+    if (!contactRef(person))
+        return false;   // لا مرجع (بياناتٌ قديمة) ⇒ لا نحكم بالتأخّر
+    const days = daysSinceRef(person);
     return days >= limit;
 }
 // احصل على كل الأشخاص الذين تأخر التواصل معهم
@@ -1506,7 +1518,7 @@ function getOverduePersons(groupPersons) {
     });
     return unique
         .filter(p => p.alive && isContactOverdue(p))
-        .sort((a, b) => daysSinceContact(b.lastContactDate) - daysSinceContact(a.lastContactDate));
+        .sort((a, b) => daysSinceRef(b) - daysSinceRef(a));
 }
 // احصل على الجداول المستحقة اليوم
 function getDueSchedules(groupSchedules, groupPersons) {

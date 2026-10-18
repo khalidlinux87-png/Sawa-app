@@ -1099,7 +1099,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
             });
             if (!fp)
                 return null;
-            const days = daysSinceContact(fp.lastContactDate);
+            const days = daysSinceRef(fp);
             const overdue = isContactOverdue(fp);
             return (React.createElement("button", { onClick: () => onOpenFamilyProfile === null || onOpenFamilyProfile === void 0 ? void 0 : onOpenFamilyProfile(fp), className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-1.5 border-b`, style: {
                     backgroundColor: overdue ? "#ef444412" : colors.accent + "12",
@@ -1113,7 +1113,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                     t("ch_akhr_twasl"),
                     days === 0 ? t("ch_alywm") : days + t("ch_ywm")),
                 React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full", style: { backgroundColor: overdue ? "#ef444420" : colors.accent + "20", color: overdue ? "#ef4444" : colors.accent } },
-                    proximityLabels[fp.proximity] || "",
+                    proxLabel(fp.proximity),
                     " \u2190")));
         })(),
         !online && React.createElement(OfflineBar, null),
