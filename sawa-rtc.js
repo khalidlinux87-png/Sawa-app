@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c72";
+  var VERSION = "c82";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -308,7 +308,7 @@
   function earOn() {
     if (earEl || !document.body) return;
     earEl = el("div", "position:fixed;inset:0;z-index:2147483646;background:#000;touch-action:none;display:flex;align-items:flex-end;justify-content:center;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 28px)");
-    earEl.appendChild(el("div", "color:#333;font:600 12px system-ui;text-align:center;padding:0 24px", L("وضع الأذن — اضغط مطوّلاً لإظهار الشاشة", "Ear mode — press and hold to show the screen")));
+    earEl.appendChild(el("div", "color:#9aa5b1;font:600 13px system-ui;text-align:center;padding:0 24px", L("وضع الأذن — اضغط مطوّلاً لإظهار الشاشة", "Ear mode — press and hold to show the screen")));
     var holdT = null;
     var down = function (e) { try { e.preventDefault(); } catch (x) {} clearTimeout(holdT); holdT = setTimeout(function () { earOff(); earArm(); }, 700); };
     var up = function () { clearTimeout(holdT); };
@@ -317,8 +317,17 @@
     earEl.addEventListener("contextmenu", function (e) { e.preventDefault(); });
     document.body.appendChild(earEl);
   }
-  function earOff() { clearTimeout(earT); earT = null; if (earEl) { try { earEl.remove(); } catch (e) {} earEl = null; } }
-  function earArm() { clearTimeout(earT); earT = setTimeout(function () { if (cur && cur.out === "ear" && !cur.done && cur.state === "connected") earOn(); }, 5000); }
+  // C82: في تطبيق أندرويد الأصليّ نستعمل حسّاس القرب الحقيقيّ (تنطفئ الشاشة عند الأذن فقط وتعود فوراً) بدل الشاشة السوداء
+  var earNative = false;
+  function earOff() { clearTimeout(earT); earT = null; if (earEl) { try { earEl.remove(); } catch (e) {} earEl = null; } if (earNative) { earNative = false; try { NB().setProximity(false); } catch (e) {} } }
+  function earArm() {
+    clearTimeout(earT);
+    if (NB() && NB().setProximity) {
+      if (cur && cur.out === "ear" && !cur.done && cur.state === "connected") { try { earNative = !!NB().setProximity(true) || true; } catch (e) {} }
+      return;
+    }
+    earT = setTimeout(function () { if (cur && cur.out === "ear" && !cur.done && cur.state === "connected") earOn(); }, 5000);
+  }
   // C26: إشعارات المكالمات (فائتة · رنين) تُغلق حين تُفتح شاشة المكالمات أو تنتهي المكالمة
   function clearCallNotifications() {
     try {
@@ -576,7 +585,7 @@
     if (c.done) return;
     if (s === "connected") {
       clearTimeout(c.timers.conn); clearTimeout(c.timers.lost); delete c.timers.lost;
-      if (!c.connectedAt) { c.connectedAt = Date.now(); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); });
+      if (!c.connectedAt) { c.connectedAt = Date.now(); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); }); if (c.out === "ear" && NB() && NB().setProximity) setTimeout(earArm, 0);
         audioRoutes().then(function (rt) {   // C15: المكالمة الصوتيّة تبدأ على سمّاعة الأذن كالهاتف، والفيديو على المكبّر
           if (!rt || c.done || cur !== c) return;
           c.routes = rt; c.out = "spk";

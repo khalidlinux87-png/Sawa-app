@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c73";
+  var VERSION = "c82";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1706,6 +1706,34 @@
     box.appendChild(row(L("إذن الإشعارات", "Permission"), st === "granted" ? L("مسموح ✓", "Granted ✓") : st === "denied" ? L("محظور ✗", "Blocked ✗") : st === "off" ? L("موقوف من سوا", "Off in Sawa") : st === "default" ? L("لم يُطلب بعد", "Not asked yet") : "—", st === "granted" ? true : st === "default" ? null : false));
     box.appendChild(row(L("هذا الجهاز مسجّل", "This device registered"), reg.token && reg.uid === state.uid ? L("نعم ✓ — ", "Yes ✓ — ") + timeAgo(reg.ts || 0) : L("لا ✗", "No ✗"), !!(reg.token && reg.uid === state.uid)));
     var srv = row(L("أجهزتك عند الخادم", "Devices on server"), "…"); box.appendChild(srv);
+    // C82: في تطبيق أندرويد — إعدادات الهاتف التي تقرّر وصول المكالمات والتطبيق مغلق، مع زرّ إصلاحٍ لكلٍّ منها
+    if (NB() && NB().bgStatus) {
+      var phone = mk("div", "margin:14px 0 4px;padding:12px;border-radius:14px;background:#f6f8fb"); box.appendChild(phone);
+      var drawPhone = function () {
+        var bs = {}; try { bs = JSON.parse(NB().bgStatus()) || {}; } catch (e) {}
+        phone.innerHTML = "";
+        phone.appendChild(mk("div", "font:800 13.5px system-ui;margin-bottom:6px", L("📱 إعدادات الهاتف (للمكالمات والتطبيق مغلق)", "📱 Phone settings (for calls when closed)")));
+        var item = function (label, okv, kind, hint) {
+          var r = mk("div", "display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #e8edf3");
+          var tx = mk("div", "flex:1;font:600 12.5px system-ui;color:#1f2d3d", (okv === null ? "🔧 " : okv ? "✅ " : "⚠️ ") + label);
+          if (hint && !okv) tx.appendChild(mk("div", "font:500 11px system-ui;color:#8796a5;margin-top:2px", hint));
+          r.appendChild(tx);
+          if (kind) { var b = mkBtn(okv === false ? L("إصلاح", "Fix") : L("فتح", "Open"), okv === false ? "primary" : ""); b.style.cssText += ";width:auto;padding:6px 12px;margin:0;font-size:12px"; b.onclick = function () { try { NB().openSetting(kind); } catch (e) {} }; r.appendChild(b); }
+          phone.appendChild(r);
+        };
+        item(L("إشعارات سوا مسموحة", "Sawa notifications allowed"), !!bs.notif, "notif");
+        if (bs.callsChannel != null && bs.callsChannel >= 0) item(L("قناة «المكالمات» بصوتٍ وظهورٍ على الشاشة", "Calls channel: sound & pop-up"), bs.callsChannel >= 4, "calls", L("اجعلها «عاجلة» مع الصوت والظهور فوق الشاشة", "Set it to Urgent with sound and pop-up"));
+        item(L("شاشة المكالمة الكاملة فوق القفل", "Full-screen call screen"), bs.fullScreen !== false, bs.sdk >= 34 ? "fullscreen" : null, L("اسمح لسوا بـ«إشعارات ملء الشاشة»", "Allow Sawa full-screen notifications"));
+        item(L("البطاريّة: بلا قيود", "Battery: unrestricted"), !!bs.battery, "battery", L("وإلّا يوقف الهاتف سوا في الخلفيّة فلا تصل المكالمات", "Otherwise the phone stops Sawa in the background"));
+        var hw = /honor|huawei|xiaomi|redmi|oppo|vivo|realme|tecno|infinix|itel/.test(bs.maker || "");
+        item(hw ? L("التشغيل التلقائيّ / إدارة تشغيل التطبيقات ← سوا: يدويّ وكلّ المفاتيح مفعّلة", "Auto-launch: Sawa manual, all toggles on") : L("التشغيل في الخلفيّة", "Background launch"), null, "launch",
+          hw ? L("في هاتف " + (bs.maker || "") + " هذا الإعداد هو الأهمّ: بدونه لا تصل الإشعارات إلّا والتطبيق مفتوح", "On this phone this matters most") : "");
+        if (!bs.fcm) phone.appendChild(note(L("لا رمز إشعارات من Google على هذا الهاتف بعد — اضغط «إعادة تسجيل هذا الجهاز».", "No Google push token yet — tap Re-register."), "#b42318", "#fdecec"));
+      };
+      drawPhone();
+      var onVis = function () { if (document.visibilityState === "visible" && document.body.contains(phone)) drawPhone(); else if (!document.body.contains(phone)) document.removeEventListener("visibilitychange", onVis); };
+      document.addEventListener("visibilitychange", onVis);
+    }
     var out = mk("div", "margin:10px 0 4px"); box.appendChild(out);
     var test = mkBtn(L("أرسل إشعاراً تجريبيّاً الآن", "Send a test notification now"), "primary"); test.style.marginTop = "10px";
     var fix = mkBtn(L("إعادة تسجيل هذا الجهاز", "Re-register this device")); fix.style.marginTop = "8px";
