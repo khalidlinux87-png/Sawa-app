@@ -1914,6 +1914,12 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
     });
     const [namesText, setNamesText] = useState("");
     const [sibHalf, setSibHalf] = useState("");   // C75: "" أشقّاء · "father" من الأب · "mother" من الأم
+    // C81: الوالد الآخر للأبناء — زوجه الحاليّ الوحيد افتراضيّاً، أو اختيارٌ بين الزوجات، أو «زواج آخر/غير معروف»
+    const spouseRels = relations.filter((r) => (r.type === "spouse" || r.type === "ex_spouse") && (r.source === person.id || r.target === person.id));
+    const spouseOpts = spouseRels.map((r) => ({ id: r.source === person.id ? r.target : r.source, ex: r.type === "ex_spouse" })).map((o) => ({ ...o, p: existingPersons.find((x) => x.id === o.id) })).filter((o) => o.p);
+    const curSpouses = spouseOpts.filter((o) => !o.ex);
+    const [coParentSel, setCoParentSel] = useState(null);
+    const coParent = coParentSel || (curSpouses.length === 1 ? curSpouses[0].id : "none");
     const [decisions, setDecisions] = useState({});
     const [savedBatches, setSavedBatches] = useState([]); // ما أُضيف في هذه الجلسة
     // فاصلة عربية أو لاتينية — تُبقي الأسماء المركّبة اسماً واحداً
@@ -2006,6 +2012,9 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
                     : t(sel.hintKey);
             })()),
             React.createElement("p", { className: `text-[10px] ${textStart()} mb-4`, style: { color: colors.primary } }, t("bad_alhfz_tqdr_trja")),
+            sel.key === "child" && spouseOpts.length > 0 && React.createElement("div", { className: "mb-4" },
+                React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, person.gender === "female" ? tl("أبوهم", "Their father") : tl("أمّهم", "Their mother")),
+                React.createElement(FamSeg, { value: coParent, onChange: setCoParentSel, options: spouseOpts.map((o) => ({ k: o.id, l: o.p.local_name.split(" ")[0] + (o.ex ? tl(" (سابقاً)", " (former)") : "") })).concat([{ k: "none", l: tl("زواج آخر / غير معروف", "Other / unknown") }]) })),
             sel.key === "sibling" && React.createElement("div", { className: "mb-4" },
                 React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, sel.gender === "female" ? tl("نوع الأخوّة", "Sisters are") : tl("نوع الأخوّة", "Brothers are")),
                 React.createElement(FamSeg, { value: sibHalf, onChange: setSibHalf, options: [
@@ -2047,7 +2056,7 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
             React.createElement(FamButton, { label: undecided.length > 0 ? t("hdd_asma_mkrra_awla", { length: undecided.length })
                     : overLimit ? (maxAllowed === 1 ? "اسم واحد فقط" : t("akthr_mn", { maxAllowed }))
                         : t("idafa_qryb_wrbthm_balshjra", { length: names.length }), disabled: names.length === 0 || undecided.length > 0 || parentLimit, onPress: () => {
-                    onSave(person, sel.key === "sibling" && sibHalf ? { ...sel, half: sibHalf } : sel, names, decisions);
+                    onSave(person, sel.key === "sibling" && sibHalf ? { ...sel, half: sibHalf } : sel.key === "child" ? { ...sel, coParent } : sel, names, decisions);
                     // نُفرغ الحقل ونُبقي الشيت مفتوحاً — الغالب أن يتبع الأبناءَ بناتٌ
                     setNamesText("");
                     setDecisions({});
@@ -2065,7 +2074,7 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
 // FocusView — ثلاثة أجيال حول شخص واحد: والداه، إخوته وأزواجه، أبناؤه.
 // يُغني عن التمرير الأفقي المستمر في شاشة الهاتف الضيقة.
 // ============================================================
-function FocusView({ data, onGo, onOpenMenu, colors, onAddRelative }) {
+function FocusView({ data, onGo, onOpenMenu, colors, onAddRelative, onClaimStep }) {
     const { person, grandparents, parents, spouses, children, siblings, grandchildren } = data;
     const stepChildren = data.stepChildren || [];
     // ══════════════════════════════════════════════════════════
@@ -2172,7 +2181,10 @@ function FocusView({ data, onGo, onOpenMenu, colors, onAddRelative }) {
                         stepChildren.length > 0 && (React.createElement("div", { className: "mt-2 pt-1.5 flex flex-col items-center", style: { borderTop: `1.5px dashed ${colors.border}`, maxWidth: 300 } },
                             React.createElement("span", { className: "text-[9px] font-bold mb-1", style: { color: colors.textMuted } },
                                 stepChildren[0].via ? tl("أبناء " + stepChildren[0].via.local_name.split(" ")[0] + " من زواجٍ آخر", stepChildren[0].via.local_name.split(" ")[0] + "'s children from another marriage") : tl("أبناء الزوج/الزوجة", "Spouse's children")),
-                            React.createElement("div", { className: `flex ${rowStart()} gap-1 flex-wrap justify-center` }, stepChildren.map((x) => React.createElement(CircleNode, { key: x.p.id, p: x.p, d: 42 })))))))),
+                            React.createElement("div", { className: `flex ${rowStart()} gap-1 flex-wrap justify-center` }, stepChildren.map((x) => React.createElement(CircleNode, { key: x.p.id, p: x.p, d: 42 }))),
+                            // C81: إن كانوا أبناءه هو أيضاً (أُضيفوا لأمّهم وحدها) — إصلاحٌ بنقرة
+                            onClaimStep && React.createElement("button", { onClick: () => onClaimStep(stepChildren.map((x) => x.p.id)), className: "mt-2 text-[10.5px] font-extrabold rounded-full px-3 py-1.5", style: { color: colors.primary, backgroundColor: colors.primary + "14", border: 0 } },
+                                tl("ليسوا من زواجٍ آخر — هم أبناء " + person.local_name.split(" ")[0] + " أيضاً", "They're " + person.local_name.split(" ")[0] + "'s children too"))))))),
                 bloodRow.map((p) => (React.createElement("div", { key: p.id, className: "flex flex-col items-center shrink-0" },
                     hasParents && React.createElement("div", { style: { width: 2, height: 12, backgroundColor: colors.border } }),
                     React.createElement(CircleNode, { p: p, d: 52 })))),
@@ -2218,7 +2230,7 @@ function normalizeArabicName(name) {
         .replace(/\s+/g, " ");
 }
 
-function FamilyTreeScreen({ onChangeParent, groupId, persons, relations, canEdit = true, onAddRelation, onDeleteRelation, onEndMarriage, onOpenPerson, onMarkContact, onQuickSchedule, onOpenStats, onAddRelativeTo, onAddRelativesBulk, onOpenInLaws, onInheritParents, allGroupPersons = {}, onBack, }) {
+function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, relations, canEdit = true, onAddRelation, onDeleteRelation, onEndMarriage, onOpenPerson, onMarkContact, onQuickSchedule, onOpenStats, onAddRelativeTo, onAddRelativesBulk, onOpenInLaws, onInheritParents, allGroupPersons = {}, onBack, }) {
     var _a, _b, _c, _d;
     const { colors, isDark } = useTheme();
     const [showAddRelation, setShowAddRelation] = useState(false);
@@ -3141,7 +3153,7 @@ function FamilyTreeScreen({ onChangeParent, groupId, persons, relations, canEdit
                                 personKinLabel(p),
                                 p.alive === false ? t("ft_mtwfa") : "")),
                         p.proximity && !hasNoProximityPerson(p) && React.createElement(FamChip, { tone: "muted", label: proxLabel(p.proximity) })))))));
-            })())) : viewMode === "focus" && focusData ? (React.createElement(FocusView, { data: focusData, onGo: goFocus, onOpenMenu: setNodeMenu, colors: colors, onAddRelative: (relKey) => {
+            })())) : viewMode === "focus" && focusData ? (React.createElement(FocusView, { data: focusData, onGo: goFocus, onOpenMenu: setNodeMenu, colors: colors, onClaimStep: canEdit && onClaimChildren ? (kidIds) => onClaimChildren(groupId, focusData.person.id, kidIds) : null, onAddRelative: (relKey) => {
                     if (!canEdit)
                         return;
                     // نمرّ بنفس مسار القائمة: الصلة تُشتقّ نسبةً لصاحب الشجرة،

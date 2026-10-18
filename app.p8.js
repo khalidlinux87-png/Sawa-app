@@ -2559,6 +2559,7 @@ function AppInner() {
             });
             // نستنتج زواج الوالدين، ثم نُسري الأبوّة على الإخوة
             let out = [...prev, ...accepted];
+            if (relKey === "child") ids.forEach((cid) => { const cop = coParentEdge(groupId, person.id, cid, out, sel.coParent); if (cop) out = [...out, cop]; });   // C81
             const childIds = new Set(accepted.filter((r) => r.type === "parent").map((r) => r.target));
             childIds.forEach((cid) => {
                 const sp = inferSpouseFromParents(groupId, cid, out);
@@ -2581,6 +2582,24 @@ function AppInner() {
     }
     function logActivity(groupId, text) {
         setActivityLog((prev) => [{ id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, groupId, text, ts: Date.now() }, ...(prev || [])].slice(0, 300));
+    }
+    // C81: ابنٌ يُضاف لشخصٍ متزوّج ⇒ زوجه الحاليّ الوحيد والده الآخر تلقائيّاً.
+    //      كان يُربط بأحد الوالدين فقط، فيظهر أبناء العمّة (زوجة الخال) «أبناءَها من زواجٍ آخر» لا أبناء الخال.
+    //      مع أكثر من زوج/زوجة لا نخمّن — يُختار في «إضافة أقارب» أو لاحقاً من «تغيير الأب/الأم».
+    function coParentEdge(groupId, parentId, childId, rels, explicit) {
+        if (explicit === "none") return null;
+        const list = groupPersons[groupId] || [];
+        const g = (id) => ((list.find((p) => p.id === id) || {}).gender === "female" ? "female" : "male");
+        let other = explicit || null;
+        if (!other) {
+            const cur = rels.filter((r) => r.groupId === groupId && r.type === "spouse" && (r.source === parentId || r.target === parentId)).map((r) => (r.source === parentId ? r.target : r.source));
+            if (cur.length !== 1) return null;
+            other = cur[0];
+        }
+        if (!other || other === childId || g(other) === g(parentId)) return null;
+        const ps = rels.filter((r) => r.groupId === groupId && r.type === "parent" && r.target === childId).map((r) => r.source);
+        if (ps.length >= 2 || ps.indexOf(other) >= 0 || ps.some((p) => p !== parentId && g(p) === g(other))) return null;
+        return { id: `k-${Date.now()}-${Math.random().toString(36).slice(2, 6)}-cop`, groupId, source: other, target: childId, type: "parent" };
     }
     function addPerson(groupId, data) {
         var _a;
@@ -2675,6 +2694,10 @@ function AppInner() {
                     return prev;
                 }
                 let next = [...prev, { id: `k-${Date.now()}`, groupId, source: edge.source, target: edge.target, type: edge.type }];
+                if (edge.type === "parent" && edge.source === relation.relatedToId) {
+                    const cop = coParentEdge(groupId, edge.source, edge.target, next);   // C81
+                    if (cop) next = [...next, cop];
+                }
                 if (edge.type === "parent") {
                     const sp = inferSpouseFromParents(groupId, edge.target, next);
                     if (sp)
@@ -2998,6 +3021,26 @@ function AppInner() {
         showToast(t("tm_rbt_alalaqa"), "success");
     }
     // C79: تغيير أب/أمّ شخصٍ واحد (أو إزالته) — حذف حافّة الوالد من ذلك الجنس ثمّ إضافة الجديدة
+    // C81: إصلاح «أبناء زوجته من زواجٍ آخر» حين يكونون أبناءه هو أيضاً — يُضاف والداً لمن ليس له والدٌ من جنسه
+    function claimChildren(groupId, parentId, kidIds) {
+        const list = groupPersons[groupId] || [];
+        const g = (id) => ((list.find((p) => p.id === id) || {}).gender === "female" ? "female" : "male");
+        let added = 0;
+        setKinshipRelations((prev) => {
+            let next = [...prev];
+            kidIds.forEach((kid) => {
+                const ps = next.filter((r) => r.groupId === groupId && r.type === "parent" && r.target === kid).map((r) => r.source);
+                if (ps.length >= 2 || ps.indexOf(parentId) >= 0 || ps.some((p) => g(p) === g(parentId))) return;
+                if (wouldCreateParentCycle(groupId, parentId, kid)) return;
+                next = [...next, { id: `k-${Date.now()}-${kid}-claim`, groupId, source: parentId, target: kid, type: "parent" }];
+                added++;
+            });
+            return next;
+        });
+        const pn = (list.find((p) => p.id === parentId) || {}).local_name || "";
+        logActivity(groupId, tl("رُبط أبناءٌ بوالدهم " + pn, "Children linked to " + pn));
+        showToast(tl("تمّ — صاروا أبناء " + pn + " أيضاً", "Linked"), "success");
+    }
     function changeParent(groupId, childId, gender, newParentId) {
         const list = groupPersons[groupId] || [];
         const genderOf = (id) => ((list.find((p) => p.id === id) || {}).gender === "female" ? "female" : "male");
@@ -3471,7 +3514,7 @@ function AppInner() {
     }
     else if (discoverTop.type === "tree") {
         const canEditTree = famCanEdit(discoverTop.data);
-        discoverContent = (React.createElement(FamilyTreeScreen, { groupId: discoverTop.data.id, persons: famPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), canEdit: canEditTree, onAddRelation: addKinshipRelation, onChangeParent: changeParent, onDeleteRelation: deleteKinshipRelation, onEndMarriage: endMarriage, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: discoverTop.data.id }]), onMarkContact: (personId) => markContactNow(discoverTop.data.id, personId), onQuickSchedule: (personId) => { setPreselectedSchedulePersonId(personId); setShowAddSchedule(true); }, onOpenStats: () => setDiscoverStack([...discoverStack, { type: "stats", data: discoverTop.data }]), onAddRelativeTo: (gid, person, relKey, kinship, gender) => setGapAddPreset({
+        discoverContent = (React.createElement(FamilyTreeScreen, { groupId: discoverTop.data.id, persons: famPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), canEdit: canEditTree, onAddRelation: addKinshipRelation, onChangeParent: changeParent, onClaimChildren: claimChildren, onDeleteRelation: deleteKinshipRelation, onEndMarriage: endMarriage, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: discoverTop.data.id }]), onMarkContact: (personId) => markContactNow(discoverTop.data.id, personId), onQuickSchedule: (personId) => { setPreselectedSchedulePersonId(personId); setShowAddSchedule(true); }, onOpenStats: () => setDiscoverStack([...discoverStack, { type: "stats", data: discoverTop.data }]), onAddRelativeTo: (gid, person, relKey, kinship, gender) => setGapAddPreset({
                 groupId: gid,
                 relatedToId: person.id,
                 relationType: relKey,
