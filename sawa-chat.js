@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c85";
+  var VERSION = "c88";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -80,7 +80,11 @@
       else if (p.get("room")) d = { room: p.get("room") };
       else if (p.get("chat")) d = { cid: p.get("chat") };
       else if (p.get("requests")) d = { t: "req" };
-      else if (p.get("contact")) return false;   // دعوة: تحميلٌ كامل يعالجها
+      else if (p.get("contact") || p.get("join")) return false;   // دعوة: تحميلٌ كامل يعالجها
+      // C88: رمز QR مُسح بكاميرا الهاتف والتطبيق مفتوح ⇒ كان «يُعالَج» ولا يحدث شيء
+      else if (p.get("code")) { var cd = codeDigits(p.get("code")); if (cd.length === 10) { whenReady(function () { findSheet(cd); }); return true; } return false; }
+      else if (p.get("group")) { var gt = p.get("group"); whenReady(function () { linkConfirm("group", gt); }); return true; }
+      else if (u.search && u.search !== "?") return false;   // معاملٌ لا نعرفه هنا ⇒ تحميلٌ كامل
       if (d) return swDispatch({ type: "sawa-open", data: d });
       return true;
     } catch (e) { return false; }
@@ -140,7 +144,28 @@
   // ---------- جهات الاتّصال ----------
   // الشكل الذي يراه التطبيق: { id: uid, uid, name, anon, families:[{groupId,name}], via:[…], online, lastSeen, onSawa:true }
   // التسمية: اسمٌ أختاره أنا لجهة الاتّصال (يظهر لي وحدي، ويتزامن بين أجهزتي) ← اسمه في سوا ← «ضيف · رمز» يميّز الضيوف
-  function guestTag(uid) { var t = String(uid || "").replace(/[^A-Za-z0-9]/g, "").slice(-4).toUpperCase(); return t || "؟"; }
+  // C88: رمز سوا (١٠ أرقام) لجهات الاتّصال بدل الوسم القديم (آخر ٤ حروف من المعرّف) — يُجلب من الخادم ويُحفظ هنا
+  var peerCodes = lsGet("sawa_codes_v1", {});   // uid -> { c: "1234567890" | null, t: وقت الجلب }
+  function peerCode(uid) { var e = peerCodes[uid]; return e && e.c ? e.c : null; }
+  function guestTag(uid) {
+    var c = peerCode(uid); if (c) return fmtCode(c);
+    var t = String(uid || "").replace(/[^A-Za-z0-9]/g, "").slice(-4).toUpperCase(); return t || "؟";
+  }
+  var codesBusy = false;
+  function fetchPeerCodes(force) {
+    if (!state.uid || codesBusy) return Promise.resolve();
+    var now = Date.now(), need = state.people.map(function (p) { return p.uid; })
+      .filter(function (u) { var e = peerCodes[u]; return force || !e || now - (e.t || 0) > (e.c ? 7 : 1) * 86400000; }).slice(0, 50);
+    if (!need.length) return Promise.resolve();
+    codesBusy = true;
+    var chunks = [need.slice(0, 25), need.slice(25, 50)].filter(function (x) { return x.length; });
+    return chunks.reduce(function (pr, ch) {
+      return pr.then(function () { return call("code.of", { uids: ch }).then(function (b) {
+        var cs = (b && b.codes) || {}; ch.forEach(function (u) { if (u in cs) peerCodes[u] = { c: cs[u] || null, t: Date.now() }; });
+      }); });
+    }, Promise.resolve()).then(function () { lsSet("sawa_codes_v1", peerCodes); publish(); }, function (e) { log("code.of", e && e.message); })
+      .then(function () { codesBusy = false; });
+  }
   function nickOf(uid) { try { return (prefs && prefs.nick && prefs.nick[uid]) || null; } catch (e) { return null; } }
   function displayName(p) {
     return nickOf(p.uid) || p.name || (p.anon ? L("ضيف · ", "Guest · ") + guestTag(p.uid) : L("عضو", "Member") + " · " + guestTag(p.uid));
@@ -198,7 +223,7 @@
   }
   function decorate(p) {
     var pr = state.presence[p.uid] || null;
-    return { id: p.uid, uid: p.uid, name: displayName(p), realName: p.name || null, nick: nickOf(p.uid), anon: !!p.anon, tag: guestTag(p.uid), photo: photoOf(p.uid),
+    return { id: p.uid, uid: p.uid, name: displayName(p), realName: p.name || null, nick: nickOf(p.uid), anon: !!p.anon, tag: guestTag(p.uid), code: peerCode(p.uid), photo: photoOf(p.uid),
              families: p.families || [], via: p.via || [], onSawa: true, phone: p.phone || "",
              online: !!(pr && pr.state === "online"), lastSeen: pr && pr.ts ? pr.ts : null };
   }
@@ -224,6 +249,7 @@
     lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
     watchPresence();
     publish();
+    setTimeout(function () { fetchPeerCodes(false); }, 1500);
   }
   function refresh() {
     if (!state.uid || state.loading) return Promise.resolve(contacts());
@@ -314,6 +340,16 @@
     return true;
   }
 
+  // C88: تسمية جهة اتّصال من طرفي (تظهر لي وحدي) — تُستعمل من «تسمية» ومن إضافة شخصٍ برمزه
+  function setNick(uid, v, silent) {
+    if (!uid) return;
+    prefs = prefs || {}; var nk = Object.assign({}, prefs.nick || {});
+    v = String(v || "").replace(/\s+/g, " ").trim();
+    if (v) nk[uid] = v.slice(0, 40); else delete nk[uid];
+    prefs.nick = nk; savePrefs({ nick: nk });
+    publish(); publishChats(); Object.keys(days).forEach(publishMessages);
+    if (!silent) toast(v ? L("حُفظت التسمية ✓", "Name saved ✓") : L("أُزيلت التسمية", "Name cleared"));
+  }
   function renameContact(uid) {
     if (!state.uid || !uid) return false;
     var p = state.people.filter(function (x) { return x.uid === uid; })[0] || { uid: uid };
@@ -325,7 +361,7 @@
     box.style.cssText = "background:#fff;color:#1A1A2E;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 16px);box-sizing:border-box";
     var h = document.createElement("div"); h.textContent = L("تسمية جهة الاتّصال", "Name this contact"); h.style.cssText = "font:800 16px system-ui;text-align:center";
     var sub = document.createElement("div");
-    sub.textContent = (p.name ? L("اسمه في سوا: ", "Their Sawa name: ") + p.name : (p.anon ? L("ضيف بلا اسم · الرمز ", "Unnamed guest · code ") + guestTag(uid) : "")) + " — " + L("التسمية تظهر لك وحدك", "only you see this name");
+    sub.textContent = (p.name ? L("اسمه في سوا: ", "Their Sawa name: ") + p.name : (p.anon ? L("ضيف بلا اسم · رمزه ", "Unnamed guest · code ") + guestTag(uid) : "")) + " — " + L("التسمية تظهر لك وحدك", "only you see this name");
     sub.style.cssText = "font:500 12px system-ui;color:#777;text-align:center;margin:6px 0 10px";
     var i = document.createElement("input"); i.value = cur; i.placeholder = L("مثال: أحمد — زميل العمل", "e.g. Ahmed — work");
     i.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:12px;padding:11px 12px;font:600 15px system-ui";
@@ -1693,7 +1729,22 @@
     if (lsGet("sawa_push_resub", 0)) return Promise.resolve(true);
     try { if (!global.caches) return Promise.resolve(false); return caches.open("flags-sawa").then(function (c) { return c.match("/push-resub"); }).then(function (r) { return !!r; }).catch(function () { return false; }); } catch (e) { return Promise.resolve(false); }
   }
+  // C87: الإصلاح الذاتيّ — عند كلّ فتح (كلّ ٢٠ دقيقة على الأكثر) نسأل الخادم: هل رمز هذا الجهاز عندك؟ إن لا ⇒ يُسجَّل فوراً
+  function pushSelfCheck(force) {
+    if (!state.uid || pushState() !== "granted") return Promise.resolve(null);
+    var last = lsGet("sawa_push_chk", 0); if (!force && Date.now() - last < 20 * 60000) return Promise.resolve(null);
+    lsSet("sawa_push_chk", Date.now());
+    return pushToken().then(function (tok) {
+      return call("push.check", { token: tok, ua: (navigator.userAgent || "").slice(0, 150) }).then(function (b) {
+        lsSet("sawa_push", { token: tok, uid: state.uid, ts: Date.now() });
+        if (b && b.healed) { var h = lsGet("sawa_push_heal", {}); lsSet("sawa_push_heal", { n: (h.n || 0) + 1, last: Date.now() }); log("push: device re-registered by self-check"); }
+        return b;
+      });
+    }).catch(function (e) { log("push.check", (e && e.message) || e); return null; });
+  }
+  try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") setTimeout(function () { pushSelfCheck(false); }, 1500); }); } catch (e) {}
   function refreshPush() {
+    setTimeout(function () { pushSelfCheck(false); }, 4000);
     var st = pushState();
     emitPush();
     if (st === "default" || st === "denied") return maybeBanner(st);
@@ -1750,6 +1801,8 @@
     box.appendChild(row(L("طريقة الفتح", "Opened as"), nbp ? L("تطبيق أندرويد الأصليّ ", "Native Android app ") + nbp.replace("android/", "v") : sa ? L("تطبيقٌ مثبّت", "Installed app") : L("متصفّح", "Browser")));
     box.appendChild(row(L("دعم المتصفّح", "Browser support"), sup ? L("مدعوم ✓", "Supported ✓") : L("غير مدعوم", "Not supported"), sup));
     box.appendChild(row(L("إذن الإشعارات", "Permission"), st === "granted" ? L("مسموح ✓", "Granted ✓") : st === "denied" ? L("محظور ✗", "Blocked ✗") : st === "off" ? L("موقوف من سوا", "Off in Sawa") : st === "default" ? L("لم يُطلب بعد", "Not asked yet") : "—", st === "granted" ? true : st === "default" ? null : false));
+    var heal = lsGet("sawa_push_heal", {});
+    if (heal.n) box.appendChild(row(L("أُعيد تسجيله تلقائيّاً", "Auto re-registered"), heal.n + L(" مرّة · آخرها ", "× · last ") + timeAgo(heal.last || 0), null));
     box.appendChild(row(L("هذا الجهاز مسجّل", "This device registered"), reg.token && reg.uid === state.uid ? L("نعم ✓ — ", "Yes ✓ — ") + timeAgo(reg.ts || 0) : L("لا ✗", "No ✗"), !!(reg.token && reg.uid === state.uid)));
     var srv = row(L("أجهزتك عند الخادم", "Devices on server"), "…"); box.appendChild(srv);
     // C82: في تطبيق أندرويد — إعدادات الهاتف التي تقرّر وصول المكالمات والتطبيق مغلق، مع زرّ إصلاحٍ لكلٍّ منها
@@ -2277,7 +2330,8 @@
       c.appendChild(mk("div", "font:600 12px system-ui;color:#8796a5;direction:ltr;margin:2px 0 10px", b.code ? fmtCode(b.code) : ""));
       if (b.self) { c.appendChild(note(L("هذا رمزك أنت 🙂", "That's your own code 🙂"))); res.appendChild(c); return; }
       if (b.contact) {
-        c.appendChild(note(L("جهة اتّصالك ✓", "Already a contact ✓"), "#2e7d5b"));
+        c.appendChild(note(L("جهة اتّصالك ✓", "Already a contact ✓") + (nickOf(b.uid) ? " · " + L("محفوظ عندك باسم «", "saved as «") + nickOf(b.uid) + "»" : ""), "#2e7d5b"));
+        var rn = mkBtn(nickOf(b.uid) ? L("تعديل اسمه عندك", "Edit name") : L("احفظه باسمٍ تختاره", "Save with a name"), "ghost"); rn.onclick = function () { s.close(); renameContact(b.uid); }; c.appendChild(rn);
         var m = mkBtn(L("مراسلة", "Message"), "primary");
         m.onclick = function () { openDm(b.uid).then(function (cid) { if (cid) whenApp(function () { try { app.openChatById(cid); } catch (e) {} }); s.close(); }); };
         c.appendChild(m);
@@ -2308,11 +2362,17 @@
       ta.maxLength = 300; ta.value = myN ? L("السلام عليكم، أنا " + myN + " 👋", "Hi, it's " + myN + " 👋") : L("السلام عليكم 👋", "Hi 👋");
       c.appendChild(mk("div", "font:700 12px system-ui;color:#5b6b7c;text-align:" + (isAr() ? "right" : "left") + ";margin-top:4px", L("رسالة تعريف (يقرؤها قبل أن يوافق)", "Intro message (they see it before accepting)")));
       c.appendChild(ta);
+      // C88: الاسم عندي — أختاره أنا (يظهر لي وحدي)، ويُحفظ مع الطلب
+      c.appendChild(mk("div", "font:700 12px system-ui;color:#5b6b7c;text-align:" + (isAr() ? "right" : "left") + ";margin-top:10px", L("احفظه عندك باسم (يظهر لك وحدك)", "Save as (only you see it)")));
+      var nmIn = mk("input", "width:100%;box-sizing:border-box;border:1px solid #dfe5ec;color:#1A1A2E;background:#fff;border-radius:12px;padding:10px 12px;font:700 15px system-ui;margin-top:4px");
+      nmIn.value = b.name || ""; nmIn.placeholder = L("مثال: أحمد — زميل العمل", "e.g. Ahmed — work"); nmIn.maxLength = 40; c.appendChild(nmIn);
+      var saveNick = function (u) { var v = nmIn.value.replace(/\s+/g, " ").trim(); if (u && v && v !== (b.name || "")) setNick(u, v, true); };
       var snd = mkBtn(L("إرسال طلب تواصل", "Send request"), "primary"); snd.style.marginTop = "10px"; c.appendChild(snd);
       c.appendChild(note(L("لن تستطيعا المراسلة أو الاتّصال حتّى يقبل طلبك.", "You can't message or call until they accept.")));
       snd.onclick = function () {
         snd.disabled = true; snd.textContent = "…";
         call("code.request", { code: b.code, text: ta.value }).then(function (r) {
+          saveNick(r && r.uid);
           if (r.accepted) { toast(L("أصبحتما جهتي اتّصال ✓", "You're now connected ✓")); refresh(); loadRequests();
             if (r.cid) whenApp(function () { setTimeout(function () { try { app.openChatById(r.cid); } catch (e) {} }, 900); }); s.close(); return; }
           if (r.already) { card({ found: true, contact: true, uid: r.uid, name: b.name, code: b.code }); return; }
@@ -2450,6 +2510,81 @@
     return true;
   }
   // ---------- «رمزي في سوا» ----------
+  // C88: جهات اتّصال الهاتف — تُقرأ على الجهاز فقط (لا تُرفع إلى الخادم) لإرسال رسالة نصّيّة فيها رمز سوا ورابطه
+  function smsText(code) {
+    return L("السلام عليكم 👋 تعال نتواصل على سوا — مكالمات ورسائل مجّانيّة.\nرمزي في سوا: ", "Hi 👋 let's talk on Sawa — free calls and messages.\nMy Sawa code: ") + fmtCode(code) +
+      L("\nحمّل سوا وأضفني من هنا: ", "\nGet Sawa and add me: ") + codeUrl(code);
+  }
+  function openSms(phone, body) {
+    var ph = String(phone || "").replace(/[^\d+]/g, "");
+    try { if (NB() && NB().sms) { NB().sms(ph, body); return; } } catch (e) {}
+    var url = "sms:" + ph + (/iPhone|iPad/.test(navigator.userAgent || "") ? "&" : "?") + "body=" + encodeURIComponent(body);
+    try { global.location.href = url; } catch (e) { copyText(body); }
+  }
+  function phoneContactsSheet() {
+    if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
+    var s = sheet(L("📱 جهات اتّصال الهاتف", "📱 Phone contacts"));
+    s.box.appendChild(note(L("أرسل لأصدقائك رسالة نصّيّة فيها رمزك في سوا ورابط التطبيق. جهاتك تُقرأ على هذا الهاتف فقط — لا تُرفع إلى سوا ولا تُحفظ.",
+      "Text your friends your Sawa code and link. Contacts are read on this phone only — never uploaded or stored."), "#5b6b7c", "#f5f8fb"));
+    var code = null, body = function () { return smsText(code || myCode() || ""); };
+    var top = mk("div", "display:flex;gap:8px;margin:8px 0");
+    var shr = mkBtn(L("واتساب وغيره", "WhatsApp & more"), "primary"), man = mkBtn(L("رقمٌ آخر", "Another number"));
+    top.appendChild(shr); top.appendChild(man); s.box.appendChild(top);
+    shr.onclick = function () { shareText(body()); };
+    man.onclick = function () { var n = global.prompt(L("رقم الهاتف:", "Phone number:"), ""); if (n && n.replace(/\D/g, "").length >= 6) openSms(n, body()); };
+    var area = mk("div", "margin-top:6px"); s.box.appendChild(area);
+    loadCode().then(function (b) { code = b.code; }).catch(function () {});
+    var all = [];
+    function draw(q) {
+      area.innerHTML = "";
+      var qq = String(q || "").trim().toLowerCase(), qd = qq.replace(/\D/g, "");
+      var list = all.filter(function (c) { return !qq || (c.n || "").toLowerCase().indexOf(qq) >= 0 || (qd && c.p.replace(/\D/g, "").indexOf(qd) >= 0); });
+      if (!list.length) { area.appendChild(note(qq ? L("لا نتائج", "No results") : L("لا أرقام في جهات هاتفك", "No numbers in your contacts"))); return; }
+      list.slice(0, 300).forEach(function (c) {
+        var r = mk("div", "display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid #eef2f6");
+        r.appendChild(avatar(c.n || "#", 38));
+        var tx = mk("div", "flex:1;min-width:0");
+        tx.appendChild(mk("div", "font:800 14px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis", c.n || c.p));
+        tx.appendChild(mk("div", "font:600 12px system-ui;color:#8796a5;direction:ltr;text-align:" + (isAr() ? "right" : "left"), c.p));
+        r.appendChild(tx);
+        var b = mkBtn(L("رسالة نصّيّة", "Text"), "primary"); b.style.cssText += ";width:auto;padding:8px 12px;font-size:12.5px";
+        b.onclick = function () { openSms(c.p, body()); };
+        r.appendChild(b); area.appendChild(r);
+      });
+      if (list.length > 300) area.appendChild(note(L("ابحث لتضييق القائمة (" + list.length + ")", "Search to narrow (" + list.length + ")")));
+    }
+    function showList(arr) {
+      all = arr.filter(function (c) { return c && c.p; });
+      var q = mk("input", "width:100%;box-sizing:border-box;border:1px solid #dfe5ec;border-radius:12px;padding:10px 12px;font:600 14px system-ui;margin:4px 0 6px");
+      q.placeholder = L("ابحث بالاسم أو الرقم… (" + all.length + ")", "Search name or number… (" + all.length + ")");
+      s.box.insertBefore(q, area); q.oninput = function () { draw(q.value); }; draw("");
+    }
+    if (NB() && NB().readContacts) {
+      var load = function () {
+        area.innerHTML = ""; area.appendChild(note(L("جارٍ قراءة جهات الهاتف…", "Reading contacts…")));
+        nativeAsk("readContacts", [], 90000).then(function (r) {
+          if (r.ok) return showList(r.list || []);
+          area.innerHTML = "";
+          area.appendChild(note(r.never ? L("إذن جهات الاتّصال مرفوض. افتحه من «معلومات التطبيق» ← «الأذونات» ← «جهات الاتّصال».", "Contacts permission is blocked — allow it in App info → Permissions.")
+                                        : L("لم يُسمح بقراءة جهات الهاتف. يمكنك «واتساب وغيره» أو «رقمٌ آخر».", "Contacts not allowed. Use «WhatsApp & more» or «Another number»."), "#b45309", "#fff7e6"));
+          var again = mkBtn(r.never ? L("فتح إعدادات التطبيق", "Open app settings") : L("السماح بقراءة جهات الهاتف", "Allow contacts"), "primary");
+          again.onclick = function () { if (r.never) { try { NB().openSetting("app"); } catch (e) {} } else load(); };
+          area.appendChild(again);
+        });
+      };
+      load();
+    } else if (global.navigator && navigator.contacts && navigator.contacts.select) {
+      var pick = mkBtn(L("اختر من جهات الهاتف", "Pick from contacts"), "primary"); area.appendChild(pick);
+      pick.onclick = function () {
+        navigator.contacts.select(["name", "tel"], { multiple: true }).then(function (cs) {
+          showList([].concat.apply([], (cs || []).map(function (c) { return (c.tel || []).map(function (t) { return { n: (c.name || [])[0] || "", p: t }; }); })));
+        }).catch(function () {});
+      };
+    } else {
+      area.appendChild(note(L("قراءة جهات الهاتف متاحة في تطبيق سوا لأندرويد. هنا: «واتساب وغيره» أو «رقمٌ آخر».", "Reading contacts works in the Sawa Android app. Here: share or type a number.")));
+    }
+    return true;
+  }
   function codeSheet() {
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
     var s = sheet(L("رمزك في سوا", "Your Sawa code"));
@@ -2459,6 +2594,10 @@
     var row = mk("div", "display:flex;gap:8px;margin:8px 0");
     var cp = mkBtn(L("نسخ", "Copy")), sh = mkBtn(L("مشاركة", "Share"), "primary");
     row.appendChild(cp); row.appendChild(sh); s.box.appendChild(row);
+    // C88: نشر الرمز داخل سوا (محادثات/مجموعات) ورسالة نصّيّة لجهات الهاتف
+    var row2 = mk("div", "display:flex;gap:8px;margin:0 0 8px");
+    var inS = mkBtn(L("💬 إرسال في سوا", "💬 Send in Sawa")), sms = mkBtn(L("📱 لجهات الهاتف", "📱 Phone contacts"));
+    row2.appendChild(inS); row2.appendChild(sms); s.box.appendChild(row2);
     var qrBtn = mkBtn(L("عرض رمز QR", "Show QR"), "ghost"); s.box.appendChild(qrBtn);
     var qr = mk("div", "display:none;justify-content:center;margin:8px 0"); var qrIn = mk("div", "background:#fff;padding:8px;border-radius:12px"); qr.appendChild(qrIn); s.box.appendChild(qr);
     var sep = mk("div", "height:1px;background:#eef1f4;margin:12px 0"); s.box.appendChild(sep);
@@ -2471,6 +2610,8 @@
       big.textContent = fmtCode(b.code); cb.checked = b.findable !== false;
       cp.onclick = function () { copyText(fmtCode(b.code)); };
       sh.onclick = function () { shareText(codeShareText(b.code)); };
+      inS.onclick = function () { var R = global.SawaRTC; if (R && R.sendInSawa) { s.close(); R.sendInSawa(codeShareText(b.code)); } else shareText(codeShareText(b.code)); };
+      sms.onclick = function () { s.close(); phoneContactsSheet(); };
       qrBtn.onclick = function () {
         qr.style.display = "flex"; qrBtn.style.display = "none";
         loadQrLib().then(function (Q) { qrIn.innerHTML = ""; new Q(qrIn, { text: codeUrl(b.code), width: 200, height: 200, colorDark: "#1A1A2E", colorLight: "#FFFFFF", correctLevel: Q.CorrectLevel.M }); })
@@ -3822,7 +3963,7 @@
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
     _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,
     // C10
-    codeSheet: codeSheet, findSheet: findSheet, verifySheet: verifySheet, requestsSheet: requestsSheet, emailSheet: emailSheet, linkSheet: linkSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, reportSheet: reportSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },
+    codeSheet: codeSheet, findSheet: findSheet, phoneContactsSheet: phoneContactsSheet, smsText: smsText, openSms: openSms, setNick: setNick, peerCode: peerCode, fetchPeerCodes: fetchPeerCodes, verifySheet: verifySheet, requestsSheet: requestsSheet, emailSheet: emailSheet, linkSheet: linkSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, reportSheet: reportSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },
     requestCount: function () { return reqs.incoming.length; }, fmtCode: fmtCode, codeValid: codeValid,
     retryFailed: retryFailed, discardFailed: discardFailed, failedSheet: failedSheet,   // C14
     retryMedia: retryMedia,   // C18
