@@ -4,9 +4,9 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v285';
+const VERSION = 'sawa-v286';
 // C83: «ما الجديد» — يظهر لكلّ مستخدم في «حسابي ← تحديث التطبيق». سطرٌ واحد بلا علامة ' (‎\n‎ لسطرٍ جديد). يُحدَّث مع كلّ نسخة.
-const NOTES = '• المكالمات والتطبيق مغلق: إن رفض الهاتف شاشة المكالمة يرنّ بإشعار مكالمة بزرّي ردّ ورفض بدل أن يضيع\n• فحص الإشعارات: «اختبار مكالمة والتطبيق مغلق» وآخر مكالمة وصلت الهاتف وكيف ظهرت\n• الغرفة المجدولة: «نشر» إلى واتساب وسوا، وتُضاف إلى مواعيد من يفتح الرابط';
+const NOTES = '• إصلاح جذريّ: المكالمات والرسائل تصل الآن والتطبيق مغلق (كان الخادم يرسلها بحقلٍ ترفضه Google فتضيع، ويحذف تسجيل الجهاز)\n• الغرفة المجدولة: «نشر» إلى واتساب وسوا، وتُضاف إلى مواعيد من يفتح الرابط';
 // P2: على العناوين القديمة/البديلة (Netlify · sawaap.pages.dev · sawaaap.com بلا www) يصير عامل الخدمة «مُخلياً»:
 //     يمسح المخزون، يحوّل الصفحات المفتوحة إلى العنوان الرسميّ، ثمّ يلغي نفسه. على www.sawaaap.com يعمل كالمعتاد.
 //     (لا يُحذف هذا قبل أن ينتقل كلّ المستخدمين.)
@@ -156,7 +156,7 @@ self.addEventListener('push', (e) => {
     if (vis && d.t !== 'test') { vis.postMessage({ type: 'sawa-push', data: d }); return; }
     if (vis) vis.postMessage({ type: 'sawa-push', data: d });
     return self.registration.showNotification(d.title || 'سوا', {
-      body: d.body || '', tag: d.cid || (d.call ? 'call-' + d.call : d.sid ? 'sched-' + d.sid : d.t === 'req' ? 'req-' + (d.from || '') : 'sawa'), renotify: true, dir: 'auto', lang: 'ar',
+      body: d.body || '', tag: d.cid || (d.call ? 'call-' + d.call : d.sid ? 'sched-' + d.sid : d.t === 'req' ? 'req-' + (d.uf || d.from || '') : 'sawa'), renotify: true, dir: 'auto', lang: 'ar',
       icon: './icons/icon-192.png', badge: './icons/icon-192.png', data: d,
       requireInteraction: d.t === 'call', silent: false, vibrate: d.t === 'call' ? [300, 150, 300, 150, 300] : [120],
     });

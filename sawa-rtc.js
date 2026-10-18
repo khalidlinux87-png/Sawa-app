@@ -3140,7 +3140,7 @@
       if ((m.type === "sawa-open" || m.type === "sawa-push") && m.data && m.data.t === "call" && m.data.call && !/^test_/.test(String(m.data.call))) {
         if (m.data.answer) wantAnswer[m.data.call] = 1;
         whenUid(function () {
-          if (m.data.gid) { groupIncoming(m.data.gid, { from: m.data.from, fromName: m.data.fromName }); return; }
+          if (m.data.gid) { groupIncoming(m.data.gid, { from: m.data.uf || m.data.from, fromName: m.data.fromName }); return; }
           if (m.data.answer && cur && cur.id === m.data.call && cur.state === "incoming") { delete wantAnswer[m.data.call]; accept(false); return; }
           incoming(m.data.call);
         });
