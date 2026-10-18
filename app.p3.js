@@ -2556,35 +2556,13 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
             kids.forEach((c) => claimed.add(c));
             branches.push({ parent: sp.person, coParent: null, children: kids, step: true });
         }));
-        return (React.createElement("div", { key: group.map((p) => p.id).join("-"), className: "mb-2" },
-            React.createElement("div", { className: `flex ${rowStart()} items-start justify-center gap-2 overflow-x-auto pb-1`, style: { minWidth: 0 } }, units.map((u, ui) => (React.createElement("div", { key: u.person.id, className: `flex ${rowStart()} items-center shrink-0` },
-                ui > 0 && (React.createElement("div", { className: "flex flex-col items-center shrink-0 mx-0.5", style: { alignSelf: "center" }, title: t("ikhwa") },
-                    React.createElement("div", { style: { width: 16, height: 2, backgroundColor: colors.border } }))),
-                React.createElement("div", { className: `flex ${rowStart()} items-center px-1.5 py-1.5 shrink-0`, style: {
-                        borderRadius: 20,
-                        border: u.spouses.length ? `1.5px dashed ${colors.primary}66` : "1px solid transparent",
-                        backgroundColor: u.spouses.length ? colors.primary + "0a" : "transparent",
-                    } },
-                    PersonCardButton({ p: u.person, depth: depth }),
-                    u.spouses.map((s) => (React.createElement(React.Fragment, { key: s.person.id },
-                        React.createElement("span", { className: "shrink-0 flex flex-col justify-center gap-[3px] mx-1", style: { width: 18 }, title: s.isEx ? t("zwaj_sabq") : t("ft_zwaj") },
-                            React.createElement("span", { style: {
-                                    height: 2,
-                                    backgroundColor: s.isEx ? colors.textMuted : colors.primary,
-                                    opacity: s.isEx ? 0.5 : 0.85,
-                                    borderTop: s.isEx ? `2px dashed ${colors.textMuted}` : "none",
-                                } }),
-                            React.createElement("span", { style: {
-                                    height: 2,
-                                    backgroundColor: s.isEx ? colors.textMuted : colors.primary,
-                                    opacity: s.isEx ? 0.5 : 0.85,
-                                    borderTop: s.isEx ? `2px dashed ${colors.textMuted}` : "none",
-                                } })),
-                        PersonCardButton({ p: s.person, depth: depth }))))))))),
-            branches.length > 0 && (React.createElement("div", { className: `flex ${rowStart()} items-start justify-center gap-4 mt-1 overflow-x-auto`, style: { minWidth: 0 } }, branches.map(({ parent, coParent, children, step }) => {
+        // C76: كلّ زوجين في عمودٍ واحد وأبناؤهما تحتهما مباشرةً — كان الأبناء صفّاً مستقلّاً يتوسّط الشاشة
+        //      فيبدو الخطّ النازل تحت غير والديه (وكلّ صفّ يُمرَّر وحده فيزداد الانزياح).
+        const renderBranch = ({ parent, coParent, children, step }) => {
                 // مفتاح الطيّ يخصّ الفرع لا الوالد — وإلا طُويت فروع الزوجات معاً
                 const branchKey = `${parent.id}|${coParent || "x"}`;
-                const isCollapsed = !!(foldNow[branchKey] || foldNow[parent.id]);   // C33: الطيّ التلقائيّ و«طيّ الكلّ» يكتبان معرّف الوالد
+                // C76: قرار الفرع نفسه يغلب طيَّ الوالد — كان النقر يكتب مفتاح الفرع والطيّ التلقائيّ مكتوبٌ على الوالد فيبقى مطويّاً أبداً
+                const isCollapsed = (branchKey in foldNow) ? !!foldNow[branchKey] : !!foldNow[parent.id];   // C33: الطيّ التلقائيّ و«طيّ الكلّ» يكتبان معرّف الوالد
                 // الآن بعد إضافة حقل الجنس الصريح، نستخدم الصيغة النحوية
                 // الصحيحة ("وزوجته"/"وزوجها") لو الجنس معروف، ونبقي "مع"
                 // المحايدة كبديل آمن لو الجنس غير محدَّد (بيانات قديمة مثلاً)
@@ -2606,14 +2584,45 @@ function FamilyTreeScreen({ groupId, persons, relations, canEdit = true, onAddRe
                 }
                 return (React.createElement("div", { key: branchKey, className: "flex flex-col items-center shrink-0" },
                     React.createElement("div", { style: { width: 2, height: 18, backgroundColor: colors.primary + "66" } }),
-                    React.createElement("button", { onClick: () => setCollapsedIds((prev) => ({ ...prev, [branchKey]: !prev[branchKey] })), className: "text-[9.5px] font-bold px-2.5 py-1 rounded-full mb-1.5", style: {
+                    React.createElement("button", { onClick: () => setCollapsedIds((prev) => ({ ...prev, [branchKey]: !isCollapsed })), className: "text-[9.5px] font-bold px-2.5 py-1 rounded-full mb-1.5", style: {
                             color: isCollapsed ? "#fff" : colors.primary,
                             background: isCollapsed ? famGrad(colors) : colors.card,
                             boxShadow: famShadow(isDark),
                             whiteSpace: "nowrap",
                         } }, isCollapsed ? t(spouseLabel ? "ft_mzyd_abna_zwja" : "ft_mzyd_abna", { n: children.length, name: parent.local_name.split(" ")[0], spouseLabel }) : t("abna_local_name_spouseLabel", { local_name: parent.local_name, spouseLabel, length: children.length })),
                     isCollapsed ? (markHidden(children), null) : (React.createElement("div", { className: "px-1.5 pt-1.5", style: { borderTop: `2px solid ${colors.primary}33`, borderRadius: 14, minWidth: 0 } }, renderGeneration(children, depth + 1)))));
-            })))));
+            };
+        const branchUnit = (b) => units.findIndex((u) => u.person.id === b.parent.id || u.spouses.some((s) => s.person.id === b.parent.id));
+        return (React.createElement("div", { key: group.map((p) => p.id).join("-"), className: "mb-2" },
+            React.createElement("div", { className: `flex ${rowStart()} items-start justify-center gap-2 pb-1`, style: { minWidth: "max-content" } }, units.map((u, ui) => {
+                const myBranches = branches.filter((b) => branchUnit(b) === ui || (ui === units.length - 1 && branchUnit(b) < 0));
+                return React.createElement(React.Fragment, { key: u.person.id },
+                    ui > 0 && (React.createElement("div", { className: "flex flex-col items-center shrink-0 mx-0.5", style: { marginTop: 46 }, title: t("ikhwa") },
+                        React.createElement("div", { style: { width: 16, height: 2, backgroundColor: colors.border } }))),
+                    React.createElement("div", { className: "flex flex-col items-center shrink-0" },
+                        React.createElement("div", { className: `flex ${rowStart()} items-center px-1.5 py-1.5 shrink-0`, style: {
+                        borderRadius: 20,
+                        border: u.spouses.length ? `1.5px dashed ${colors.primary}66` : "1px solid transparent",
+                        backgroundColor: u.spouses.length ? colors.primary + "0a" : "transparent",
+                    } },
+                    PersonCardButton({ p: u.person, depth: depth }),
+                    u.spouses.map((s) => (React.createElement(React.Fragment, { key: s.person.id },
+                        React.createElement("span", { className: "shrink-0 flex flex-col justify-center gap-[3px] mx-1", style: { width: 18 }, title: s.isEx ? t("zwaj_sabq") : t("ft_zwaj") },
+                            React.createElement("span", { style: {
+                                    height: 2,
+                                    backgroundColor: s.isEx ? colors.textMuted : colors.primary,
+                                    opacity: s.isEx ? 0.5 : 0.85,
+                                    borderTop: s.isEx ? `2px dashed ${colors.textMuted}` : "none",
+                                } }),
+                            React.createElement("span", { style: {
+                                    height: 2,
+                                    backgroundColor: s.isEx ? colors.textMuted : colors.primary,
+                                    opacity: s.isEx ? 0.5 : 0.85,
+                                    borderTop: s.isEx ? `2px dashed ${colors.textMuted}` : "none",
+                                } })),
+                        PersonCardButton({ p: s.person, depth: depth }))))),
+                        myBranches.length > 0 && React.createElement("div", { className: `flex ${rowStart()} items-start justify-center gap-4 mt-1` }, myBranches.map(renderBranch))));
+            }))));
     }
     // الجذور: من لا والد له. نستثني من صار زوجاً لشخص سيُرسم في صفه
     // (وإلا ظهرت الزوجة المتزوجة داخل العائلة كجذر مستقل).
