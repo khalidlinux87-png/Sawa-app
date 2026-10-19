@@ -146,7 +146,7 @@ function __makeIcon(name) {
     return React.createElement('svg', {
       xmlns: 'http://www.w3.org/2000/svg', width: size, height: size,
       viewBox: '0 0 24 24', fill: fill, stroke: color, strokeWidth,
-      strokeLinecap: 'round', strokeLinejoin: 'round', className, style, ...rest,
+      strokeLinecap: 'round', strokeLinejoin: 'round', className, style, 'data-i': name, ...rest,   // C99: اسم الأيقونة (زرّ الرجوع في أندرويد يجد سهم الشاشة)
     }, paths.map((d, i) => React.createElement('path', { key: i, d })));
   };
 }

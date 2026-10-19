@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c97";
+  var VERSION = "c99";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -751,11 +751,36 @@
       }).catch(function () {});
     } catch (e) {}
   }
+  // C99: بعد الاتّصال لا يُنهي انقطاعُ Firebase المكالمةَ — التطبيق في الخلفيّة (والشاشة مطفأة) قد يفقد اتّصال قاعدة البيانات
+  //      دقائق والصوت ما زال يعمل، فكان onDisconnect يكتب «ended» فيُنهيها الطرف الآخر. الآن يكتب علامة off_<دوري> فقط،
+  //      ويُعاد تجهيزه كلّما عاد الاتّصال. والإنهاء الحقيقيّ يكتب endBy. إن لم يبقَ صوتٌ فعلاً ينهيها مؤقّت «انقطع الاتّصال» المعتاد.
+  function softDrop(c) {
+    if (!c.ref || c.softArmed) return; c.softArmed = true;
+    var mark = {}; mark["off_" + c.role] = TS();
+    var arm = function () {
+      if (c.done) return;
+      try { c.ref.onDisconnect().cancel(); c.ref.onDisconnect().update(mark); } catch (e) {}
+      c.ref.child("off_" + c.role).remove().catch(function () {});
+    };
+    arm();
+    try { listen(c, db().ref(".info/connected"), "value", function (sn) { if (sn.val() === true && c.softSeen) arm(); c.softSeen = true; }); } catch (e) {}
+  }
+  // «ended» بلا endBy = انقطاعٌ (onDisconnect من نسخةٍ قديمة) لا إنهاء — ما دام الصوت متّصلاً ننتظر
+  function softEnded(c, v) {
+    if (v.endBy || !c.connectedAt || !c.pc || c.pc.connectionState !== "connected") return false;
+    if (!c.timers.softEnd) c.timers.softEnd = setTimeout(function () {
+      delete c.timers.softEnd;
+      if (c.done) return;
+      if (!c.pc || c.pc.connectionState !== "connected") finish(c, "remote", { remote: true });
+      else softEnded(c, v);
+    }, 15000);
+    return true;
+  }
   function onConn(c, s) {
     if (c.done) return;
     if (s === "connected") {
       clearTimeout(c.timers.conn); clearTimeout(c.timers.lost); delete c.timers.lost;
-      if (!c.connectedAt) { c.connectedAt = Date.now(); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); }); if (c.out === "ear" && NB() && NB().setProximity) setTimeout(earArm, 0);
+      if (!c.connectedAt) { c.connectedAt = Date.now(); softDrop(c); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); }); if (c.out === "ear" && NB() && NB().setProximity) setTimeout(earArm, 0);
         if (NB() && NB().setSpeaker) nativeRoute(c, c.type === "video" ? "spk" : "ear");   // C92
         if (!c.native) audioRoutes().then(function (rt) {   // C15: المكالمة الصوتيّة تبدأ على سمّاعة الأذن كالهاتف، والفيديو على المكبّر
           if (!rt || c.done || cur !== c) return;
@@ -842,6 +867,7 @@
     }
     if (v.state === "declined") finish(c, "declined", { remote: true });
     else if (v.state === "busy") finish(c, "busy", { remote: true });
+    else if (v.state === "ended" && softEnded(c, v)) return;
     else if (v.state === "ended" || v.state === "missed") finish(c, "remote", { remote: true });
   }
 
@@ -899,6 +925,7 @@
         .then(function (a) { return c.ref.update({ reanswer: { type: a.type, sdp: a.sdp, n: n } }); })
         .catch(function (e) { log("reoffer", e && e.message); });
     }
+    if (v.state === "ended" && softEnded(c, v)) return;
     if (v.state === "ended" || v.state === "missed") finish(c, c.connectedAt ? "remote" : "missed", { remote: true });
   }
   function accept(audioOnly) {
@@ -994,7 +1021,7 @@
     // أخبر الطرف الآخر
     if (c.ref && c.live && !opts.remote) {
       var st = reason === "noanswer" ? "missed" : "ended";
-      c.ref.update({ state: st }).catch(function () {});
+      c.ref.update({ state: st, endBy: c.role }).catch(function () {});   // C99: إنهاءٌ حقيقيّ
     }
     if (c.ref && c.live) {
       try { c.ref.onDisconnect().cancel(); } catch (e) {}

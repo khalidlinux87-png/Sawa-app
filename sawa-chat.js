@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c91";
+  var VERSION = "c99";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1456,7 +1456,19 @@
     });
   }
   function mapsUrl(lat, lng) { return "https://www.google.com/maps/search/?api=1&query=" + lat + "," + lng; }
+  // C99: نسخة الملفّ المختار في الذاكرة فوراً — ملفّات منتقي الصور في أندرويد تُقرأ من مصدرٍ قد تنتهي صلاحيّته قبل اكتمال
+  //      الرفع (فيفشل أو يظهر عند المرسل مكسوراً)، والنوع يُستنتج من الامتداد إن جاء فارغاً
+  var EXT_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", heic: "image/heic", heif: "image/heif", mp4: "video/mp4", "3gp": "video/3gpp", mov: "video/quicktime", webm: "video/webm", mkv: "video/x-matroska", pdf: "application/pdf" };
+  function mimeOf(f) { if (f && f.type) return f.type; var m = /\.([a-z0-9]+)$/i.exec((f && f.name) || ""); return (m && EXT_MIME[m[1].toLowerCase()]) || ""; }
   function sendMedia(cid, opts) {
+    if (opts && opts.blob && typeof File !== "undefined" && opts.blob instanceof File && !opts._copied && opts.blob.arrayBuffer) {
+      var f0 = opts.blob, o2 = Object.assign({}, opts, { _copied: true });
+      if (!isCloud(cid) || !state.uid) return null;
+      var tmpId = newMsgId();
+      f0.arrayBuffer().then(function (buf) { o2.blob = new Blob([buf], { type: mimeOf(f0) }); o2.name = o2.name || f0.name; sendMedia(cid, o2); },
+        function () { toast(L("تعذّر قراءة الملفّ — اختره مرّةً أخرى", "Couldn't read the file — pick it again")); });
+      return tmpId;
+    }
     if (!isCloud(cid) || !state.uid) return null;
     var secret = e2eOn(chats[cid]);
     if (secret && e2eState(chats[cid]) !== "ready") { toast(e2eUi(chats[cid]).title || ""); return null; }   // C23
@@ -1533,15 +1545,23 @@
   }
   // ---------- التنزيل والتخزين المحلّيّ (IndexedDB) ----------
   var idbP = null;
+  // C99: لا ننتظر إلى الأبد — مخزن الهاتف (IndexedDB) قد يعلق، وقراءة Firestore على شبكةٍ ضعيفة قد لا تعود؛
+  //      فكانت الصورة تبقى «تُحمَّل» بلا نهاية ولا زرّ إعادة. الآن مهلة ثمّ «تعذّر» (مع إعادةٍ تلقائيّة وزرّ).
+  function withTimeout(p, ms, fallback, err) {
+    return new Promise(function (res, rej) {
+      var done = false, t = setTimeout(function () { if (done) return; done = true; if (err) rej(new Error(err)); else res(fallback); }, ms);
+      p.then(function (v) { if (done) return; done = true; clearTimeout(t); res(v); }, function (e) { if (done) return; done = true; clearTimeout(t); rej(e); });
+    });
+  }
   function idb() {
     if (idbP) return idbP;
-    idbP = new Promise(function (res) {
+    idbP = withTimeout(new Promise(function (res) {
       try {
         var r = indexedDB.open("sawa-media", 1);
         r.onupgradeneeded = function () { r.result.createObjectStore("m"); };
-        r.onsuccess = function () { res(r.result); }; r.onerror = function () { res(null); };
+        r.onsuccess = function () { res(r.result); }; r.onerror = function () { res(null); }; r.onblocked = function () { res(null); };
       } catch (e) { res(null); }
-    });
+    }), 4000, null);
     return idbP;
   }
   function idbGet(k) { return idb().then(function (db_) { if (!db_) return null; return new Promise(function (res) { try { var q = db_.transaction("m").objectStore("m").get(k); q.onsuccess = function () { res(q.result || null); }; q.onerror = function () { res(null); }; } catch (e) { res(null); } }); }); }
@@ -1563,9 +1583,9 @@
     var mk2 = mediaKeys[cid + "|" + mid], sec = e2eOn(chats[cid]) || /^sdm_/.test(String(cid));
     if (sec && !mk2) return Promise.resolve(null);   // C23: مفتاح الوسيط داخل رسالته المشفّرة — بعد فكّها
     mediaLoading[mid] = true;
-    return idbGet(mid).then(function (b) {
+    return withTimeout(idbGet(mid), 4000, null).then(function (b) {
       var tmp = !!((chats[cid] || {}).disappear);   // C14: لا نحفظ وسائط المحادثات المؤقّتة على الجهاز
-      return b || fetchMedia(cid, mid).then(function (blob) { return sec ? e2e.decFile(blob, mk2.fk, mk2.fiv, mk2.mime) : blob; })
+      return b || withTimeout(fetchMedia(cid, mid), 60000, null, "timeout").then(function (blob) { return sec ? e2e.decFile(blob, mk2.fk, mk2.fiv, mk2.mime) : blob; })
         .then(function (blob) { if (!noCache && !tmp) idbPut(mid, blob); return blob; });
     }).then(function (blob) {
       mediaUrls[mid] = URL.createObjectURL(blob); delete mediaLoading[mid]; publishMessages(cid); return mediaUrls[mid];
@@ -1573,7 +1593,7 @@
       delete mediaLoading[mid]; mediaFailed[mid] = (e && e.message) || "x"; publishMessages(cid);
       // C18: تعثّر التنزيل (شبكة ضعيفة) ⇒ إعادة تلقائيّة بعد ٥ ثم ٢٠ ثم ٦٠ ثانية — كان يبقى «لم يصل» حتّى إعادة فتح التطبيق
       var n = (mediaTries[mid] = (mediaTries[mid] || 0) + 1);
-      if (!/gone/.test(mediaFailed[mid]) && n <= 3) setTimeout(function () { if (mediaFailed[mid] && !mediaUrls[mid]) { delete mediaFailed[mid]; ensureMedia(cid, mid, noCache); } }, [5000, 20000, 60000][n - 1]);
+      if (!/gone/.test(mediaFailed[mid]) && n <= 5) setTimeout(function () { if (mediaFailed[mid] && !mediaUrls[mid]) { delete mediaFailed[mid]; ensureMedia(cid, mid, noCache); } }, [5000, 15000, 45000, 120000, 300000][n - 1]);
       return null;
     });
   }
@@ -2047,6 +2067,7 @@
       o.viewOnce = !!ex.viewOnce; o.viewedOnce = !!ex.viewOnce && (mine || viewedByMe || !!m.gone);
       // الفيديو لا يُعرض بصورةٍ مصغّرة داخل <video> — يبقى «غير متاح» حتّى يكتمل تنزيله
       o.fileUrl = o.viewedOnce ? null : (url || (m.type === "image" ? ex.thumb || null : null)); o.thumb = ex.thumb || null; o.mediaLoading = !url && !mediaFailed[mid];
+      o.mediaFailed = !url && !!mediaFailed[mid];   // C99: الصورة/الفيديو أيضاً «اضغط لإعادة التنزيل» (كانت تبقى ضبابيّة)
       o.text = ex.name || ""; o.w = ex.w || null; o.h = ex.h || null; o.durationSec = ex.duration || null;
     } else if (m.type === "voice") {
       o.audioUrl = url; o.duration = typeof ex.duration === "number" ? (Math.floor(ex.duration / 60) + ":" + String(ex.duration % 60).padStart(2, "0")) : (ex.duration || "0:00");
