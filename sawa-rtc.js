@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c92";
+  var VERSION = "c93";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -441,7 +441,7 @@
     ui.rv.style.display = vid ? "block" : "none";
     ui.mid.style.visibility = vid && c.state === "connected" ? "hidden" : "visible";
     ui.topName.style.opacity = vid ? "1" : "0";
-    if (vid && c.state === "connected") ui.topName.textContent = (c.name || "") + " · " + statusText(c) + (c.route ? " · " + (c.route === "relay" ? L("عبر وسيط", "relay") : L("مباشر", "direct")) : "") + (c.q != null && c.q <= 1 ? " · " + (c.q === 0 ? L("شبكة سيّئة", "bad network") : L("شبكة ضعيفة", "weak network")) : "");
+    if (vid && c.state === "connected") ui.topName.textContent = (c.name || "") + " · " + statusText(c) + (c.route ? " · " + callNetText(c) : "") + (c.q != null && c.q <= 1 ? " · " + (c.q === 0 ? L("شبكة سيّئة", "bad network") : L("شبكة ضعيفة", "weak network")) : "");   // C93: والتأخير في الفيديو أيضاً
     if (ui.min) paintPill();
   }
   function paint(c) {
@@ -588,9 +588,15 @@
       if (c === cur) paintStatus(c);
     }).catch(function () {});
   }
+  // C93: أقرب مركز Cloudflare لشبكة هذا الهاتف (الوسيط يسلك الطريق نفسه غالباً) — JED/CAI/FRA… يكشف بُعد المسار
+  var cfColo = null, cfColoAt = 0;
+  function loadColo() {
+    if (cfColo || Date.now() - cfColoAt < 60000) return; cfColoAt = Date.now();
+    try { fetch(global.location.origin + "/cdn-cgi/trace", { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : ""; }).then(function (t) { var m = /colo=([A-Z]{3})/.exec(t || ""); if (m) cfColo = m[1]; }).catch(function () {}); } catch (e) {}
+  }
   function callNetText(c) {
     var lag = Math.round((c.rtt || 0) / 2 + (c.jb || 0));
-    return (c.route === "relay" ? L("عبر وسيط", "relay") : c.route ? L("مباشر", "direct") : "") + (c.proto ? "/" + c.proto : "") +
+    return (c.route === "relay" ? L("عبر وسيط", "relay") : c.route ? L("مباشر", "direct") : "") + (c.proto ? "/" + c.proto : "") + (cfColo ? " " + cfColo : "") +
       (c.rtt != null ? " · ⏱ " + L("تأخير ", "delay ") + lag + L(" مللي ث", " ms") : "") + (c.loss > 0.03 ? " · " + L("فقد ", "loss ") + Math.round(c.loss * 100) + "%" : "");
   }
   function routeInfo(c) {
@@ -622,7 +628,7 @@
           c.routes = rt; c.out = "spk";
           if (c.type !== "video") setRoute(c, "ear", true); else paint(c);
         }); }
-      setState(c, "connected"); setTimeout(function () { routeInfo(c); }, 800);
+      setState(c, "connected"); setTimeout(function () { routeInfo(c); }, 800); loadColo();
     } else if (s === "disconnected" || s === "failed") {
       if (!c.connectedAt) { if (s === "failed") finish(c, "failed"); return; }
       setState(c, "reconnecting");
