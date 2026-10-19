@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c94";
+  var VERSION = "c95";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -163,6 +163,68 @@
     for (var i = 0; i < iceRelays.length; i++) if ((iceRelays[i].iceServers || []).some(function (x) { return [].concat(x.urls || []).some(function (v) { return String(v).replace(/^turns?:/, "").split(/[:?]/)[0] === h; }); })) return iceRelays[i];
     return null;
   }
+
+  // ---------- C95: محرّك المكالمات الصوتيّة الأصليّ في تطبيق أندرويد ----------
+  // مخزن الصوت في WebView يتضخّم إلى ١٫٥–٢ ثانية على شبكات الجوّال المتقلّبة ولا سقف له من JS. التطبيق الأصليّ (NativeRtc)
+  // يشغّل WebRTC بنفسه بسقف نصف ثانية وتفريغٍ سريع ومُلغي صدى العتاد. الإشارات تبقى هنا كما هي: NativePC بديلٌ لـRTCPeerConnection.
+  // الصوتيّة الثنائيّة فقط (الفيديو والجماعيّة والغرف على WebView). فشل المحرّك مرّةً ⇒ نعود إلى WebView يوماً كاملاً.
+  var NRTC = { seq: 0, cbs: {}, pcs: {} };
+  global.__sawaRtcCb = function (k, ok, v) { var f = NRTC.cbs[k]; if (!f) return; delete NRTC.cbs[k]; f(ok, v); };
+  global.__sawaRtcEv = function (id, kind, v) { var p = NRTC.pcs[id]; if (p) p._ev(kind, v); };
+  function nCall(fn) {
+    return new Promise(function (res, rej) {
+      var k = "n" + (++NRTC.seq);
+      var t = setTimeout(function () { if (NRTC.cbs[k]) { delete NRTC.cbs[k]; rej(new Error("native timeout")); } }, 15000);
+      NRTC.cbs[k] = function (ok, v) { clearTimeout(t); if (ok) res(v); else rej(new Error(String(v))); };
+      try { fn(k); } catch (e) { clearTimeout(t); delete NRTC.cbs[k]; rej(e); }
+    });
+  }
+  function nativeAudioOk(type) {
+    try {
+      var nb = NB();
+      if (type === "video" || !nb || !nb.rtcNew || !nb.rtcMicOk || !nb.rtcMicOk()) return false;
+      if (lsGet("sawa-nrtc") === "0") return false;
+      return !(Date.now() - Number(lsGet("sawa-nrtc-fail") || 0) < 86400000);
+    } catch (e) { return false; }
+  }
+  function nativeFail(e) { log("native rtc failed", e && e.message); lsSet("sawa-nrtc-fail", String(Date.now())); }
+  function nativeLocal() {
+    var t = { kind: "audio", id: "native-mic", readyState: "live", _en: true, stop: function () { t.readyState = "ended"; }, getSettings: function () { return { echoCancellation: "native", noiseSuppression: "native", autoGainControl: "native" }; } };
+    Object.defineProperty(t, "enabled", { get: function () { return t._en; }, set: function (v) { t._en = !!v; try { NB().rtcMute(!v); } catch (e) {} } });
+    return { native: true, getAudioTracks: function () { return [t]; }, getVideoTracks: function () { return []; }, getTracks: function () { return [t]; }, addTrack: function () {}, removeTrack: function () {} };
+  }
+  function NativePC(ice) {
+    var self = this;
+    this.id = "p" + Date.now().toString(36) + rid(5); this.native = true; this.closed = false;
+    this.connectionState = "new"; this.iceConnectionState = "new";
+    NRTC.pcs[this.id] = this;
+    this.ready = nCall(function (k) { NB().rtcNew(self.id, JSON.stringify(ice || []), k); });
+    this.ready.catch(nativeFail);
+  }
+  NativePC.prototype._ev = function (kind, v) {
+    if (this.closed) return;
+    if (kind === "cand") { if (this.onicecandidate) this.onicecandidate({ candidate: v ? { candidate: v.candidate, sdpMid: v.sdpMid, sdpMLineIndex: v.sdpMLineIndex } : null }); }
+    else if (kind === "conn") { this.connectionState = v; if (this.onconnectionstatechange) this.onconnectionstatechange(); }
+    else if (kind === "ice") { this.iceConnectionState = v; if (this.oniceconnectionstatechange) this.oniceconnectionstatechange(); }
+  };
+  NativePC.prototype._q = function (fn) { var self = this; return this.ready.then(function () { if (self.closed) throw new Error("closed"); return nCall(fn); }); };
+  NativePC.prototype.addTrack = function () { var id = this.id, self = this; this.ready.then(function () { if (!self.closed) NB().rtcAddAudio(id); }, function () {}); return {}; };
+  NativePC.prototype.createOffer = function (o) { var id = this.id, r = !!(o && o.iceRestart); return this._q(function (k) { NB().rtcCreate(id, true, r, k); }); };
+  NativePC.prototype.createAnswer = function () { var id = this.id; return this._q(function (k) { NB().rtcCreate(id, false, false, k); }); };
+  NativePC.prototype.setLocalDescription = function (d) { var id = this.id; return this._q(function (k) { NB().rtcSet(id, true, d.type, d.sdp, k); }); };
+  NativePC.prototype.setRemoteDescription = function (d) { var id = this.id; return this._q(function (k) { NB().rtcSet(id, false, d.type, d.sdp, k); }); };
+  NativePC.prototype.addIceCandidate = function (j) { var id = this.id, self = this; return this.ready.then(function () { if (!self.closed && j && j.candidate) NB().rtcIce(id, JSON.stringify(j)); }); };
+  NativePC.prototype.getStats = function () {
+    var id = this.id;
+    return this._q(function (k) { NB().rtcStats(id, k); }).then(function (o) { var m = new Map(); for (var key in (o || {})) m.set(key, o[key]); return m; });
+  };
+  NativePC.prototype.getSenders = function () { return []; };
+  NativePC.prototype.setConfiguration = function () {};
+  NativePC.prototype.close = function () {
+    if (this.closed) return; this.closed = true; this.connectionState = "closed";
+    var id = this.id; delete NRTC.pcs[id];
+    this.ready.then(function () { try { NB().rtcClose(id); } catch (e) {} }, function () {});
+  };
 
   // ---------- C52: ضبط الصوت في SDP ----------
   // useinbandfec=1: المستقبِل يرمّم الحزم الضائعة من اللاحقة · stereo=0: قناةٌ واحدة تكفي الكلام · maxaveragebitrate=32000: صوتٌ واضح بلا إسراف
@@ -570,7 +632,7 @@
   function clearTimers(c) { for (var k in c.timers) { clearTimeout(c.timers[k]); } c.timers = {}; if (c.tick) clearInterval(c.tick); c.tick = null; }
 
   function makePc(c, ice) {
-    var pc = new global.RTCPeerConnection({ iceServers: ice });
+    var pc = c.native ? new NativePC(ice) : new global.RTCPeerConnection({ iceServers: ice });   // C95
     var side = c.role === "caller" ? "ic_caller" : "ic_callee";
     // C66: المرشّحات دفعةً كلّ ١٢٠ ms بدل كتابةٍ لكلّ مرشّح
     c.iceBuf = [];
@@ -665,7 +727,7 @@
     var net = Math.round((c.rtt || 0) / 2), jb = Math.round(c.jb || 0), lag = net + jb;
     var cf = !c.relayId || c.relayId === "cf";
     return (c.route === "relay" ? L("عبر وسيط", "relay") + (c.relayLbl ? " " + c.relayLbl : "") : c.route ? L("مباشر", "direct") : "") + (c.proto ? "/" + c.proto : "") + (cfColo && cf ? " " + cfColo : "") +
-      (c.rtt != null ? " · ⏱ " + lag + L(" مللي ث", " ms") + " (" + L("شبكة ", "net ") + net + " + " + L("مخزن ", "buffer ") + jb + ")" : "") + (c.loss > 0.03 ? " · " + L("فقد ", "loss ") + Math.round(c.loss * 100) + "%" : "");
+      (c.rtt != null ? " · ⏱ " + lag + L(" مللي ث", " ms") + " (" + L("شبكة ", "net ") + net + " + " + L("مخزن ", "buffer ") + jb + ")" : "") + (c.loss > 0.03 ? " · " + L("فقد ", "loss ") + Math.round(c.loss * 100) + "%" : "") + (c.native ? " · ⚡" : "");
   }
   function routeInfo(c) {
     try {
@@ -692,7 +754,7 @@
       clearTimeout(c.timers.conn); clearTimeout(c.timers.lost); delete c.timers.lost;
       if (!c.connectedAt) { c.connectedAt = Date.now(); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); }); if (c.out === "ear" && NB() && NB().setProximity) setTimeout(earArm, 0);
         if (NB() && NB().setSpeaker) nativeRoute(c, c.type === "video" ? "spk" : "ear");   // C92
-        audioRoutes().then(function (rt) {   // C15: المكالمة الصوتيّة تبدأ على سمّاعة الأذن كالهاتف، والفيديو على المكبّر
+        if (!c.native) audioRoutes().then(function (rt) {   // C15: المكالمة الصوتيّة تبدأ على سمّاعة الأذن كالهاتف، والفيديو على المكبّر
           if (!rt || c.done || cur !== c) return;
           c.routes = rt; c.out = "spk";
           if (c.type !== "video") setRoute(c, "ear", true); else paint(c);
@@ -724,7 +786,8 @@
     var c = cur = newCall({ id: "k" + Date.now().toString(36) + rid(7), role: "caller", peer: peer, name: name || nameOf(peer), type: type, state: "starting" });
     seen[c.id] = 1;
     show(c);
-    Promise.all([getMedia(type), getIce()]).then(function (r) {
+    c.native = nativeAudioOk(type);   // C95
+    Promise.all([c.native ? Promise.resolve(nativeLocal()) : getMedia(type), getIce()]).then(function (r) {
       if (c.done) { stopStream(r[0]); return; }
       c.local = r[0]; attachLocal(c); paint(c);
       c.pc = makePc(c, r[1]); addTracks(c);
@@ -843,7 +906,8 @@
     var mediaType = audioOnly ? "audio" : c.type;
     // أوّل جهازٍ يردّ يفوز (لو فتحت سوا على هاتفين)
     // C66: الميكروفون وخوادم ICE يُجهَّزان بالتوازي مع حجز الردّ (كانا بعده — ثانيةٌ أو أكثر من «جارٍ الربط…» بلا داعٍ)
-    var mediaP = Promise.all([getMedia(mediaType), getIce(2500)]);
+    c.native = c.type === "audio" && nativeAudioOk("audio");   // C95
+    var mediaP = Promise.all([c.native ? Promise.resolve(nativeLocal()) : getMedia(mediaType), getIce(2500)]);
     mediaP.catch(function () {});
     c.ref.child("acc").transaction(function (v) { return v ? undefined : devId; }).then(function (r) {
       if (c.done) { mediaP.then(function (res) { stopStream(res[0]); }, function () {}); return; }
@@ -3469,6 +3533,7 @@
     _rm: function () { return rm; }, _r: { prejoin: roomPrejoin, pin: function (u) { if (rm) { rm.pin = u; rm.focusU = null; rLayout(rm); } }, viewToggle: function () { rViewToggle(rm); }, tileMenu: function (u) { if (rm) rTileMenu(rm, u); }, layout: function () { if (rm) rLayout(rm); }, sendFile: function (f) { rSendFile(rm, f); }, fileGet: function (f) { return rFileGet(rm, f); }, toggleMic: rToggleMic, toggleCam: rToggleCam, hand: rToggleHand, low: rToggleLow, chat: rSendChat, react: rReact, admit: rAdmit, remove: rRemove,
       makeHost: rMakeHost, ctl: rCtl, muteAll: rMuteAll, lowerAll: rLowerAll, meta: rSetMeta, endAll: rEndAll, summary: rSummaryText, panel: rOpenPanel, settings: rSettings, max: rMax, rejoin: function () { if (rm) rRejoin(rm); }, bigToggle: rBigToggle, sfuRestart: function () { if (rm) sfuRestart(rm, 100); }, adapt: function (q) { if (rm) rAdapt(rm, q); }, stats: function () { if (rm) rStatsTick(rm); } },
     _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming,
+    _native: { ok: nativeAudioOk, PC: NativePC },
     _relay: { probe: probeRelays, rank: relayRank, ice: relayIce, ms: function () { return relayMs; }, list: function () { return iceRelays; }, ofUrl: relayOfUrl, text: callNetText }
   };
   try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") schedRefresh(false); }); } catch (e) {}
