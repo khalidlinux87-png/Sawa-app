@@ -993,6 +993,20 @@ function LocationBubble({ m, mine }) {
             // C37: رسالة موقع ⇒ منزل قريبٍ في صلة الرحم (يلتقطها AppInner)
             React.createElement("button", { onClick: (e) => { e.stopPropagation(); try { window.dispatchEvent(new CustomEvent("sawa-save-home", { detail: { lat, lng, label: m.text || "" } })); } catch (x) { } }, className: "text-[11px] font-bold underline", style: { color: mine ? "#ffffffdd" : colors.textMuted } }, tl("احفظه منزلاً لقريب", "Save as a relative's home")))));
 }
+// C98: مشاركة رسالة خارج سوا (واتساب، بريد…) — النصّ/الرابط بمشاركة النظام، والصورة/الفيديو/الملفّ بملفّه
+function msgFirstUrl(text) { const mm = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+\.[^\s<>"']+)/i.exec(String(text || "")); return mm ? mm[0].replace(/[.,،؛)\]]+$/, "") : null; }
+function shareMessageOut(m, toast) {
+    if (!m) return;
+    const SC = window.SawaChat;
+    if (["image", "video", "file", "voice"].includes(m.type)) {
+        if (m.cloudMid && SC && SC.openFile) { SC.openFile(m, "share"); return; }
+        if (m.fileUrl && SC && SC.saveMediaUrl) { SC.saveMediaUrl(m.fileUrl, m.text || "file", "share", m.mime || null); return; }
+    }
+    const text = String(m.text || "");
+    if (!text) return;
+    try { if (navigator.share) { navigator.share({ text }).catch(() => {}); return; } } catch (e) {}
+    copyText(text); if (toast) toast(tl("نُسخ — الصقه حيث تريد", "Copied — paste it anywhere"), "success");
+}
 function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSendSticker, onSendFile, onSendVoice, onEditMessage, onMarkViewedOnce, onTogglePin, onToggleStar, onOpenInfo, disappearing, setDisappearing, background, onBack, myUserId, isBlocked, allConversations, allGroups, isTyping, onLogCall, isOnline, callSettings, groupPersons = {}, onDeleteMessage, onOpenFamilyProfile, draft = "", onSaveDraft, unreadCount = 0, onTyping, contactsForForward, }) {
     var _a, _b;
     const { colors } = useTheme();
@@ -1174,9 +1188,9 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                                 React.createElement("span", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, t("adght_llard_tkhtfy_badha"))))) : m.type === "image" ? (m.fileUrl ? (React.createElement("button", { onClick: () => setViewingImage(m.fileUrl), className: "block -m-1" }, m.fileUrl ? React.createElement("img", { src: m.fileUrl, alt: m.text, className: "rounded-xl max-h-56 w-full object-cover", style: { minWidth: 160 } }) : React.createElement(MediaUnavailable, { label: t("swra") }))) : React.createElement(MediaUnavailable, { label: t("swra") })) : m.type === "video" ? (m.fileUrl
                                 ? React.createElement("video", { src: m.fileUrl, controls: true, className: "rounded-xl max-h-56 w-full", style: { minWidth: 200 } })
                                 : React.createElement(MediaUnavailable, { label: t("fydyw") })) : m.type === "file" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2`, onClick: () => { if (m.cloudMid && window.SawaChat) window.SawaChat.openFile(m); }, style: { cursor: m.cloudMid ? "pointer" : "default" } },
-                                React.createElement(FileIconLucide, { size: 18, color: mine ? "#fff" : colors.primary }),
-                                React.createElement("div", null,
-                                    React.createElement("div", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.text } }, m.text),
+                                React.createElement(FileIconLucide, { size: 18, color: mine ? "#fff" : colors.primary, style: { flexShrink: 0 } }),
+                                React.createElement("div", { className: "min-w-0", style: { maxWidth: "100%" } },   // C98: اسمٌ طويل يلتفّ داخل الفقاعة
+                                    React.createElement("div", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.text, overflowWrap: "anywhere", wordBreak: "break-word" } }, m.text),
                                     React.createElement("div", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } },
                                         (m.fileSize / 1024).toFixed(0),
                                         t("ch_kylwbayt"))))) : m.type === "location" ? React.createElement(LocationBubble, { m, mine }) : m.type === "voice" ? (React.createElement(VoiceMessageBubble, { loading: !!m.mediaLoading, failed: !!m.mediaFailed, cid: m.cloudCid || null, mid: m.cloudMid || null, url: m.audioUrl, duration: m.duration, mine: mine, transcript: m.transcript })) : editingMessageId === m.id ? (React.createElement("div", { className: "flex flex-col gap-1.5" },
@@ -1236,18 +1250,22 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                         reader.readAsDataURL(file);
                     });
                 }, className: "hidden" }),
-            React.createElement("input", { ref: fileInputRef, type: "file", onChange: (e) => {
-                    var _a;
-                    const file = (_a = e.target.files) === null || _a === void 0 ? void 0 : _a[0];
+            React.createElement("input", { ref: fileInputRef, type: "file", multiple: true, onChange: (e) => {
+                    // C98: عدّة ملفّات دفعةً واحدة · الصورة/الفيديو المختار من «ملف» يُرسَل صورةً/فيديو (كان يظهر اسماً بلا معاينة)
+                    const files = Array.from(e.target.files || []).slice(0, 20);
                     e.target.value = "";
                     setShowAttachMenu(false);
-                    if (!file)
-                        return;
-                    if (file.size > MAX_FILE_SIZE_BYTES) {
-                        showToast(`تعذّر إرسال ${file.name} (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL} في المعاينة`, "error");
-                        return;
-                    }
-                    onSendFile(file.name, file.size, null, "file", false, file);
+                    files.forEach((file, i) => {
+                        if (file.size > MAX_FILE_SIZE_BYTES) {
+                            showToast(`تعذّر إرسال ${file.name} (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL} في المعاينة`, "error");
+                            return;
+                        }
+                        const kind = /^image\/(jpeg|png|webp|gif|heic|heif)$/i.test(file.type) ? "image" : /^video\//i.test(file.type) ? "video" : "file";
+                        if (kind === "file" || conversation.cloud) { setTimeout(() => onSendFile(file.name, file.size, null, kind, false, file), i * 150); return; }
+                        const reader = new FileReader();
+                        reader.onload = (ev) => onSendFile(file.name, file.size, ev.target.result, kind, false, file);
+                        reader.readAsDataURL(file);
+                    });
                 }, className: "hidden" }),
             showAttachMenu && (React.createElement(React.Fragment, null,
                 React.createElement("div", { onClick: () => setShowAttachMenu(false), className: "sawa-fade-in", style: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", zIndex: 30 } }),
@@ -1303,6 +1321,8 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                             { icon: Smile, label: t("tfaal"), act: () => setShowReactions((v) => !v), toggle: true },
                             { icon: MessageCircle, label: t("rd"), act: () => setReplyTo({ id: msgMenu.id, text: msgMenu.text }) },
                             { icon: Share2, label: t("twjyh_2"), act: () => setForwardingText({ id: msgMenu.id, text: msgMenu.text, cid: conversation.id }) },
+                            ...(msgMenu.type !== "sticker" ? [{ icon: ArrowUpRight, label: tl("مشاركة خارج سوا", "Share outside Sawa"), act: () => shareMessageOut(messages.find((x) => x.id === msgMenu.id), showToast) }] : []),
+                            ...(msgFirstUrl(msgMenu.text) && (!msgMenu.type || msgMenu.type === "text") ? [{ icon: LinkIcon, label: tl("نسخ الرابط", "Copy link"), act: () => { copyText(msgFirstUrl(msgMenu.text)); showToast(t("gc_tm_alnskh"), "success"); } }] : []),
                             ...(msgMenu.text && msgMenu.type !== "sticker" && msgMenu.type !== "voice" && msgMenu.type !== "image" && msgMenu.type !== "video" ? [{ icon: Copy, label: t("nskh"), act: () => { copyText(msgMenu.text || ""); showToast(t("gc_tm_alnskh"), "success"); } }] : []),
                             { icon: Pin, label: msgMenu.pinned ? t("ch_ilgha_altthbyt") : t("tthbyt"), act: () => onTogglePin(msgMenu.id) },
                             { icon: Star, label: msgMenu.starred ? t("ch_ilgha_alhfz") : t("hfz_alrsala"), act: () => onToggleStar(msgMenu.id, msgMenu.text) },
@@ -1814,9 +1834,9 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                     React.createElement("button", { onClick: () => { if (sender && sender.uid && window.SawaChat && window.SawaChat.renameContact) window.SawaChat.renameContact(sender.uid); }, className: "text-[11px] font-bold", style: { color: senderColor((sender && sender.name) || t("gc_swal")), background: "none", border: 0, padding: 0 } }, sender === null || sender === void 0 ? void 0 : sender.name, sender && sender.unnamed ? React.createElement("span", { style: { marginInlineStart: 6, fontSize: 10, color: "#B45309", fontWeight: 800 } }, tl("＋ اسم", "+ name")) : null)),
                 m.replyToText && React.createElement("div", { className: "max-w-[78%] text-[10px] px-2 py-1 mb-0.5 rounded-lg border-r-2 truncate", style: { backgroundColor: colors.card, borderColor: colors.accent, color: colors.textMuted } }, "↩ " + m.replyToText),
                 React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["image", "video", "sticker"].includes(m.type) ? "" : "px-3 py-2"}`, style: { backgroundColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : mine ? colors.primary : colors.card, borderColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : colors.border, cursor: "pointer" }, onContextMenu: (e) => { e.preventDefault(); setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "" }); }, onTouchStart: (e) => { const t0 = Date.now(); const el = e.currentTarget; const onEnd = () => { if (Date.now() - t0 > 500) { setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "" }); } el.removeEventListener("touchend", onEnd); }; el.addEventListener("touchend", onEnd); } }, m.type === "image" ? (React.createElement("button", { onClick: () => setViewingImage(m.fileUrl), className: "block -m-1" }, m.fileUrl ? React.createElement("img", { src: m.fileUrl, alt: m.text, className: "rounded-xl max-h-56 w-full object-cover", style: { minWidth: 160 } }) : React.createElement(MediaUnavailable, { label: t("swra") }))) : m.type === "sticker" ? (React.createElement("span", { className: "text-4xl" }, m.text)) : m.type === "video" ? (React.createElement("video", { src: m.fileUrl, controls: true, className: "rounded-xl max-h-56 w-full", style: { minWidth: 200 } })) : m.type === "file" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2`, onClick: () => { if (m.cloudMid && window.SawaChat) window.SawaChat.openFile(m); }, style: { cursor: m.cloudMid ? "pointer" : "default" } },
-                    React.createElement(FileIconLucide, { size: 18, color: mine ? "#fff" : colors.primary }),
-                    React.createElement("div", null,
-                        React.createElement("div", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.text } }, m.text),
+                    React.createElement(FileIconLucide, { size: 18, color: mine ? "#fff" : colors.primary, style: { flexShrink: 0 } }),
+                    React.createElement("div", { className: "min-w-0", style: { maxWidth: "100%" } },   // C98: اسمٌ طويل يلتفّ داخل الفقاعة
+                        React.createElement("div", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.text, overflowWrap: "anywhere", wordBreak: "break-word" } }, m.text),
                         React.createElement("div", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } },
                             (m.fileSize / 1024).toFixed(0),
                             t("gc_kylwbayt"))))) : m.type === "location" ? React.createElement(LocationBubble, { m, mine }) : m.type === "voice" ? (React.createElement(VoiceMessageBubble, { loading: !!m.mediaLoading, failed: !!m.mediaFailed, cid: m.cloudCid || null, mid: m.cloudMid || null, url: m.audioUrl, duration: m.duration, mine: mine, transcript: m.transcript })) : editingMessageId === m.id ? (React.createElement("div", { className: "flex flex-col gap-1.5" },
@@ -1977,18 +1997,22 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                         reader.readAsDataURL(file);
                     });
                 }, className: "hidden" }),
-            React.createElement("input", { ref: fileInputRef, type: "file", onChange: (e) => {
-                    var _a;
-                    const file = (_a = e.target.files) === null || _a === void 0 ? void 0 : _a[0];
+            React.createElement("input", { ref: fileInputRef, type: "file", multiple: true, onChange: (e) => {
+                    // C98: عدّة ملفّات · الصورة/الفيديو من «ملف» يُرسَل صورةً/فيديو
+                    const files = Array.from(e.target.files || []).slice(0, 20);
                     e.target.value = "";
                     setShowAttachMenu(false);
-                    if (!file)
-                        return;
-                    if (file.size > MAX_FILE_SIZE_BYTES) {
-                        showToast(`تعذّر إرسال ${file.name} (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL} في المعاينة`, "error");
-                        return;
-                    }
-                    onSendFile(file.name, file.size, null, "file", file);
+                    files.forEach((file, i) => {
+                        if (file.size > MAX_FILE_SIZE_BYTES) {
+                            showToast(`تعذّر إرسال ${file.name} (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL} في المعاينة`, "error");
+                            return;
+                        }
+                        const kind = /^image\/(jpeg|png|webp|gif|heic|heif)$/i.test(file.type) ? "image" : /^video\//i.test(file.type) ? "video" : "file";
+                        if (kind === "file" || group.cloud) { setTimeout(() => onSendFile(file.name, file.size, null, kind, file), i * 150); return; }
+                        const reader = new FileReader();
+                        reader.onload = (ev) => onSendFile(file.name, file.size, ev.target.result, kind, file);
+                        reader.readAsDataURL(file);
+                    });
                 }, className: "hidden" }),
             showAttachMenu && React.createElement("div", { onClick: () => setShowAttachMenu(false), style: { position: "fixed", inset: 0, zIndex: 9 } }),
             showAttachMenu && (React.createElement("div", { className: "absolute bottom-14 right-2 rounded-2xl border shadow-lg overflow-hidden z-10 backdrop-blur-md sawa-pop-in", style: { backgroundColor: colors.card + "ee", borderColor: colors.border } },
@@ -2053,6 +2077,8 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 [
                     { icon: MessageCircle, label: t("rd"), act: () => setGReply({ id: groupMsgMenu.id, text: groupMsgMenu.text || "", senderId: groupMsgMenu.senderId, senderName: groupMsgMenu.senderName }) },
                     { icon: Share2, label: t("twjyh_2"), act: () => setForwardingText({ id: groupMsgMenu.id, text: groupMsgMenu.text, cid: group.id }) },
+                    { icon: ArrowUpRight, label: tl("مشاركة خارج سوا", "Share outside Sawa"), act: () => shareMessageOut(messages.find((x) => x.id === groupMsgMenu.id), showToast) },
+                    ...(msgFirstUrl(groupMsgMenu.text) ? [{ icon: LinkIcon, label: tl("نسخ الرابط", "Copy link"), act: () => { copyText(msgFirstUrl(groupMsgMenu.text)); showToast(t("gc_tm_alnskh"), "success"); } }] : []),
                     { icon: Copy, label: t("nskh"), act: () => { copyText(groupMsgMenu.text || ""); showToast(t("gc_tm_alnskh"), "success"); } },
                 ].concat(groupMsgMenu.mine && groupMsgMenu.text ? [{ icon: Edit2, label: t("tadyl"), act: () => { setEditingMessageId(groupMsgMenu.id); setEditingText(groupMsgMenu.text || ""); } }] : [])
                 .concat(onDeleteMessage ? [{ icon: Trash2, label: t("hdhf"), act: () => setGDel({ id: groupMsgMenu.id, canAll: groupMsgMenu.mine || isAdmin }) }] : [])
