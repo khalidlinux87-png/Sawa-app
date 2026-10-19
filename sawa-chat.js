@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c89";
+  var VERSION = "c90";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -1647,6 +1647,298 @@
   }
   // صورة/فيديو من العارض: حفظ أو مشاركة (رابطه blob: محلّيّ)
   function saveMediaUrl(u, name, action, mime) { if (!u) return Promise.resolve(false); return blobOfUrl(u).then(function (b) { return saveBlob(b, name, action, mime); }); }
+
+  // ==================================================================
+  // C90: القصص (الاستوري) — لجهات اتّصالي · نصّ/صورة/فيديو (≤٣٠ ث) · ٢٤ ساعة · «شاهدها» · الردّ في الخاصّة · الإخفاء عن أشخاص
+  //   Firestore: stories/{u} {name, aud[], hide[], items[]} (يكتبه الخادم) · stories/{u}/media/{mid}+c/{i} (يرفعها صاحبها)
+  // ==================================================================
+  var ST_BG = [["#2F80C8", "#1E3A63"], ["#16a34a", "#065f46"], ["#e11d48", "#7f1d1d"], ["#7c3aed", "#312e81"], ["#f59e0b", "#b45309"], ["#0ea5e9", "#0f766e"], ["#334155", "#0f172a"], ["#db2777", "#6b21a8"]];
+  var stState = { mine: null, others: {}, unsub: [] }, stSeen = lsGet("sawa_story_seen", {}), stUrls = {};
+  function stItemsLive(items) { var now = Date.now(); return (items || []).filter(function (x) { return x && x.id && (x.exp || 0) > now; }).sort(function (a, b) { return a.ts - b.ts; }); }
+  function stEmit() { try { global.dispatchEvent(new CustomEvent("sawa-stories")); } catch (e) {} }
+  function startStories(uid) {
+    stopStories();
+    var d = fsdb(); if (!d || !uid) return;
+    try {
+      stState.unsub.push(d.collection("stories").where("aud", "array-contains", uid).onSnapshot(function (snap) {
+        var o = {}; snap.forEach(function (doc) { var v = doc.data() || {}; if (doc.id !== uid) o[doc.id] = { owner: doc.id, name: v.name || "", items: v.items || [] }; });
+        stState.others = o; stEmit();
+      }, function (e) { log("stories:", e && e.message); }));
+      stState.unsub.push(d.collection("stories").doc(uid).onSnapshot(function (doc) { var v = doc && doc.exists ? doc.data() : null; stState.mine = v; stEmit(); }, function () {}));
+    } catch (e) { log("stories", e && e.message); }
+    // تحديث العدّاد والحلقات حين تنتهي قصّة
+    if (!stState.tick) stState.tick = setInterval(stEmit, 60000);
+  }
+  function stopStories() { stState.unsub.forEach(function (f) { try { f(); } catch (e) {} }); stState.unsub = []; stState.mine = null; stState.others = {}; }
+  function stName(owner, fallback) { var p = state.people.filter(function (x) { return x.uid === owner; })[0]; return p ? displayName(p) : (nickOf(owner) || fallback || L("مستخدم سوا", "Sawa user")); }
+  function stories() {
+    var mineItems = stItemsLive(stState.mine && stState.mine.items);
+    var list = Object.keys(stState.others).map(function (k) {
+      var s = stState.others[k], items = stItemsLive(s.items);
+      if (!items.length) return null;
+      var unseen = items.filter(function (x) { return !stSeen[x.id]; }).length;
+      return { owner: k, name: stName(k, s.name), photo: photoOf(k), items: items, unseen: unseen, last: items[items.length - 1].ts };
+    }).filter(Boolean).sort(function (a, b) { return (b.unseen > 0) - (a.unseen > 0) || b.last - a.last; });
+    return { enabled: !!state.uid, me: { uid: state.uid, name: (state.me && state.me.name) || L("أنا", "Me"), photo: state.uid ? photoOf(state.uid) : null, items: mineItems, aud: stState.mine ? (stState.mine.aud || []).length : null, hide: (stState.mine && stState.mine.hide) || [] }, list: list };
+  }
+  function stUpload(blob) {
+    var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
+    var mid = newMediaId(), meta = d.collection("stories").doc(state.uid).collection("media").doc(mid);
+    return blobToB64(blob).then(function (b64) {
+      var n = Math.max(1, Math.ceil(b64.length / CHUNK));
+      if (n > 33) throw new Error(L("الملفّ كبير — الحدّ ١٦ ميجابايت", "File too large (16 MB)"));
+      return meta.set({ by: state.uid, mime: blob.type || "application/octet-stream", size: blob.size, n: n, ts: Date.now(), done: false }).then(function () {
+        var i = 0, worker = function () { if (i >= n) return Promise.resolve(); var k = i++; return meta.collection("c").doc(String(k)).set({ d: b64.slice(k * CHUNK, (k + 1) * CHUNK) }).then(worker); };
+        return Promise.all([worker(), worker(), worker()]);
+      }).then(function () { return meta.update({ done: true }); }).then(function () { stUrls[mid] = URL.createObjectURL(blob); return mid; });
+    });
+  }
+  function stMedia(owner, it) {
+    if (stUrls[it.mid]) return Promise.resolve(stUrls[it.mid]);
+    return idbGet("st:" + it.mid).then(function (b) {
+      if (b) return b;
+      var d = fsdb(), meta = d.collection("stories").doc(owner).collection("media").doc(it.mid);
+      return meta.collection("c").get().then(function (snap) {
+        var parts = []; snap.forEach(function (doc) { parts.push({ i: Number(doc.id), d: (doc.data() || {}).d || "" }); });
+        parts.sort(function (a, b) { return a.i - b.i; });
+        if (!parts.length || (it.n && parts.length < it.n)) throw new Error("incomplete");
+        var blob = b64ToBlob(parts.map(function (p) { return p.d; }).join(""), it.mime);
+        idbPut("st:" + it.mid, blob); return blob;
+      });
+    }).then(function (blob) { return (stUrls[it.mid] = URL.createObjectURL(blob)); });
+  }
+  function stAgo(ts) { var m = Math.round((Date.now() - ts) / 60000); return m < 1 ? L("الآن", "now") : m < 60 ? L("قبل ", "") + m + L(" د", "m") : L("قبل ", "") + Math.round(m / 60) + L(" س", "h"); }
+  function stOverlay(bg) {
+    var ov = mk("div", "position:fixed;inset:0;z-index:2147483004;background:" + (bg || "#000") + ";display:flex;flex-direction:column;font-family:system-ui;color:#fff;user-select:none;-webkit-user-select:none");
+    ov.dir = isAr() ? "rtl" : "ltr"; document.body.appendChild(ov); return ov;
+  }
+  function stGrad(i) { var c = ST_BG[(i || 0) % ST_BG.length]; return "linear-gradient(160deg," + c[0] + "," + c[1] + ")"; }
+
+  // ---------- إنشاء قصّة ----------
+  function storyComposer(start) {
+    if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return; }
+    var bg = Math.floor(Math.random() * ST_BG.length), mode = start === "media" ? "media" : "text", picked = null;
+    var ov = stOverlay("#000"), close = function () { try { ov.remove(); } catch (e) {} if (picked && picked.url) URL.revokeObjectURL(picked.url); };
+    var top = mk("div", "display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 10px");
+    var x = mk("button", "border:0;background:rgba(255,255,255,.15);color:#fff;width:40px;height:40px;border-radius:50%;font-size:18px", "✕"); x.onclick = close;
+    top.appendChild(x); top.appendChild(mk("div", "flex:1;font:800 17px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis", L("قصّة جديدة", "New story")));
+    var tabs = mk("div", "display:flex;gap:6px;background:rgba(255,255,255,.12);border-radius:14px;padding:4px");
+    var tb = {}; [["text", L("✍️ نصّ", "✍️ Text")], ["media", L("🖼️ صورة/فيديو", "🖼️ Photo/Video")]].forEach(function (t0) {
+      var b = mk("button", "border:0;border-radius:10px;padding:8px 12px;font:800 13.5px system-ui;color:#fff;background:transparent", t0[1]);
+      b.onclick = function () { mode = t0[0]; paint(); if (mode === "media" && !picked) fi.click(); }; tb[t0[0]] = b; tabs.appendChild(b);
+    });
+    top.appendChild(tabs); ov.appendChild(top);
+    var stage = mk("div", "flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;margin:0 10px;border-radius:22px;overflow:hidden"); ov.appendChild(stage);
+    var ta = mk("textarea", "width:88%;min-height:40%;background:transparent;border:0;outline:none;color:#fff;font:800 26px/1.5 system-ui;text-align:center;resize:none");
+    ta.placeholder = L("اكتب قصّتك…", "Type your story…"); ta.maxLength = 700;
+    var fi = mk("input"); fi.type = "file"; fi.accept = "image/*,video/*"; fi.style.display = "none"; ov.appendChild(fi);
+    var cap = mk("input", "width:100%;box-sizing:border-box;border:0;border-radius:14px;padding:12px 14px;font:600 15px system-ui;background:rgba(255,255,255,.14);color:#fff;outline:none");
+    cap.placeholder = L("أضف تعليقاً…", "Add a caption…"); cap.maxLength = 300;
+    var dots = mk("div", "display:flex;gap:10px;justify-content:center;padding:12px 0 4px");
+    ST_BG.forEach(function (c, i) { var dt = mk("button", "width:30px;height:30px;border-radius:50%;border:3px solid " + (i === bg ? "#fff" : "transparent") + ";background:" + stGrad(i)); dt.onclick = function () { bg = i; paint(); }; dots.appendChild(dt); });
+    var bottom = mk("div", "padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;flex-direction:column;gap:10px"); ov.appendChild(bottom);
+    var aud = mk("button", "border:0;background:transparent;color:rgba(255,255,255,.85);font:700 13px system-ui;text-align:" + (isAr() ? "right" : "left"));
+    var st0 = stories().me; aud.textContent = "👥 " + L("يراها: جهات اتّصالك", "Visible to: your contacts") + (st0.hide && st0.hide.length ? L(" عدا " + st0.hide.length, " except " + st0.hide.length) : "") + L(" · تعديل", " · edit");
+    aud.onclick = function () { storyAudienceSheet(); };
+    var post = mk("button", "border:0;border-radius:16px;padding:14px;font:800 16px system-ui;color:#fff;background:#2F80C8", L("نشر القصّة", "Post story"));
+    function paint() {
+      Object.keys(tb).forEach(function (k) { tb[k].style.background = k === mode ? "rgba(255,255,255,.28)" : "transparent"; });
+      stage.innerHTML = ""; bottom.innerHTML = "";
+      if (mode === "text") {
+        stage.style.background = stGrad(bg); stage.appendChild(ta);
+        [].forEach.call(dots.children, function (dt, i) { dt.style.borderColor = i === bg ? "#fff" : "transparent"; });
+        bottom.appendChild(dots); setTimeout(function () { try { ta.focus(); } catch (e) {} }, 50);
+      } else {
+        stage.style.background = "#111";
+        if (picked) {
+          var m = picked.video ? mk("video", "max-width:100%;max-height:100%") : mk("img", "max-width:100%;max-height:100%;object-fit:contain");
+          m.src = picked.url; if (picked.video) { m.controls = true; m.playsInline = true; m.muted = false; }
+          stage.appendChild(m);
+          var ch = mk("button", "position:absolute;top:10px;" + (isAr() ? "left" : "right") + ":10px;border:0;border-radius:12px;padding:7px 12px;background:rgba(0,0,0,.55);color:#fff;font:800 12.5px system-ui", L("تغيير", "Change"));
+          ch.onclick = function () { fi.click(); }; stage.appendChild(ch);
+          bottom.appendChild(cap);
+        } else {
+          var pk = mk("button", "border:2px dashed rgba(255,255,255,.35);border-radius:20px;padding:30px 24px;background:transparent;color:#fff;font:800 15px system-ui", L("📷 اختر صورة أو فيديو (حتّى ٣٠ ثانية)", "📷 Pick a photo or video (≤ 30 s)"));
+          pk.onclick = function () { fi.click(); }; stage.appendChild(pk);
+        }
+      }
+      bottom.appendChild(aud); bottom.appendChild(post);
+    }
+    fi.onchange = function () {
+      var f = fi.files && fi.files[0]; fi.value = ""; if (!f) return;
+      var video = /^video\//.test(f.type);
+      if (f.size > MAX_MEDIA - 64 && !/^image\//.test(f.type)) { toast(L("الحدّ ١٦ ميجابايت", "Limit is 16 MB")); return; }
+      (video ? prepareVideo(f) : prepareImage(f)).then(function (r) {
+        if (video && r.duration && r.duration > 31) { toast(L("الفيديو أطول من ٣٠ ثانية — قصّه أوّلاً", "Video is longer than 30 s — trim it first")); return; }
+        if (picked && picked.url) URL.revokeObjectURL(picked.url);
+        var b = r.blob || f; picked = { blob: b, video: video, url: URL.createObjectURL(b), thumb: r.thumb || null, w: r.w || null, h: r.h || null, dur: r.duration || null };
+        mode = "media"; paint();
+      }).catch(function () { toast(L("تعذّر قراءة الملفّ", "Couldn't read the file")); });
+    };
+    post.onclick = function () {
+      var p0;
+      if (mode === "text") { var tx = ta.value.trim(); if (!tx) { toast(L("اكتب شيئاً أوّلاً", "Write something first")); return; } p0 = Promise.resolve({ t: "text", text: tx, bg: bg }); }
+      else { if (!picked) { fi.click(); return; } post.textContent = L("جارٍ الرفع…", "Uploading…");
+        p0 = stUpload(picked.blob).then(function (mid) { return { t: picked.video ? "video" : "image", mid: mid, text: cap.value.trim(), thumb: picked.thumb, w: picked.w, h: picked.h, dur: picked.dur }; }); }
+      post.disabled = true;
+      p0.then(function (pl) { return call("story.post", pl); }).then(function (b) {
+        toast(L("نُشرت قصّتك ✓ — يراها " + (b.aud || 0) + " من جهات اتّصالك", "Story posted ✓")); close();
+      }).catch(function (e) { post.disabled = false; post.textContent = L("نشر القصّة", "Post story"); toast(L("تعذّر النشر: ", "Couldn't post: ") + ((e && e.message) || e)); });
+    };
+    paint();
+    if (mode === "media") fi.click();
+  }
+
+  // ---------- عرض القصص ----------
+  function storyViewer(owner, opts) {
+    opts = opts || {};
+    var S0 = stories(), mine = owner === state.uid;
+    var queue = mine ? [S0.me.uid] : S0.list.map(function (x) { return x.owner; });
+    var qi = Math.max(0, queue.indexOf(owner));
+    var ov = stOverlay("#000"), timer = null, paused = false, t0 = 0, left = 0, cur = null, idx = 0, items = [], vid = null;
+    var bars = mk("div", "display:flex;gap:3px;padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 6px"); ov.appendChild(bars);
+    var head = mk("div", "display:flex;align-items:center;gap:10px;padding:2px 12px 8px"); ov.appendChild(head);
+    var stage = mk("div", "flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden"); ov.appendChild(stage);
+    var foot = mk("div", "padding:8px 12px calc(env(safe-area-inset-bottom,0px) + 12px);display:flex;gap:8px;align-items:center"); ov.appendChild(foot);
+    function close() { clearTimeout(timer); try { if (vid) vid.pause(); } catch (e) {} try { ov.remove(); } catch (e) {} stEmit(); }
+    function load(o) {
+      var s = stories(); cur = o;
+      if (o === state.uid) { items = s.me.items; } else { var e = s.list.filter(function (x) { return x.owner === o; })[0]; items = e ? e.items : []; }
+      if (!items.length) { if (o === state.uid && opts.addIfEmpty !== false) { close(); storyComposer(); return; } return nextOwner(); }
+      idx = 0; if (o !== state.uid) { for (var i = 0; i < items.length; i++) if (!stSeen[items[i].id]) { idx = i; break; } }
+      show();
+    }
+    function nextOwner() { if (qi < queue.length - 1) { qi++; load(queue[qi]); } else close(); }
+    function prevOwner() { if (qi > 0) { qi--; load(queue[qi]); } }
+    function next() { if (idx < items.length - 1) { idx++; show(); } else nextOwner(); }
+    function prev() { if (idx > 0) { idx--; show(); } else prevOwner(); }
+    function run(ms) { clearTimeout(timer); t0 = Date.now(); left = ms; timer = setTimeout(next, ms); animBar(ms); }
+    function animBar(ms) { var b = bars.children[idx] && bars.children[idx].firstChild; if (!b) return; b.style.transition = "none"; b.style.width = (b._p || 0) + "%"; void b.offsetWidth; b.style.transition = "width " + ms + "ms linear"; b.style.width = "100%"; }
+    function pause(on) {
+      if (on === paused) return; paused = on;
+      var b = bars.children[idx] && bars.children[idx].firstChild;
+      if (on) { clearTimeout(timer); left = Math.max(300, left - (Date.now() - t0)); if (b) { var w = b.getBoundingClientRect().width, W = b.parentNode.getBoundingClientRect().width || 1; b._p = Math.round(w * 100 / W); b.style.transition = "none"; b.style.width = b._p + "%"; } try { if (vid) vid.pause(); } catch (e) {} }
+      else { try { if (vid) vid.play(); } catch (e) {} run(left); }
+    }
+    function show() {
+      clearTimeout(timer); paused = false; try { if (vid) vid.pause(); } catch (e) {} vid = null;
+      var it = items[idx];
+      bars.innerHTML = ""; items.forEach(function (x, i) { var t = mk("div", "flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.3);overflow:hidden"); var f = mk("div", "height:100%;background:#fff;width:" + (i < idx ? "100%" : "0")); t.appendChild(f); bars.appendChild(t); });
+      head.innerHTML = "";
+      var nm = cur === state.uid ? L("قصّتي", "My story") : stName(cur);
+      var av = avatar(nm, 38); var ph = photoOf(cur); if (ph) { av.textContent = ""; av.style.backgroundImage = "url(" + ph + ")"; av.style.backgroundSize = "cover"; } head.appendChild(av);
+      var hx = mk("div", "flex:1;min-width:0"); hx.appendChild(mk("div", "font:800 15px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis", nm)); hx.appendChild(mk("div", "font:600 12px system-ui;opacity:.8", stAgo(it.ts))); head.appendChild(hx);
+      var cx = mk("button", "border:0;background:transparent;color:#fff;font-size:22px;padding:6px 10px", "✕"); cx.onclick = close; head.appendChild(cx);
+      stage.innerHTML = ""; stage.style.background = "#000";
+      if (it.t === "text") {
+        stage.style.background = stGrad(it.bg);
+        stage.appendChild(mk("div", "padding:24px;font:800 " + (it.text.length > 160 ? 21 : it.text.length > 60 ? 25 : 30) + "px/1.55 system-ui;text-align:center;white-space:pre-wrap;word-break:break-word;max-width:92%", it.text));
+        run(Math.min(15000, 5000 + it.text.length * 40));
+      } else {
+        var holder = mk("div", "position:absolute;inset:0;display:flex;align-items:center;justify-content:center");
+        if (it.thumb) { var th = mk("img", "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(18px);opacity:.6"); th.src = it.thumb; holder.appendChild(th); }
+        var spin = mk("div", "position:relative;font:700 13px system-ui;opacity:.85", L("جارٍ التحميل…", "Loading…")); holder.appendChild(spin);
+        stage.appendChild(holder);
+        var myIdx = idx, myOwner = cur;
+        stMedia(cur, it).then(function (u) {
+          if (myIdx !== idx || myOwner !== cur || !ov.isConnected) return;
+          holder.removeChild(spin);
+          if (it.t === "video") {
+            vid = mk("video", "position:relative;max-width:100%;max-height:100%"); vid.src = u; vid.playsInline = true; vid.autoplay = true;
+            vid.onloadedmetadata = function () { run(Math.min(31000, Math.round((vid.duration || it.dur || 15) * 1000) + 300)); };
+            vid.onended = function () { next(); };
+            holder.appendChild(vid); try { vid.play().catch(function () { vid.muted = true; vid.play().catch(function () {}); }); } catch (e) {}
+          } else { var im = mk("img", "position:relative;max-width:100%;max-height:100%;object-fit:contain"); im.src = u; holder.appendChild(im); run(6000); }
+        }).catch(function () { spin.textContent = L("تعذّر التحميل", "Couldn't load"); run(3000); });
+        if (it.text) stage.appendChild(mk("div", "position:absolute;bottom:14px;left:12px;right:12px;text-align:center;font:700 15px/1.5 system-ui;background:rgba(0,0,0,.45);border-radius:12px;padding:8px 10px;white-space:pre-wrap", it.text));
+      }
+      // المشاهدة
+      if (cur !== state.uid && !stSeen[it.id]) { stSeen[it.id] = Date.now(); lsSet("sawa_story_seen", stSeen); call("story.view", { owner: cur, sid: it.id }).catch(function () {}); }
+      paintFoot(it);
+    }
+    function paintFoot(it) {
+      foot.innerHTML = "";
+      if (cur === state.uid) {
+        var sv = mk("button", "flex:1;border:0;border-radius:14px;padding:12px;background:rgba(255,255,255,.14);color:#fff;font:800 14px system-ui", "👁 " + L("المشاهدات", "Views"));
+        sv.onclick = function () { pause(true); storySeenSheet(it, function () { pause(false); }); };
+        var add = mk("button", "border:0;border-radius:14px;padding:12px 14px;background:rgba(255,255,255,.14);color:#fff;font:800 14px system-ui", "＋");
+        add.onclick = function () { close(); storyComposer(); };
+        var del = mk("button", "border:0;border-radius:14px;padding:12px 14px;background:rgba(239,68,68,.3);color:#fff;font:800 14px system-ui", "🗑");
+        del.onclick = function () { pause(true); if (!global.confirm(L("حذف هذه القصّة؟", "Delete this story?"))) { pause(false); return; } call("story.delete", { sid: it.id }).then(function () { toast(L("حُذفت", "Deleted")); close(); }).catch(function (e) { toast((e && e.message) || String(e)); pause(false); }); };
+        foot.appendChild(sv); foot.appendChild(add); foot.appendChild(del);
+        stSeenCount(it, sv);
+      } else {
+        var inp = mk("input", "flex:1;min-width:0;border:1px solid rgba(255,255,255,.35);border-radius:22px;padding:11px 14px;background:rgba(0,0,0,.35);color:#fff;font:600 14px system-ui;outline:none");
+        inp.placeholder = L("ردّ على " + stName(cur) + "…", "Reply…");
+        inp.onfocus = function () { pause(true); }; inp.onblur = function () { if (!inp.value) pause(false); };
+        var go = mk("button", "border:0;border-radius:50%;width:44px;height:44px;background:#2F80C8;color:#fff;font-size:18px", "➤");
+        go.onclick = function () {
+          var v = inp.value.trim(); if (!v) return;
+          var snip = it.t === "text" ? it.text.slice(0, 60) : it.t === "video" ? L("🎬 فيديو", "🎬 video") : L("📷 صورة", "📷 photo");
+          var who = cur;
+          openDm(who).then(function (cid) { if (cid) send(cid, L("↩️ ردًّا على قصّتك («", "↩️ Reply to your story (“") + snip + L("»):\n", "”):\n") + v); });
+          inp.value = ""; inp.blur(); toast(L("أُرسل الردّ في المحادثة الخاصّة ✓", "Reply sent ✓")); pause(false);
+        };
+        inp.onkeydown = function (e) { if (e.key === "Enter") go.onclick(); };
+        foot.appendChild(inp); foot.appendChild(go);
+      }
+    }
+    // اللمس: الطرف الأيمن = السابق، الباقي = التالي (اتّجاه العربيّة) · الضغط المطوّل = إيقاف مؤقّت
+    var downAt = 0;
+    stage.addEventListener("pointerdown", function () { downAt = Date.now(); setTimeout(function () { if (downAt && Date.now() - downAt >= 250) pause(true); }, 260); });
+    stage.addEventListener("pointerup", function (e) {
+      var held = Date.now() - downAt; downAt = 0;
+      if (held >= 250) { pause(false); return; }
+      var r = stage.getBoundingClientRect(), xr = (e.clientX - r.left) / (r.width || 1);
+      var back = isAr() ? xr > 0.7 : xr < 0.3;
+      if (back) prev(); else next();
+    });
+    load(queue[qi]);
+  }
+  function stSeenCount(it, btn) {
+    var d = fsdb(); if (!d) return;
+    d.collection("stories").doc(state.uid).collection("seen").where("sid", "==", it.id).get().then(function (snap) { btn.textContent = "👁 " + snap.size + " " + L("مشاهدة", "views"); }).catch(function () {});
+  }
+  function storySeenSheet(it, onClose) {
+    var s = sheet(L("👁 من شاهد قصّتك", "👁 Who viewed")); s.ov.style.zIndex = "2147483006";
+    var box = mk("div", "min-height:60px"); s.box.appendChild(box); box.appendChild(note(L("…", "…")));
+    var cl = s.close; s.ov.onclick = function (e) { if (e.target === s.ov) { cl(); if (onClose) onClose(); } };
+    var d = fsdb();
+    d.collection("stories").doc(state.uid).collection("seen").where("sid", "==", it.id).get().then(function (snap) {
+      box.innerHTML = ""; var rows = []; snap.forEach(function (doc) { var v = doc.data() || {}; rows.push(v); });
+      rows.sort(function (a, b) { return b.ts - a.ts; });
+      if (!rows.length) box.appendChild(note(L("لم يشاهدها أحدٌ بعد", "No views yet")));
+      rows.forEach(function (v) {
+        var r = mk("div", "display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid #eef2f6");
+        r.appendChild(avatar(stName(v.by), 36)); r.appendChild(mk("div", "flex:1;font:700 14px system-ui", stName(v.by))); r.appendChild(mk("div", "font:600 12px system-ui;color:#8796a5", stAgo(v.ts)));
+        box.appendChild(r);
+      });
+    }).catch(function () { box.innerHTML = ""; box.appendChild(note(L("تعذّر التحميل", "Couldn't load"))); });
+    var b = mkBtn(L("إغلاق", "Close"), "ghost"); b.style.marginTop = "8px"; b.onclick = function () { cl(); if (onClose) onClose(); }; s.box.appendChild(b);
+  }
+  // من يرى قصصي: كلّ جهات اتّصالي عدا من أختار
+  function storyAudienceSheet() {
+    var cur0 = stories().me.hide || [], hide = {}; cur0.forEach(function (u) { hide[u] = 1; });
+    var s = sheet(L("👥 من يرى قصصي", "👥 Who sees my stories")); s.ov.style.zIndex = "2147483006";
+    s.box.appendChild(note(L("كلّ جهات اتّصالك في سوا يرونها — علّم من تريد إخفاءها عنه.", "All your Sawa contacts see them — tick people to hide from.")));
+    var q = mk("input", "width:100%;box-sizing:border-box;border:1px solid #dfe5ec;border-radius:12px;padding:10px 12px;font:600 14px system-ui;margin:4px 0 6px"); q.placeholder = L("ابحث بالاسم…", "Search…"); s.box.appendChild(q);
+    var list = mk("div", "max-height:46vh;overflow:auto"); s.box.appendChild(list);
+    function paint() {
+      list.innerHTML = ""; var v = q.value.trim().toLowerCase();
+      state.people.map(function (p) { return { uid: p.uid, name: displayName(p) }; }).sort(function (a, b) { return a.name.localeCompare(b.name, "ar"); })
+        .filter(function (p) { return !v || p.name.toLowerCase().indexOf(v) >= 0; }).forEach(function (p) {
+          var r = mk("button", "width:100%;display:flex;align-items:center;gap:10px;padding:9px 2px;border:0;border-bottom:1px solid #eef2f6;background:transparent;text-align:" + (isAr() ? "right" : "left"));
+          r.appendChild(avatar(p.name, 36)); r.appendChild(mk("span", "flex:1;font:700 14px system-ui;color:#1A1A2E", p.name));
+          r.appendChild(mk("span", "font:800 12px system-ui;color:" + (hide[p.uid] ? "#b42318" : "#2e7d5b"), hide[p.uid] ? L("مخفيّة عنه", "hidden") : L("يراها ✓", "sees ✓")));
+          r.onclick = function () { if (hide[p.uid]) delete hide[p.uid]; else hide[p.uid] = 1; paint(); };
+          list.appendChild(r);
+        });
+    }
+    q.oninput = paint; paint();
+    var sv = mkBtn(L("حفظ", "Save"), "primary"); sv.style.marginTop = "10px"; s.box.appendChild(sv);
+    sv.onclick = function () { sv.disabled = true; call("story.audience", { hide: Object.keys(hide) }).then(function (b) { toast(L("يرى قصصك " + b.aud + " ✓", "Saved ✓")); s.close(); }).catch(function (e) { sv.disabled = false; toast((e && e.message) || String(e)); }); };
+  }
+  function storyOpenMine() { var me = stories().me; if (me.items.length) storyViewer(state.uid); else storyComposer(); }
 
   // ==================================================================
   // C89: «مشاركة إلى سوا» من أيّ تطبيق (أندرويد) — نصّ/رابط/صور/فيديو/ملفّات ⇒ اختر المحادثة
@@ -3586,6 +3878,7 @@
     plain = {}; decQ = {}; mediaKeys = {}; chatsLoaded = false; missingSince = {}; keyFp = {}; knownSec = null; e2e.reset();   // C23
     e2e.load().then(function () { publishChats(); Object.keys(days).forEach(publishMessages); }, function () { publishChats(); });
     restorePending(); startChats(uid); drainOutbox();
+    startStories(uid);   // C90
     setTimeout(refreshPush, 3000);
     setTimeout(maybeVerifyBanner, 6000);
     var cbs = readyCbs; readyCbs = [];
@@ -4101,6 +4394,7 @@
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
     _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,
     // C10
+    stories: stories, storyComposer: storyComposer, storyViewer: storyViewer, storyOpenMine: storyOpenMine, storyAudienceSheet: storyAudienceSheet,   // C90
     saveBlob: saveBlob, saveMediaUrl: saveMediaUrl, shareInSheet: shareInSheet, nativeFiles: nativeFiles,   // C89
     codeSheet: codeSheet, findSheet: findSheet, phoneContactsSheet: phoneContactsSheet, smsText: smsText, openSms: openSms, setNick: setNick, peerCode: peerCode, fetchPeerCodes: fetchPeerCodes, verifySheet: verifySheet, requestsSheet: requestsSheet, emailSheet: emailSheet, linkSheet: linkSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, reportSheet: reportSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },
     requestCount: function () { return reqs.incoming.length; }, fmtCode: fmtCode, codeValid: codeValid,
