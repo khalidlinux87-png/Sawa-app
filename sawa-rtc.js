@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c93";
+  var VERSION = "c94";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -93,10 +93,75 @@
     return Promise.race([
       wcall("rtc.ice", {}).then(function (b) {
         var l = b && Array.isArray(b.iceServers) && b.iceServers.length ? b.iceServers : STUN;
-        iceCache = l; iceAt = Date.now(); log("ice", b && b.turn ? "TURN" : "STUN"); return l;
+        iceRelays = b && Array.isArray(b.relays) && b.relays.length ? b.relays : null;
+        iceCache = relayIce() || l; iceAt = Date.now(); log("ice", b && b.turn ? "TURN" : "STUN", iceRelays ? iceRelays.length + " relays" : ""); relayAuto(); return iceCache;
       }),
       new Promise(function (r) { setTimeout(function () { r(iceCache || STUN); }, wait); })
     ]).catch(function () { return iceCache || STUN; });
+  }
+
+  // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
+  // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
+  // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
+  var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null;
+  function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
+  function netKey() { var n = global.navigator && global.navigator.connection; return (n ? (n.type || "") + "/" + (n.effectiveType || "") : "") + "/" + (cfColo || ""); }
+  try { var m0 = JSON.parse(lsGet("sawa-relay-ms") || "null"); if (m0 && m0.ms && Date.now() - m0.at < 30 * 60000) { relayMs = m0.ms; relayAt = m0.at; relayNet = m0.net || ""; } } catch (e) {}
+  function relayRank() {
+    if (!iceRelays) return null;
+    var v = function (r) { var x = relayMs[r.id]; return typeof x === "number" ? x : x === false ? 2e9 : 1e9; };
+    var l = iceRelays.map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) { return v(a.r) - v(b.r) || a.i - b.i; }).map(function (x) { return x.r; });
+    return l;
+  }
+  function relayIce() {
+    var l = relayRank(); if (!l || !l.length) return null;
+    var out = STUN.slice();
+    l.slice(0, 2).forEach(function (r) { (r.iceServers || []).forEach(function (x) { out.push(x); }); });
+    return out;
+  }
+  function probeOne(rel) {
+    return new Promise(function (res) {
+      var srv = (rel.iceServers || []).map(function (x) {
+        var u = [].concat(x.urls || []).map(String).filter(function (u) { return /^turn:/.test(u) && !/transport=tcp/.test(u); });
+        return u.length ? { urls: u, username: x.username, credential: x.credential } : null;
+      }).filter(Boolean);
+      if (!srv.length || !global.RTCPeerConnection) return res(null);
+      var pc, done = false, t0 = Date.now();
+      var fin = function (v) { if (done) return; done = true; try { pc.close(); } catch (e) {} res(v); };
+      try { pc = new global.RTCPeerConnection({ iceServers: srv, iceTransportPolicy: "relay" }); } catch (e) { return res(null); }
+      pc.onicecandidate = function (e) { if (e.candidate && / typ relay/.test(e.candidate.candidate || "")) fin(Date.now() - t0); };
+      try { pc.createDataChannel("p"); pc.createOffer().then(function (o) { t0 = Date.now(); return pc.setLocalDescription(o); }).catch(function () { fin(false); }); } catch (e) { fin(false); }
+      setTimeout(function () { fin(false); }, 5000);
+    });
+  }
+  function probeRelays(force) {
+    if (!iceRelays || !iceRelays.length) return Promise.resolve(relayMs);
+    if (relayBusy) return relayBusy;
+    if (!force && Date.now() - relayAt < 30 * 60000 && relayNet === netKey()) return Promise.resolve(relayMs);
+    var once = function () { return Promise.all(iceRelays.map(probeOne)); };
+    relayBusy = once().then(function (a) { return once().then(function (b) { return [a, b]; }); }).then(function (ab) {
+      var ms = {};
+      iceRelays.forEach(function (r, i) { var x = [ab[0][i], ab[1][i]].filter(function (v) { return typeof v === "number"; }); ms[r.id] = x.length ? Math.min.apply(null, x) : (ab[0][i] === null ? null : false); });
+      relayMs = ms; relayAt = Date.now(); relayNet = netKey(); relayBusy = null;
+      lsSet("sawa-relay-ms", JSON.stringify({ ms: ms, at: relayAt, net: relayNet }));
+      var l = relayIce(); if (l) iceCache = l;
+      log("relays", JSON.stringify(ms), "→", (relayRank() || [])[0] && relayRank()[0].id);
+      return ms;
+    }, function () { relayBusy = null; return relayMs; });
+    return relayBusy;
+  }
+  function relayAuto() {
+    if (!iceRelays || iceRelays.length < 2 || cur || gc || rm) return;
+    loadColo();
+    setTimeout(function () { if (!cur && !gc && !rm) probeRelays(false); }, 1500);
+  }
+  try { var nc = global.navigator && global.navigator.connection; if (nc && nc.addEventListener) nc.addEventListener("change", function () { relayAt = 0; setTimeout(relayAuto, 3000); }); } catch (e) {}
+  function relayOfUrl(u) {
+    if (!u || !iceRelays) return null;
+    var h = String(u).replace(/^turns?:/, "").split(/[:?]/)[0];
+    for (var i = 0; i < iceRelays.length; i++) if ((iceRelays[i].iceServers || []).some(function (x) { return [].concat(x.urls || []).some(function (v) { return String(v).replace(/^turns?:/, "").split(/[:?]/)[0] === h; }); })) return iceRelays[i];
+    return null;
   }
 
   // ---------- C52: ضبط الصوت في SDP ----------
@@ -569,6 +634,7 @@
       else if (rtt != null && rtt > 400 || loss > 0.08 || (lostOut != null && lostOut > 0.08)) q = 1;
       else if (rtt != null && rtt > 200 || loss > 0.03 || (lostOut != null && lostOut > 0.03)) q = 2;
       c.q = q; c.rtt = rtt; c.loss = loss;
+      if (c.jb > 700 && q > 0) c.q = q = Math.min(q, 1);   // C94: مخزنٌ متضخّم = شبكةٌ متقلّبة ⇒ نخفّف ما نرسله ليقلّ الازدحام
       // C92: تأخير مخزن الصوت (ms) في آخر ٣ ثوانٍ + عرض الشبكة/التأخير في شاشة المكالمة
       var dD = jbD - (c.sJbD || 0), dN = jbN - (c.sJbN || 0); c.sJbD = jbD; c.sJbN = jbN;
       if (dN > 0) c.jb = Math.round(dD / dN * 1000);
@@ -595,9 +661,11 @@
     try { fetch(global.location.origin + "/cdn-cgi/trace", { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : ""; }).then(function (t) { var m = /colo=([A-Z]{3})/.exec(t || ""); if (m) cfColo = m[1]; }).catch(function () {}); } catch (e) {}
   }
   function callNetText(c) {
-    var lag = Math.round((c.rtt || 0) / 2 + (c.jb || 0));
-    return (c.route === "relay" ? L("عبر وسيط", "relay") : c.route ? L("مباشر", "direct") : "") + (c.proto ? "/" + c.proto : "") + (cfColo ? " " + cfColo : "") +
-      (c.rtt != null ? " · ⏱ " + L("تأخير ", "delay ") + lag + L(" مللي ث", " ms") : "") + (c.loss > 0.03 ? " · " + L("فقد ", "loss ") + Math.round(c.loss * 100) + "%" : "");
+    // C94: الرقم مفصّلاً — «شبكة» = نصف زمن الذهاب والعودة · «مخزن» = ما ينتظره الصوت في الهاتف لتنعيم التقطّع
+    var net = Math.round((c.rtt || 0) / 2), jb = Math.round(c.jb || 0), lag = net + jb;
+    var cf = !c.relayId || c.relayId === "cf";
+    return (c.route === "relay" ? L("عبر وسيط", "relay") + (c.relayLbl ? " " + c.relayLbl : "") : c.route ? L("مباشر", "direct") : "") + (c.proto ? "/" + c.proto : "") + (cfColo && cf ? " " + cfColo : "") +
+      (c.rtt != null ? " · ⏱ " + lag + L(" مللي ث", " ms") + " (" + L("شبكة ", "net ") + net + " + " + L("مخزن ", "buffer ") + jb + ")" : "") + (c.loss > 0.03 ? " · " + L("فقد ", "loss ") + Math.round(c.loss * 100) + "%" : "");
   }
   function routeInfo(c) {
     try {
@@ -612,6 +680,7 @@
         var lc = cands[pair.localCandidateId] || {}, rc = cands[pair.remoteCandidateId] || {};
         var relay = lc.candidateType === "relay" || rc.candidateType === "relay";
         c.route = relay ? "relay" : "direct"; c.proto = String(lc.relayProtocol || lc.protocol || "").toLowerCase() || null;
+        var rr = lc.candidateType === "relay" ? relayOfUrl(lc.url) : null; c.relayLbl = rr ? rr.label : null; c.relayId = rr ? rr.id : null;   // C94: أيّ وسيط
         log("route", lc.candidateType, "→", rc.candidateType, c.proto);
         if (ui.sub && c === cur) ui.sub.textContent = relay ? L("عبر خادم وسيط", "via relay") : L("اتّصال مباشر", "direct");
       }).catch(function () {});
@@ -3399,7 +3468,8 @@
       locked: !!r.meta.locked, lobby: !!r.meta.lobby, chat: r.chat.length, speaker: r.speaker, max: rMax(r), myQ: r.myQ == null ? null : r.myQ, lowRes: !!r.lowRes, rejoins: r.rejoins || 0, softRejoins: r.softRejoins || 0, sess: r.sess, audioOnly: !!r.meta.audioOnly, pinOn: !!r.meta.pinOn, lockAt: r.meta.lockAt || null, big: rBig(r), sfu: r.sfu ? { sid: r.sfu.sid || null, state: r.sfu.state, ready: !!r.sfu.ready, pulled: Object.keys(r.sfu.pulled).sort() } : null, endText: r.endText || null, peers: Object.keys(r.peers).map(function (u) { return { uid: u, state: r.peers[u].state, q: r.peers[u].q == null ? null : r.peers[u].q }; }) } : null; },
     _rm: function () { return rm; }, _r: { prejoin: roomPrejoin, pin: function (u) { if (rm) { rm.pin = u; rm.focusU = null; rLayout(rm); } }, viewToggle: function () { rViewToggle(rm); }, tileMenu: function (u) { if (rm) rTileMenu(rm, u); }, layout: function () { if (rm) rLayout(rm); }, sendFile: function (f) { rSendFile(rm, f); }, fileGet: function (f) { return rFileGet(rm, f); }, toggleMic: rToggleMic, toggleCam: rToggleCam, hand: rToggleHand, low: rToggleLow, chat: rSendChat, react: rReact, admit: rAdmit, remove: rRemove,
       makeHost: rMakeHost, ctl: rCtl, muteAll: rMuteAll, lowerAll: rLowerAll, meta: rSetMeta, endAll: rEndAll, summary: rSummaryText, panel: rOpenPanel, settings: rSettings, max: rMax, rejoin: function () { if (rm) rRejoin(rm); }, bigToggle: rBigToggle, sfuRestart: function () { if (rm) sfuRestart(rm, 100); }, adapt: function (q) { if (rm) rAdapt(rm, q); }, stats: function () { if (rm) rStatsTick(rm); } },
-    _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming
+    _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming,
+    _relay: { probe: probeRelays, rank: relayRank, ice: relayIce, ms: function () { return relayMs; }, list: function () { return iceRelays; }, ofUrl: relayOfUrl, text: callNetText }
   };
   try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") schedRefresh(false); }); } catch (e) {}
   if (global.document && document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
