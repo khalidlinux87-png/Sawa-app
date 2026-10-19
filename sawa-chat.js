@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c90";
+  var VERSION = "c91";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -737,6 +737,13 @@
     if (c.type === "dm" || c.type === "sdm") { var o = others(c)[0]; return o ? personName(o, c) : L("محادثة", "Chat"); }
     return c.name || L("مجموعة", "Group");
   }
+  // C91: لا اسم حقيقيّ (لا اسم في سوا ولا تسمية منّي ولا اسم في المحادثة) ⇒ يظهر برمزه فقط
+  function hasRealName(u, c) {
+    if (!u || u === state.uid) return true;
+    if (nickOf(u)) return true;
+    var p = state.people.filter(function (x) { return x.uid === u; })[0];
+    return !!((p && p.name) || (c && c.names && c.names[u]));
+  }
   function personName(u, c) {
     if (u === state.uid) return L("أنت", "You");
     var p = state.people.filter(function (x) { return x.uid === u; })[0];
@@ -1071,7 +1078,7 @@
     var lastMine = lp ? true : !!(l && l.by === state.uid);
     var sec = e2eOn(c);
     return {
-      id: c.cid, cloud: true, kind: c.type, peerUid: other || null,
+      id: c.cid, cloud: true, kind: c.type, peerUid: other || null, unnamed: !!other && c.type !== "saved" && !hasRealName(other, c),
       name: c.type === "saved" ? L("رسائلي المحفوظة", "Saved messages") : personName(other, c) + (sec ? " 🔒" : ""),
       isSavedMessages: c.type === "saved", secret: sec, e2e: sec ? e2eUi(c) : null, photo: other ? photoOf(other) : null,
       lastMessage: lp ? preview(lp.msg) : sec ? secretPreview(c) : preview(l), lastFromMe: lastMine,
@@ -1083,7 +1090,7 @@
   function groupOf(c) {
     var admins = c.admins || [], l = c.last;
     var members = (c.members || []).map(function (u) {
-      return { id: appId(u), uid: u, name: u === state.uid ? L("أنت", "You") : personName(u, c), role: admins.indexOf(u) >= 0 ? "admin" : "member", photo: photoOf(u) };
+      return { id: appId(u), uid: u, unnamed: !hasRealName(u, c), name: u === state.uid ? L("أنت", "You") : personName(u, c), role: admins.indexOf(u) >= 0 ? "admin" : "member", photo: photoOf(u) };
     });
     var pendList = pend[c.cid] || [], lp = pendList[pendList.length - 1];
     var sec = e2eOn(c);

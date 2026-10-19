@@ -2232,6 +2232,7 @@
       Object.keys(r.peers).forEach(function (u) { var v = read(r.peers[u]); r.levels[u] = v; if (r.members[u] && r.members[u].mic !== false && v > bestV) { bestV = v; best = u; } });
       var mv = r.mic ? read(r) : 0; r.levels[me] = mv; if (mv > bestV) { best = "__me"; }
       if (best !== r.speaker) { var old = r.speaker; r.speaker = best; if (old) rTile(r, old === me ? "__me" : old); if (best) rTile(r, best); }
+      else if (r.view === "speaker" && !r.pin && best && best !== "__me" && best !== r.focusU) rLayout(r);   // C91: يكتمل التبديل بعد ثانيتين من الكلام
     }, 300);
   }
 
@@ -2249,7 +2250,7 @@
     if (r.low) { toast(L("أوقف «بيانات قليلة» أوّلاً", "Turn off low-data mode first")); return; }
     if (r.meta.audioOnly && !amHost(r)) { toast(L("الغرفة صوتيّة فقط بقرار المضيف", "Audio-only room (host setting)")); return; }
     var me = myUid(), cams = Object.keys(r.members).filter(function (u) { return u !== me && r.members[u].cam; }).length, camCap = rBig(r) ? SFU_CAMS : ROOM_CAMS;
-    if (cams >= camCap) { toast(L("الحدّ " + camCap + " كاميرات في الغرفة حاليّاً", "Max " + camCap + " cameras for now")); return; }
+    if (cams >= camCap) { toast(L("الحدّ " + camCap + " كاميرات في الغرفة — يستطيع المضيف إيقاف كاميرا أحدهم (اضغط بلاطته) ليُفسح لك", "Max " + camCap + " cameras — the host can turn one off")); return; }
     navigator.mediaDevices.getUserMedia({ video: { facingMode: r.facing, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 20, max: 24 } } }).then(function (s) {
       if (r.done) { stopStream(s); return; }
       r.camTrack = s.getVideoTracks()[0]; r.camOn = true;
@@ -2295,7 +2296,8 @@
   }
   function rReact(e) { var r = rm; if (!r || !r.live) return; rRef(r, "rx").push({ from: myUid(), e: e, ts: TS() }).catch(function () {}); }
   function onRCtl(r, c) {
-    if (r.ctlSeen === null) { r.ctlSeen = { mute: c.mute || 0, ask: c.ask || 0, lower: c.lower || 0 }; return; }   // القديم لا يُنفَّذ
+    if (r.ctlSeen === null) { r.ctlSeen = { mute: c.mute || 0, ask: c.ask || 0, lower: c.lower || 0, camoff: c.camoff || 0 }; return; }   // القديم لا يُنفَّذ
+    if ((c.camoff || 0) > (r.ctlSeen.camoff || 0)) { r.ctlSeen.camoff = c.camoff; if (r.camOn) rToggleCam(r); toast(L("أوقف المضيف كاميرتك ليُفسح لغيرك", "The host turned off your camera")); }   // C91
     if ((c.mute || 0) > r.ctlSeen.mute) { r.ctlSeen.mute = c.mute; if (r.mic) rToggleMic(r); toast(L("كتمك المضيف", "The host muted you")); }
     if ((c.lower || 0) > r.ctlSeen.lower) { r.ctlSeen.lower = c.lower; if (r.hand) rToggleHand(r); }
     if ((c.ask || 0) > r.ctlSeen.ask) { r.ctlSeen.ask = c.ask; if (!r.mic) { r.askUnmute = true; rPaintBanners(r); } }
@@ -2443,7 +2445,9 @@
     var hostBtns = el("div", "display:flex;gap:6px");
     var minB = el("button", "background:rgba(255,255,255,.18);border:0;color:#fff;border-radius:14px;padding:7px 11px;font:700 11px system-ui", L("تصغير ▾", "Minimize ▾"));
     minB.onclick = function () { rMinimize(true); };
-    head.appendChild(hd); head.appendChild(hostBtns); head.appendChild(minB);
+    var viewB = el("button", "background:rgba(255,255,255,.18);border:0;color:#fff;border-radius:14px;padding:6px 11px;font:700 15px system-ui", "▦");
+    viewB.setAttribute("aria-label", L("طريقة العرض", "View")); viewB.onclick = function () { rViewToggle(rm); };
+    head.appendChild(hd); head.appendChild(hostBtns); head.appendChild(viewB); head.appendChild(minB);
     var link = el("div", "display:flex;align-items:center;gap:6px;margin:10px 12px 0;padding:7px 8px 7px 12px;border-radius:16px;background:" + CARD + ";box-shadow:0 4px 14px rgba(0,0,0,.2)");
     var linkTx = el("div", "flex:1;min-width:0;font:700 12px system-ui;direction:ltr;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cbd5e1");
     var pillB = function (t) { return el("button", "background:" + LINE + ";border:0;color:#fff;border-radius:12px;padding:7px 10px;font:700 11px system-ui", t); };
@@ -2470,7 +2474,7 @@
       document.head.appendChild(st);
     }
     document.body.appendChild(root); document.body.appendChild(pill);
-    rui = { root: root, title: title, sub: sub, hostBtns: hostBtns, minB: minB, link: link, linkTx: linkTx, banners: banners, grid: grid, center: center, cT: cT, cS: cS, panel: panel, bar: bar, floats: floats, audios: audios, pill: pill, tiles: {}, min: false };
+    rui = { root: root, title: title, sub: sub, hostBtns: hostBtns, minB: minB, link: link, linkTx: linkTx, banners: banners, grid: grid, viewB: viewB, center: center, cT: cT, cS: cS, panel: panel, bar: bar, floats: floats, audios: audios, pill: pill, tiles: {}, min: false };
     return rui;
   }
   function rShow(r) { rBuild(); rui.grid.innerHTML = ""; rui.audios.innerHTML = ""; rui.banners.innerHTML = ""; rui.panel.style.display = "none"; rui.tiles = {}; rMinimize(false); rPaint(r); guardArm(); }
@@ -2557,7 +2561,7 @@
     var tags = el("div", "position:absolute;top:6px;right:6px;left:6px;display:flex;justify-content:space-between;font-size:13px");
     box.appendChild(v); box.appendChild(av); box.appendChild(lab); box.appendChild(tags);
     var a = el("audio", ""); a.autoplay = true; rui.audios.appendChild(a);
-    box.onclick = function () { if (uid !== "__me" && rm && amHost(rm)) rHostMenu(uid); };
+    box.onclick = function () { if (rm) rTileMenu(rm, uid); };   // C91: للجميع — تثبيت · إخفاء الصورة · (للمضيف) إدارة
     t = rui.tiles[uid] = { box: box, v: v, av: av, lab: lab, tags: tags, a: a };
     return t;
   }
@@ -2568,7 +2572,8 @@
     if (!isMe && !m) { var old = rui.tiles[uid]; if (old) { try { old.v.srcObject = null; old.a.srcObject = null; old.box.remove(); old.a.remove(); } catch (e) {} delete rui.tiles[uid]; } rLayout(r); return; }
     var t = rTileEl(uid), name = isMe ? L("أنت", "You") : rName(r, uid);
     var vt = isMe ? (r.camOn ? r.camTrack : null) : p && p.stream.getVideoTracks().filter(function (x) { return x.readyState === "live" && !x.muted; })[0];
-    var showV = !!vt && (isMe ? r.camOn : (m.cam && !r.low));
+    var hidV = !isMe && !!(r.hideV && r.hideV[uid]);
+    var showV = !!vt && !hidV && (isMe ? r.camOn : (m.cam && !r.low));
     // C15: الطرف شغّل الكاميرا ولا تصل الصورة ⇒ بعد ٨ ثوانٍ نعيد التفاوض (مرّة) ونقول ذلك بدل صورةٍ رماديّة صامتة
     if (!isMe && p) {
       var wantV = !!(m.cam && !r.low && p.state === "connected");
@@ -2589,7 +2594,8 @@
     t.v.style.display = showV ? "block" : "none"; t.av.style.display = showV ? "none" : "flex";
     setAv(t.av, isMe ? (myName() || "أ") : name, isMe ? myUid() : uid); if (!photoOf(isMe ? myUid() : uid)) t.av.style.backgroundImage = avGrad(isMe ? myUid() : uid);
     var st = isMe ? "" : !p ? L("ينضمّ…", "joining…") : p.state === "connected" ? "" : p.state === "lost" ? L("انقطع", "lost") : p.state === "reconnecting" ? L("شبكة ضعيفة…", "weak…") : L("جارٍ الربط…", "connecting…");
-    if (!st && !isMe && m.cam && !showV && !r.low) st = L("📷 الصورة لم تصل بعد", "📷 video not arriving");
+    if (!st && !isMe && m.cam && !showV && !r.low) st = hidV ? L("🙈 أخفيتَ صورته", "🙈 hidden by you") : L("📷 الصورة لم تصل بعد", "📷 video not arriving");
+    if (r.pin === uid) st = (st ? st + " · " : "") + "📌";
     t.lab.textContent = name + (st ? " · " + st : "");
     var mic = isMe ? r.mic : m.mic !== false, hostU = r.meta.host === (isMe ? me : uid);
     t.tags.innerHTML = "";
@@ -2601,7 +2607,7 @@
     var speaking = r.speaker === uid && mic;
     t.box.style.borderColor = speaking ? "#22c55e" : isMe ? PRI + "99" : "transparent";
     t.box.style.boxShadow = speaking ? "0 0 0 4px #22c55e44, 0 6px 18px rgba(0,0,0,.25)" : "0 6px 18px rgba(0,0,0,.25)";
-    t.box.style.cursor = !isMe && amHost(r) ? "pointer" : "default";
+    t.box.style.cursor = "pointer";
     rLayout(r);
   }
   function rLayout(r) {
@@ -2611,11 +2617,62 @@
     // C45: بلاطتي تُرسم فور إنشائها (كانت تبقى فارغةً بلا اسم حتى أوّل تبديلٍ أو حديث)
     if (!rui.tiles.__me) { rTileEl("__me"); if (!rui.paintingMe) { rui.paintingMe = true; try { rTile(r, "__me"); } finally { rui.paintingMe = false; } } }
     ids = ids.filter(function (u) { return rui.tiles[u]; });
-    var n = ids.length, cols = n <= 1 ? 1 : n === 2 ? 1 : n <= 4 ? 2 : n <= 6 ? 2 : 3, rows = Math.ceil(n / cols);
-    var anyV = Object.keys(r.members).some(function (u) { return r.members[u].cam; }) || r.camOn;
+    // C91: من كاميرته تعمل أوّلاً (لا تضيع صورةٌ في آخر الشبكة)
+    var camOf = function (u) { return u === "__me" ? !!r.camOn : !!(r.members[u] && r.members[u].cam && !(r.hideV && r.hideV[u])); };
+    ids.sort(function (a, b) { return (camOf(b) - camOf(a)) || (ids.indexOf(a) - ids.indexOf(b)); });
+    var n = ids.length, anyV = Object.keys(r.members).some(function (u) { return r.members[u].cam; }) || r.camOn;
+    var focus = rFocus(r, ids);
+    if (rui.viewB) rui.viewB.textContent = r.pin ? "📌" : r.view === "speaker" ? "🗣" : "▦";
+    if (focus && n > 1) {
+      // بلاطةٌ كبيرة (المثبَّت أو المتحدّث) والبقيّة صفٌّ صغير تحتها
+      var others = ids.filter(function (u) { return u !== focus; }), sc = Math.min(4, others.length), srows = Math.ceil(others.length / sc);
+      rui.grid.style.gridTemplateColumns = "repeat(" + sc + ",1fr)";
+      rui.grid.style.gridTemplateRows = "minmax(0,1fr)" + new Array(srows + 1).join(" " + (srows > 1 ? "78px" : "96px"));
+      var fb = rui.tiles[focus].box; fb.style.gridColumn = "1 / -1"; fb.style.order = "0";
+      if (fb.parentNode !== rui.grid) rui.grid.appendChild(fb);
+      others.forEach(function (u, i) { var b = rui.tiles[u].box; b.style.gridColumn = ""; b.style.order = String(i + 1); if (b.parentNode !== rui.grid) rui.grid.appendChild(b); });
+      return;
+    }
+    var cols = n <= 1 ? 1 : n === 2 ? 1 : n <= 4 ? 2 : n <= 6 ? 2 : 3, rows = Math.ceil(n / cols);
     rui.grid.style.gridTemplateColumns = "repeat(" + cols + ",1fr)";
     rui.grid.style.gridTemplateRows = "repeat(" + rows + "," + (anyV ? "1fr" : "minmax(0,130px)") + ")";
-    ids.forEach(function (u) { var t = rui.tiles[u]; if (t.box.parentNode !== rui.grid) rui.grid.appendChild(t.box); });
+    ids.forEach(function (u, i) { var t = rui.tiles[u]; t.box.style.gridColumn = ""; t.box.style.order = String(i); if (t.box.parentNode !== rui.grid) rui.grid.appendChild(t.box); });
+  }
+  // C91: من يُعرض كبيراً — المثبَّت يدويّاً، أو (وضع «المتحدّث») من يتكلّم منذ ثانيتين (بلا ارتجاف)
+  function rFocus(r, ids) {
+    if (r.pin && ids.indexOf(r.pin) >= 0) return r.pin;
+    if (r.pin) r.pin = null;
+    if (r.view !== "speaker") return null;
+    var now = Date.now(), sp = r.speaker && r.speaker !== "__me" ? r.speaker : null;
+    if (sp && sp !== r.focusU) { if (!r.spkCand || r.spkCand !== sp) { r.spkCand = sp; r.spkAt = now; } if (now - r.spkAt >= 1500 || !r.focusU) { r.focusU = sp; r.spkCand = null; } }
+    if (r.focusU && ids.indexOf(r.focusU) < 0) r.focusU = null;
+    if (!r.focusU) r.focusU = ids.filter(function (u) { return u !== "__me" && r.members[u] && r.members[u].cam; })[0] || ids.filter(function (u) { return u !== "__me"; })[0] || null;
+    return r.focusU;
+  }
+  function rViewToggle(r) {
+    r = r || rm; if (!r) return;
+    if (r.pin) { r.pin = null; toast(L("أُلغي التثبيت — عرض الشبكة", "Unpinned — grid view")); r.view = "grid"; }
+    else { r.view = r.view === "speaker" ? "grid" : "speaker"; toast(r.view === "speaker" ? L("🗣 المتحدّث يظهر كبيراً تلقائيّاً", "🗣 Active speaker view") : L("▦ عرض الشبكة", "▦ Grid view")); }
+    r.focusU = null; rLayout(r);
+  }
+  function rTileMenu(r, uid) {
+    var isMe = uid === "__me", me = myUid(), real = isMe ? me : uid, m = isMe ? null : r.members[uid] || {};
+    sheet(isMe ? L("أنت", "You") : rName(r, uid), function (body, close) {
+      item(body, "📌", r.pin === uid ? L("إلغاء التثبيت", "Unpin") : L("تثبيت بشاشةٍ كبيرة", "Pin to the big screen"), function () { r.pin = r.pin === uid ? null : uid; r.focusU = null; rTile(r, uid); rLayout(r); close(); });
+      if (!isMe) item(body, "🙈", r.hideV && r.hideV[uid] ? L("إظهار صورته عندي", "Show their video") : L("إخفاء صورته عندي (يوفّر البيانات)", "Hide their video for me"), function () {
+        r.hideV = r.hideV || {}; if (r.hideV[uid]) delete r.hideV[uid]; else r.hideV[uid] = 1;
+        try { var p = r.peers[uid]; if (p && p.stream) p.stream.getVideoTracks().forEach(function (t) { t.enabled = !r.hideV[uid]; }); } catch (e) {}
+        rTile(r, uid); close();
+      });
+      item(body, r.view === "speaker" ? "▦" : "🗣", r.view === "speaker" ? L("عرض الشبكة", "Grid view") : L("المتحدّث يظهر كبيراً تلقائيّاً", "Active speaker view"), function () { r.pin = null; r.view = r.view === "speaker" ? "grid" : "speaker"; r.focusU = null; rLayout(r); close(); });
+      if (!isMe && amHost(r)) {
+        if (m.cam) item(body, "📷", L("إيقاف كاميرته (يُفسح لغيره)", "Turn off their camera"), function () { rCtl(uid, "camoff"); toast(L("طُلب إيقاف كاميرا ", "Camera off: ") + rName(r, uid)); close(); });
+        item(body, "🔇", m.mic !== false ? L("كتم المشارك", "Mute") : L("اطلب فتح الميكروفون", "Ask to unmute"), function () { rCtl(uid, m.mic !== false ? "mute" : "ask"); close(); });
+        if (m.hand) item(body, "✋", L("إنزال يده", "Lower hand"), function () { rCtl(uid, "lower"); close(); });
+        item(body, "👑", L("اجعله المضيف", "Make host"), function () { rMakeHost(uid); close(); });
+        item(body, "✕", L("إخراج من الغرفة", "Remove from room"), function () { rRemove(uid); close(); }, true);
+      }
+    });
   }
   function rFloat(e) {
     if (!rui.root || RX.indexOf(e) < 0) return;
@@ -3303,7 +3360,7 @@
     roomCreate: roomCreate, roomJoin: roomJoin, prejoin: roomPrejoin, roomJoinPrompt: roomJoinPrompt, roomLink: roomLink, newRoomCode: newCode, roomLeave: function () { if (rm) rLeave(rm, "left"); },
     room: function () { var r = rm; return r ? { code: r.code, state: r.state, host: r.meta.host, title: r.title, members: Object.keys(r.members), mic: r.mic, cam: r.camOn, hand: !!r.hand, low: r.low,
       locked: !!r.meta.locked, lobby: !!r.meta.lobby, chat: r.chat.length, speaker: r.speaker, max: rMax(r), myQ: r.myQ == null ? null : r.myQ, lowRes: !!r.lowRes, rejoins: r.rejoins || 0, softRejoins: r.softRejoins || 0, sess: r.sess, audioOnly: !!r.meta.audioOnly, pinOn: !!r.meta.pinOn, lockAt: r.meta.lockAt || null, big: rBig(r), sfu: r.sfu ? { sid: r.sfu.sid || null, state: r.sfu.state, ready: !!r.sfu.ready, pulled: Object.keys(r.sfu.pulled).sort() } : null, endText: r.endText || null, peers: Object.keys(r.peers).map(function (u) { return { uid: u, state: r.peers[u].state, q: r.peers[u].q == null ? null : r.peers[u].q }; }) } : null; },
-    _rm: function () { return rm; }, _r: { prejoin: roomPrejoin, sendFile: function (f) { rSendFile(rm, f); }, fileGet: function (f) { return rFileGet(rm, f); }, toggleMic: rToggleMic, toggleCam: rToggleCam, hand: rToggleHand, low: rToggleLow, chat: rSendChat, react: rReact, admit: rAdmit, remove: rRemove,
+    _rm: function () { return rm; }, _r: { prejoin: roomPrejoin, pin: function (u) { if (rm) { rm.pin = u; rm.focusU = null; rLayout(rm); } }, viewToggle: function () { rViewToggle(rm); }, tileMenu: function (u) { if (rm) rTileMenu(rm, u); }, layout: function () { if (rm) rLayout(rm); }, sendFile: function (f) { rSendFile(rm, f); }, fileGet: function (f) { return rFileGet(rm, f); }, toggleMic: rToggleMic, toggleCam: rToggleCam, hand: rToggleHand, low: rToggleLow, chat: rSendChat, react: rReact, admit: rAdmit, remove: rRemove,
       makeHost: rMakeHost, ctl: rCtl, muteAll: rMuteAll, lowerAll: rLowerAll, meta: rSetMeta, endAll: rEndAll, summary: rSummaryText, panel: rOpenPanel, settings: rSettings, max: rMax, rejoin: function () { if (rm) rRejoin(rm); }, bigToggle: rBigToggle, sfuRestart: function () { if (rm) sfuRestart(rm, 100); }, adapt: function (q) { if (rm) rAdapt(rm, q); }, stats: function () { if (rm) rStatsTick(rm); } },
     _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming
   };
