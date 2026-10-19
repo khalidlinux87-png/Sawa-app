@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c85";
+  var VERSION = "c89";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -2289,7 +2289,7 @@
     if (r.chat.some(function (x) { return x.id === id; })) return;
     // C14: من ينضمّ لاحقاً لا يرى الدردشة التي قبله (الملاحظات والقرارات تبقى للجميع)
     if (!v.kind && v.from !== myUid() && r.joinedAt && (v.ts || 0) < r.joinedAt - 60000 + (srvOffset || 0)) return;
-    r.chat.push({ id: id, from: v.from, name: v.from === myUid() ? rName(r, v.from) : (nameOf(v.from) || stranger(v.name || (r.members[v.from] || {}).name)), text: v.text || "", kind: v.kind || null, ts: v.ts || Date.now() });
+    r.chat.push({ id: id, from: v.from, name: v.from === myUid() ? rName(r, v.from) : (nameOf(v.from) || stranger(v.name || (r.members[v.from] || {}).name)), text: v.text || "", kind: v.kind || null, file: v.file && v.file.fid ? v.file : null, ts: v.ts || Date.now() });
     if (r.panel !== "chat" && v.from !== myUid()) r.unread++;
     rPaintChat(r); rPaint(r);
   }
@@ -2885,6 +2885,97 @@
     rui.panel.style.display = kind ? "flex" : "none";
     rPaintChat(r); rPaint(r);
   }
+  // ---------- C89b: ملفّات دردشة الغرفة — في RTDB داخل الغرفة نفسها (تُحذف مع الغرفة)، قطعٌ base64 ≤ ٥١٢ ك، حتّى ١٠ ميجابايت ----------
+  var RFILE_MAX = 10 * 1024 * 1024, RFILE_CH = 384 * 1024, rFileCache = {};
+  function rFmtSize(n) { return n >= 1048576 ? (Math.round(n / 104857.6) / 10) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
+  function rB64(blob) { return new Promise(function (res, rej) { var fr = new FileReader(); fr.onload = function () { var s0 = String(fr.result || ""); res(s0.slice(s0.indexOf(",") + 1)); }; fr.onerror = function () { rej(fr.error); }; fr.readAsDataURL(blob); }); }
+  function rImgPrep(f) {   // صورة كبيرة ⇒ ١٦٠٠ بكسل JPEG + مصغّرة فوريّة داخل الرسالة
+    return new Promise(function (res) {
+      if (!/^image\/(jpeg|png|webp)/.test(f.type)) return res({ blob: f, thumb: null });
+      var u = URL.createObjectURL(f), img = document.createElement("img");
+      img.onload = function () {
+        var w = img.naturalWidth, h = img.naturalHeight, draw = function (mx, q) { var sc = Math.min(1, mx / Math.max(w, h)), c = document.createElement("canvas"); c.width = Math.max(1, Math.round(w * sc)); c.height = Math.max(1, Math.round(h * sc)); var x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height); return c; };
+        var th = null; try { th = draw(96, 0).toDataURL("image/jpeg", 0.5); if (th.length > 7000) th = null; } catch (e) {}
+        var big = draw(1600);
+        big.toBlob(function (b) { URL.revokeObjectURL(u); res({ blob: b && b.size < f.size ? b : f, thumb: th, mime: b && b.size < f.size ? "image/jpeg" : f.type }); }, "image/jpeg", 0.82);
+      };
+      img.onerror = function () { URL.revokeObjectURL(u); res({ blob: f, thumb: null }); };
+      img.src = u;
+    });
+  }
+  function rSendFile(r, f) {
+    r = r || rm; if (!r || !r.live || !f) return;
+    var up = { name: f.name || "file", pct: 0 }; (r.ups = r.ups || []).push(up); rPaintChat(r);
+    var fail = function (msg) { up.err = msg; rPaintChat(r); setTimeout(function () { r.ups = (r.ups || []).filter(function (x) { return x !== up; }); rPaintChat(r); }, 6000); };
+    rImgPrep(f).then(function (pr) {
+      var blob = pr.blob, mime = pr.mime || f.type || "application/octet-stream";
+      if (blob.size > RFILE_MAX) return fail(L("أكبر من ١٠ ميجابايت", "over 10 MB"));
+      var fid = rid(12), n = Math.max(1, Math.ceil(blob.size / RFILE_CH)), me = myUid();
+      return rRef(r, "files/" + fid).set({ from: me, name: String(up.name).slice(0, 200), mime: String(mime).slice(0, 100), size: blob.size, n: n, ts: TS() }).then(function () {
+        var i = 0, done = 0;
+        var worker = function () {
+          if (i >= n) return Promise.resolve();
+          var k = i++;
+          return rB64(blob.slice(k * RFILE_CH, (k + 1) * RFILE_CH)).then(function (b64) { return rRef(r, "fc/" + fid + "/" + k).set(b64); })
+            .then(function () { done++; up.pct = Math.round(done * 100 / n); rPaintChat(r); return worker(); });
+        };
+        return Promise.all([worker(), worker(), worker()]);
+      }).then(function () {
+        rFileCache[fid] = URL.createObjectURL(blob);
+        var file = { fid: fid, name: String(up.name).slice(0, 200), mime: String(mime).slice(0, 100), size: blob.size };
+        if (pr.thumb) file.thumb = pr.thumb;
+        return rRef(r, "chat").push({ from: me, name: myName() || "", text: ("📎 " + up.name).slice(0, 1000), file: file, ts: TS() });
+      }).then(function () { r.ups = (r.ups || []).filter(function (x) { return x !== up; }); rPaintChat(r); });
+    }).catch(function (e) { log("rfile", e && e.message); fail(L("تعذّر الرفع", "upload failed")); });
+  }
+  function rFileGet(r, f) {
+    if (rFileCache[f.fid]) return Promise.resolve(rFileCache[f.fid]);
+    return rRef(r, "fc/" + f.fid).once("value").then(function (s0) {
+      var v = s0.val() || {}, parts = [];
+      for (var k = 0; v[k] != null || v[String(k)] != null; k++) parts.push(v[k] != null ? v[k] : v[String(k)]);
+      if (!parts.length) throw new Error("gone");
+      var bufs = parts.map(function (b64) { var bin = atob(b64), u8 = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return u8; });
+      return (rFileCache[f.fid] = URL.createObjectURL(new Blob(bufs, { type: f.mime || "application/octet-stream" })));
+    });
+  }
+  function rFileView(r, f) {
+    var img = /^image\//.test(f.mime || ""), vid = /^video\//.test(f.mime || "");
+    var box = el("div", "margin-top:3px;display:inline-flex;align-items:center;gap:8px;max-width:100%;padding:" + (img && f.thumb ? "0" : "7px 10px") + ";border-radius:12px;background:rgba(255,255,255,.07);border:1px solid " + LINE + ";cursor:pointer");
+    if (img && (f.thumb || rFileCache[f.fid])) {
+      var im = el("img", "display:block;max-width:180px;max-height:180px;border-radius:12px;object-fit:cover"); im.src = rFileCache[f.fid] || f.thumb; box.appendChild(im);
+      if (!rFileCache[f.fid]) rFileGet(r, f).then(function (u) { im.src = u; }).catch(function () {});
+    } else {
+      box.appendChild(el("span", "font-size:22px", img ? "🖼️" : vid ? "🎬" : "📎"));
+      var tx = el("div", "min-width:0");
+      tx.appendChild(el("div", "font:700 12.5px system-ui;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px", f.name || "file"));
+      tx.appendChild(el("div", "font:600 10.5px system-ui;color:" + MUTED, rFmtSize(f.size || 0) + " · " + L("اضغط للفتح", "tap to open")));
+      box.appendChild(tx);
+    }
+    box.onclick = function () {
+      toast(L("جارٍ التنزيل…", "Downloading…"));
+      rFileGet(r, f).then(function (u) {
+        if (img || vid) return rViewMedia(u, f);
+        var SC0 = C(); if (SC0 && SC0.saveMediaUrl) return SC0.saveMediaUrl(u, f.name, SC0.nativeFiles && SC0.nativeFiles() ? "open" : "save", f.mime);
+        var a = el("a"); a.href = u; a.download = f.name || "file"; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 1000);
+      }).catch(function () { toast(L("تعذّر تنزيل الملفّ — ربّما حُذفت الغرفة", "Couldn't download the file")); });
+    };
+    return box;
+  }
+  function rViewMedia(u, f) {
+    var ov = el("div", "position:fixed;inset:0;z-index:2147483004;background:rgba(0,0,0,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px");
+    var m = /^video\//.test(f.mime || "") ? el("video", "max-width:100%;max-height:78vh") : el("img", "max-width:100%;max-height:78vh;object-fit:contain");
+    m.src = u; if (m.tagName === "VIDEO") { m.controls = true; m.autoplay = true; m.playsInline = true; }
+    ov.appendChild(m);
+    var bar = el("div", "display:flex;gap:10px");
+    var SC0 = C();
+    [["⬇️ " + L("حفظ", "Save"), "save"], ["📤 " + L("مشاركة", "Share"), "share"], ["✕ " + L("إغلاق", "Close"), null]].forEach(function (x) {
+      var b = el("button", "border:0;border-radius:12px;padding:10px 16px;background:rgba(255,255,255,.15);color:#fff;font:800 13px system-ui", x[0]);
+      b.onclick = function (e) { e.stopPropagation(); if (!x[1]) return ov.remove(); if (SC0 && SC0.saveMediaUrl) SC0.saveMediaUrl(u, f.name, x[1], f.mime); };
+      bar.appendChild(b);
+    });
+    ov.appendChild(bar); ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+    document.body.appendChild(ov);
+  }
   function rPaintChat(r) {
     if (!rui.root || !r || !r.panel) return;
     var P = rui.panel; P.innerHTML = "";
@@ -2907,7 +2998,9 @@
     items.forEach(function (m) {
       var row = el("div", "padding:4px 0");
       var nm = el("div", "font:700 10px system-ui;color:" + MUTED, (m.kind ? NOTE[m.kind][0] + " " + L(NOTE[m.kind][1], NOTE[m.kind][2]) + " · " : "") + (m.from === myUid() ? L("أنت", "You") : m.name));
-      row.appendChild(nm); row.appendChild(el("div", "font:500 13px system-ui;color:#fff;white-space:pre-wrap;word-break:break-word", m.text));
+      row.appendChild(nm);
+      if (m.file) row.appendChild(rFileView(r, m.file));
+      else row.appendChild(el("div", "font:500 13px system-ui;color:#fff;white-space:pre-wrap;word-break:break-word", m.text));
       listEl.appendChild(row);
     });
     P.appendChild(listEl);
@@ -2926,6 +3019,15 @@
     var go = el("button", "border:0;border-radius:10px;padding:0 14px;background:" + PRI + ";color:#fff;font:800 13px system-ui", L("إرسال", "Send"));
     var fire = function () { rSendChat(r, inp.value, notes ? r.noteKind : null); inp.value = ""; };
     go.onclick = fire; inp.onkeydown = function (e) { if (e.key === "Enter") fire(); };
+    // C89b: إرفاق صور وفيديو وملفّات في دردشة الغرفة
+    (r.ups || []).forEach(function (u) { listEl.appendChild(el("div", "font:700 11.5px system-ui;color:" + (u.err ? "#f87171" : MUTED) + ";padding:4px 0", (u.err ? "⚠ " : "⏳ ") + u.name + (u.err ? " — " + u.err : " · " + (u.pct || 0) + "%"))); });
+    if (!notes) {
+      var fi = el("input"); fi.type = "file"; fi.multiple = true; fi.style.display = "none";
+      fi.onchange = function () { var fs = [].slice.call(fi.files || []); fi.value = ""; fs.slice(0, 5).forEach(function (f) { rSendFile(r, f); }); };
+      var at = el("button", "border:1px solid " + LINE + ";border-radius:10px;width:38px;flex:none;background:transparent;color:#fff;font-size:17px", "📎");
+      at.setAttribute("aria-label", L("إرفاق", "Attach")); at.onclick = function () { fi.click(); };
+      row.appendChild(at); row.appendChild(fi);
+    }
     row.appendChild(inp); row.appendChild(go); P.appendChild(row);
     listEl.scrollTop = 1e6;
   }
@@ -3201,7 +3303,7 @@
     roomCreate: roomCreate, roomJoin: roomJoin, prejoin: roomPrejoin, roomJoinPrompt: roomJoinPrompt, roomLink: roomLink, newRoomCode: newCode, roomLeave: function () { if (rm) rLeave(rm, "left"); },
     room: function () { var r = rm; return r ? { code: r.code, state: r.state, host: r.meta.host, title: r.title, members: Object.keys(r.members), mic: r.mic, cam: r.camOn, hand: !!r.hand, low: r.low,
       locked: !!r.meta.locked, lobby: !!r.meta.lobby, chat: r.chat.length, speaker: r.speaker, max: rMax(r), myQ: r.myQ == null ? null : r.myQ, lowRes: !!r.lowRes, rejoins: r.rejoins || 0, softRejoins: r.softRejoins || 0, sess: r.sess, audioOnly: !!r.meta.audioOnly, pinOn: !!r.meta.pinOn, lockAt: r.meta.lockAt || null, big: rBig(r), sfu: r.sfu ? { sid: r.sfu.sid || null, state: r.sfu.state, ready: !!r.sfu.ready, pulled: Object.keys(r.sfu.pulled).sort() } : null, endText: r.endText || null, peers: Object.keys(r.peers).map(function (u) { return { uid: u, state: r.peers[u].state, q: r.peers[u].q == null ? null : r.peers[u].q }; }) } : null; },
-    _rm: function () { return rm; }, _r: { prejoin: roomPrejoin, toggleMic: rToggleMic, toggleCam: rToggleCam, hand: rToggleHand, low: rToggleLow, chat: rSendChat, react: rReact, admit: rAdmit, remove: rRemove,
+    _rm: function () { return rm; }, _r: { prejoin: roomPrejoin, sendFile: function (f) { rSendFile(rm, f); }, fileGet: function (f) { return rFileGet(rm, f); }, toggleMic: rToggleMic, toggleCam: rToggleCam, hand: rToggleHand, low: rToggleLow, chat: rSendChat, react: rReact, admit: rAdmit, remove: rRemove,
       makeHost: rMakeHost, ctl: rCtl, muteAll: rMuteAll, lowerAll: rLowerAll, meta: rSetMeta, endAll: rEndAll, summary: rSummaryText, panel: rOpenPanel, settings: rSettings, max: rMax, rejoin: function () { if (rm) rRejoin(rm); }, bigToggle: rBigToggle, sfuRestart: function () { if (rm) sfuRestart(rm, 100); }, adapt: function (q) { if (rm) rAdapt(rm, q); }, stats: function () { if (rm) rStatsTick(rm); } },
     _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming
   };

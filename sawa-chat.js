@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c88";
+  var VERSION = "c89";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -731,6 +731,12 @@
   function newMsgId() { return "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
   function dmWith(other) { return "dm_" + [state.uid, other].sort().join("_"); }
   function others(c) { return (c.members || []).filter(function (u) { return u !== state.uid; }); }
+  function chatTitle(cid) {   // C89: اسم المحادثة للقوائم (مشاركة إلى سوا)
+    var c = chats[cid] || {};
+    if (c.type === "saved") return L("رسائلي المحفوظة", "Saved messages");
+    if (c.type === "dm" || c.type === "sdm") { var o = others(c)[0]; return o ? personName(o, c) : L("محادثة", "Chat"); }
+    return c.name || L("مجموعة", "Group");
+  }
   function personName(u, c) {
     if (u === state.uid) return L("أنت", "You");
     var p = state.people.filter(function (x) { return x.uid === u; })[0];
@@ -1582,20 +1588,152 @@
     }).catch(function () { toast(L("تعذّر توجيه الوسيط", "Couldn't forward the media")); return null; });
   }
   function retryMedia(cid, mid) { if (!mid) return; delete mediaFailed[mid]; mediaTries[mid] = 0; publishMessages(cid); return ensureMedia(cid, mid); }
-  // ملفٌّ عامّ: يُنزَّل ثمّ يُفتح/يُحفظ
-  function openFile(m) {
+  // C89: ملفٌّ إلى الهاتف — في تطبيق أندرويد عبر الجسر (WebView لا يُنزّل روابط blob:)، وفي المتصفّح برابط تنزيل
+  function blobPartB64(blob, off, len) {
+    return new Promise(function (res, rej) {
+      var r = new FileReader();
+      r.onload = function () { var s0 = String(r.result || ""); res(s0.slice(s0.indexOf(",") + 1)); };
+      r.onerror = function () { rej(r.error || new Error("read")); };
+      r.readAsDataURL(blob.slice(off, off + len));
+    });
+  }
+  function nativeFiles() { try { return !!(NB() && NB().fileBegin); } catch (e) { return false; } }
+  // action: open | save | share
+  function saveBlob(blob, name, action, mime) {
+    if (!blob) return Promise.resolve(false);
+    if (nativeFiles()) {
+      var id = NB().fileBegin(name || "file", mime || blob.type || "");
+      if (!id) { toast(L("تعذّر تجهيز الملفّ", "Couldn't prepare the file")); return Promise.resolve(false); }
+      var CH = 384 * 1024, off = 0;
+      var step = function () {
+        if (off >= blob.size) return nativeAsk("fileEnd", [id, action || "open"], 60000);
+        return blobPartB64(blob, off, CH).then(function (b64) { if (!NB().fileChunk(id, b64)) throw new Error("write"); off += CH; return step(); });
+      };
+      return step().then(function (r) {
+        if (r && r.ok) { if (action === "save") toast(L("حُفظ في «التنزيلات» ✓ ", "Saved to Downloads ✓ ") + (r.where ? "— " + r.where : "")); return true; }
+        toast(action === "open" ? L("لا تطبيق على هاتفك يفتح هذا النوع — جرّب «حفظ» أو «مشاركة»", "No app can open this type — try Save or Share") : L("تعذّر: ", "Failed: ") + ((r && r.error) || "")); return false;
+      }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); return false; });
+    }
+    if (action === "share" && navigator.canShare) {
+      try { var f = new File([blob], name || "file", { type: mime || blob.type }); if (navigator.canShare({ files: [f] })) return navigator.share({ files: [f] }).then(function () { return true; }, function () { return false; }); } catch (e) {}
+    }
+    var u = URL.createObjectURL(blob), a = document.createElement("a"); a.href = u; a.download = name || "file"; a.target = "_blank";
+    document.body.appendChild(a); a.click(); setTimeout(function () { try { a.remove(); URL.revokeObjectURL(u); } catch (e) {} }, 4000);
+    return Promise.resolve(true);
+  }
+  function blobOfUrl(u) { return fetch(u).then(function (r) { return r.blob(); }); }
+  // ملفٌّ عامّ: يُنزَّل ثمّ «فتح · حفظ · مشاركة»
+  function openFile(m, action) {
     if (!m || !m.cloudMid) return;
     var url = mediaUrls[m.cloudMid] || localUrls[m.cloudMid];
-    var go = function (u) {
+    var name = m.text || m.fileName || "file", mime = m.mime || null;
+    var go = function (u, act) {
       if (!u) { toast(L("تعذّر تنزيل الملفّ", "Couldn't download the file")); return; }
-      var a = document.createElement("a"); a.href = u; a.download = m.text || "file"; a.target = "_blank";
-      document.body.appendChild(a); a.click(); setTimeout(function () { try { a.remove(); } catch (e) {} }, 500);
+      blobOfUrl(u).then(function (b) { return saveBlob(b, name, act, mime); });
     };
-    if (url) return go(url);
-    delete mediaFailed[m.cloudMid];
-    toast(L("جارٍ التنزيل…", "Downloading…"));
-    ensureMedia(m.cloudCid, m.cloudMid).then(go);
+    var run = function (act) {
+      if (url) return go(url, act);
+      delete mediaFailed[m.cloudMid];
+      toast(L("جارٍ التنزيل…", "Downloading…"));
+      ensureMedia(m.cloudCid, m.cloudMid).then(function (u) { go(u, act); });
+    };
+    if (action) return run(action);
+    if (!nativeFiles()) return run("save");
+    var s = sheet(name);
+    s.box.appendChild(note((m.fileSize ? Math.max(1, Math.round(m.fileSize / 1024)) + " KB · " : "") + (mime || ""), "#8796a5"));
+    [["open", L("📂 فتح", "📂 Open")], ["save", L("⬇️ حفظ في التنزيلات", "⬇️ Save to Downloads")], ["share", L("📤 مشاركة", "📤 Share")]].forEach(function (x, i) {
+      var b = mkBtn(x[1], i === 0 ? "primary" : ""); b.style.marginTop = "8px"; b.onclick = function () { s.close(); run(x[0]); }; s.box.appendChild(b);
+    });
   }
+  // صورة/فيديو من العارض: حفظ أو مشاركة (رابطه blob: محلّيّ)
+  function saveMediaUrl(u, name, action, mime) { if (!u) return Promise.resolve(false); return blobOfUrl(u).then(function (b) { return saveBlob(b, name, action, mime); }); }
+
+  // ==================================================================
+  // C89: «مشاركة إلى سوا» من أيّ تطبيق (أندرويد) — نصّ/رابط/صور/فيديو/ملفّات ⇒ اختر المحادثة
+  // ==================================================================
+  function shareInPull(f) {
+    var CH = 768 * 1024, parts = [], off = 0;
+    return new Promise(function (res, rej) {
+      (function next() {
+        var b64 = ""; try { b64 = NB().shareInRead(f.id, off, CH) || ""; } catch (e) { return rej(e); }
+        if (!b64) { try { NB().shareInDone(f.id); } catch (e) {} return res(new Blob(parts, { type: f.mime || "application/octet-stream" })); }
+        var bin = atob(b64), u8 = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        parts.push(u8); off += u8.length;
+        if (off >= f.size) { try { NB().shareInDone(f.id); } catch (e) {} return res(new Blob(parts, { type: f.mime || "application/octet-stream" })); }
+        setTimeout(next, 0);
+      })();
+    });
+  }
+  function kindOfMime(m) { m = String(m || ""); return /^image\//.test(m) && !/svg/.test(m) ? "image" : /^video\//.test(m) ? "video" : "file"; }
+  function shareInSheet(data) {
+    if (!data) return;
+    if (!state.uid) { whenReady(function () { setTimeout(function () { shareInSheet(data); }, 800); }); return; }
+    var files = (data.files || []).filter(function (f) { return f && f.id; }), big = (data.files || []).filter(function (f) { return f && f.tooBig; });
+    var tooLarge = files.filter(function (f) { return f.size > MAX_MEDIA - 64; });
+    files = files.filter(function (f) { return f.size <= MAX_MEDIA - 64; });
+    var text = String(data.text || "").trim();
+    var s = sheet(L("مشاركة إلى سوا", "Share to Sawa"));
+    var pv = mk("div", "background:#f5f8fb;border-radius:12px;padding:10px;margin:2px 0 8px;font:600 12.5px/1.6 system-ui;color:#1f2d3d;max-height:110px;overflow:auto;white-space:pre-wrap;word-break:break-word");
+    var lines = [];
+    files.forEach(function (f) { lines.push((kindOfMime(f.mime) === "image" ? "🖼️ " : kindOfMime(f.mime) === "video" ? "🎬 " : "📎 ") + f.name + " · " + Math.max(1, Math.round(f.size / 1024)) + " KB"); });
+    if (text) lines.push(text);
+    pv.textContent = lines.join("\n") || "—"; s.box.appendChild(pv);
+    if (tooLarge.length || big.length) s.box.appendChild(note(L("لن يُرسل (أكبر من ١٦ ميجابايت): ", "Not sent (over 16 MB): ") + tooLarge.concat(big).map(function (f) { return f.name; }).join("، "), "#b42318", "#fdecec"));
+    var cap = null;
+    if (files.length) { cap = mk("input", "width:100%;box-sizing:border-box;border:1px solid #dfe5ec;border-radius:12px;padding:10px 12px;font:600 14px system-ui;margin-bottom:8px"); cap.placeholder = L("تعليق (اختياريّ)", "Caption (optional)"); cap.value = text; s.box.appendChild(cap); }
+    var q = mk("input", "width:100%;box-sizing:border-box;border:1px solid #dfe5ec;border-radius:12px;padding:10px 12px;font:600 14px system-ui;margin-bottom:6px");
+    q.placeholder = L("ابحث عن محادثة أو شخص…", "Search chats or people…"); s.box.appendChild(q);
+    var list = mk("div", "max-height:42vh;overflow:auto"); s.box.appendChild(list);
+    var picked = {};
+    // المحادثات أوّلاً بحسب آخر نشاط، ثمّ جهات الاتّصال التي لا محادثة معها بعد
+    var rows = Object.keys(chats).map(function (k) { var c = chats[k] || {}; return { key: "c:" + k, name: chatTitle(k), ts: c.updatedTs || 0, type: c.type }; })
+      .sort(function (a, b) { return b.ts - a.ts; });
+    var dmUids = {}; Object.keys(chats).forEach(function (k) { var c = chats[k] || {}; if (c.type === "dm") (c.members || []).forEach(function (u) { if (u !== state.uid) dmUids[u] = 1; }); });
+    state.people.forEach(function (p) { if (!dmUids[p.uid]) rows.push({ key: "u:" + p.uid, name: displayName(p), ts: 0, type: "person" }); });
+    var sendB = mkBtn(L("إرسال", "Send"), "primary"); sendB.style.marginTop = "10px";
+    function paint() {
+      list.innerHTML = "";
+      var v = q.value.trim().toLowerCase();
+      rows.filter(function (r) { return !v || String(r.name || "").toLowerCase().indexOf(v) >= 0; }).slice(0, 200).forEach(function (r) {
+        var b = mk("button", "width:100%;display:flex;align-items:center;gap:10px;padding:9px 4px;border:0;border-bottom:1px solid #eef2f6;background:" + (picked[r.key] ? "#eef6ff" : "transparent") + ";text-align:" + (isAr() ? "right" : "left"));
+        b.appendChild(avatar(r.type === "saved" ? "★" : r.name, 38));
+        b.appendChild(mk("span", "flex:1;font:700 14px system-ui;color:#1A1A2E;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", (r.type === "group" || r.type === "family" ? "👥 " : "") + (r.name || "")));
+        b.appendChild(mk("span", "font-size:18px", picked[r.key] ? "☑️" : "◻️"));
+        b.onclick = function () { picked[r.key] = !picked[r.key]; paint(); };
+        list.appendChild(b);
+      });
+      var n = Object.keys(picked).filter(function (k) { return picked[k]; }).length;
+      sendB.textContent = n ? L("إرسال إلى " + n, "Send to " + n) : L("إرسال", "Send");
+    }
+    q.oninput = paint; paint(); s.box.appendChild(sendB);
+    sendB.onclick = function () {
+      var keys = Object.keys(picked).filter(function (k) { return picked[k]; });
+      if (!keys.length) { toast(L("اختر محادثة على الأقلّ", "Pick at least one chat")); return; }
+      sendB.disabled = true; sendB.textContent = L("جارٍ التحضير…", "Preparing…");
+      var caption = cap ? cap.value.trim() : text;
+      Promise.all(keys.map(function (k) { return k.slice(0, 2) === "u:" ? openDm(k.slice(2)) : Promise.resolve(k.slice(2)); })).then(function (cids) {
+        cids = cids.filter(Boolean);
+        return files.reduce(function (pr, f) { return pr.then(function (acc) { return shareInPull(f).then(function (b) { acc.push({ f: f, b: b }); return acc; }); }); }, Promise.resolve([])).then(function (blobs) {
+          cids.forEach(function (cid) {
+            blobs.forEach(function (x) { sendMedia(cid, { kind: kindOfMime(x.f.mime), blob: x.b, name: x.f.name }); });
+            if (caption) send(cid, caption);
+          });
+          s.close();
+          toast(L("أُرسلت ✓", "Sent ✓"));
+          if (cids.length === 1) whenApp(function () { try { app.openChatById(cids[0]); } catch (e) {} });
+        });
+      }).catch(function (e) { sendB.disabled = false; paint(); toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+    };
+  }
+  global.__sawaNativeShareIn = function () {
+    var j = ""; try { j = NB() && NB().shareInTake ? NB().shareInTake() : ""; } catch (e) {}
+    if (!j) return false;
+    var d = null; try { d = JSON.parse(j); } catch (e) {}
+    if (d) whenReady(function () { setTimeout(function () { shareInSheet(d); }, 600); });
+    return true;
+  };
+  setTimeout(function () { try { global.__sawaNativeShareIn(); } catch (e) {} }, 2500);   // وصل قبل جاهزيّة الصفحة
+
   function markViewedOnce(cid, id) {
     var f = findMsg(cid, id); if (!f) return;
     patchLocal(cid, id, function (m) { m.viewed = Object.assign({}, m.viewed); m.viewed[state.uid] = Date.now(); return m; });
@@ -3963,6 +4101,7 @@
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
     _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,
     // C10
+    saveBlob: saveBlob, saveMediaUrl: saveMediaUrl, shareInSheet: shareInSheet, nativeFiles: nativeFiles,   // C89
     codeSheet: codeSheet, findSheet: findSheet, phoneContactsSheet: phoneContactsSheet, smsText: smsText, openSms: openSms, setNick: setNick, peerCode: peerCode, fetchPeerCodes: fetchPeerCodes, verifySheet: verifySheet, requestsSheet: requestsSheet, emailSheet: emailSheet, linkSheet: linkSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, reportSheet: reportSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },
     requestCount: function () { return reqs.incoming.length; }, fmtCode: fmtCode, codeValid: codeValid,
     retryFailed: retryFailed, discardFailed: discardFailed, failedSheet: failedSheet,   // C14
