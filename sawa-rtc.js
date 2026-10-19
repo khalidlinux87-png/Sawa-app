@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c89";
+  var VERSION = "c92";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -143,7 +143,20 @@
   }
 
   // ---------- الوسائط ----------
+  // C92: نتأكّد أنّ مُلغي الصدى ومزيل الضوضاء مفعّلان فعلاً على مسار الميكروفون (بعض الأجهزة تتجاهل الطلب)
+  var lastAec = null;
+  function ensureAec(st) {
+    try {
+      var t = st && st.getAudioTracks()[0], g = t && t.getSettings ? t.getSettings() : {};
+      lastAec = { aec: g.echoCancellation, ns: g.noiseSuppression, agc: g.autoGainControl };   // للتشخيص (applyConstraints على مسارٍ حيّ يُسكته في بعض المتصفّحات — لا نلمسه)
+      log("mic", "aec=" + g.echoCancellation, "ns=" + g.noiseSuppression, "agc=" + g.autoGainControl);
+    } catch (e) {}
+    return st;
+  }
   function getMedia(type, facing) {
+    return getMedia0(type, facing).then(ensureAec);
+  }
+  function getMedia0(type, facing) {
     var md = navigator.mediaDevices;
     var audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
     if (type !== "video") return md.getUserMedia({ audio: audio, video: false });
@@ -179,7 +192,7 @@
       var snd = c.pc && c.pc.getSenders().filter(function (x) { return x.track === old || (x.track && x.track.kind === "audio"); })[0];
       return (snd ? snd.replaceTrack(nt) : Promise.resolve()).then(function () {
         if (old) { try { c.local.removeTrack(old); old.stop(); } catch (e) {} }
-        c.local.addTrack(nt); c.out = which; paint(c);
+        c.local.addTrack(nt); c.out = which; nativeSpk(which === "spk"); paint(c);
         // C26: على السمّاعة العاديّة نترك الشاشة لمؤقّت النظام (تنطفئ وحدها) — المتصفّح لا يصل إلى حسّاس القرب
         if (which === "ear") { wakeOff(); earArm(); } else { wakeOn(); earOff(); }
         return true;
@@ -187,7 +200,14 @@
     }).catch(function (e) { log("route", e && (e.name || e.message)); if (!quiet) toast(L("تعذّر تحويل الصوت على هذا الجهاز", "Couldn't switch audio output on this device")); return false; })
       .then(function (x) { c.routing = false; return x; });
   }
-  function toggleRoute() { var c = cur; if (!c) return; setRoute(c, c.out === "ear" ? "spk" : "ear"); }
+  // C92: التطبيق الأصليّ يوجّه الصوت بنفسه (وضع الاتّصال) — يعمل ولو لم يكشف WebView مدخلَي «المكبّر/السمّاعة»
+  function nativeSpk(on) { try { if (NB() && NB().setSpeaker) NB().setSpeaker(!!on); } catch (e) {} }
+  function nativeRoute(c, which) {
+    c.out = which; nativeSpk(which === "spk");
+    if (which === "ear") { wakeOff(); earArm(); } else { wakeOn(); earOff(); }
+    paint(c);
+  }
+  function toggleRoute() { var c = cur; if (!c) return; var w = c.out === "ear" ? "spk" : "ear"; if (c.routes) setRoute(c, w); else if (NB() && NB().setSpeaker) nativeRoute(c, w); }
   function stopStream(s) { try { s && s.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} }
   function mediaError(e) {
     var n = e && e.name;
@@ -444,7 +464,7 @@
       bar.appendChild(btn(c.camOff ? "🚫" : "📷", c.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), c.camOff ? "#e8f5ee" : "rgba(255,255,255,.16)", toggleCam));
       bar.appendChild(btn("🔄", L("تبديل", "Flip"), "rgba(255,255,255,.16)", switchCam));
     }
-    if (c.routes) { var sp = c.out !== "ear"; var rb = btn(sp ? "🔊" : "👂", sp ? L("المكبّر", "Speaker") : L("السمّاعة", "Earpiece"), sp ? "#e8f5ee" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
+    if (c.routes || (NB() && NB().setSpeaker)) { var sp = c.out !== "ear"; var rb = btn(sp ? "🔊" : "👂", sp ? L("المكبّر", "Speaker") : L("السمّاعة", "Earpiece"), sp ? "#e8f5ee" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
     if (c.state === "connected") bar.appendChild(btn("➕", L("إضافة", "Add"), "rgba(255,255,255,.16)", function () { pickPerson(cur); }));
     bar.appendChild(btn("📞", L("إنهاء", "End"), "#d64545", function () { hangup(); }));
     bar.lastChild._b.style.transform = "rotate(135deg)";
@@ -535,10 +555,10 @@
     if (c.done || !c.pc || c.state !== "connected") return;
     c.pc.getStats().then(function (rep) {
       if (c.done) return;
-      var rtt = null, lostIn = 0, recvIn = 0, lostOut = null, pair = null;
+      var rtt = null, lostIn = 0, recvIn = 0, lostOut = null, pair = null, jbD = 0, jbN = 0;
       rep.forEach(function (x) {
         if (x.type === "transport" && x.selectedCandidatePairId) pair = rep.get(x.selectedCandidatePairId);
-        if (x.type === "inbound-rtp" && x.kind === "audio") { lostIn += x.packetsLost || 0; recvIn += x.packetsReceived || 0; }
+        if (x.type === "inbound-rtp" && x.kind === "audio") { lostIn += x.packetsLost || 0; recvIn += x.packetsReceived || 0; jbD += x.jitterBufferDelay || 0; jbN += x.jitterBufferEmittedCount || 0; }
         if (x.type === "remote-inbound-rtp" && x.kind === "audio") { if (typeof x.fractionLost === "number") lostOut = x.fractionLost; if (typeof x.roundTripTime === "number") rtt = x.roundTripTime * 1000; }
       });
       if (!pair) rep.forEach(function (x) { if (x.type === "candidate-pair" && x.state === "succeeded" && (x.selected || x.nominated)) pair = pair || x; });
@@ -549,6 +569,11 @@
       else if (rtt != null && rtt > 400 || loss > 0.08 || (lostOut != null && lostOut > 0.08)) q = 1;
       else if (rtt != null && rtt > 200 || loss > 0.03 || (lostOut != null && lostOut > 0.03)) q = 2;
       c.q = q; c.rtt = rtt; c.loss = loss;
+      // C92: تأخير مخزن الصوت (ms) في آخر ٣ ثوانٍ + عرض الشبكة/التأخير في شاشة المكالمة
+      var dD = jbD - (c.sJbD || 0), dN = jbN - (c.sJbN || 0); c.sJbD = jbD; c.sJbN = jbN;
+      if (dN > 0) c.jb = Math.round(dD / dN * 1000);
+      c.lagHist = (c.lagHist || []).concat([Math.round((rtt || 0) / 2 + (c.jb || 0))]).slice(-40);
+      if (c === cur && ui.sub && c.type !== "video") ui.sub.textContent = callNetText(c);
       c.qHist = (c.qHist || []).concat([q]).slice(-6);
       var h = c.qHist, bad = h.length >= 2 && h.slice(-2).every(function (x) { return x <= 1; }), good = h.length >= 4 && h.slice(-4).every(function (x) { return x >= 2; });
       var vt = c.local && c.local.getVideoTracks()[0];
@@ -563,6 +588,11 @@
       if (c === cur) paintStatus(c);
     }).catch(function () {});
   }
+  function callNetText(c) {
+    var lag = Math.round((c.rtt || 0) / 2 + (c.jb || 0));
+    return (c.route === "relay" ? L("عبر وسيط", "relay") : c.route ? L("مباشر", "direct") : "") + (c.proto ? "/" + c.proto : "") +
+      (c.rtt != null ? " · ⏱ " + L("تأخير ", "delay ") + lag + L(" مللي ث", " ms") : "") + (c.loss > 0.03 ? " · " + L("فقد ", "loss ") + Math.round(c.loss * 100) + "%" : "");
+  }
   function routeInfo(c) {
     try {
       c.pc.getStats().then(function (rep) {
@@ -575,8 +605,8 @@
         if (!pair) return;
         var lc = cands[pair.localCandidateId] || {}, rc = cands[pair.remoteCandidateId] || {};
         var relay = lc.candidateType === "relay" || rc.candidateType === "relay";
-        c.route = relay ? "relay" : "direct";
-        log("route", lc.candidateType, "→", rc.candidateType);
+        c.route = relay ? "relay" : "direct"; c.proto = String(lc.relayProtocol || lc.protocol || "").toLowerCase() || null;
+        log("route", lc.candidateType, "→", rc.candidateType, c.proto);
         if (ui.sub && c === cur) ui.sub.textContent = relay ? L("عبر خادم وسيط", "via relay") : L("اتّصال مباشر", "direct");
       }).catch(function () {});
     } catch (e) {}
@@ -586,6 +616,7 @@
     if (s === "connected") {
       clearTimeout(c.timers.conn); clearTimeout(c.timers.lost); delete c.timers.lost;
       if (!c.connectedAt) { c.connectedAt = Date.now(); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); }); if (c.out === "ear" && NB() && NB().setProximity) setTimeout(earArm, 0);
+        if (NB() && NB().setSpeaker) nativeRoute(c, c.type === "video" ? "spk" : "ear");   // C92
         audioRoutes().then(function (rt) {   // C15: المكالمة الصوتيّة تبدأ على سمّاعة الأذن كالهاتف، والفيديو على المكبّر
           if (!rt || c.done || cur !== c) return;
           c.routes = rt; c.out = "spk";
@@ -2154,7 +2185,7 @@
     rTile(r, uid);
   }
   function rCap(r) {
-    var n = Object.keys(r.peers).length, br = n <= 1 ? 600000 : n <= 3 ? 400000 : 250000;
+    var n = Object.keys(r.peers).length, br = n <= 1 ? 600000 : n <= 3 ? 400000 : n <= 4 ? 250000 : 160000;   // C92: ٦–٨ أشخاص ⇒ أخفّ (الرفع من الجوّال يُرسل لكلّ واحد)
     if (r.lowRes) br = Math.min(br, 150000);   // C38
     // C70: تعديلٌ واحد مُسلسَل لكلّ مُرسِل (كان تعديلان متداخلان ⇒ «parameters stale»)
     try { if (r.sfu && r.sfu.pc) tuneSenders(r.sfu.pc, r.lowRes ? 150000 : 350000); } catch (e) {}

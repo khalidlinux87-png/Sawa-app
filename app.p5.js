@@ -402,12 +402,20 @@ function UnreadDivider() {
 const URL_RE = /((?:https?:\/\/|www\.)[^\s<>"'()\u0600-\u06FF]+|(?:[a-z0-9-]+\.)+(?:com|net|org|sd|app|io|me|info|ly|co|dev|edu|gov|tv|ae|sa|eg|uk)(?:\/[^\s<>"'()\u0600-\u06FF]*)?)/gi;
 const SawaLinkIcon = (p) => React.createElement("svg", { width: p.size || 14, height: p.size || 14, viewBox: "0 0 24 24", fill: "none", stroke: p.color || "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, React.createElement("path", { d: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" }), React.createElement("path", { d: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" }));
 function urlHref(u) { return /^https?:\/\//i.test(u) ? u : "https://" + u; }
-function urlsIn(text) { const out = []; String(text || "").replace(URL_RE, (m) => { const t = m.replace(/[.,!?؟،:;]+$/, ""); if (t.length > 3) out.push(t); return m; }); return out; }
+// C92: النطاق بلا http/www لا يُعدّ رابطاً إن كان معرّفاً معكوساً (com.sawaaap.app) أو جزءاً من كلمة/بريد (name@x.com) — كان كلّ نصٍّ ملصوق فيه نقاط يصير روابط وبطاقات
+const BARE_TLD1 = /^(com|net|org|io|app|me|co|dev|sd|info|edu|gov|tv|ae|sa|eg|uk|ly)\./i;
+function linkOk(u, prev) {
+    if (/^(https?:\/\/|www\.)/i.test(u)) return true;
+    if (prev && /[A-Za-z0-9@_\-.\/:]/.test(prev)) return false;
+    if (BARE_TLD1.test(u)) return false;
+    return u.length > 3;
+}
+function urlsIn(text) { const out = [], s0 = String(text || ""); s0.replace(URL_RE, (m, _g, idx) => { const t = m.replace(/[.,!?؟،:;]+$/, ""); if (t.length > 3 && linkOk(t, s0[idx - 1])) out.push(t); return m; }); return out; }
 function isSawaLink(u) { try { return /(^|\.)sawaaap\.com$/i.test(new URL(urlHref(u)).hostname); } catch (e) { return false; } }
 function openUrl(u, e) {
     if (e) { e.stopPropagation(); e.preventDefault(); }
     const href = urlHref(u);
-    if (isSawaLink(u)) { location.href = href; return; }
+    if (isSawaLink(u)) { if (!(window.__sawaNativeOpen && window.__sawaNativeOpen(href))) location.href = href; return; }
     // window.open مع noopener يعيد null دوماً — فنفتح برابطٍ حقيقيّ حتى لا نغادر التطبيق
     const a = document.createElement("a"); a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer"; document.body.appendChild(a); a.click(); setTimeout(() => { try { a.remove(); } catch (x) {} }, 300);
 }
@@ -424,9 +432,9 @@ function renderRichText(text, opts) {
     let last = 0; URL_RE.lastIndex = 0; let m;
     while ((m = URL_RE.exec(t))) {
         let u = m[0]; const trail = (u.match(/[.,!?؟،:;]+$/) || [""])[0]; u = u.slice(0, u.length - trail.length);
-        if (u.length <= 3) continue;
+        if (u.length <= 3 || !linkOk(u, t[m.index - 1])) continue;
         pushPlain(t.slice(last, m.index));
-        nodes.push(React.createElement("a", { key: k++, href: urlHref(u), target: isSawaLink(u) ? "_self" : "_blank", rel: "noopener noreferrer", onClick: (e) => { e.stopPropagation(); if (isSawaLink(u)) { e.preventDefault(); location.href = urlHref(u); } }, onContextMenu: (e) => e.stopPropagation(), style: { color: linkColor, textDecoration: "underline", wordBreak: "break-all", unicodeBidi: "isolate", direction: "ltr" } }, u));
+        nodes.push(React.createElement("a", { key: k++, href: urlHref(u), target: isSawaLink(u) ? "_self" : "_blank", rel: "noopener noreferrer", onClick: (e) => { e.stopPropagation(); if (isSawaLink(u)) { e.preventDefault(); if (!(window.__sawaNativeOpen && window.__sawaNativeOpen(urlHref(u)))) location.href = urlHref(u); } }, onContextMenu: (e) => e.stopPropagation(), style: { color: linkColor, textDecoration: "underline", wordBreak: "break-all", unicodeBidi: "isolate", direction: "ltr" } }, u));
         if (trail) pushPlain(trail);
         last = m.index + m[0].length;
     }
@@ -1282,7 +1290,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                 React.createElement("div", { className: "w-10 h-1 rounded-full mx-auto my-3 shrink-0", style: { backgroundColor: colors.border } }),
                 React.createElement("p", { className: "text-sm font-extrabold text-center mb-2 px-4 shrink-0", style: { color: colors.text } }, t("msharka_jha_atsal")),
                 // C89: جهات اتّصال سوا الحقيقيّة (لا المحادثات) مع بحثٍ بالاسم — وتُرسل بطاقةً فيها رمز سوا ورابط إضافته
-                React.createElement(ShareContactPicker, { colors, onPick: (txt) => { onSend(txt, null); setSharingContact(false); } })))),
+                React.createElement(ShareContactPicker, { colors, onPick: (txts) => { [].concat(txts).forEach((tx, i) => setTimeout(() => onSend(tx, null), i * 120)); setSharingContact(false); } })))),
         msgMenu && (() => {
             const MsgMenuSheet = () => {
                 const [showReactions, setShowReactions] = React.useState(false);

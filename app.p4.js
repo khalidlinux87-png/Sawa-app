@@ -1624,6 +1624,7 @@ function ArchivedChatsScreen({ conversations, archivedIds, mutedIds, onOpenChat,
 function ShareContactPicker({ colors, onPick }) {
     const SC = window.SawaChat;
     const [q, setQ] = useState("");
+    const [picked, setPicked] = useState([]);   // C92: عدّة جهات اتّصال دفعةً واحدة
     const all = (SC && SC.contacts ? SC.contacts() : []).filter((c) => c && c.uid);
     const nq = normAr(q);
     const list = all.filter((c) => !nq || [c.name, c.realName, c.nick, c.code].some((x) => x && normAr(String(x)).includes(nq)));
@@ -1639,11 +1640,15 @@ function ShareContactPicker({ colors, onPick }) {
                 React.createElement("input", { autoFocus: true, value: q, onChange: (e) => setQ(e.target.value), placeholder: tl("ابحث بالاسم أو الرمز", "Search by name or code"), className: "flex-1 bg-transparent text-sm outline-none", style: { color: colors.text, minWidth: 0 } }))),
         React.createElement("div", { className: "overflow-y-auto px-3 pb-2" },
             list.length === 0 && React.createElement("p", { className: "text-xs text-center py-6", style: { color: colors.textMuted } }, all.length ? tl("لا نتائج", "No results") : tl("لا جهات اتّصال في سوا بعد", "No Sawa contacts yet")),
-            list.map((c) => React.createElement("button", { key: c.uid, onClick: () => onPick(card(c)), className: "w-full flex flex-row items-center gap-3 px-2 py-2.5 rounded-xl" },
+            list.map((c) => React.createElement("button", { key: c.uid, onClick: () => setPicked((p) => p.includes(c.uid) ? p.filter((x) => x !== c.uid) : [...p, c.uid]), className: "w-full flex flex-row items-center gap-3 px-2 py-2.5 rounded-xl", style: { backgroundColor: picked.includes(c.uid) ? colors.primaryLight : "transparent" } },
+                React.createElement("span", { className: "w-6 h-6 rounded-full flex items-center justify-center shrink-0 border-2", style: { borderColor: picked.includes(c.uid) ? colors.primary : colors.border, backgroundColor: picked.includes(c.uid) ? colors.primary : "transparent" } }, picked.includes(c.uid) && React.createElement(Check, { size: 14, color: "#fff", strokeWidth: 3 })),
                 React.createElement(Pic, { photo: c.photo || null, letter: (c.name || "؟").charAt(0), size: 38, bg: colors.primaryLight, color: colors.primaryDark }),
                 React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
                     React.createElement("div", { className: "text-sm font-bold truncate", style: { color: colors.text } }, c.name),
-                    c.code && React.createElement("div", { className: "text-[11px] truncate", dir: "ltr", style: { color: colors.textMuted, textAlign: isRTL() ? "right" : "left" } }, String(c.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3")))))));
+                    c.code && React.createElement("div", { className: "text-[11px] truncate", dir: "ltr", style: { color: colors.textMuted, textAlign: isRTL() ? "right" : "left" } }, String(c.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3")))))),
+        React.createElement("div", { className: "px-3 pt-2 shrink-0" },
+            React.createElement("button", { disabled: !picked.length, onClick: () => onPick(all.filter((c) => picked.includes(c.uid)).map(card)), className: "w-full rounded-2xl py-3 text-[15px] font-extrabold", style: { backgroundColor: picked.length ? colors.primary : colors.border, color: "#fff" } },
+                picked.length ? tl("إرسال " + picked.length + (picked.length === 1 ? " جهة اتّصال" : " جهات اتّصال"), "Send " + picked.length) : tl("اختر جهة اتّصال أو أكثر", "Pick one or more"))));
 }
 function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, chatDrafts = {}, conversations, groups, broadcastLists, lockedConversationIds, connectionState, onOpenChat, onOpenGroup, onOpenBroadcastList, onNewConversation, onNewGroup, onNewBroadcastList, onOpenLockedChats, onOpenStarredMessages, onScanQr, onOpenSearch, onlineContacts, chatFolders, folderAssignments, onOpenChatSettings, typingConversations = [], momentsPosts = [], familyPersons = [], onOpenMoments, onOpenRoom, myName, groupPersons = {}, groupSchedules = {}, archivedConversations = [], mutedConversations = [], onArchiveConv, onMuteConv, showStoriesRow = true, showFamilyReminders = true, onOpenArchived, pinnedConversations = [], onPinConv, onDeleteConv, onToggleReadConv, onScheduleRoom, onJoinRoomCode, scheduledRooms = [], onJoinScheduled, onCancelScheduled, }) {
     const { colors } = useTheme();
