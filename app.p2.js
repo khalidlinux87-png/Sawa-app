@@ -542,6 +542,61 @@ function famSheetBindPop() {
         if (top) { top.popped = true; try { top.close(); } catch (e) { } }
     });
 }
+// C99: زرّ الرجوع في أندرويد — التطبيق الأصليّ يسأل الواجهة أوّلاً: (١) ورقة/مكالمة لها خطوة في السجلّ ⇒ رجوع
+//      (٢) ورقة أو قائمة مفتوحة ⇒ الضغط على خلفيّتها المعتمة (يغلقها) (٣) شاشةٌ فيها سهم رجوع ⇒ نضغطه. وإلّا يخرج التطبيق إلى الخلفيّة.
+//      كان الرجوع من أيّ شاشةٍ بلا خطوة في السجلّ يُخرج من التطبيق نهائيّاً.
+window.__sawaBack = function () {
+    try {
+        const st = history.state;
+        if (st && (st.sawaSheet || st.sawaCall)) { history.back(); return true; }
+        const vis = (el) => { if (!el || !el.isConnected) return false; const r = el.getBoundingClientRect(); if (r.width < 2 || r.height < 2 || r.bottom < 0 || r.top > window.innerHeight) return false; const cs = getComputedStyle(el); return cs.visibility !== "hidden" && cs.display !== "none" && cs.pointerEvents !== "none"; };
+        const zOf = (el) => { let z = 0; for (let e = el; e && e !== document.body; e = e.parentElement) { const v = parseInt(e.style && e.style.zIndex, 10); if (!isNaN(v)) z = Math.max(z, v); } return z; };
+        const excluded = (el) => !!el.closest("#sawa-call,[data-no-back]");
+        // (٢) خلفيّة ورقة: fixed تغطّي الشاشة بلونٍ شفّاف
+        let best = null, bz = -1;
+        document.querySelectorAll('div[style*="fixed"]').forEach((el) => {
+            const sx = el.style;
+            if (sx.position !== "fixed" || excluded(el)) return;
+            const covers = sx.inset === "0px" || (sx.top === "0px" && sx.left === "0px" && sx.right === "0px" && sx.bottom === "0px");
+            if (!covers || !/rgba\(/.test(sx.backgroundColor || sx.background || "") || !vis(el)) return;
+            const z = zOf(el); if (z >= bz) { bz = z; best = el; }
+        });
+        if (best) { best.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })); return true; }
+        // (٣) سهم الرجوع في رأس الشاشة الظاهرة
+        let btn = null, btz = -1;
+        const cands = new Set(document.querySelectorAll('button[aria-label="رجوع"],button[aria-label="Back"]'));
+        document.querySelectorAll('button svg[data-i="ChevronLeft"],button svg[data-i="ChevronRight"],button svg[data-i="ArrowRight"],button svg[data-i="ArrowLeft"]').forEach((svg) => { const b = svg.closest("button"); if (b && b.getBoundingClientRect().top < 150) cands.add(b); });
+        cands.forEach((b) => { if (excluded(b) || b.disabled || !vis(b)) return; const z = zOf(b); if (z >= btz) { btz = z; btn = b; } });
+        if (btn) { btn.click(); return true; }
+    } catch (e) { }
+    return false;
+};
+// C99: ضغطٌ مطوّل حقيقيّ على الرسالة — ٥٠٠ مللي ث بلا تحريك (> ١٠ px). كان أيّ لمسٍ طويل أثناء التمرير يفتح القائمة،
+//      وضغطة النظام المطوّلة تحدّد النصّ للنسخ. الحالة عامّة (لمسةٌ واحدة في كلّ مرّة) فلا تضيع إن أُعيد رسم الفقاعة أثناء الضغط.
+const LP = { t: null, x: 0, y: 0, fired: false, at: 0 };
+function lpClear() { if (LP.t) { clearTimeout(LP.t); LP.t = null; } }
+if (typeof window !== "undefined" && !window.__lpBound) {
+    window.__lpBound = true;
+    window.addEventListener("scroll", lpClear, true);
+    try { const css = document.createElement("style"); css.textContent = "[data-message-id],[data-message-id] *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}"; document.head.appendChild(css); } catch (e) { }
+}
+function longPress(open) {
+    return {
+        onTouchStart: (e) => {
+            LP.at = Date.now(); lpClear(); LP.fired = false;
+            if (!e.touches || e.touches.length !== 1) return;
+            LP.x = e.touches[0].clientX; LP.y = e.touches[0].clientY;
+            LP.t = setTimeout(() => { LP.t = null; LP.fired = true; try { navigator.vibrate && navigator.vibrate(12); } catch (er) { } open(); }, 500);
+        },
+        onTouchMove: (e) => { const t0 = e.touches && e.touches[0]; if (t0 && Math.hypot(t0.clientX - LP.x, t0.clientY - LP.y) > 10) lpClear(); },
+        onTouchEnd: (e) => { lpClear(); if (LP.fired) { LP.fired = false; if (e.cancelable) e.preventDefault(); } },
+        onTouchCancel: lpClear,
+        // الفأرة (حاسوب): الزرّ الأيمن. وعلى اللمس نتجاهله (نافذة النظام وتحديد النصّ)
+        onContextMenu: (e) => { e.preventDefault(); if (Date.now() - LP.at < 1500) return; open(); },
+    };
+}
+// C99: على الهاتف Enter = سطرٌ جديد (الإرسال بالزرّ) — كان ينزل السطر فيُرسل الرسالة. على الحاسوب Enter يرسل و Shift+Enter سطر.
+function enterSends() { try { return !(window.matchMedia && window.matchMedia("(pointer: coarse)").matches) && !window.SawaNativeBridge; } catch (e) { return true; } }
 function useSheetBack(onClose) {
     const closeRef = useRef(onClose);
     closeRef.current = onClose;

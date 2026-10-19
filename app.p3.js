@@ -2380,8 +2380,9 @@ function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, r
     // يحلّ ضيق شاشة الهاتف بدل التحايل عليه بالتمرير المستمر.
     const [viewMode, setViewMode] = useState("focus"); // focus | full
     const [showTreeTools, setShowTreeTools] = useState(false);   // C34: ورقة أدوات الشجرة
-    const [zoom, setZoom] = useState(1); // من 0.6 إلى 1.6
-    const clampZoom = (z) => Math.min(1.6, Math.max(0.6, +z.toFixed(2)));
+    const [zoom, setZoom] = useState(1); // C99: من 0.25 (الشجرة كاملة) إلى 1.6 — كان أدناه 0.6
+    const ZMIN = 0.25, ZMAX = 1.6;
+    const clampZoom = (z) => Math.min(ZMAX, Math.max(ZMIN, +z.toFixed(2)));
     const pinchRef = useRef(null);
     const stageRef = useRef(null); // العنصر المتحرّك
     const labelRef = useRef(null); // نسبة التكبير المعروضة
@@ -2410,28 +2411,37 @@ function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, r
         const el = pinchRef.current;
         if (!el)
             return;
-        let startDist = 0, startZoom = 1, raf = 0, mid = null;
+        // C99: أثناء القرص نكبّر الصورة فقط (transform — سريعٌ بلا إعادة تخطيط)، وعند رفع الإصبعين نطبّق التكبير الحقيقيّ مرّةً واحدة.
+        //      كان كلّ تحريكٍ يعيد تخطيط الشجرة كلّها (CSS zoom) فيتأخّر ويتقطّع في الشجرة الكبيرة.
+        let startDist = 0, startZoom = 1, raf = 0, mid0 = null;
         const d2 = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
         const start = (e) => {
             if (e.touches.length !== 2) return;
             startDist = d2(e.touches);
             startZoom = zoomRef.current;
             pinching.current = true;
+            mid0 = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
+            const st = stageRef.current;
+            if (st) { const r = st.getBoundingClientRect(); st.style.transformOrigin = `${mid0.x - r.left}px ${mid0.y - r.top}px`; st.style.willChange = "transform"; }
         };
         const move = (e) => {
             if (!pinching.current || e.touches.length !== 2 || !startDist) return;
-            e.preventDefault();
-            zoomRef.current = Math.min(1.6, Math.max(0.6, startZoom * (d2(e.touches) / startDist)));
-            mid = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
+            if (e.cancelable) e.preventDefault();
+            zoomRef.current = Math.min(ZMAX, Math.max(ZMIN, startZoom * (d2(e.touches) / startDist)));
             if (!raf) raf = requestAnimationFrame(() => {
                 raf = 0;
-                applyZoom(zoomRef.current, mid && mid.x, mid && mid.y);
+                const st = stageRef.current;
+                if (st) st.style.transform = `scale(${zoomRef.current / startZoom})`;
                 if (labelRef.current) labelRef.current.textContent = `${Math.round(zoomRef.current * 100)}%`;
             });
         };
         const end = (e) => {
             if (!pinching.current || (e.touches && e.touches.length >= 2)) return;
             pinching.current = false; startDist = 0;
+            if (raf) { cancelAnimationFrame(raf); raf = 0; }
+            const st = stageRef.current;
+            if (st) { st.style.transform = ""; st.style.willChange = ""; }
+            applyZoom(zoomRef.current, mid0 && mid0.x, mid0 && mid0.y);
             setZoom(+zoomRef.current.toFixed(2));
         };
         el.addEventListener("touchstart", start, { passive: true });
@@ -3023,6 +3033,8 @@ function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, r
                 React.createElement("button", { onClick: () => setZoom((z) => clampZoom(z + 0.15)), className: "w-10 h-10 flex items-center justify-center", style: { color: colors.text, borderBottom: `1px solid ${colors.border}` }, "aria-label": t("tkbyr") }, React.createElement(Plus, { size: 17 })),
                 React.createElement("button", { onClick: () => setZoom(1), "aria-label": t("iaada_alhjm"), ref: labelRef, className: "w-10 h-8 text-[9.5px] font-bold flex items-center justify-center", style: { color: colors.textMuted, borderBottom: `1px solid ${colors.border}` } }, Math.round(zoom * 100), "%"),
                 React.createElement("button", { onClick: () => setZoom((z) => clampZoom(z - 0.15)), className: "w-10 h-10 flex items-center justify-center", style: { color: colors.text, borderBottom: `1px solid ${colors.border}` }, "aria-label": t("tsghyr") }, React.createElement("span", { className: "text-lg font-bold" }, "\u2212")),
+                // C99: «الشجرة كاملة» — أصغر تكبيرٍ يُظهر عرض الشجرة كلّه في الشاشة
+                React.createElement("button", { onClick: () => { const st = stageRef.current, el = pinchRef.current; if (!st || !el) return; const cur = parseFloat(st.style.zoom || "1") || 1; const natural = st.getBoundingClientRect().width / cur; if (natural > 0) setZoom(clampZoom(Math.min(1, (el.clientWidth - 8) / natural))); try { el.scrollLeft = 0; } catch (e) { } }, className: "w-10 h-10 flex items-center justify-center", style: { color: colors.text, borderBottom: `1px solid ${colors.border}` }, "aria-label": tl("الشجرة كاملة", "Fit tree"), title: tl("الشجرة كاملة", "Fit tree") }, React.createElement(ChevronsDownUp, { size: 16, style: { transform: "rotate(90deg)" } })),
                 React.createElement("button", { onClick: () => setCompactDeep((v) => !v), className: "w-10 h-10 flex items-center justify-center text-[13px] font-extrabold", style: { backgroundColor: compactDeep ? colors.primary + "14" : "transparent", color: compactDeep ? colors.primary : colors.textMuted }, "aria-label": t("dght_alajyal_albayda"), title: compactDeep ? t("ilgha_dght_alajyal") : t("ft_dght_alajyal") }, "\u21F2"))),
         React.createElement("div", { ref: treeScrollRef, className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-3` },

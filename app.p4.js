@@ -2196,11 +2196,12 @@ function ChatComposerInput({ value, onChange, placeholder, disabled, onEnter }) 
         // يُحاذى لليمين فيُقتطع أوّله («Type a…» بدل «Type a message…»)
         dir: isRTL() ? "rtl" : "ltr",
         rows: 1,
+        enterKeyHint: enterSends() ? "send" : "enter",
         value: value,
         onChange: (e) => onChange(e.target.value),
         onKeyDown: function (e) {
             // Enter يُرسل، و Shift+Enter سطر جديد — كما اعتاد المستخدم
-            if (e.key === "Enter" && !e.shiftKey && onEnter) { e.preventDefault(); onEnter(); }
+            if (e.key === "Enter" && !e.shiftKey && onEnter && enterSends()) { e.preventDefault(); onEnter(); }
         },
         placeholder: placeholder,
         disabled: disabled,
