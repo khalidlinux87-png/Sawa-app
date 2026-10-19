@@ -884,6 +884,8 @@ function MediaLightbox({ items, startIndex = 0, onClose, onForward }) {
         setDx(0);   // لا يوجد انتقال: ارجع للمركز
     }
     function handleDownload() {
+        // C89: في تطبيق أندرويد عبر الجسر (WebView لا يُنزّل روابط blob:) ⇒ «التنزيلات/Sawa»
+        try { const SCd = window.SawaChat; if (SCd && SCd.nativeFiles && SCd.nativeFiles()) { SCd.saveMediaUrl(cur.url, cur.name || (cur.type === "video" ? "sawa-video.mp4" : "sawa-image.jpg"), "save"); return; } } catch (e) { }
         try {
             const a = document.createElement("a");
             a.href = cur.url;
@@ -894,6 +896,7 @@ function MediaLightbox({ items, startIndex = 0, onClose, onForward }) {
         } catch (e) { }
     }
     function handleShare() {
+        try { const SCd = window.SawaChat; if (SCd && SCd.nativeFiles && SCd.nativeFiles()) { SCd.saveMediaUrl(cur.url, cur.name || (cur.type === "video" ? "sawa-video.mp4" : "sawa-image.jpg"), "share"); return; } } catch (e) { }
         // ورقة المشاركة الأصلية (iOS/أندرويد). غير متاحة على سطح المكتب
         // فنسقط للتحميل بدل أن لا يحدث شيء.
         if (!navigator.share) { handleDownload(); return; }
@@ -1271,10 +1274,8 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
             React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 41, backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 12, maxHeight: "70%", display: "flex", flexDirection: "column" } },
                 React.createElement("div", { className: "w-10 h-1 rounded-full mx-auto my-3 shrink-0", style: { backgroundColor: colors.border } }),
                 React.createElement("p", { className: "text-sm font-extrabold text-center mb-2 px-4 shrink-0", style: { color: colors.text } }, t("msharka_jha_atsal")),
-                React.createElement("div", { className: "overflow-y-auto px-3 pb-2" }, (allConversations || []).filter((x) => !x.isSavedMessages && x.id !== conversation.id).map((x) => (React.createElement("button", { key: x.id, onClick: () => { onSend(t("ch_jha_atsal") + x.name, null); setSharingContact(false); }, className: `w-full flex ${rowStart()} items-center gap-3 px-2 py-2.5 rounded-xl border-b`, style: { borderColor: colors.border } },
-                    React.createElement("div", { className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primaryLight } },
-                        React.createElement(User, { size: 17, color: colors.primaryDark })),
-                    React.createElement("span", { className: `flex-1 ${textStart()} text-sm font-bold truncate`, style: { color: colors.text } }, x.name)))))))),
+                // C89: جهات اتّصال سوا الحقيقيّة (لا المحادثات) مع بحثٍ بالاسم — وتُرسل بطاقةً فيها رمز سوا ورابط إضافته
+                React.createElement(ShareContactPicker, { colors, onPick: (txt) => { onSend(txt, null); setSharingContact(false); } })))),
         msgMenu && (() => {
             const MsgMenuSheet = () => {
                 const [showReactions, setShowReactions] = React.useState(false);
