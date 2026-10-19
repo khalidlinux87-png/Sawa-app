@@ -1062,13 +1062,18 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
             } }));
     }
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col relative" },
-        React.createElement(TopBar, { title: conversation.isSavedMessages ? t("rsayly_almhfwza") : conversation.name, avatar: !conversation.isSavedMessages, photo: conversation.photo || null, subtitle: !online ? tl("أنت غير متّصل", "You're offline") : isTyping ? t("ch_yktb") : (isOnline ? t("ch_mtsl_alan") : null), onBack: onBack, actions: React.createElement("div", { className: "flex flex-row items-center gap-3" },
+        React.createElement(TopBar, { onTitlePress: conversation.peerUid && window.SawaChat && window.SawaChat.renameContact ? () => window.SawaChat.renameContact(conversation.peerUid) : undefined, title: conversation.isSavedMessages ? t("rsayly_almhfwza") : conversation.name, avatar: !conversation.isSavedMessages, photo: conversation.photo || null, subtitle: !online ? tl("أنت غير متّصل", "You're offline") : isTyping ? t("ch_yktb") : (isOnline ? t("ch_mtsl_alan") : null), onBack: onBack, actions: React.createElement("div", { className: "flex flex-row items-center gap-3" },
                 React.createElement("button", { "aria-label": t("bhth"), onClick: () => setShowSearch(!showSearch) },
                     React.createElement(Search, { size: 18, color: "#fff" })),
                 !conversation.isSavedMessages && (React.createElement("button", { "aria-label": t("atsal"), onClick: () => setShowCallChoice(!showCallChoice) },
                     React.createElement(Phone, { size: 18, color: "#fff" }))),
                 React.createElement("button", { "aria-label": t("malwmat"), onClick: onOpenInfo },
                     React.createElement(MoreVertical, { size: 18, color: "#fff" }))) }),
+        // C91: يظهر برمزه فقط ⇒ «أضف اسمه» (تسمية تظهر لك وحدك)
+        conversation.unnamed && window.SawaChat && window.SawaChat.renameContact && React.createElement("button", { onClick: () => window.SawaChat.renameContact(conversation.peerUid), className: "w-full flex flex-row items-center gap-2 px-4 py-2.5 border-b", style: { backgroundColor: "#FFF7E6", borderColor: "#F5D9A8" } },
+            React.createElement(Edit3, { size: 16, color: "#B45309" }),
+            React.createElement("span", { className: "flex-1 text-[13px] font-bold", style: { color: "#92400E", textAlign: isRTL() ? "right" : "left" } }, tl("يظهر برمزه فقط — اضغط لإضافة اسمه عندك", "Shown by code only — tap to add a name")),
+            React.createElement("span", { className: "text-[12px] font-extrabold px-2.5 py-1 rounded-full", style: { backgroundColor: "#B45309", color: "#fff" } }, tl("أضف اسماً", "Add name"))),
         showSearch && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 py-2 border-b`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: searchQuery, onChange: (e) => { setSearchQuery(e.target.value); setSearchMatchIndex(0); }, placeholder: t("bhth_balmhadtha"), className: "flex-1 rounded-full px-3 py-1.5 text-xs border", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg, minWidth: 0 }, autoFocus: true }),
             searchQuery.trim() && (React.createElement("span", { className: "text-[10px] shrink-0 font-bold", style: { color: colors.textMuted } }, searchMatches.length > 0 ? `${searchMatchIndex + 1}/${searchMatches.length}` : t("ch_la_ntayj"))),
@@ -1216,6 +1221,8 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                     // بالضبط عند اختيار عدة صور دفعة واحدة من المعرض
                     validFiles.forEach((file) => {
                         const isVideo = file.type.startsWith("video/");
+                        // C91: في السحابة يُرفع الملفّ نفسه — لا قراءة dataURL لكلّ صورة (ذاكرة الهاتف مع عدّة صور)
+                        if (conversation.cloud) { onSendFile(file.name, file.size, null, isVideo ? "video" : "image", wasViewOnce, file); return; }
                         const reader = new FileReader();
                         reader.onload = (ev) => onSendFile(file.name, file.size, ev.target.result, isVideo ? "video" : "image", wasViewOnce, file);
                         reader.readAsDataURL(file);
@@ -1796,7 +1803,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                     t("rsala_mwjha"))),
                 !mine && React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-0.5` },
                     React.createElement(SenderAvatar, { name: (sender && sender.name) || t("gc_swal"), size: 20, photo: sender && sender.photo }),
-                    React.createElement("span", { className: "text-[10px] font-bold", style: { color: senderColor((sender && sender.name) || t("gc_swal")) } }, sender === null || sender === void 0 ? void 0 : sender.name)),
+                    React.createElement("button", { onClick: () => { if (sender && sender.uid && window.SawaChat && window.SawaChat.renameContact) window.SawaChat.renameContact(sender.uid); }, className: "text-[11px] font-bold", style: { color: senderColor((sender && sender.name) || t("gc_swal")), background: "none", border: 0, padding: 0 } }, sender === null || sender === void 0 ? void 0 : sender.name, sender && sender.unnamed ? React.createElement("span", { style: { marginInlineStart: 6, fontSize: 10, color: "#B45309", fontWeight: 800 } }, tl("＋ اسم", "+ name")) : null)),
                 m.replyToText && React.createElement("div", { className: "max-w-[78%] text-[10px] px-2 py-1 mb-0.5 rounded-lg border-r-2 truncate", style: { backgroundColor: colors.card, borderColor: colors.accent, color: colors.textMuted } }, "↩ " + m.replyToText),
                 React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["image", "video", "sticker"].includes(m.type) ? "" : "px-3 py-2"}`, style: { backgroundColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : mine ? colors.primary : colors.card, borderColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : colors.border, cursor: "pointer" }, onContextMenu: (e) => { e.preventDefault(); setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "" }); }, onTouchStart: (e) => { const t0 = Date.now(); const el = e.currentTarget; const onEnd = () => { if (Date.now() - t0 > 500) { setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "" }); } el.removeEventListener("touchend", onEnd); }; el.addEventListener("touchend", onEnd); } }, m.type === "image" ? (React.createElement("button", { onClick: () => setViewingImage(m.fileUrl), className: "block -m-1" }, m.fileUrl ? React.createElement("img", { src: m.fileUrl, alt: m.text, className: "rounded-xl max-h-56 w-full object-cover", style: { minWidth: 160 } }) : React.createElement(MediaUnavailable, { label: t("swra") }))) : m.type === "sticker" ? (React.createElement("span", { className: "text-4xl" }, m.text)) : m.type === "video" ? (React.createElement("video", { src: m.fileUrl, controls: true, className: "rounded-xl max-h-56 w-full", style: { minWidth: 200 } })) : m.type === "file" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2`, onClick: () => { if (m.cloudMid && window.SawaChat) window.SawaChat.openFile(m); }, style: { cursor: m.cloudMid ? "pointer" : "default" } },
                     React.createElement(FileIconLucide, { size: 18, color: mine ? "#fff" : colors.primary }),
@@ -1947,21 +1954,20 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 React.createElement("button", { onClick: () => setConfirmEndAll(false), className: "w-full py-2.5 rounded-xl text-sm font-bold", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}`, color: colors.textMuted } }, t("ilgha"))))),
         group.e2e ? React.createElement(E2eBar, { e2e: group.e2e }) : null,
         (group.e2e && group.e2e.state !== "ready") ? null : React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-2 border-t relative`, style: { borderColor: colors.border, backgroundColor: colors.card } },
-            React.createElement("input", { ref: mediaInputRef, type: "file", accept: "image/*,video/*", onChange: (e) => {
-                    var _a;
-                    const file = (_a = e.target.files) === null || _a === void 0 ? void 0 : _a[0];
+            React.createElement("input", { ref: mediaInputRef, type: "file", accept: "image/*,video/*", multiple: true, onChange: (e) => {
+                    // C91: عدّة صور/فيديو دفعةً واحدة في المجموعات أيضاً (كانت صورةً واحدة)
+                    const files = Array.from(e.target.files || []).slice(0, 20);
                     e.target.value = "";
                     setShowAttachMenu(false);
-                    if (!file)
-                        return;
-                    if (file.size > MAX_FILE_SIZE_BYTES) {
-                        showToast(`تعذّر إرسال ${file.name} (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL} في المعاينة`, "error");
-                        return;
-                    }
-                    const isVideo = file.type.startsWith("video/");
-                    const reader = new FileReader();
-                    reader.onload = (ev) => onSendFile(file.name, file.size, ev.target.result, isVideo ? "video" : "image", file);
-                    reader.readAsDataURL(file);
+                    const big = files.filter((f) => f.size > MAX_FILE_SIZE_BYTES);
+                    if (big.length) showToast(`تعذّر إرسال ${big.length > 1 ? big.length + " ملفات" : big[0].name} — الحد الأقصى ${MAX_FILE_SIZE_LABEL}`, "error");
+                    files.filter((f) => f.size <= MAX_FILE_SIZE_BYTES).forEach((file) => {
+                        const isVideo = file.type.startsWith("video/");
+                        if (group.cloud) { onSendFile(file.name, file.size, null, isVideo ? "video" : "image", file); return; }
+                        const reader = new FileReader();
+                        reader.onload = (ev) => onSendFile(file.name, file.size, ev.target.result, isVideo ? "video" : "image", file);
+                        reader.readAsDataURL(file);
+                    });
                 }, className: "hidden" }),
             React.createElement("input", { ref: fileInputRef, type: "file", onChange: (e) => {
                     var _a;
