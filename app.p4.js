@@ -368,7 +368,85 @@ function FamilyActivityLogScreen({ groupId, activityLog, onBack }) {
                     React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, a.text),
                     React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, new Date(a.ts).toLocaleString(loc(), { day: "numeric", month: "long", hour: "numeric", minute: "numeric" })))))))));
 }
-function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, settings, onCycleRole, onToggleSetting, onRemove, onShare, onOpenActivityLog, onBack }) {
+// C109: المرحلة ٤ — اقتراحات الربط بالأرقام الموثَّقة + ربط عضوٍ بشخصه من شاشة الأعضاء
+function famSG(gid) { const SS = window.SawaSync; return SS && SS.serverGid ? SS.serverGid(gid) : null; }
+function famLinkCall(gid, payload) {
+    const SS = window.SawaSync, sg = famSG(gid);
+    if (!sg || !SS || !SS.call) return Promise.reject(new Error(tl("هذه الشجرة ليست على الخادم بعد", "This tree isn't on the server yet")));
+    try { return Promise.resolve(SS.call("fam.linkReq", Object.assign({ groupId: sg }, payload))); } catch (e) { return Promise.reject(e); }
+}
+function FamPhoneSuggestCard({ groupId, persons, onOpenPerson }) {
+    const { colors } = useTheme();
+    const [list, setList] = useState(null);
+    const [state, setState] = useState({});   // personId → "busy" | "sent" | رسالة خطأ
+    useEffect(() => {
+        const SS = window.SawaSync, sg = famSG(groupId);
+        if (!sg || !SS || !SS.call) return;
+        let dead = false;
+        Promise.resolve(SS.call("fam.suggest", { groupId: sg })).then((b) => { if (!dead) setList((b && b.sugg) || []); }).catch(() => { });
+        return () => { dead = true; };
+    }, [groupId]);
+    if (!list || !list.length) return null;
+    const go = (s) => {
+        if (state[s.personId] === "busy") return;
+        setState((x) => ({ ...x, [s.personId]: "busy" }));
+        famLinkCall(groupId, { personId: s.personId, byPhone: true })
+            .then((b) => setState((x) => ({ ...x, [s.personId]: b && b.found === false ? tl("لم يعد مطابقاً", "No longer matches") : "sent" })))
+            .catch((e) => setState((x) => ({ ...x, [s.personId]: famLinkErr((e && e.message) || e) })));
+    };
+    return React.createElement(FamCard, { style: { border: "1px solid #0F7A5533" } },
+        React.createElement("div", { className: `text-[14px] font-extrabold ${textStart()}`, style: { color: colors.text } }, "📱 " + tl("أقارب في سوا بأرقامهم", "Relatives on Sawa by phone")),
+        React.createElement("p", { className: `text-[11.5px] mt-1 mb-2 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, tl("أرقامهم المحفوظة في الشجرة لحساباتٍ موثَّقة في سوا. اضغط «ربط» فيصل كلَّ واحدٍ «هل هذا أنت؟» — لا يُربط إلّا بموافقته.", "Their saved numbers match verified Sawa accounts. Tap Link — each gets “Is this you?” and is linked only if they accept.")),
+        list.map((sg, i) => {
+            const st = state[sg.personId], p = (persons || []).find((x) => x.id === sg.personId);
+            const done = st === "sent" || (!st && sg.pending);
+            return React.createElement("div", { key: sg.personId, className: `flex ${rowStart()} items-center gap-2.5 py-2`, style: { borderTop: i ? `1px solid ${colors.border}` : "none" } },
+                React.createElement("button", { onClick: () => p && onOpenPerson && onOpenPerson(p), className: `flex-1 min-w-0 flex ${rowStart()} items-center gap-2.5 ${textStart()}`, style: { background: "none", border: 0, padding: 0 } },
+                    React.createElement(FamAvatar, { name: sg.personName || "؟", size: 36 }),
+                    React.createElement("span", { className: "min-w-0" },
+                        React.createElement("span", { className: "block text-[13.5px] font-bold truncate", style: { color: colors.text } }, sg.personName),
+                        React.createElement("span", { className: "block text-[11px] truncate", style: { color: colors.textMuted } }, tl("في سوا: ", "On Sawa: ") + (sg.name || "—")),
+                        st && st !== "busy" && st !== "sent" && React.createElement("span", { role: "alert", className: "block text-[11px] font-bold", style: { color: colors.danger } }, "⚠️ " + st))),
+                React.createElement("button", { disabled: st === "busy", onClick: () => go(sg), className: "px-3.5 py-2 rounded-xl text-[12px] font-extrabold shrink-0", style: done ? { backgroundColor: colors.bg, color: colors.textMuted } : { backgroundColor: "#0F7A55", color: "#fff" } },
+                    st === "busy" ? "…" : done ? tl("✓ أُرسل · إعادة", "✓ Sent · resend") : tl("ربط", "Link")));
+        }));
+}
+function MemberPersonPicker({ groupId, member, persons, onClose }) {
+    const { colors } = useTheme();
+    const [q, setQ] = useState("");
+    const [busy, setBusy] = useState(null);
+    const [sent, setSent] = useState(null);
+    const [err, setErr] = useState("");
+    const qq = normalizeArabicName(q.trim()).toLowerCase();
+    const free = (persons || []).filter((p) => p && !p.acctUid && p.alive !== false && p.id !== "__vself__");
+    const shown = (qq ? free.filter((p) => normalizeArabicName(String(p.local_name || "")).toLowerCase().includes(qq)) : free).slice(0, 200);
+    const pick = (p) => {
+        if (busy) return;
+        setErr(""); setBusy(p.id);
+        famLinkCall(groupId, { personId: p.id, uid: member.userId })
+            .then(() => setSent(p.local_name))
+            .catch((e) => { const m = (e && e.message) || String(e); try { console.log("[famlink]", m); } catch (x) { } setErr(famLinkErr(m)); })
+            .then(() => setBusy(null));
+    };
+    const box = { backgroundColor: colors.bg, border: `1px solid ${colors.border}`, color: colors.text };
+    return React.createElement(FamSheet, { title: tl("من هو «" + (member.name || "؟") + "» في الشجرة؟", "Who is «" + (member.name || "?") + "» in the tree?"), onClose, z: 45 },
+        sent != null ? React.createElement("div", { className: "text-center py-6" },
+            React.createElement("div", { className: "text-3xl mb-2" }, "📨"),
+            React.createElement("p", { className: "text-sm font-extrabold mb-1", style: { color: colors.text } }, tl("أُرسل الطلب", "Request sent")),
+            React.createElement("p", { className: "text-[12px] leading-relaxed", style: { color: colors.textMuted } }, tl("يُسأل «هل أنت " + sent + "؟» ويُربط حين يوافق.", "They'll be asked “Are you " + sent + "?” and linked when they accept.")),
+            React.createElement("button", { onClick: onClose, className: "mt-4 px-6 py-2.5 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary } }, tl("تمّ", "Done")))
+        : React.createElement("div", { className: "pt-1" },
+            React.createElement("p", { className: `text-[11.5px] mb-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, tl("اختر الشخص الذي يمثّله — يصله «هل هذا أنت؟» ولا يُربط إلّا بموافقته.", "Pick the person they are — they're asked “Is this you?” and linked only if they accept.")),
+            err && React.createElement("p", { role: "alert", className: `text-[12px] font-bold mb-3 rounded-xl px-3 py-2 ${textStart()}`, style: { color: colors.danger, backgroundColor: colors.danger + "14" } }, "⚠️ " + err),
+            free.length > 6 && React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: q, onChange: (e) => setQ(e.target.value), placeholder: tl("ابحث في الشجرة", "Search the tree"), className: "w-full rounded-xl px-3 py-2 text-sm mb-2", style: box }),
+            React.createElement("div", { className: "rounded-xl overflow-hidden mb-2", style: { border: `1px solid ${colors.border}`, maxHeight: 340, overflowY: "auto" } },
+                shown.length === 0 && React.createElement("p", { className: "text-[12px] text-center py-4", style: { color: colors.textMuted } }, tl("لا أحد غير مربوط", "No unlinked people")),
+                shown.map((p, i) => React.createElement("button", { key: p.id, type: "button", disabled: !!busy, onClick: () => pick(p), className: `w-full flex ${rowStart()} items-center gap-3 px-3 py-2.5`, style: { borderTop: i ? `1px solid ${colors.border}` : "none", backgroundColor: busy === p.id ? colors.primary + "14" : colors.card } },
+                    React.createElement(FamAvatar, { name: p.local_name, photo: p.photo, size: 32 }),
+                    React.createElement("span", { className: `flex-1 min-w-0 truncate text-[13.5px] font-bold ${textStart()}`, style: { color: colors.text } }, p.local_name),
+                    React.createElement("span", { className: "text-[11px] font-extrabold shrink-0", style: { color: colors.primary } }, busy === p.id ? tl("…جارٍ الإرسال", "…sending") : tl("هو هذا", "That's them")))))));
+}
+function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, settings, onCycleRole, onToggleSetting, onRemove, onShare, onOpenActivityLog, onBack, persons, canEdit, onOpenPerson }) {
     var _a, _b;
     const { colors } = useTheme();
     // ⛔ لا سيرفر، فلا عضوية حقيقية: كانت «دعوة عضو» تُلحق الاسم بالقائمة فوراً
@@ -378,6 +456,7 @@ function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, se
     const list = (members[groupId] || []).filter((m) => !/^u-\d{12,}$/.test(m.userId));
     // عائلةٌ على السحابة: القائمة من الخادم (من انضمّ فعلاً عبر الروابط)، والإدارة تمرّ بالخادم
     const [confirmingRemove, setConfirmingRemove] = useState(null);
+    const [pickFor, setPickFor] = useState(null);   // C109
     // دعوةٌ إلى التطبيق لا إلى المجموعة: رابط الموقع نفسه، يبدأ به القريب
     // شجرته على جهازه. ⛔ t() هنا عند النقر لا عند التحميل.
     function inviteRelative() {
@@ -420,12 +499,22 @@ function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, se
                     React.createElement("button", { "aria-label": t("alsmah_llaada_bidafa_ahdath"), onClick: () => { var _a; return onToggleSetting(groupId, !((_a = settings[groupId]) === null || _a === void 0 ? void 0 : _a.allowMemberEvents)); }, className: "w-11 h-6 rounded-full relative shrink-0", style: { backgroundColor: ((_a = settings[groupId]) === null || _a === void 0 ? void 0 : _a.allowMemberEvents) ? colors.primary : colors.border } },
                         React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [((_b = settings[groupId]) === null || _b === void 0 ? void 0 : _b.allowMemberEvents) ? "right" : "left"]: 2 } }))),
                 React.createElement(FamRow, { icon: FileClock, title: t("sjl_nshat_almjmwaa"), onPress: onOpenActivityLog, last: true }))),
+            cloud && canEdit && React.createElement(FamPhoneSuggestCard, { groupId, persons, onOpenPerson }),
+            pickFor && React.createElement(MemberPersonPicker, { groupId, member: pickFor, persons, onClose: () => setPickFor(null) }),
             React.createElement("div", null,
                 cloud && React.createElement("div", { className: `text-[13px] font-extrabold mb-2 px-0.5 ${textStart()}`, style: { color: colors.text } }, t("mb_alaada", { n: list.length })),
                 cloud && canManage && list.length > 1 && React.createElement("p", { className: `text-[10.5px] mb-2 px-0.5 ${textStart()}`, style: { color: colors.textMuted } }, t("mb_tap_role")),
                 list.map((m) => (React.createElement(FamCard, { key: m.userId, className: `flex ${rowStart()} items-center gap-3` },
                 React.createElement(FamAvatar, { name: (m.me || m.userId === "u-1" ? (m.name && !m.anon && m.name !== "أنت" ? m.name : (myAccountName() || "؟")) : m.name) || "؟", size: 42 }),
-                React.createElement("span", { className: `flex-1 min-w-0 truncate text-[14px] ${textStart()}`, style: { color: colors.text, fontWeight: m.me ? 800 : 600 } }, (m.userId === "u-1" || m.me) ? t("ant") + (m.me && m.name && !m.anon ? " · " + m.name : "") : m.name),
+                React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+                    React.createElement("span", { className: "block truncate text-[14px]", style: { color: colors.text, fontWeight: m.me ? 800 : 600 } }, (m.userId === "u-1" || m.me) ? t("ant") + (m.me && m.name && !m.anon ? " · " + m.name : "") : m.name),
+                    // C109: العضو بجوار شخصه في الشجرة
+                    cloud && (() => {
+                        const lp = m.personId && (persons || []).find((x) => x.id === m.personId);
+                        if (lp) return React.createElement("button", { onClick: () => onOpenPerson && onOpenPerson(lp), className: `block max-w-full truncate text-[11.5px] font-bold mt-0.5 ${textStart()}`, style: { color: "#0F7A55", background: "none", border: 0, padding: 0 } }, "🌳 " + lp.local_name);
+                        if (canEdit && !m.me && m.userId !== "u-1") return React.createElement("button", { onClick: () => setPickFor(m), className: `block text-[11.5px] font-bold mt-0.5 ${textStart()}`, style: { color: colors.primary, background: "none", border: 0, padding: 0 } }, "＋ " + tl("من هو في الشجرة؟", "Who is this in the tree?"));
+                        return m.me ? React.createElement("span", { className: "block text-[11px] mt-0.5", style: { color: colors.textMuted } }, tl("حدّد نفسك من صفحتك في الشجرة («هذا أنا»)", "Mark yourself from your page in the tree")) : null;
+                    })()),
                 canManage && m.role !== "owner" && !m.me ? (React.createElement("button", { onClick: () => onCycleRole(groupId, m.userId) },
                     React.createElement(Badge, { variant: "neutral", label: roleLabel(m.role) }))) : (React.createElement(Badge, { variant: m.role === "owner" ? "success" : "neutral", label: roleLabel(m.role) })),
                 cloud && canManage && onRemove && m.role !== "owner" && !m.me && (confirmingRemove === m.userId
