@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c99";
+  var VERSION = "c110";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -240,6 +240,12 @@
         return "a=fmtp:" + pt + " " + (keep ? keep + ";" : "") + want;
       });
       else sdp = sdp.replace(m[0], m[0] + "\r\na=fmtp:" + pt + " " + want);
+      // C110: مكالمة صوتيّة ⇒ إطارات ٤٠ مللي ث بدل ٢٠: نصف عدد الحزم ونصف رؤوسها (رؤوس IP/UDP/الوسيط/SRTP ≈ ٧٠ بايت للحزمة
+      //       كانت قرابة نصف ما يُرسَل). على شبكة جوّالٍ ضيّقة هذا الفرق يمنع تراكم الطابور. +٢٠ مللي ث فقط.
+      if (!/\r?\nm=video/.test(sdp)) {
+        sdp = sdp.replace(/\r?\na=ptime:\d+/g, "");
+        sdp = sdp.replace(new RegExp("(a=fmtp:" + pt + " [^\r\n]*)"), "$1\r\na=ptime:40");
+      }
       if (typeof d.sdp === "string" && !(d instanceof global.RTCSessionDescription)) { d.sdp = sdp; return d; }
       return { type: d.type, sdp: sdp };
     } catch (e) { return d; }
@@ -698,6 +704,7 @@
       else if (rtt != null && rtt > 400 || loss > 0.08 || (lostOut != null && lostOut > 0.08)) q = 1;
       else if (rtt != null && rtt > 200 || loss > 0.03 || (lostOut != null && lostOut > 0.03)) q = 2;
       c.q = q; c.rtt = rtt; c.loss = loss;
+      if (c.type !== "video") audioAdapt(c, rtt);
       // C97: المخزن لا يدخل في تقدير الشبكة (في الفيديو يتأخّر الصوت عمداً ليتزامن مع الصورة — كان يخفّض الصورة بلا داعٍ)
       // C92: تأخير مخزن الصوت (ms) في آخر ٣ ثوانٍ + عرض الشبكة/التأخير في شاشة المكالمة
       var dD = jbD - (c.sJbD || 0), dN = jbN - (c.sJbN || 0); c.sJbD = jbD; c.sJbN = jbN;
@@ -719,6 +726,29 @@
       if (c === cur) paintStatus(c);
     }).catch(function () {});
   }
+  // C110: تراكم التأخير (bufferbloat) — خالد: «شبكة ٦٢٧٤ ← ٧٢٠٣ مللي ث» تزيد كلّ دقيقة: نُرسل أكثر ممّا تحمله شبكة الجوّال
+  //       فيطول الطابور. أقلّ زمنٍ رأيناه = خطّ الأساس؛ إن تجاوزه الزمن كثيراً مرّتين متتاليتين ⇒ نخفّض سقف الصوت درجة
+  //       (٣٢ ← ٢٠ ← ١٢ ← ٨ ك)، وحين يعود قريباً منه ٣٠ ثانية ⇒ نرفعه درجة. الطرفان يفعلان ذلك فيُفرَغ الطابور من الجهتين.
+  var ABR = [32000, 20000, 12000, 8000];
+  function audioCap(c, bps) {
+    try {
+      if (c.native) { var nb = NB(); if (nb && nb.rtcAudioBr) nb.rtcAudioBr(c.pc.id, bps); return; }
+      (c.pc.getSenders ? c.pc.getSenders() : []).forEach(function (sn) {
+        if (sn.track && sn.track.kind === "audio") senderTune(sn, function (pr) { pr.encodings[0].maxBitrate = bps; });
+      });
+    } catch (e) {}
+  }
+  function audioAdapt(c, rtt) {
+    if (rtt == null || !(rtt > 0)) return;
+    c.rttMin = Math.min(c.rttMin || 1e9, rtt);
+    var bloat = rtt > Math.max(700, c.rttMin * 2.5 + 200), calm = rtt < c.rttMin * 1.6 + 150;
+    c.bloatN = bloat ? (c.bloatN || 0) + 1 : 0;
+    c.calmN = calm ? (c.calmN || 0) + 1 : 0;
+    var i = c.abi || 0;
+    if (c.bloatN >= 2 && i < ABR.length - 1) { i++; c.bloatN = 0; }
+    else if (c.calmN >= 10 && i > 0) { i--; c.calmN = 0; }
+    if (i !== (c.abi || 0)) { c.abi = i; log("audio cap", ABR[i], "rtt", Math.round(rtt), "min", Math.round(c.rttMin)); audioCap(c, ABR[i]); }
+  }
   // C93: أقرب مركز Cloudflare لشبكة هذا الهاتف (الوسيط يسلك الطريق نفسه غالباً) — JED/CAI/FRA… يكشف بُعد المسار
   var cfColo = null, cfColoAt = 0;
   function loadColo() {
@@ -730,7 +760,7 @@
     var net = Math.round((c.rtt || 0) / 2), jb = Math.round(c.jb || 0), lag = net + jb;
     var cf = !c.relayId || c.relayId === "cf";
     return (c.route === "relay" ? L("عبر وسيط", "relay") + (c.relayLbl ? " " + c.relayLbl : "") : c.route ? L("مباشر", "direct") : "") + (c.proto ? "/" + c.proto : "") + (cfColo && cf ? " " + cfColo : "") +
-      (c.rtt != null ? " · ⏱ " + lag + L(" مللي ث", " ms") + " (" + L("شبكة ", "net ") + net + " + " + L("مخزن ", "buffer ") + jb + ")" : "") + (c.loss > 0.03 ? " · " + L("فقد ", "loss ") + Math.round(c.loss * 100) + "%" : "") + (c.native ? " · ⚡" : "");
+      (c.rtt != null ? " · ⏱ " + lag + L(" مللي ث", " ms") + " (" + L("شبكة ", "net ") + net + " + " + L("مخزن ", "buffer ") + jb + ")" : "") + (c.loss > 0.03 ? " · " + L("فقد ", "loss ") + Math.round(c.loss * 100) + "%" : "") + (c.abi ? " · 🎚" + Math.round(ABR[c.abi] / 1000) + "k" : "") + (c.native ? " · ⚡" : "");
   }
   function routeInfo(c) {
     try {
