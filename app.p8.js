@@ -3787,6 +3787,8 @@ function AppInner() {
         const group = discoverTop.data;
         const SS = window.SawaSync, cloud = !!(SS && SS.isCloud && SS.isCloud(group.id));
         discoverContent = (React.createElement(FamilyMembersScreen, { groupId: group.id, members: members, canManage: group.role === "owner", canInvite: group.role === "owner" || group.role === "admin", cloud: cloud, settings: groupSettings,
+            persons: famPersons[group.id] || [], canEdit: !group.role || group.role === "owner" || group.role === "admin" || group.role === "editor",
+            onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: group.id }]),
             onCycleRole: cloud ? (gid, uid) => SS.cycleMemberRole(gid, uid) : cycleMemberRole,
             onToggleSetting: cloud ? (gid, val) => { toggleGroupSetting(gid, val); SS.setAllowMemberEvents(gid, val); } : toggleGroupSetting,
             onRemove: cloud ? (gid, uid) => SS.removeMember(gid, uid) : null,
