@@ -411,7 +411,7 @@
         if (watchers[sg] !== w) return;
         var arr = []; snap.forEach(function (d) { var x = d.data() || {};
           arr.push({ uid: d.id, role: x.role || "viewer", name: x.name || null, anon: x.anon === true,
-                     adoptedFrom: x.adoptedFrom || null, joined: x.joinedTs && x.joinedTs.toMillis ? x.joinedTs.toMillis() : 0 }); });
+                     adoptedFrom: x.adoptedFrom || null, joined: x.joinedTs && x.joinedTs.toMillis ? x.joinedTs.toMillis() : 0, personId: x.personId || null }); });
         w.members = arr; applyMembers(w);
       }, softErr("الأعضاء"));
       var offG = base.onSnapshot(function (d) {
@@ -435,7 +435,7 @@
     return (w.members || []).filter(function (m) { return !hidden[m.uid]; }).map(function (m) {
       var me = m.uid === state.uid;
       return { userId: m.uid, name: m.name || (m.anon ? L("ضيف (بلا حساب Google)", "Guest (no Google account)") : L("عضو", "Member")),
-               role: appRole(m.role), serverRole: m.role, anon: m.anon, me: me, cloud: true, joined: m.joined };
+               role: appRole(m.role), serverRole: m.role, anon: m.anon, me: me, cloud: true, joined: m.joined, personId: m.personId || null };   // C106
     }).sort(function (a, b) {
       if (a.me !== b.me) return a.me ? -1 : 1;
       return (rank[a.serverRole] - rank[b.serverRole]) || (a.joined - b.joined);
@@ -1696,6 +1696,8 @@
     push: push, observe: observe, bindApp: bindApp,
     uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, renderGoogleButton: renderGoogleButton, googleCredential: googleCredential, gisPrompt: gisPrompt, loadGsi: loadGsi, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, syncAuthName: syncAuthName, shareLink: shareLink,
     watchGroup: watchGroup, serverGid: serverGid,
+    // C106: «هذا أنا» على الخادم — يربط حسابي بشخصٍ في الشجرة (أو يفكّه بـ null)
+    claim: function (lg, personId, target) { var sg = serverGid(lg); if (!sg) return Promise.resolve(null); return call("fam.claim", { groupId: sg, personId: personId == null ? null : personId, target: target || undefined }); },
     isCloud: function (lg) { return !!serverGid(lg); },
     call: function (op, payload) { return call(op, payload); }, toast: function (m) { toast(m); },
     cycleMemberRole: cycleMemberRole, removeMember: removeMember, setAllowMemberEvents: setAllowMemberEvents,
