@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c99";
+  var VERSION = "c100";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -890,7 +890,7 @@
     else if (opts.mentionsFrom && text) { var mn = mentionsIn(cid, String(text)); if (mn) msg.mentions = mn; }
     if (opts.extra) msg.extra = opts.extra;
     (pend[cid] = pend[cid] || []).push({ msg: msg, ts: Date.now(), status: "pending" });
-    var ob = lsGet(OUTBOX, []); ob.push({ uid: state.uid, cid: cid, msg: msg }); lsSet(OUTBOX, ob);
+    var ob = lsGet(OUTBOX, []); ob.push({ uid: state.uid, cid: cid, msg: msg, ts: Date.now() }); lsSet(OUTBOX, ob);   // C100: ts ⇒ الترتيب بعد إعادة الفتح
     publishMessages(cid); publishChats();
     drainOutbox();
     return msg.id;
@@ -905,18 +905,25 @@
   function ownerOf(j) { if (j.uid) return j.uid; var c = lsGet("sawa_people_cache", null); return c && c.uid || null; }
   function myOutbox() { return lsGet(OUTBOX, []).filter(function (j) { return ownerOf(j) === state.uid; }); }
   // أخطاءٌ نهائيّة (رفضٌ صريح من الخادم) ⇒ «لم تُرسل» مع إعادة المحاولة. غيرها (شبكة/مهلة/خادم مشغول) ⇒ تبقى في الطابور
-  var PERMANENT = /bad |not a member|too large|message id taken|only |empty message|media not uploaded|media id required|chat not found|not a contact|removed|confirm required|encrypted payload|device not bound|no key on this device|secret chat|e2e key/i;
+  var PERMANENT = /bad |not a member|too large|only |empty message|media not uploaded|media id required|chat not found|not a contact|removed|confirm required|encrypted payload|device not bound|no key on this device|secret chat|e2e key/i;
   function drainOutbox() {
     if (draining || !state.uid) return;
     var ob = myOutbox(); if (!ob.length) return;
     draining = true; drainAt = Date.now();
     var job = ob[0];
-    wireOf(job).then(function (wm) { return call("chat.send", { cid: job.cid, msg: wm }); }).then(function (b) {
-      setPend(job.cid, job.msg.id, b && b.blocked ? "sent" : "sent");
+    var sentOk = function () {
+      setPend(job.cid, job.msg.id, "sent");
       shiftOutbox(job.msg.id);
-    }).catch(function (e) {
+      // C100: محادثةٌ غير مفتوحة (توجيه/مشاركة) لا يصلها صدى الرسالة ⇒ لا نُبقي «المعلّقة» فتتجمّد معاينة القائمة وعلامة القراءة
+      if (!dayUnsubs[job.cid]) { pend[job.cid] = (pend[job.cid] || []).filter(function (p) { return p.msg.id !== job.msg.id; }); publishChats(); }
+    };
+    wireOf(job).then(function (wm) { return call("chat.send", { cid: job.cid, msg: wm }); }).then(function () { sentOk(); }).catch(function (e) {
       var m = (e && e.message) || String(e);
-      if (!PERMANENT.test(m)) {        // الشبكة أو الخادم مؤقّتاً: نعيد لاحقاً (أسرع في المحاولة الأولى)
+      // C100: «الرقم مأخوذ» = وصلت فعلاً في محاولةٍ سابقة انقطع ردّها (مهلة) أو أرسلها تبويبٌ آخر ⇒ نجاح لا «لم تُرسل»
+      if (/message id taken/i.test(m)) { sentOk(); return; }
+      // C100: رسالةٌ عالقة لا تحجز الطابور كلّه: بعد ١٠ محاولات أو ٢٤ ساعة ⇒ «لم تُرسل» (مع إعادة المحاولة يدويّاً)
+      var tries = bumpTries(job.msg.id);
+      if (!PERMANENT.test(m) && tries < 10 && !(job.ts && Date.now() - job.ts > 86400000)) {        // الشبكة أو الخادم مؤقّتاً: نعيد لاحقاً
         draining = false;
         if (!retryT) retryT = setTimeout(function () { retryT = null; drainOutbox(); }, 4000);
         return "stop";
@@ -926,6 +933,11 @@
       fl.push({ uid: state.uid, cid: job.cid, msg: job.msg, err: m.slice(0, 120), ts: Date.now() }); lsSet(FAILED, fl.slice(-50));
       toast(L("لم تُرسل رسالة: ", "A message wasn't sent: ") + m + L(" — اضغط ⚠ عليها لإعادة المحاولة", " — tap ⚠ to retry"));
     }).then(function (r) { if (r === "stop") return; draining = false; drainOutbox(); });
+  }
+  function bumpTries(id) {
+    var ob = lsGet(OUTBOX, []), n = 0;
+    ob.forEach(function (x) { if (x.msg.id === id) { x.tries = (x.tries || 0) + 1; n = x.tries; } });
+    lsSet(OUTBOX, ob); return n;
   }
   function shiftOutbox(id) { lsSet(OUTBOX, lsGet(OUTBOX, []).filter(function (x) { return x.msg.id !== id; })); }
   function setPend(cid, id, st) {
@@ -945,7 +957,7 @@
     if (!j) { for (var cid in pend) (pend[cid] || []).forEach(function (p) { if (p.msg.id === id && p.status === "failed") j = { cid: cid, msg: p.msg }; }); }
     if (!j) return false;
     lsSet(FAILED, fl.filter(function (x) { return x.msg.id !== id; }));
-    var ob = lsGet(OUTBOX, []); if (!ob.some(function (x) { return x.msg.id === id; })) { ob.push({ uid: state.uid, cid: j.cid, msg: j.msg }); lsSet(OUTBOX, ob); }
+    var ob = lsGet(OUTBOX, []); if (!ob.some(function (x) { return x.msg.id === id; })) { ob.push({ uid: state.uid, cid: j.cid, msg: j.msg, ts: Date.now() }); lsSet(OUTBOX, ob); }
     setPend(j.cid, id, "pending"); drainOutbox();
     return true;
   }
@@ -969,6 +981,7 @@
     publishMessages(cid); return f.day;
   }
   function fail(e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); }
+  function notYet() { toast(L("لحظة — الرسالة لم تُحفظ بعد", "One moment — the message isn't saved yet")); }
   function edit(cid, id, text) {
     if (e2eOn(chats[cid])) {   // C23: نصٌّ مشفّرٌ جديد للرسالة نفسها (يبقى الاقتباس)
       var f0 = findMsg(cid, id); if (!f0 || !f0.msg.enc) return;
@@ -977,7 +990,7 @@
       return;
     }
     var day = patchLocal(cid, id, function (m) { m.text = text; m.edited = Date.now(); return m; });
-    if (!day) return;
+    if (!day) { notYet(); return; }
     call("chat.edit", { cid: cid, day: day, id: id, text: text }).catch(fail);
   }
   function deleteForAll(cid, id) {
@@ -992,11 +1005,13 @@
   // «حذف المحادثة» عندي: تُخفى رسائلها حتّى الآن، وتختفي من القائمة حتّى تصل رسالةٌ جديدة
   function clearChat(cid) {
     prefs = prefs || {}; prefs.cleared = Object.assign({}, prefs.cleared); prefs.cleared[cid] = Date.now();
+    var c0 = chats[cid], lt = c0 && c0.last && c0.last.ts;   // C100: المحذوفة عندي تُعلَّم مقروءة (كان عدّاد أيقونة التطبيق يعلق)
+    if (lt) queueMark(cid, { r: lt, rc: c0.cnt || 0, d: lt });
     publishMessages(cid); publishChats(); savePrefs({ cleared: prefs.cleared });
   }
   function react(cid, id, emoji) {
     var day = patchLocal(cid, id, function (m) { m.re = Object.assign({}, m.re); if (emoji) m.re[state.uid] = emoji; else delete m.re[state.uid]; return m; });
-    if (!day) return;
+    if (!day) { notYet(); return; }
     call("chat.react", { cid: cid, day: day, id: id, emoji: emoji || null }).catch(fail);
   }
   function pin(cid, id) {
@@ -1603,7 +1618,12 @@
     var f = findMsg(fromCid, id); if (!f || !toCid) return Promise.resolve(null);
     var m = f.msg; if (m.enc) m = plainOf(fromCid, m);
     var ex = m.extra || {};
-    if (["image", "video", "file", "voice"].indexOf(m.type) < 0 || !ex.mid) { send(toCid, m.text || "", { fwd: true }); return Promise.resolve(true); }
+    if (ex.viewOnce) { toast(L("الصورة لمرّةٍ واحدة لا تُوجَّه", "View-once media can't be forwarded")); return Promise.resolve(null); }   // C100
+    // C100: الموقع وبطاقة جهة الاتّصال تُوجَّه بمحتواها (كانت تُرسل نصّاً فارغاً فتُرفض «لم تُرسل»)
+    if (m.type === "location" && ex.lat != null) { send(toCid, null, { type: "location", fwd: true, extra: { lat: ex.lat, lng: ex.lng, acc: ex.acc || null, label: ex.label || null } }); return Promise.resolve(true); }
+    if (m.contact) { send(toCid, m.text || "", { fwd: true, contact: m.contact }); return Promise.resolve(true); }
+    if (["poll", "bill", "fund", "tasks", "system"].indexOf(m.type) >= 0) { toast(L("هذا النوع لا يُوجَّه", "This can't be forwarded")); return Promise.resolve(null); }
+    if (["image", "video", "file", "voice"].indexOf(m.type) < 0 || !ex.mid) { if (!String(m.text || "").trim()) return Promise.resolve(null); send(toCid, m.text || "", { fwd: true }); return Promise.resolve(true); }
     toast(L("جارٍ التوجيه…", "Forwarding…"));
     return ensureMedia(fromCid, ex.mid).then(function (url) {
       if (!url) throw new Error("no media");
@@ -1711,7 +1731,12 @@
   function stUpload(blob) {
     var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
     var mid = newMediaId(), meta = d.collection("stories").doc(state.uid).collection("media").doc(mid);
-    return blobToB64(blob).then(function (b64) {
+    // C100: حجز الرفع من الخادم أوّلاً (القواعد تطلبه — حدٌّ يوميّ مشترك مع المحادثات)
+    return call("story.begin", { mid: mid, size: blob.size }).catch(function (e) {
+      var m = (e && e.message) || String(e);
+      if (/quota/.test(m)) throw new Error(L("تجاوزت حدّ الرفع اليوميّ — جرّب غداً", "Daily upload limit reached"));
+      throw e;
+    }).then(function () { return blobToB64(blob); }).then(function (b64) {
       var n = Math.max(1, Math.ceil(b64.length / CHUNK));
       if (n > 33) throw new Error(L("الملفّ كبير — الحدّ ١٦ ميجابايت", "File too large (16 MB)"));
       return meta.set({ by: state.uid, mime: blob.type || "application/octet-stream", size: blob.size, n: n, ts: Date.now(), done: false }).then(function () {
@@ -2065,6 +2090,7 @@
     o.cloudMid = mid; o.cloudCid = cid; o.fileSize = ex.size || 0; o.mime = ex.mime || null;
     if (m.type === "image" || m.type === "video") {
       o.viewOnce = !!ex.viewOnce; o.viewedOnce = !!ex.viewOnce && (mine || viewedByMe || !!m.gone);
+      if (o.viewOnce && mine) o.peerViewed = !!m.gone || Object.keys(m.viewed || {}).some(function (u) { return u !== state.uid; });   // C100: المرسل يعرف هل فُتحت
       // الفيديو لا يُعرض بصورةٍ مصغّرة داخل <video> — يبقى «غير متاح» حتّى يكتمل تنزيله
       o.fileUrl = o.viewedOnce ? null : (url || (m.type === "image" ? ex.thumb || null : null)); o.thumb = ex.thumb || null; o.mediaLoading = !url && !mediaFailed[mid];
       o.mediaFailed = !url && !!mediaFailed[mid];   // C99: الصورة/الفيديو أيضاً «اضغط لإعادة التنزيل» (كانت تبقى ضبابيّة)
@@ -2174,7 +2200,7 @@
     rotating = Promise.resolve().then(function () { return firebase.messaging().deleteToken().catch(function () {}); })
       .then(function () { lsSet("sawa_push", {}); return pushToken(); })
       .then(function (tok) { return registerToken(tok); })
-      .then(function () { clearResubFlag(); log("push rotated:", why); return true; })
+      .then(function () { clearResubFlag(); lsSet("sawa_push_rot", Date.now()); log("push rotated:", why); return true; })
       .catch(function (e) { log("push rotate:", (e && e.message) || e); return false; })
       .then(function (ok) { rotating = null; return ok; });
     return rotating;
@@ -2211,7 +2237,10 @@
     if (NB()) { pushToken().then(registerToken).catch(function (e) { log("native token:", (e && e.message) || e); }); return; }   // C72: أندرويد يجدّد رمزه وحده (onNewToken)
     resubFlagged().then(function (flag) {
       if (flag) return rotateToken("subscription changed");
-      if (prev.token && prev.ts && Date.now() - prev.ts > PUSH_ROTATE_MS && navigator.onLine !== false) return rotateToken("weekly");
+      // C100: موعد التدوير من آخر تدوير (prev.ts يتجدّد مع كلّ فحص فلم يكن التدوير الأسبوعيّ يحدث)
+      var rot = lsGet("sawa_push_rot", 0) || prev.ts || 0;
+      if (!lsGet("sawa_push_rot", 0) && prev.ts) lsSet("sawa_push_rot", prev.ts);
+      if (prev.token && rot && Date.now() - rot > PUSH_ROTATE_MS && navigator.onLine !== false) return rotateToken("weekly");
       return pushToken().then(registerToken);
     }).catch(function (e) { log("push token:", (e && e.message) || e); });
   }
@@ -2519,7 +2548,8 @@
   // عدد غير المقروء على أيقونة التطبيق (حيث يدعمه الجهاز)
   var badgeN = -1;
   function appBadge() {
-    var n = 0; Object.keys(chats).forEach(function (k) { n += unreadOf(chats[k]); });
+    var n = 0, cl = (prefs && prefs.cleared) || {};
+    Object.keys(chats).forEach(function (k) { var c1 = chats[k]; if (cl[k] && !(c1.last && c1.last.ts > cl[k])) return; n += unreadOf(c1); });
     if (n === badgeN) return; badgeN = n;
     try { if (navigator.setAppBadge) { n ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } } catch (e) {}
   }

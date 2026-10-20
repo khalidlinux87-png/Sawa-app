@@ -783,7 +783,9 @@ function ImageLightbox({ src, onClose }) {
 // items: [{ url, type: "image"|"video", name }]  ·  startIndex: موضع البداية
 // يُستعمل في ChatScreen و GroupChatScreen و ChatInfoScreen.
 // ============================================================
-function MediaLightbox({ items, startIndex = 0, onClose, onForward }) {
+function MediaLightbox({ items: itemsIn, startIndex = 0, onClose, onForward }) {
+    // C100: قائمةٌ ثابتة منذ الفتح — كانت تتغيّر تحت العارض (صورةٌ لمرّة/حذفٌ للجميع) فيختلف عدد الخطّافات فتنهار الشاشة
+    const [items] = useState(() => (itemsIn || []).slice());
     const [i, setI] = useState(startIndex);
     const [dx, setDx] = useState(0);
     const startXRef = useRef(null);
@@ -1023,6 +1025,19 @@ function LocationBubble({ m, mine }) {
             React.createElement("button", { onClick: (e) => { e.stopPropagation(); try { window.dispatchEvent(new CustomEvent("sawa-save-home", { detail: { lat, lng, label: m.text || "" } })); } catch (x) { } }, className: "text-[11px] font-bold underline", style: { color: mine ? "#ffffffdd" : colors.textMuted } }, tl("احفظه منزلاً لقريب", "Save as a relative's home")))));
 }
 // C98: مشاركة رسالة خارج سوا (واتساب، بريد…) — النصّ/الرابط بمشاركة النظام، والصورة/الفيديو/الملفّ بملفّه
+// C100: الانتقال إلى رسالة (اقتباس الردّ) مع وميضٍ قصير — وإن كانت خارج النافذة نوسّعها أوّلاً
+function jumpToMessage(id, win, toast) {
+    if (!id) return;
+    const find = () => document.querySelector(`[data-message-id="${String(id).replace(/"/g, "")}"]`);
+    const go = () => {
+        const el = find();
+        if (!el) { if (toast) toast(tl("الرسالة الأصليّة غير متاحة هنا (أقدم)", "Original message isn't available here"), "info"); return; }
+        el.scrollIntoView({ block: "center" });
+        const old = el.style.backgroundColor; el.style.transition = "background-color .4s"; el.style.backgroundColor = "rgba(250,204,21,0.35)";
+        setTimeout(() => { el.style.backgroundColor = old || "transparent"; }, 1200);
+    };
+    if (find()) go(); else { try { win && win.more && win.more(Infinity); } catch (e) { } setTimeout(go, 80); }
+}
 function msgFirstUrl(text) { const mm = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+\.[^\s<>"']+)/i.exec(String(text || "")); return mm ? mm[0].replace(/[.,،؛)\]]+$/, "") : null; }
 function shareMessageOut(m, toast) {
     if (!m) return;
@@ -1049,6 +1064,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
     const [replyTo, setReplyTo] = useState(null);
     const [reactingTo, setReactingTo] = useState(null);
     const [msgMenu, setMsgMenu] = useState(null); // {id, text, mine, type} | null
+    useEffect(() => { if (!msgMenu) setMenuReact(false); }, [msgMenu]);
     const [showStickerPicker, setShowStickerPicker] = useState(false);
     const [activeCall, setActiveCall] = useState(null); // null | "audio" | "video"
     const [editingMessageId, setEditingMessageId] = useState(null);
@@ -1062,17 +1078,19 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
     const [showSearch, setShowSearch] = useState(false);
     const [showAttachMenu, setShowAttachMenu] = useState(false);
     const [viewOnceNext, setViewOnceNext] = useState(false);
+    const [viewOnce, setViewOnce] = useState(null);   // C100: عارضٌ مستقلّ للصورة/الفيديو لمرّة واحدة (بلا تنزيل/توجيه/تقليب)
+    const [menuReact, setMenuReact] = useState(false);
     const [forwardingText, setForwardingText] = useState(null);
     const [showCallChoice, setShowCallChoice] = useState(false);
     const [showScrollBtn, setShowScrollBtn] = useState(false);
     const scrollContainerRef = useRef(null);
-    useStickToBottom(scrollContainerRef, messages.length + ":" + (isTyping ? 1 : 0));
+    const stickRef = useStickToBottom(scrollContainerRef, messages.length + ":" + (isTyping ? 1 : 0));
     const [viewingImage, setViewingImage] = useState(null);
     const [searchQueryW, setSearchQueryW] = useState("");
     const win = useMessageWindow(messages, unreadCount, !!searchQueryW.trim(), scrollContainerRef);
     // كل صور وفيديوهات المحادثة بالترتيب — تُمرَّر للمعاينة لتمكين التنقّل
     const mediaItems = useMemo(() => (messages || [])
-        .filter((m) => (m.type === "image" || m.type === "video") && m.fileUrl && !m.deleted)
+        .filter((m) => (m.type === "image" || m.type === "video") && m.fileUrl && !m.deleted && !m.viewOnce && !(m.thumb && m.fileUrl === m.thumb))
         .map((m) => ({ id: m.id, url: m.fileUrl, type: m.type, name: m.fileName || m.text || "" })), [messages]);
     const mediaInputRef = useRef(null);
     const searchQuery = searchQueryW, setSearchQuery = setSearchQueryW;
@@ -1102,6 +1120,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
     function handleSend() {
         if (!text.trim())
             return;
+        stickRef.current = true;   // C100: رسالتي تظهر ولو كنتُ أقرأ أعلى المحادثة
         onSend(text.trim(), replyTo);
         clearDraft();
         setReplyTo(null);
@@ -1206,11 +1225,12 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                         m.forwarded && (React.createElement("span", { className: `text-[9px] mb-0.5 flex ${rowStart()} items-center gap-1`, style: { color: colors.textMuted } },
                             React.createElement(Send, { size: 9, style: { transform: "scaleX(-1)" } }),
                             t("rsala_mwjha"))),
-                        React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "" : "px-3 py-2"}`, style: { backgroundColor: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "transparent" : mine ? myBubbleColor : colors.card, borderColor: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "transparent" : colors.border, cursor: "pointer", borderRadius: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? 16 : (mine ? "16px 16px 4px 16px" : "16px 16px 16px 4px"), boxShadow: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "none" : "0 1px 1.5px rgba(0,0,0,0.10)" }, ...longPress(() => setMsgMenu({ id: m.id, text: m.text, mine, type: m.type, starred: m.starred, pinned: conversation.pinnedMessageId === m.id })) },
-                            m.replyToText && (React.createElement("div", { className: "rounded-xl px-2 py-1 mb-1 text-[10px] border-r-2", style: { backgroundColor: mine ? "rgba(255,255,255,0.15)" : colors.bg, borderColor: colors.accent, color: mine ? "#ffffffcc" : colors.textMuted } }, m.replyToText)),
-                            m.type === "sticker" ? (React.createElement("span", { className: "text-4xl" }, m.text)) : m.type === "image" && m.viewOnce ? (m.viewedOnce ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-2 py-3`, style: { minWidth: 160 } },
+                        React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "" : "px-3 py-2"}`, style: { backgroundColor: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "transparent" : mine ? myBubbleColor : colors.card, borderColor: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "transparent" : colors.border, cursor: "pointer", borderRadius: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? 16 : (mine ? "16px 16px 4px 16px" : "16px 16px 16px 4px"), boxShadow: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "none" : "0 1px 1.5px rgba(0,0,0,0.10)" }, ...longPress(() => setMsgMenu({ id: m.id, text: m.text, mine, type: m.type, starred: m.starred, pinned: conversation.pinnedMessageId === m.id, viewOnce: !!m.viewOnce, deleted: !!m.deleted, by: m.senderUserId || null })) },
+                            m.replyToText && (React.createElement("div", { role: "button", onClick: (e) => { e.stopPropagation(); jumpToMessage(m.replyTo && m.replyTo.id, win, showToast); }, className: "rounded-xl px-2 py-1 mb-1 text-[10px] border-r-2", style: { backgroundColor: mine ? "rgba(255,255,255,0.15)" : colors.bg, borderColor: colors.accent, color: mine ? "#ffffffcc" : colors.textMuted, cursor: "pointer" } }, m.replyToText)),
+                            m.type === "sticker" ? (React.createElement("span", { className: "text-4xl" }, m.text)) : (m.type === "image" || m.type === "video") && m.viewOnce ? (m.viewedOnce ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-2 py-3`, style: { minWidth: 160 } },
                                 React.createElement("span", { style: { fontSize: 16 } }, "\uD83D\uDD25"),
-                                React.createElement("span", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.textMuted } }, t("tm_fthha_ard_lmra")))) : (React.createElement("button", { onClick: () => { onMarkViewedOnce(m.id); setViewingImage(m.fileUrl); }, className: "flex flex-col items-center justify-center gap-1.5 py-6", style: { minWidth: 160 } },
+                                // C100: المرسل يرى «لم تُفتح بعد/فُتحت» (كان يرى «تم فتحها» فوراً)
+                                React.createElement("span", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.textMuted } }, mine ? (m.type === "video" ? tl("فيديو لمرّة واحدة", "View-once video") : t("swra_lmra_wahda")) + " · " + (m.peerViewed ? tl("فُتحت", "Opened") : tl("لم تُفتح بعد", "Not opened yet")) : t("tm_fthha_ard_lmra")))) : (React.createElement("button", { onClick: () => { if (!m.fileUrl || (m.thumb && m.fileUrl === m.thumb)) { showToast(tl("لحظة — تُنزَّل…", "One moment — downloading…"), "info"); return; } onMarkViewedOnce(m.id); setViewOnce({ url: m.fileUrl, type: m.type }); }, className: "flex flex-col items-center justify-center gap-1.5 py-6", style: { minWidth: 160 } },
                                 React.createElement("span", { style: { fontSize: 22 } }, "\uD83D\uDD25"),
                                 React.createElement("span", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.text } }, t("swra_lmra_wahda")),
                                 React.createElement("span", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, t("adght_llard_tkhtfy_badha"))))) : m.type === "image" || m.type === "video" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "file" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2`, onClick: () => { if (m.cloudMid && window.SawaChat) window.SawaChat.openFile(m); }, style: { cursor: m.cloudMid ? "pointer" : "default" } },
@@ -1326,7 +1346,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
             React.createElement(ChatComposerInput, { value: text, onChange: setText, placeholder: t("aktb_rsala"), disabled: recorder.isRecording, onEnter: handleSend }),
             text.trim() ? (React.createElement("button", { "aria-label": t("irsal"), onClick: handleSend, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary } },
                 React.createElement(Send, { size: 16, color: "#fff", style: { transform: "scaleX(-1)" } }))) : recorder.isRecording ? (React.createElement("button", { "aria-label": tl("إرسال التسجيل", "Send recording"), onClick: recorder.stop, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.danger } },
-                React.createElement(Square, { size: 14, color: "#fff", fill: "#fff" }))) : (React.createElement("button", { "aria-label": t("ch_tsjyl_swtya"), onClick: recorder.start, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.accent }, title: t("adght_bastmrar_lltsjyl") },
+                React.createElement(Square, { size: 14, color: "#fff", fill: "#fff" }))) : (React.createElement("button", { "aria-label": t("ch_tsjyl_swtya"), onClick: recorder.start, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.accent }, title: tl("اضغط للتسجيل · اضغط مرّةً أخرى للإرسال", "Tap to record · tap again to send") },
                 React.createElement(Mic, { size: 16, color: "#fff" }))))),
         sharingContact && (React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setSharingContact(false), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.4)" } }),
@@ -1336,30 +1356,35 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                 // C89: جهات اتّصال سوا الحقيقيّة (لا المحادثات) مع بحثٍ بالاسم — وتُرسل بطاقةً فيها رمز سوا ورابط إضافته
                 React.createElement(ShareContactPicker, { colors, onPick: (txts) => { [].concat(txts).forEach((tx, i) => setTimeout(() => onSend(tx, null), i * 120)); setSharingContact(false); } })))),
         msgMenu && (() => {
+            // C100: حالة صفّ التفاعلات في الشاشة نفسها — كانت داخل مكوّنٍ يُعاد إنشاؤه مع كلّ رسم فينطوي الصفّ أثناء اللمس
             const MsgMenuSheet = () => {
-                const [showReactions, setShowReactions] = React.useState(false);
+                const showReactions = menuReact, setShowReactions = setMenuReact;
                 return (React.createElement(React.Fragment, null,
                     React.createElement("div", { onClick: () => setMsgMenu(null), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.35)" } }),
                     React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 41, backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 16 } },
                         React.createElement("div", { className: "w-10 h-1 rounded-full mx-auto my-3", style: { backgroundColor: colors.border } }),
                         showReactions && (React.createElement("div", { className: `flex ${rowStart()} gap-3 px-5 py-3 border-b`, style: { borderColor: colors.border } }, QUICK_REACTIONS.map((e) => (React.createElement("button", { key: e, onClick: () => { onReact(msgMenu.id, e); setShowReactions(false); setMsgMenu(null); }, className: "text-xl" }, e))))),
-                        [
+                        (msgMenu.deleted
+                            // C100: المحذوفة: «حذف عندي» فقط
+                            ? [{ icon: Trash2, label: t("hdhf"), act: () => setDeletingMsg({ id: msgMenu.id, mine: false }), danger: true }]
+                            : [
                             { icon: Smile, label: t("tfaal"), act: () => setShowReactions((v) => !v), toggle: true },
-                            { icon: MessageCircle, label: t("rd"), act: () => setReplyTo({ id: msgMenu.id, text: msgMenu.text }) },
-                            { icon: Share2, label: t("twjyh_2"), act: () => setForwardingText({ id: msgMenu.id, text: msgMenu.text, cid: conversation.id }) },
-                            ...(msgMenu.type !== "sticker" ? [{ icon: ArrowUpRight, label: tl("مشاركة خارج سوا", "Share outside Sawa"), act: () => shareMessageOut(messages.find((x) => x.id === msgMenu.id), showToast) }] : []),
+                            { icon: MessageCircle, label: t("rd"), act: () => setReplyTo({ id: msgMenu.id, text: msgMenu.text, by: msgMenu.by || null }) },
+                            ...(msgMenu.viewOnce ? [] : [{ icon: Share2, label: t("twjyh_2"), act: () => setForwardingText({ id: msgMenu.id, text: msgMenu.text, cid: conversation.id }) }]),
+                            ...(msgMenu.type !== "sticker" && !msgMenu.viewOnce ? [{ icon: ArrowUpRight, label: tl("مشاركة خارج سوا", "Share outside Sawa"), act: () => shareMessageOut(messages.find((x) => x.id === msgMenu.id), showToast) }] : []),
                             ...(msgFirstUrl(msgMenu.text) && (!msgMenu.type || msgMenu.type === "text") ? [{ icon: LinkIcon, label: tl("نسخ الرابط", "Copy link"), act: () => { copyText(msgFirstUrl(msgMenu.text)); showToast(t("gc_tm_alnskh"), "success"); } }] : []),
-                            ...(msgMenu.text && msgMenu.type !== "sticker" && msgMenu.type !== "voice" && msgMenu.type !== "image" && msgMenu.type !== "video" ? [{ icon: Copy, label: t("nskh"), act: () => { copyText(msgMenu.text || ""); showToast(t("gc_tm_alnskh"), "success"); } }] : []),
+                            ...(msgMenu.text && (!msgMenu.type || msgMenu.type === "text") ? [{ icon: Copy, label: t("nskh"), act: () => { copyText(msgMenu.text || ""); showToast(t("gc_tm_alnskh"), "success"); } }] : []),
                             { icon: Pin, label: msgMenu.pinned ? t("ch_ilgha_altthbyt") : t("tthbyt"), act: () => onTogglePin(msgMenu.id) },
-                            { icon: Star, label: msgMenu.starred ? t("ch_ilgha_alhfz") : t("hfz_alrsala"), act: () => onToggleStar(msgMenu.id, msgMenu.text) },
-                            ...(msgMenu.mine && msgMenu.type !== "sticker" && msgMenu.type !== "voice" ? [{ icon: Edit2, label: t("tadyl"), act: () => { setEditingMessageId(msgMenu.id); setEditingText(msgMenu.text); } }] : []),
+                            ...(msgMenu.viewOnce ? [] : [{ icon: Star, label: msgMenu.starred ? t("ch_ilgha_alhfz") : t("hfz_alrsala"), act: () => onToggleStar(msgMenu.id, msgMenu.text) }]),
+                            // C100: التعديل للنصّ وحده (كان يظهر للصور والملفّات والموقع فلا يحدث شيء)
+                            ...(msgMenu.mine && (!msgMenu.type || msgMenu.type === "text") ? [{ icon: Edit2, label: t("tadyl"), act: () => { setEditingMessageId(msgMenu.id); setEditingText(msgMenu.text); } }] : []),
                             { icon: Trash2, label: t("hdhf"), act: () => setDeletingMsg({ id: msgMenu.id, mine: msgMenu.mine }), danger: true },
-                        ].map((it) => (React.createElement("button", { key: it.label, onClick: () => { it.act(); if (!it.toggle)
+                        ]).map((it) => (React.createElement("button", { key: it.label, onClick: () => { it.act(); if (!it.toggle)
                                 setMsgMenu(null); }, className: `w-full flex ${rowStart()} items-center gap-3 px-5 py-3.5 border-t`, style: { borderColor: colors.border, backgroundColor: it.toggle && showReactions ? colors.primaryLight : "transparent" } },
                             React.createElement(it.icon, { size: 17, color: it.danger ? colors.danger : it.toggle && showReactions ? colors.primary : colors.textMuted }),
                             React.createElement("span", { className: `flex-1 ${textStart()} text-sm font-bold`, style: { color: it.danger ? colors.danger : it.toggle && showReactions ? colors.primary : colors.text } }, it.label)))))));
             };
-            return React.createElement(MsgMenuSheet, null);
+            return MsgMenuSheet();
         })(),
         deletingMsg && (React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setDeletingMsg(null), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.35)" } }),
@@ -1400,6 +1425,11 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                 React.createElement("div", { className: `flex ${rowStart()} gap-2 flex-wrap` }, suggestions.map((s, i) => (React.createElement("button", { key: i, onClick: () => onSend(s, null), className: "px-3 py-1.5 rounded-full text-[11px] font-bold border", style: { borderColor: colors.accent + "60", color: colors.accent, backgroundColor: colors.accent + "10" } }, s))))));
         })(),
         React.createElement(RecordingBar, { isRecording: recorder.isRecording, seconds: recorder.seconds, micError: recorder.micError, onCancel: recorder.cancel, maxSeconds: recorder.maxSeconds }),
+        viewOnce && React.createElement("div", { onClick: () => setViewOnce(null), onContextMenu: (e) => e.preventDefault(), style: { position: "fixed", inset: 0, zIndex: 60, backgroundColor: "rgba(0,0,0,0.96)", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" } },
+            viewOnce.type === "video"
+                ? React.createElement("video", { src: viewOnce.url, autoPlay: true, playsInline: true, controls: false, controlsList: "nodownload", onEnded: () => setViewOnce(null), onClick: (e) => e.stopPropagation(), style: { maxWidth: "100%", maxHeight: "100%" } })
+                : React.createElement("img", { src: viewOnce.url, alt: "", draggable: false, style: { maxWidth: "100%", maxHeight: "100%", pointerEvents: "none" } }),
+            React.createElement("span", { style: { position: "absolute", top: 18, left: 0, right: 0, textAlign: "center", color: "#fff", fontSize: 12, fontWeight: 700, opacity: 0.85 } }, "🔥 " + tl("لمرّة واحدة — اضغط للإغلاق", "View once — tap to close"))),
         viewingImage && (React.createElement(MediaLightbox, { items: mediaItems, startIndex: Math.max(0, mediaItems.findIndex((it) => it.url === viewingImage)), onClose: () => setViewingImage(null), onForward: (it) => { setViewingImage(null); setForwardingText({ id: it.id, text: it.name, cid: conversation.id }); } })),
         forwardingText && (React.createElement(ForwardPickerScreen, { conversations: allConversations, groups: allGroups, contacts: contactsForForward, currentConversationId: conversation.id, onForward: (destinationIds) => { onForward(forwardingText, destinationIds); setForwardingText(null); }, onClose: () => setForwardingText(null) }))));
 }
@@ -1495,7 +1525,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
     const [viewingImage, setViewingImage] = useState(null);
     // كل صور وفيديوهات المحادثة بالترتيب — تُمرَّر للمعاينة لتمكين التنقّل
     const mediaItems = useMemo(() => (messages || [])
-        .filter((m) => (m.type === "image" || m.type === "video") && m.fileUrl && !m.deleted)
+        .filter((m) => (m.type === "image" || m.type === "video") && m.fileUrl && !m.deleted && !m.viewOnce && !(m.thumb && m.fileUrl === m.thumb))
         .map((m) => ({ id: m.id, url: m.fileUrl, type: m.type, name: m.fileName || m.text || "" })), [messages]);
     const [editingMessageId, setEditingMessageId] = useState(null);
     const [editingText, setEditingText] = useState("");
@@ -1515,7 +1545,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
     const [liveGroupCall, setLiveGroupCall] = useState(null);
     useEffect(() => { if (!cloudGroup || !window.SawaRTC.watchChat) return; return window.SawaRTC.watchChat(group.id, setLiveGroupCall); }, [group.id, cloudGroup]);
     const scrollContainerRef = useRef(null);
-    useStickToBottom(scrollContainerRef, messages.length);
+    const stickRef = useStickToBottom(scrollContainerRef, messages.length);
     const win = useMessageWindow(messages, unreadCount, !!gSearchQ.trim(), scrollContainerRef);
     const [forwardingText, setForwardingText] = useState(null);
     const [groupMsgMenu, setGroupMsgMenu] = useState(null);
@@ -1610,6 +1640,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
         if (!text.trim())
             return;
         if (group.adminsOnly && !isAdmin) { showToast(t("c3_only_admins_send"), "info"); return; }
+        stickRef.current = true;   // C100
         onSend(text.trim(), gReply);
         setGReply(null);
         clearDraft();
@@ -1664,7 +1695,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 React.createElement(ChevronLeft, { size: 20, color: colors.text })),
             React.createElement("div", { onClick: () => setShowGroupInfo(true), className: `flex-1 ${textStart()} ${me("2")}`, style: { minWidth: 0, cursor: "pointer" } },
                 React.createElement("div", { className: "font-bold text-sm truncate", style: { color: colors.text } }, group.name),
-                React.createElement("button", { onClick: () => setShowMembers(!showMembers), className: "text-[11px]", style: { color: colors.textMuted } },
+                React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowMembers(!showMembers); }, className: "text-[11px]", style: { color: colors.textMuted } },
                     group.members.length,
                     t("gc_aada"))),
             isAdmin && React.createElement(Crown, { size: 16, color: colors.accent }),
@@ -1678,7 +1709,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
             liveGroupCall.vc ? React.createElement(Radio, { size: 15, color: "#1E7A4C" }) : liveGroupCall.type === "video" ? React.createElement(Video, { size: 15, color: "#1E7A4C" }) : React.createElement(Phone, { size: 15, color: "#1E7A4C" }),
             React.createElement("span", { className: `flex-1 ${textStart()} text-xs font-bold`, style: { color: "#1E7A4C" } }, (liveGroupCall.vc ? tl("دردشة صوتيّة جارية", "Voice chat live") : liveGroupCall.type === "video" ? tl("مكالمة فيديو جارية", "Video call in progress") : tl("مكالمة صوتيّة جارية", "Voice call in progress")) + (liveGroupCall.n ? " · " + tl(liveGroupCall.n + " فيها", liveGroupCall.n + " in") : "")),
             React.createElement("span", { className: "text-[11px] font-extrabold text-white rounded-full px-3 py-1", style: { backgroundColor: "#21A366" } }, tl("انضمام", "Join")))),
-        false && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-2 border-b`, style: { borderColor: colors.border, backgroundColor: colors.card } },
+        showSearch && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-2 border-b`, style: { borderColor: colors.border, backgroundColor: colors.card } },   // C100: كان معطّلاً (false)
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: searchQuery, onChange: (e) => { setSearchQuery(e.target.value); setSearchMatchIndex(0); }, placeholder: t("bhth_balmhadtha"), className: "flex-1 border rounded-full px-3 py-1.5 text-xs", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg }, autoFocus: true }),
             searchQuery.trim() && (React.createElement("span", { className: "text-[10px] shrink-0", style: { color: colors.textMuted } }, searchMatches.length > 0 ? `${searchMatchIndex + 1}/${searchMatches.length}` : t("gc_0_ntyja"))),
             searchMatches.length > 0 && (React.createElement(React.Fragment, null,
@@ -1858,8 +1889,8 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 !mine && React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-0.5` },
                     React.createElement(SenderAvatar, { name: (sender && sender.name) || t("gc_swal"), size: 20, photo: sender && sender.photo }),
                     React.createElement("button", { onClick: () => { if (sender && sender.uid && window.SawaChat && window.SawaChat.renameContact) window.SawaChat.renameContact(sender.uid); }, className: "text-[11px] font-bold", style: { color: senderColor((sender && sender.name) || t("gc_swal")), background: "none", border: 0, padding: 0 } }, sender === null || sender === void 0 ? void 0 : sender.name, sender && sender.unnamed ? React.createElement("span", { style: { marginInlineStart: 6, fontSize: 10, color: "#B45309", fontWeight: 800 } }, tl("＋ اسم", "+ name")) : null)),
-                m.replyToText && React.createElement("div", { className: "max-w-[78%] text-[10px] px-2 py-1 mb-0.5 rounded-lg border-r-2 truncate", style: { backgroundColor: colors.card, borderColor: colors.accent, color: colors.textMuted } }, "↩ " + m.replyToText),
-                React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["image", "video", "sticker"].includes(m.type) ? "" : "px-3 py-2"}`, style: { backgroundColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : mine ? colors.primary : colors.card, borderColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : colors.border, cursor: "pointer" }, ...longPress(() => setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "" })) }, m.type === "image" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "sticker" ? (React.createElement("span", { className: "text-4xl" }, m.text)) : m.type === "video" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "file" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2`, onClick: () => { if (m.cloudMid && window.SawaChat) window.SawaChat.openFile(m); }, style: { cursor: m.cloudMid ? "pointer" : "default" } },
+                m.replyToText && React.createElement("div", { role: "button", onClick: () => jumpToMessage(m.replyTo && (m.replyTo.id || m.replyTo), win, showToast), className: "max-w-[78%] text-[10px] px-2 py-1 mb-0.5 rounded-lg border-r-2 truncate", style: { backgroundColor: colors.card, borderColor: colors.accent, color: colors.textMuted, cursor: "pointer" } }, "↩ " + m.replyToText),
+                React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["image", "video", "sticker"].includes(m.type) ? "" : "px-3 py-2"}`, style: { backgroundColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : mine ? colors.primary : colors.card, borderColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : colors.border, cursor: "pointer" }, ...longPress(() => setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "", type: m.type, viewOnce: !!m.viewOnce, deleted: !!m.deleted })) }, m.type === "image" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "sticker" ? (React.createElement("span", { className: "text-4xl" }, m.text)) : m.type === "video" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "file" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2`, onClick: () => { if (m.cloudMid && window.SawaChat) window.SawaChat.openFile(m); }, style: { cursor: m.cloudMid ? "pointer" : "default" } },
                     React.createElement(FileIconLucide, { size: 18, color: mine ? "#fff" : colors.primary, style: { flexShrink: 0 } }),
                     React.createElement("div", { className: "min-w-0", style: { maxWidth: "100%" } },   // C98: اسمٌ طويل يلتفّ داخل الفقاعة
                         React.createElement("div", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.text, overflowWrap: "anywhere", wordBreak: "break-word" } }, m.text),
@@ -2100,14 +2131,16 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 React.createElement("div", { className: "px-5 pt-3 pb-2 border-b", style: { borderColor: colors.border } },
                     React.createElement("span", { className: `block ${textStart()} text-[11px] truncate`, style: { color: colors.textMuted } }, groupMsgMenu.text || "")),
                 onReact && React.createElement("div", { className: `flex ${rowStart()} gap-3 px-5 py-3 border-b`, style: { borderColor: colors.border } }, QUICK_REACTIONS.map((e) => React.createElement("button", { key: e, className: "text-xl", onClick: () => { onReact(groupMsgMenu.id, e); setGroupMsgMenu(null); } }, e))),
-                [
+                // C100: المحذوفة ⇒ لا شيء سوى الحذف · لمرّةٍ واحدة ⇒ لا توجيه ولا مشاركة ولا نسخ · التعديل للنصّ وحده
+                (groupMsgMenu.deleted ? [] : [
                     { icon: MessageCircle, label: t("rd"), act: () => setGReply({ id: groupMsgMenu.id, text: groupMsgMenu.text || "", senderId: groupMsgMenu.senderId, senderName: groupMsgMenu.senderName }) },
-                    { icon: Share2, label: t("twjyh_2"), act: () => setForwardingText({ id: groupMsgMenu.id, text: groupMsgMenu.text, cid: group.id }) },
-                    { icon: ArrowUpRight, label: tl("مشاركة خارج سوا", "Share outside Sawa"), act: () => shareMessageOut(messages.find((x) => x.id === groupMsgMenu.id), showToast) },
-                    ...(msgFirstUrl(groupMsgMenu.text) ? [{ icon: LinkIcon, label: tl("نسخ الرابط", "Copy link"), act: () => { copyText(msgFirstUrl(groupMsgMenu.text)); showToast(t("gc_tm_alnskh"), "success"); } }] : []),
-                    { icon: Copy, label: t("nskh"), act: () => { copyText(groupMsgMenu.text || ""); showToast(t("gc_tm_alnskh"), "success"); } },
-                ].concat(groupMsgMenu.mine && groupMsgMenu.text ? [{ icon: Edit2, label: t("tadyl"), act: () => { setEditingMessageId(groupMsgMenu.id); setEditingText(groupMsgMenu.text || ""); } }] : [])
-                .concat(onDeleteMessage ? [{ icon: Trash2, label: t("hdhf"), act: () => setGDel({ id: groupMsgMenu.id, canAll: groupMsgMenu.mine || isAdmin }) }] : [])
+                    ...(groupMsgMenu.viewOnce ? [] : [
+                        { icon: Share2, label: t("twjyh_2"), act: () => setForwardingText({ id: groupMsgMenu.id, text: groupMsgMenu.text, cid: group.id }) },
+                        { icon: ArrowUpRight, label: tl("مشاركة خارج سوا", "Share outside Sawa"), act: () => shareMessageOut(messages.find((x) => x.id === groupMsgMenu.id), showToast) }]),
+                    ...(msgFirstUrl(groupMsgMenu.text) && (!groupMsgMenu.type || groupMsgMenu.type === "text") ? [{ icon: LinkIcon, label: tl("نسخ الرابط", "Copy link"), act: () => { copyText(msgFirstUrl(groupMsgMenu.text)); showToast(t("gc_tm_alnskh"), "success"); } }] : []),
+                    ...(groupMsgMenu.text && (!groupMsgMenu.type || groupMsgMenu.type === "text") ? [{ icon: Copy, label: t("nskh"), act: () => { copyText(groupMsgMenu.text || ""); showToast(t("gc_tm_alnskh"), "success"); } }] : []),
+                ]).concat(groupMsgMenu.mine && groupMsgMenu.text && !groupMsgMenu.deleted && (!groupMsgMenu.type || groupMsgMenu.type === "text") ? [{ icon: Edit2, label: t("tadyl"), act: () => { setEditingMessageId(groupMsgMenu.id); setEditingText(groupMsgMenu.text || ""); } }] : [])
+                .concat(onDeleteMessage ? [{ icon: Trash2, label: t("hdhf"), act: () => setGDel({ id: groupMsgMenu.id, canAll: !groupMsgMenu.deleted && (groupMsgMenu.mine || isAdmin) }) }] : [])
                 .map((item, ii) => React.createElement("button", { key: ii, onClick: () => { item.act(); setGroupMsgMenu(null); }, className: `w-full flex ${rowStart()} items-center gap-3 px-5 py-3 border-b`, style: { borderColor: colors.border } },
                     React.createElement(item.icon, { size: 16, color: colors.textMuted }),
                     React.createElement("span", { className: "text-sm font-bold", style: { color: colors.text } }, item.label))),
