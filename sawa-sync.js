@@ -1288,22 +1288,49 @@
   function roleLabel(role) {
     return role === "owner" ? L("مالك", "owner") : role === "editor" ? L("محرّر", "editor") : L("مشاهد", "viewer");
   }
+  // C107: دعوةٌ لشخصٍ بعينه في الشجرة (&p=المعرّف&pn=الاسم) — بعد الانضمام: «هل أنت فلان؟» ⇒ ربطٌ بحسابي
+  function inviteFor(lg, pid, pname) {
+    var sg = serverGid(lg);
+    if (!sg) { toast(L("ارفع الشجرة أوّلاً", "Upload the tree first")); return Promise.resolve(null); }
+    return call("invite.create", { groupId: sg, role: "viewer" }).then(function (b) {
+      var url = global.location.origin + global.location.pathname + "?join=" + b.token + "&p=" + encodeURIComponent(pid) + "&pn=" + encodeURIComponent(String(pname || "").slice(0, 40));
+      var gname = groupName(lg);
+      var text = L("أنت «" + (pname || "") + "» في شجرة «" + gname + "» على سوا 🤍 انضمّ لتتواصل مع أهلك (صالح أسبوعاً):", "You are «" + (pname || "") + "» in the «" + gname + "» family tree on Sawa — join to stay in touch (valid 1 week):");
+      if (global.navigator && navigator.share) navigator.share({ title: "سوا", text: text, url: url }).catch(function () {});
+      else if (global.navigator && navigator.clipboard) navigator.clipboard.writeText(text + " " + url).then(function () { toast(L("نُسخ الرابط ✓", "Link copied ✓")); }, function () {});
+      return url;
+    }).catch(function (e) { toast(L("تعذّر إنشاء الرابط: ", "Couldn't create the link: ") + ((e && e.message) || e)); return null; });
+  }
+  // C107: قبلتُ طلب ربط ⇒ العائلة تظهر عندي (إن لم تكن) — المنظور يأتي من الخادم مع الأعضاء
+  function adoptGroup(sg, name, role) {
+    if (!sg) return Promise.resolve(null);
+    return Promise.resolve(restoreGroup(sg, name, role)).then(function (lg) { rewatch(); return lg; });
+  }
   function handleJoin() {
-    var tok = null;
-    try { tok = new URLSearchParams(global.location.search).get("join"); } catch (e) {}
+    var tok = null, jp = null, jpn = "";
+    try { var qs = new URLSearchParams(global.location.search); tok = qs.get("join"); jp = qs.get("p"); jpn = qs.get("pn") || ""; } catch (e) {}
     if (!tok) return;
     onReady(function () {
       whenApp(function () {
         call("invite.accept", { token: tok }).then(function (b) {
-          restoreGroup(b.groupId, b.name, b.role);
+          var rp = Promise.resolve(restoreGroup(b.groupId, b.name, b.role));
           toast(L("انضممتَ إلى «" + (b.name || "العائلة") + "» (" + roleLabel(b.role) + ") ✓",
                   "Joined «" + (b.name || "family") + "» (" + roleLabel(b.role) + ") ✓"));
+          // C107: الدعوة لشخصٍ بعينه ⇒ نسأل ثمّ نربط
+          if (jp) rp.then(function (lg) {
+            setTimeout(function () {
+              if (!global.confirm(L("هل أنت «" + jpn + "» في شجرة «" + (b.name || "") + "»؟", "Are you «" + jpn + "» in the «" + (b.name || "") + "» tree?"))) return;
+              if (global.__sawaFamClaim && lg) global.__sawaFamClaim(lg, jp);
+              else call("fam.claim", { groupId: b.groupId, personId: jp }).catch(function () {});
+              toast(L("تمّ ✓ — أنت «" + jpn + "» في الشجرة", "Done ✓ — linked"));
+            }, 900);
+          });
         }).catch(function (e) {
           var m = (e && e.message) || "";
           toast(/expired/.test(m) ? L("انتهت صلاحيّة رابط الدعوة", "This invite link has expired")
                                   : L("تعذّر الانضمام: ", "Couldn't join: ") + m);
         }).then(function () {
-          try { var u = new URL(global.location.href); u.searchParams.delete("join"); global.history.replaceState(null, "", u.toString()); } catch (e) {}
+          try { var u = new URL(global.location.href); u.searchParams.delete("join"); u.searchParams.delete("p"); u.searchParams.delete("pn"); global.history.replaceState(null, "", u.toString()); } catch (e) {}
         });
       });
     });
@@ -1697,6 +1724,7 @@
     uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, renderGoogleButton: renderGoogleButton, googleCredential: googleCredential, gisPrompt: gisPrompt, loadGsi: loadGsi, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, syncAuthName: syncAuthName, shareLink: shareLink,
     watchGroup: watchGroup, serverGid: serverGid,
     // C106: «هذا أنا» على الخادم — يربط حسابي بشخصٍ في الشجرة (أو يفكّه بـ null)
+    inviteFor: inviteFor, adoptGroup: adoptGroup,   // C107
     claim: function (lg, personId, target) { var sg = serverGid(lg); if (!sg) return Promise.resolve(null); return call("fam.claim", { groupId: sg, personId: personId == null ? null : personId, target: target || undefined }); },
     isCloud: function (lg) { return !!serverGid(lg); },
     call: function (op, payload) { return call(op, payload); }, toast: function (m) { toast(m); },
