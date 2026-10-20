@@ -1498,3 +1498,9 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - **Worker v65:** ackSig/deviceAck (/ack بلا رمز دخول، التوقيع يمنع الإقرار عن غيرك) · pushTo يقبل بيانات لكلّ مستلم · opCallRing يضيف to+rk · notifyChat يضيف to+dk.
 - اختبار: t/rtc/run111.mjs (١٥/١٥: جارٍ الاتّصال⇒يرنّ، التحويل إلى فيديو والرفض، سحب الصورة) · t/ack.test.mjs (٥/٥).
 - **الرفع:** Worker: worker-3.js · Sawa-android: sawa-native.zip (c111) · Sawa-app: sawa-rtc.js + sawa-chat.js + BUILD.md + sw.js (v310) أخيراً. لا تغيير في القواعد.
+
+## 🎥 C112 — تأخير الصوت في الفيديو · sw v311 · sawa-rtc c112
+- خالد: فيديو عبر Cloudflare MXP «شبكة 347 + مخزن 1565». السبب: الصوت والصورة في بثٍّ واحد ⇒ المتصفّح يؤخّر الصوت ليطابق الصورة المتأخّرة.
+- addTracks (الثنائيّة) والجماعيّة: كلّ مسارٍ في MediaStream خاصّ به (msid مختلف) ⇒ لا ربط تزامن. الاستقبال يجمع المسارات في c.remote كما كان.
+- اختبار: t/rtc/run112.mjs (٥/٥) · run111 (١٥/١٥).
+- **الرفع:** Sawa-app: sawa-rtc.js + BUILD.md + sw.js (v311) أخيراً.

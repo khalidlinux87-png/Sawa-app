@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c111";
+  var VERSION = "c112";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -719,8 +719,11 @@
     c.pc.addIceCandidate(j).catch(function (e) { log("ice add", e && e.message); });
   }
   function flushIceIn(c) { c.remoteSet = true; var q = c.iceIn; c.iceIn = []; q.forEach(function (j) { addRemoteIce(c, j); }); }
+  // C112: الصوت والصورة في «بثّين» منفصلين ⇒ المتصفّح لا يؤخّر الصوت ليُطابق الصورة (lip-sync). على شبكةٍ سيّئة كانت الصورة
+  //       تتأخّر فيتأخّر الصوت معها: «مخزن ١٥٦٥ مللي ث» في مكالمة فيديو (خالد). الآن الصوت يصل بأسرع ما يمكن وحده.
+  function ownStream(t) { try { return new global.MediaStream([t]); } catch (e) { return null; } }
   function addTracks(c) {
-    c.local.getTracks().forEach(function (t) { c.pc.addTrack(t, c.local); });
+    c.local.getTracks().forEach(function (t) { var st = ownStream(t); if (st) c.pc.addTrack(t, st); else c.pc.addTrack(t, c.local); });
   }
   // C97: ثلاث درجات للصورة بدل اثنتين (كانت تهبط مباشرةً إلى ٣٢٠×٢٤٠ · ١٥٠ ك/ث وتبقى هناك) — تنزل درجةً وتصعد درجة
   var VTIERS = [{ w: 640, h: 480, fps: 24, br: 700000 }, { w: 480, h: 360, fps: 20, br: 350000 }, { w: 320, h: 240, fps: 15, br: 150000 }];
@@ -1400,7 +1403,7 @@
     var me = myUid();
     var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: null };
     var pc = p.pc = new global.RTCPeerConnection({ iceServers: g.ice || STUN });
-    g.local.getTracks().forEach(function (t) { pc.addTrack(t, g.local); });
+    g.local.getTracks().forEach(function (t) { var st = ownStream(t); if (st) pc.addTrack(t, st); else pc.addTrack(t, g.local); });   // C112
     pc.onicecandidate = function (e) { if (e.candidate && e.candidate.candidate) gSend(g, uid, sess, { t: "ice", cand: iceJson(e.candidate) }); };
     pc.ontrack = function (e) {
       if (!p.stream) p.stream = (e.streams && e.streams[0]) || new global.MediaStream();
