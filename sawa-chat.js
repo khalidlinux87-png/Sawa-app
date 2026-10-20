@@ -20,7 +20,7 @@
 })();
 (function (global) {
   "use strict";
-  var VERSION = "c100";
+  var VERSION = "c107";
   var state = { uid: null, me: null, people: [], presence: {}, loaded: false, loading: false, error: null };
   var app = null, waiters = [], presenceRefs = {}, myStatusRef = null, connRef = null, authUnsub = null;
 
@@ -80,6 +80,7 @@
       else if (p.get("room")) d = { room: p.get("room") };
       else if (p.get("chat")) d = { cid: p.get("chat") };
       else if (p.get("requests")) d = { t: "req" };
+      else if (p.get("famreq")) d = { t: "famreq" };   // C107
       else if (p.get("contact") || p.get("join")) return false;   // دعوة: تحميلٌ كامل يعالجها
       // C88: رمز QR مُسح بكاميرا الهاتف والتطبيق مفتوح ⇒ كان «يُعالَج» ولا يحدث شيء
       else if (p.get("code")) { var cd = codeDigits(p.get("code")); if (cd.length === 10) { whenReady(function () { findSheet(cd); }); return true; } return false; }
@@ -420,6 +421,7 @@
       var v = snap.val() || {}; var ts = Number(v.ts || 0);
       if (sigSeen < 0) { sigSeen = ts; return; }          // القيمة الأولى = الحالة الراهنة، لا حدث
       if (ts <= sigSeen) return; sigSeen = ts;
+      if (v.k === "famreq") { loadFamReqs(true); return; }   // C107
       loadRequests(); if (v.k === "reqok") refresh();
     }, function () {});
   }
@@ -2530,10 +2532,11 @@
       if (m.type === "sawa-push" && m.data) {
         if (m.data.t !== "call" && m.data.cid !== openCid) toast((m.data.title ? m.data.title + ": " : "") + (m.data.body || ""));
         if (m.data.t === "req") loadRequests();
+        if (m.data.t === "famreq") loadFamReqs(true);   // C107
         if (m.data.t === "vouchok") { state.me = Object.assign({}, state.me || {}, { phoneVerified: true, verifiedBy: "contacts" }); publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} toast(L("تأكّد رقمك ✓", "Your number is confirmed ✓")); }
         if (m.data.t === "reqok") { refresh(); loadRequests(); }
       }
-      if (m.type === "sawa-open" && m.data) { if (m.data.t === "req") whenReady(function () { requestsSheet(); }); else openFromPush(m.data.cid); }
+      if (m.type === "sawa-open" && m.data) { if (m.data.t === "req") whenReady(function () { requestsSheet(); }); else if (m.data.t === "famreq") whenReady(function () { loadFamReqs(true); }); else openFromPush(m.data.cid); }
       // C60: عامل الخدمة يبلّغ أنّ اشتراك الإشعارات تغيّر ⇒ رمزٌ جديد فوراً
       if (m.type === "sawa-push-resub") { lsSet("sawa_push_resub", Date.now()); if (pushState() === "granted" && state.uid) rotateToken("sw resub"); }
     });
@@ -2672,6 +2675,49 @@
     if (m < 60) return L("قبل " + m + " د", m + "m ago");
     var h = Math.round(m / 60); if (h < 24) return L("قبل " + h + " س", h + "h ago");
     return new Date(ts).toLocaleDateString(isAr() ? "ar" : "en");
+  }
+  // ==================================================================
+  // C107: طلبات ربط حسابي بشخصٍ في شجرة عائلة (أرسلها محرّرٌ برمزي أو من جهات اتّصاله) — لا ربط بلا موافقتي
+  // ==================================================================
+  var famReqsSeen = {}, famSheetOpen = false;
+  function loadFamReqs(show) {
+    if (!state.uid) return Promise.resolve([]);
+    return call("fam.reqs", {}).then(function (b) {
+      var list = (b && b.reqs) || [];
+      var fresh = list.filter(function (r) { return !famReqsSeen[r.groupId + "~" + r.personId]; });
+      if (list.length && (show || fresh.length)) famReqSheet(list);
+      return list;
+    }).catch(function () { return []; });
+  }
+  function famReqSheet(list) {
+    if (famSheetOpen || !list || !list.length) return;
+    famSheetOpen = true;
+    list.forEach(function (r) { famReqsSeen[r.groupId + "~" + r.personId] = 1; });
+    var s = sheet(L("هل هذا أنت؟", "Is this you?"));
+    var oc = s.close; s.close = function () { famSheetOpen = false; oc(); };
+    s.box.appendChild(note(L("قريبٌ لك ربطك بشخصٍ في شجرة عائلته. إن وافقت: تنضمّ إليها مشاهداً، وتظهر القرابات منك، ويراسلك أقاربك ويتّصلون بك منها.", "A relative linked you to someone in their family tree. If you accept you join it as a viewer, relations show from you, and relatives can message or call you from it."), "#5b6b7b"));
+    var rest = list.length;
+    list.forEach(function (r) {
+      var card = mk("div", "border:1px solid #e6ebf0;border-radius:14px;padding:12px;margin:8px 0");
+      card.appendChild(mk("div", "font:800 15px/1.7 system-ui", (r.byName || L("قريبك", "A relative")) + L(" يقول إنك «", " says you are «") + (r.personName || "") + L("» في شجرة «", "» in the «") + (r.groupName || "") + "»"));
+      var acts = mk("div", "display:flex;gap:8px;margin-top:10px");
+      var done = function (msg) { card.innerHTML = ""; card.appendChild(note(msg, "#0F7A55")); if (--rest <= 0) setTimeout(function () { s.close(); }, 1400); };
+      var yes = mkBtn(L("نعم، هذا أنا", "Yes, that's me"), "primary"), no = mkBtn(L("لا", "No"), "");
+      yes.onclick = function () {
+        yes.disabled = no.disabled = true; yes.textContent = "…";
+        call("fam.linkRespond", { groupId: r.groupId, personId: r.personId, accept: true }).then(function (b) {
+          try { if (global.SawaSync && SawaSync.adoptGroup) SawaSync.adoptGroup(b.groupId, b.name, b.role, b.personId); } catch (e) {}
+          done(L("تمّ ✓ — أنت «", "Done ✓ — you are «") + (r.personName || "") + L("» في «", "» in «") + (r.groupName || "") + "»");
+        }).catch(function (e) { yes.disabled = no.disabled = false; yes.textContent = L("نعم، هذا أنا", "Yes, that's me"); toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+      };
+      no.onclick = function () {
+        yes.disabled = no.disabled = true;
+        call("fam.linkRespond", { groupId: r.groupId, personId: r.personId, accept: false }).then(function () { done(L("لم يُربط حسابك ✓", "Not linked ✓")); }).catch(function () { done(L("لم يُربط حسابك", "Not linked")); });
+      };
+      acts.appendChild(yes); acts.appendChild(no); card.appendChild(acts);
+      s.box.appendChild(card);
+    });
+    return s;
   }
   function requestsSheet() {
     if (!state.uid) return false;
@@ -3937,6 +3983,7 @@
     e2e.load().then(function () { publishChats(); Object.keys(days).forEach(publishMessages); }, function () { publishChats(); });
     restorePending(); startChats(uid); drainOutbox();
     startStories(uid);   // C90
+    setTimeout(function () { if (state.uid === uid) loadFamReqs(false); }, 4000);   // C107: طلبات ربطٍ تنتظرني
     setTimeout(refreshPush, 3000);
     setTimeout(maybeVerifyBanner, 6000);
     var cbs = readyCbs; readyCbs = [];
@@ -4429,6 +4476,7 @@
   global.SawaChat = {
     version: VERSION,
     bindApp: bindApp, refresh: refresh, contacts: contacts,
+    famReqs: loadFamReqs,   // C107
     shareInvite: shareInvite, createInvite: createInvite, renderQr: renderQr,
     accept: accept, scanSupported: scanSupported, scanAndAdd: scanAndAdd, removeContact: removeContact,
     me: function () { return state.me; }, uid: function () { return state.uid; },
