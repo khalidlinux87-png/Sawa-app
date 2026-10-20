@@ -869,7 +869,8 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
     const duplicateMatch = duplicateMatches[0] || null;
     const { distinctLabel: dupLineage } = buildLineageHelpers(existingPersons, relations);
     // ⛔ existingPersons تستثني المعروض نفسه، فتعديل صاحب الشجرة لا يُمنع
-    const selfTaken = existingPersons.some(isSelfPerson);
+    // C105: للعضو «نفسي» تعني «هذا أنا» على جهازه (لا تُكتب) — فلا تُمنع وإن كان لصاحب الشجرة «نفسي»
+    const selfTaken = !(persons || []).some((p) => p._member) && existingPersons.some(isSelfPerson);
     const crossLinkGroup = otherGroups.find((g) => g.groupId === crossLinkGroupId);
     function handlePhotoChange(e) {
         var _a;

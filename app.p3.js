@@ -2770,6 +2770,8 @@ function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, r
         var _a;
         const self = persons.find((p) => p.kinship === "نفسي");   // C33: «ارجع لي» تعود إليّ أنا، لا إلى أعمق حفيد
         if (self) return self.id;
+        const anchor = persons.find((p) => p.kinAnchor);   // C105: شجرةٌ بلا «نفسي» ⇒ أقرب الناس إليّ فيها (الزوجة مثلاً)
+        if (anchor) return anchor.id;
         let best = null, bestDepth = -1;
         persons.forEach((p) => {
             var _a, _b;

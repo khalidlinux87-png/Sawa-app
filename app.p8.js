@@ -1195,14 +1195,33 @@ function AppInner() {
                 const hits = nm ? list.filter((p) => normalizeArabicName(p.local_name) === nm || normalizeArabicName(String(p.local_name).split(" ")[0]) === nm) : [];
                 if (hits.length === 1 && !isSelfPerson(hits[0])) guess = hits[0].id;
             }
-            const meId = (famMe[gid] && list.some((p) => p.id === famMe[gid])) ? famMe[gid] : (guess || (ownerSelf && ownerSelf.id));
+            let meId = (famMe[gid] && list.some((p) => p.id === famMe[gid])) ? famMe[gid] : (guess || (ownerSelf && ownerSelf.id));
+            // C105: شجرةٌ بلا «نفسي» (عائلة الزوجة مثلاً: «دعاء» = الزوجة) ⇒ «أنا» افتراضيّ يُربط بمن قرابتُه مباشرةٌ منّي
+            //       (زوجة/زوج · والد/والدة · ابن/بنت · أخ/أخت) فتُحسب البقيّة منه: والد الزوجة، جدّ الزوجة، أخو الزوجة… بدل «أخرى».
+            let calcList = list, calcRels = rels, anchorIds = [];
+            if (!meId && (!g || !g.role || g.role === "owner")) {
+                const VS = "__vself__", vr = [];
+                const DIRECT = { "الزوجة": "spouse", "الزوج": "spouse", "الوالد": "parent", "الوالدة": "parent", "الابن": "child", "البنت": "child", "الأخ": "sibling", "الأخت": "sibling" };
+                let vg = "male";
+                list.forEach((p) => {
+                    const t0 = DIRECT[p.kinship]; if (!t0) return;
+                    anchorIds.push(p.id);
+                    if (t0 === "spouse") { vr.push({ groupId: gid, source: VS, target: p.id, type: "spouse" }); vg = p.kinship === "الزوج" ? "female" : "male"; }
+                    else if (t0 === "parent") vr.push({ groupId: gid, source: p.id, target: VS, type: "parent" });
+                    else if (t0 === "child") vr.push({ groupId: gid, source: VS, target: p.id, type: "parent" });
+                    else vr.push({ groupId: gid, source: VS, target: p.id, type: "sibling" });
+                });
+                if (vr.length) { calcList = list.concat([{ id: VS, local_name: "", gender: vg, kinship: SELF_KINSHIP, alive: true }]); calcRels = rels.concat(vr); meId = VS; }
+            }
             let kin = {};
-            try { kin = meId ? kinCompute(list, rels, meId) : {}; } catch (e) { kin = {}; }
-            out[gid] = list.map((p) => {
+            try { kin = meId ? kinCompute(calcList, calcRels, meId) : {}; } catch (e) { kin = {}; }
+            const memberView = !!(g && g.role && g.role !== "owner");   // C105: نموذج الشخص يعرف أنّ «نفسي» = «هذا أنا» للعضو
+            out[gid] = list.map((p0) => {
+                const p = memberView ? { ...p0, _member: true } : p0;
                 const k = kin[p.id];
                 if (p.id === meId) return { ...p, kinship: SELF_KINSHIP, kinLabel: null, kinAlso: [], kinComputed: true, kinStored: p.kinship, kinSection: "self" };
                 if (!k) return (ownerSelf && meId !== ownerSelf.id && p.id === ownerSelf.id) ? { ...p, kinship: "أخرى", kinStored: p.kinship } : p;
-                return { ...p, kinship: k.kinship, kinLabel: k.label !== k.kinship ? k.label : null, kinAlso: k.also, proximity: k.proximity, kinSection: k.section, kinComputed: true, kinStored: p.kinship };
+                return { ...p, kinship: k.kinship, kinLabel: k.label !== k.kinship ? k.label : null, kinAlso: k.also, proximity: k.proximity, kinSection: k.section, kinComputed: true, kinStored: p.kinship, kinAnchor: anchorIds.indexOf(p.id) >= 0 && anchorIds[0] === p.id };
             });
         });
         return out;
@@ -2744,7 +2763,9 @@ function AppInner() {
             // C33: أصول السلسلة هي أصول الشخص المُضاف لا أصولي: «الوالد/الجد» فقط حين يكون المُضاف أنا أو أخي/أختي (أصولنا واحدة)؛
             //      وإلّا تُسجَّل «أخرى» وتُضبط يدويّاً (كان ابن العم يُضيف أباه «والداً» لي). ولا نحكم بوفاة أحدٍ من عندنا.
             const shared = !personData.kinship || ["نفسي", "الأخ", "الأخت"].indexOf(personData.kinship) >= 0;
-            const kin = shared ? (i === 0 ? "الوالد" : i === 1 ? "الجد" : "أخرى") : "أخرى";
+            // C105: لغير «نفسي/أخي» نشتقّ الصلة من صلة المُضاف: الزوجة ⇒ والد الزوجة ⇒ جدّ الزوجة … (وما لا يُعرف «أخرى»)
+            let kin = shared ? (i === 0 ? "الوالد" : i === 1 ? "الجد" : "أخرى") : "أخرى";
+            if (!shared) { let pk = personData.kinship || ""; for (let j = 0; j <= i && pk && pk !== "أخرى"; j++) pk = deriveKinship(pk, "parent", "male"); if (pk && pk !== "أخرى") kin = pk; }
             newAncestors.push({
                 id, local_name: nm, kinship: kin,
                 gender: "male", // الأصول في النسب ذكور
@@ -2833,6 +2854,14 @@ function AppInner() {
         //      تُحفظ فقط إن غيّرها المستخدم فعلاً لشخصٍ بلا طريقٍ في الشجرة.
         const viewP = ((famPersons[groupId] || []).find((p) => p.id === personId)) || {};
         const personData = { ...personData0 };
+        // C105: العضو (غير المالك) يختار «نفسي» ⇒ «هذا أنا» على جهازه وحده (المنظور والمركز و«ارجع إليّ»)،
+        //       لا تُكتب «نفسي» على الشخص عند الجميع (كانت تجعل الزوجة «نفسي» في شجرة زوجها أيضاً)
+        const grpRole = ((familyGroups || []).find((x) => x.id === groupId) || {}).role;
+        if (personData.kinship === SELF_KINSHIP && grpRole && grpRole !== "owner") {
+            setFamMe((prev) => ({ ...(prev || {}), [groupId]: personId }));
+            delete personData.kinship; delete personData.proximity;
+            setTimeout(() => showToast(tl("صرتَ أنت «" + (data.local_name || viewP.local_name || "") + "» في هذه الشجرة — القرابات والمركز منك أنت (لك وحدك)", "You are now this person in the tree — relations are shown from you"), "success"), 300);
+        }
         if (viewP.kinComputed && personData.kinship === viewP.kinship) { delete personData.kinship; delete personData.proximity; }
         if (viewP.kinComputed && personData.proximity === viewP.proximity) delete personData.proximity;
         // حافة الأمومة تُوفَّق هنا لا في بيانات الشخص: نحذف أيّ أمومة من
