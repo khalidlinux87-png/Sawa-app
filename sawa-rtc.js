@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c112";
+  var VERSION = "c113";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -63,7 +63,11 @@
   function bindApp(fns) {
     app = fns || null;
     // C52: خوادم ICE جاهزة قبل أوّل مكالمة (تُجدَّد كلّ ٢٠ دقيقة في getIce)
-    if (!iceWarm) { iceWarm = true; setTimeout(function () { try { getIce(); } catch (e) {} }, 4000); }
+    if (!iceWarm) {
+      iceWarm = true; setTimeout(function () { try { getIce(); } catch (e) {} }, 4000);
+      // C113: عند العودة إلى التطبيق نجدّدها مسبقاً — المكالمة لا تنتظر
+      try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && myUid()) try { getIce(); } catch (e) {} }); } catch (e) {}
+    }
     if (app && app.setCallLog && logQueue.length) { var q = logQueue; logQueue = []; q.forEach(addLog); }
     if (app && app.setScheduledCalls && schedAt) publishSched();
   }
@@ -87,8 +91,14 @@
   function hasTurn(list) { return (list || []).some(function (x) { return [].concat(x.urls || x.url || []).some(function (u) { return /^turns?:/.test(String(u)); }); }); }
   var STUN = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
   var iceWarm = false;
+  var iceBusy = null;
   function getIce(waitMs) {
     if (iceCache && Date.now() - iceAt < 20 * 60 * 1000) return Promise.resolve(iceCache);
+    // C113: بيانات الوسيط صالحة ٦ ساعات — نستعمل المحفوظة فوراً ونجدّدها في الخلفيّة (كانت أوّل مكالمة بعد ٢٠ دقيقة تنتظر الخادم حتّى ٦ ث)
+    if (iceCache && Date.now() - iceAt < 4 * 3600 * 1000) { if (!iceBusy) { iceBusy = fetchIce(); iceBusy.then(function () { iceBusy = null; }, function () { iceBusy = null; }); } return Promise.resolve(iceCache); }
+    return fetchIce(waitMs);
+  }
+  function fetchIce(waitMs) {
     var wait = waitMs || 6000;
     return Promise.race([
       wcall("rtc.ice", {}).then(function (b) {
@@ -240,12 +250,7 @@
         return "a=fmtp:" + pt + " " + (keep ? keep + ";" : "") + want;
       });
       else sdp = sdp.replace(m[0], m[0] + "\r\na=fmtp:" + pt + " " + want);
-      // C110: مكالمة صوتيّة ⇒ إطارات ٤٠ مللي ث بدل ٢٠: نصف عدد الحزم ونصف رؤوسها (رؤوس IP/UDP/الوسيط/SRTP ≈ ٧٠ بايت للحزمة
-      //       كانت قرابة نصف ما يُرسَل). على شبكة جوّالٍ ضيّقة هذا الفرق يمنع تراكم الطابور. +٢٠ مللي ث فقط.
-      if (!/\r?\nm=video/.test(sdp)) {
-        sdp = sdp.replace(/\r?\na=ptime:\d+/g, "");
-        sdp = sdp.replace(new RegExp("(a=fmtp:" + pt + " [^\r\n]*)"), "$1\r\na=ptime:40");
-      }
+      // C113: أُلغيت إطارات ٤٠ مللي ث (C110) — ضياع حزمةٍ كان يُسقط ضعف المدّة فيُسمع تقطّعاً
       if (typeof d.sdp === "string" && !(d instanceof global.RTCSessionDescription)) { d.sdp = sdp; return d; }
       return { type: d.type, sdp: sdp };
     } catch (e) { return d; }
@@ -772,7 +777,7 @@
   // C110: تراكم التأخير (bufferbloat) — خالد: «شبكة ٦٢٧٤ ← ٧٢٠٣ مللي ث» تزيد كلّ دقيقة: نُرسل أكثر ممّا تحمله شبكة الجوّال
   //       فيطول الطابور. أقلّ زمنٍ رأيناه = خطّ الأساس؛ إن تجاوزه الزمن كثيراً مرّتين متتاليتين ⇒ نخفّض سقف الصوت درجة
   //       (٣٢ ← ٢٠ ← ١٢ ← ٨ ك)، وحين يعود قريباً منه ٣٠ ثانية ⇒ نرفعه درجة. الطرفان يفعلان ذلك فيُفرَغ الطابور من الجهتين.
-  var ABR = [32000, 20000, 12000, 8000];
+  var ABR = [32000, 24000, 20000];   // C113: لا ننزل تحت ٢٠ ك (٨–١٢ ك كانت مكتومة/آليّة)
   function audioCap(c, bps) {
     try {
       if (c.native) { var nb = NB(); if (nb && nb.rtcAudioBr) nb.rtcAudioBr(c.pc.id, bps); return; }
@@ -784,12 +789,12 @@
   function audioAdapt(c, rtt) {
     if (rtt == null || !(rtt > 0)) return;
     c.rttMin = Math.min(c.rttMin || 1e9, rtt);
-    var bloat = rtt > Math.max(700, c.rttMin * 2.5 + 200), calm = rtt < c.rttMin * 1.6 + 150;
+    var bloat = rtt > Math.max(1000, c.rttMin * 3 + 300), calm = rtt < c.rttMin * 1.8 + 200;   // C113: أقلّ حساسيّة
     c.bloatN = bloat ? (c.bloatN || 0) + 1 : 0;
     c.calmN = calm ? (c.calmN || 0) + 1 : 0;
     var i = c.abi || 0;
-    if (c.bloatN >= 2 && i < ABR.length - 1) { i++; c.bloatN = 0; }
-    else if (c.calmN >= 10 && i > 0) { i--; c.calmN = 0; }
+    if (c.bloatN >= 3 && i < ABR.length - 1) { i++; c.bloatN = 0; }
+    else if (c.calmN >= 5 && i > 0) { i--; c.calmN = 0; }
     if (i !== (c.abi || 0)) { c.abi = i; log("audio cap", ABR[i], "rtt", Math.round(rtt), "min", Math.round(c.rttMin)); audioCap(c, ABR[i]); }
   }
   // C93: أقرب مركز Cloudflare لشبكة هذا الهاتف (الوسيط يسلك الطريق نفسه غالباً) — JED/CAI/FRA… يكشف بُعد المسار
