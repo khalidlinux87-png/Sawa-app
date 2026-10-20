@@ -382,6 +382,50 @@ function ForwardPickerScreen({ conversations, groups, contacts, currentConversat
 // C99: صورة/فيديو في المحادثة بحالاتها: يُنزَّل (المعاينة الضبابيّة + مؤشّر) · تعذّر (اضغط لإعادة التنزيل) · جاهز.
 //      كانت الصورة التي تعذّر تنزيلها تبقى ضبابيّةً بلا أيّ زرّ، والفيديو بلا صورةٍ مصغّرة يظهر مشغّلاً مكسوراً.
 // C101: ورقة أفعال الرسالة المضغوطة (الخاصّة والمجموعات): معاينة سطرٍ واحد · تفاعلات سريعة · شبكة أزرار من ٤ أعمدة
+// C103: بطاقة التذكير اليوميّ (daily.json)
+const DAILY_KIND_STYLE = {
+    "آية": { c: "#0F7A55", bg: "#E3F4EC", open: "﴿", close: "﴾", icon: "📖" },
+    "حديث": { c: "#1E5FA8", bg: "#E4EEF9", open: "«", close: "»", icon: "🕌" },
+    "أثر": { c: "#7A4F12", bg: "#F6ECDD", open: "«", close: "»", icon: "📜" },
+    "حكمة": { c: "#6B3FA0", bg: "#EFE7F8", open: "", close: "", icon: "💡" },
+    "شعر": { c: "#A3324F", bg: "#F8E6EB", open: "", close: "", icon: "🪶" },
+};
+function DailyReminderCard({ card, onClose, onFamily }) {
+    const { colors, isDark } = useTheme();
+    const ks = DAILY_KIND_STYLE[card.kind] || { c: colors.primary, bg: colors.primaryLight, open: "", close: "", icon: "🤍" };
+    const now = new Date();
+    let hijri = "", greg = "";
+    try { hijri = new Intl.DateTimeFormat("ar-SA-u-ca-islamic-umalqura", { day: "numeric", month: "long", year: "numeric" }).format(now); } catch (e) { }
+    try { greg = new Intl.DateTimeFormat(isRTL() ? "ar-u-nu-arab" : "en", { weekday: "long", day: "numeric", month: "long" }).format(now); } catch (e) { }
+    const poem = card.kind === "شعر";
+    const share = () => {
+        const txt = (ks.open ? ks.open + " " : "") + card.text + (ks.close ? " " + ks.close : "") + (card.source ? "\n— " + card.source : "") + "\n\n" + tl("من تذكير سوا اليوميّ 🤍 sawaaap.com", "From Sawa's daily reminder 🤍 sawaaap.com");
+        try { if (navigator.share) { navigator.share({ text: txt }).catch(() => { }); return; } } catch (e) { }
+        copyText(txt);
+    };
+    const pattern = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='.13' stroke-width='1'%3E%3Cpath d='M22 2l6 14 14 6-14 6-6 14-6-14-14-6 14-6z'/%3E%3Ccircle cx='22' cy='22' r='5'/%3E%3C/g%3E%3C/svg%3E\")";
+    const tc = isDark ? "#F3F4F6" : "#1F2937";
+    return React.createElement(React.Fragment, null,
+        React.createElement("div", { onClick: onClose, className: "sawa-fade-in", style: { position: "fixed", inset: 0, zIndex: 60, backgroundColor: "rgba(10,20,35,0.55)", backdropFilter: "blur(2px)" } }),
+        React.createElement("div", { className: "sawa-pop-in", role: "dialog", "aria-label": t("dr_title"), dir: "rtl", style: { position: "fixed", left: 18, right: 18, top: "50%", transform: "translateY(-50%)", zIndex: 61, maxWidth: 460, margin: "0 auto", backgroundColor: colors.card, borderRadius: 26, overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.35)" } },
+            // الرأس
+            React.createElement("div", { style: { position: "relative", padding: "20px 20px 18px", textAlign: "center", color: "#fff", background: `${pattern}, linear-gradient(135deg, #2F80C8 0%, #1E3A63 100%)` } },
+                React.createElement("button", { onClick: onClose, "aria-label": t("ighlaq"), style: { position: "absolute", zIndex: 3, top: 10, left: 10, width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.16)", color: "#fff", fontSize: 18, lineHeight: "32px" } }, "×"),
+                React.createElement("div", { style: { fontSize: 13, opacity: 0.85, letterSpacing: 0.2 } }, "🌙 " + t("dr_title")),
+                hijri && React.createElement("div", { style: { fontSize: 18, fontWeight: 800, marginTop: 4 } }, hijri),
+                greg && React.createElement("div", { style: { fontSize: 11.5, opacity: 0.8, marginTop: 2 } }, greg)),
+            // النصّ
+            React.createElement("div", { style: { padding: "20px 22px 8px", textAlign: "center" } },
+                React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", borderRadius: 999, fontSize: 12, fontWeight: 800, color: ks.c, backgroundColor: isDark ? ks.c + "33" : ks.bg } }, ks.icon, " ", card.kind || ""),
+                React.createElement("p", { style: { marginTop: 14, fontFamily: "'Amiri','Noto Naskh Arabic','Noto Serif Arabic','Traditional Arabic',serif", fontSize: card.text.length > 160 ? 19 : 22, lineHeight: poem ? 2.1 : 1.95, fontWeight: 700, color: tc, whiteSpace: poem ? "pre-line" : "normal" } },
+                    ks.open && React.createElement("span", { style: { color: ks.c, margin: "0 4px" } }, ks.open), card.text, ks.close && React.createElement("span", { style: { color: ks.c, margin: "0 4px" } }, ks.close)),
+                card.source && React.createElement("div", { style: { marginTop: 10, display: "flex", alignItems: "center", gap: 8, justifyContent: "center", color: colors.textMuted, fontSize: 12.5 } },
+                    React.createElement("span", { style: { width: 22, height: 1, backgroundColor: colors.border } }), card.source, React.createElement("span", { style: { width: 22, height: 1, backgroundColor: colors.border } }))),
+            // الأزرار
+            React.createElement("div", { style: { display: "flex", gap: 10, padding: "14px 18px 18px" } },
+                React.createElement("button", { onClick: onFamily, className: "flex-1", style: { padding: "12px 8px", borderRadius: 14, background: "linear-gradient(135deg,#2F80C8,#1E3A63)", color: "#fff", fontSize: 14, fontWeight: 800 } }, "🤍 " + t("sla_alrhm")),
+                React.createElement("button", { onClick: share, "aria-label": tl("مشاركة", "Share"), style: { padding: "12px 16px", borderRadius: 14, backgroundColor: colors.bg, color: colors.text, fontSize: 14, fontWeight: 800, border: `1px solid ${colors.border}` } }, tl("مشاركة", "Share")))));
+}
 function MsgActionSheet({ colors, onClose, preview, onReact, items }) {
     return React.createElement(React.Fragment, null,
         React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.22)" } }),

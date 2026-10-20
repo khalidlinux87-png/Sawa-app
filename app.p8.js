@@ -1259,15 +1259,22 @@ function AppInner() {
     const [dailyCycle, setDailyCycle] = usePersistedState("dailyTextCycle", { day: null, idx: null, queue: [], size: 0 });
     const [dailyCard, setDailyCard] = useState(null);
     const closeDailyCard = () => { if (dailyCard && dailyCard._mark) setDailyCycle(dailyCard._mark); setDailyCard(null); };
+    // C102: الفحص عند الفتح وعند كلّ عودةٍ إلى التطبيق — تطبيق أندرويد يبقى حيّاً في الخلفيّة أيّاماً فلا يُعاد تحميل الصفحة،
+    //       وكان الفحص عند التحميل الأوّل وحده فلا يظهر تذكير اليوم الجديد. (الحالة من مرجعٍ حيّ لا من أوّل رسم)
+    const dailyCycleRef = useRef(dailyCycle); dailyCycleRef.current = dailyCycle;
+    const dailyCardRef = useRef(null); dailyCardRef.current = dailyCard;
     useEffect(function () {
+        let cancelled = false, timer = null, busy = false;
+        const check = function () {
+        if (busy || dailyCardRef.current || document.visibilityState === "hidden") return;
+        busy = true;
         const now = new Date();
         const key = now.getFullYear() + "-" + (now.getMonth() + 1) + "-" + now.getDate();
-        let cancelled = false;
-        let timer = null;
         loadDailyReminders().then(function (pool) {
+            busy = false;
             if (cancelled || !pool || !pool.length)
                 return;
-            let next = dailyCycle;
+            let next = dailyCycleRef.current || { day: null, idx: null, queue: [], size: 0 };
             if (next.day !== key || next.size !== pool.length || typeof next.idx !== "number") {
                 let queue = (next.size === pool.length && next.queue && next.queue.length) ? next.queue.slice() : null;
                 if (!queue || !queue.length) {
@@ -1279,17 +1286,25 @@ function AppInner() {
                 }
                 const idx = queue.shift();
                 next = { day: key, idx, queue, size: pool.length };
+                dailyCycleRef.current = next;
                 setDailyCycle(next);
             }
             const pick = pool[next.idx] || pool[0];
             // C74: مرّةً في اليوم — كانت تظهر عند كلّ فتح للتطبيق، وتغطّي صفحة الانضمام إلى عائلة/غرفة/مكالمة
             if (next.shownDay === key) return;
             if (/[?&](join|call|room|contact|group|code|answer)=/.test(location.search || "")) return;
+            if (window.SawaRTC && window.SawaRTC.active && window.SawaRTC.active()) return;   // لا فوق مكالمة
             const shownNext = { ...next, shownDay: key };
-            // C91: يُعلَّم «ظهر اليوم» حين يُغلقه المستخدم لا حين يُجهَّز — كان يُعلَّم ثمّ يُحجب (فتحٌ من إشعار إلى محادثة، تحديثٌ تلقائيّ…) فلا يُرى أبداً
-            timer = setTimeout(function () { setDailyCard(Object.assign({}, pick, { _mark: shownNext })); }, 900);
-        });
-        return function () { cancelled = true; if (timer) clearTimeout(timer); };
+            // C91: يُعلَّم «ظهر اليوم» حين يُغلقه المستخدم لا حين يُجهَّز
+            if (timer) return;   // بطاقةٌ في الطريق
+            timer = setTimeout(function () { timer = null; if (!cancelled && !dailyCardRef.current) setDailyCard(Object.assign({}, pick, { _mark: shownNext })); }, 900);
+        }, function () { busy = false; });
+        };
+        check();
+        const onVis = function () { if (document.visibilityState === "visible") setTimeout(check, 600); };
+        document.addEventListener("visibilitychange", onVis);
+        window.addEventListener("focus", onVis);
+        return function () { cancelled = true; if (timer) clearTimeout(timer); document.removeEventListener("visibilitychange", onVis); window.removeEventListener("focus", onVis); };
     }, []);
     const [showFamilyReminders, setShowFamilyReminders] = usePersistedState("showFamilyReminders", true);
     const [mutedConversations, setMutedConversations] = usePersistedState("mutedConvs", []);
@@ -3666,22 +3681,9 @@ function AppInner() {
         flow === "app" && showLinkedDevices && (React.createElement(LinkedDevicesScreen, { onBack: () => setShowLinkedDevices(false) })),
         flow === "app" && showWrapped && (React.createElement(SawaWrappedScreen, { onBack: () => setShowWrapped(false), conversations: conversations, groups: groups, showToast: showToast })),
         flow === "app" && showFeedback && (React.createElement(FeedbackSheet, { onClose: () => setShowFeedback(false), currentScreen: tab })),
-        flow === "app" && dailyCard && !chatsStack.length && (React.createElement(React.Fragment, null,
-            React.createElement("div", { onClick: () => closeDailyCard(), style: { position: "fixed", inset: 0, zIndex: 60, backgroundColor: "rgba(0,0,0,0.45)" } }),
-            React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", left: 16, right: 16, top: "50%", transform: "translateY(-50%)", zIndex: 61, backgroundColor: colors.card, borderRadius: 22, overflow: "hidden", boxShadow: "0 20px 50px rgba(0,0,0,0.3)" } },
-                React.createElement("div", { className: "px-5 pt-5 pb-3 text-center", style: { backgroundColor: colors.primaryLight } },
-                    React.createElement("div", { className: "text-2xl mb-1" }, "\uD83E\uDD0D"),
-                    React.createElement("div", { className: "text-sm font-extrabold", style: { color: colors.primaryDark } }, t("dr_title")),
-                    React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: colors.primary } }, t("dr_sub"))),
-                React.createElement("div", { className: "px-5 py-5 text-center" },
-                    React.createElement("div", { className: "inline-block rounded-full px-2.5 py-0.5 mb-3 text-[10px] font-bold", style: { backgroundColor: colors.bg, color: colors.textMuted } }, dailyCard.kind),
-                    React.createElement("p", { className: "text-base leading-loose font-bold", style: { color: colors.text } }, dailyCard.text),
-                    dailyCard.source && React.createElement("p", { className: "text-[11px] mt-3", style: { color: colors.textMuted } }, dailyCard.source)),
-                React.createElement("div", { className: "flex flex-row border-t", style: { borderColor: colors.border } },
-                    React.createElement("button", { onClick: () => { closeDailyCard(); setTab("discover"); setDiscoverStack([{ type: "groups" }]); }, className: "flex-1 py-3.5 border-l", style: { borderColor: colors.border } },
-                        React.createElement("span", { className: "text-sm font-extrabold", style: { color: colors.primary } }, t("sla_alrhm"))),
-                    React.createElement("button", { onClick: () => closeDailyCard(), className: "flex-1 py-3.5" },
-                        React.createElement("span", { className: "text-sm font-bold", style: { color: colors.textMuted } }, t("ighlaq"))))))),
+        // C103: بطاقة التذكير — رأسٌ بتدرّج الهويّة وزخرفةٍ خفيفة · التاريخ الهجريّ والميلاديّ · خطّ نسخٍ للنصّ وأقواس بحسب النوع · مشاركة
+        flow === "app" && dailyCard && !chatsStack.length && React.createElement(DailyReminderCard, { card: dailyCard, onClose: () => closeDailyCard(),
+            onFamily: () => { closeDailyCard(); setTab("discover"); setDiscoverStack([{ type: "groups" }]); } }),
         flow === "app" && !activeRoom && !showLinkedDevices && !showWrapped && (React.createElement("div", { className: "flex-1 flex flex-col overflow-hidden" },
         showHelp && React.createElement("div", { className: "absolute inset-0 z-50 flex flex-col", style: { backgroundColor: "white" } }, React.createElement(HelpScreen, { onBack: function(){setShowHelp(false);}, onRestartTour: function(){resetTooltips();setShowHelp(false);} })),
         isDemoMode && React.createElement("div", { className: "flex items-center justify-between px-3 py-1.5", style: { backgroundColor: "#F59E0B", flexShrink: 0 } }, React.createElement("span", { className: "text-[10px] font-bold text-white" }, "⚠️ عرض توضيحي — البيانات وهمية"), React.createElement("button", { onClick: function(){ setFamilyGroups([{id:"g-main",name:"عائلتي",description:"",role:"owner",ownerPersonId:null}]); setGroupPersons({"g-main":[]}); setIsDemoMode(false); }, className: "text-[10px] font-extrabold text-white underline" }, "ابدأ من صفر")),
