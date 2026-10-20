@@ -381,6 +381,19 @@ function ForwardPickerScreen({ conversations, groups, contacts, currentConversat
 // بديل يظهر مكان الوسائط التي لم يُحفَظ محتواها بين الجلسات
 // C99: صورة/فيديو في المحادثة بحالاتها: يُنزَّل (المعاينة الضبابيّة + مؤشّر) · تعذّر (اضغط لإعادة التنزيل) · جاهز.
 //      كانت الصورة التي تعذّر تنزيلها تبقى ضبابيّةً بلا أيّ زرّ، والفيديو بلا صورةٍ مصغّرة يظهر مشغّلاً مكسوراً.
+// C101: ورقة أفعال الرسالة المضغوطة (الخاصّة والمجموعات): معاينة سطرٍ واحد · تفاعلات سريعة · شبكة أزرار من ٤ أعمدة
+function MsgActionSheet({ colors, onClose, preview, onReact, items }) {
+    return React.createElement(React.Fragment, null,
+        React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.22)" } }),
+        React.createElement("div", { className: "sawa-pop-in", dir: isRTL() ? "rtl" : "ltr", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 41, backgroundColor: colors.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 8px)", boxShadow: "0 -6px 24px rgba(0,0,0,0.18)" } },
+            React.createElement("div", { className: "w-9 h-1 rounded-full mx-auto mt-2 mb-1", style: { backgroundColor: colors.border } }),
+            preview ? React.createElement("div", { className: "px-4 pb-1 text-[11.5px] truncate", style: { color: colors.textMuted } }, String(preview).slice(0, 120)) : null,
+            onReact && React.createElement("div", { className: "flex items-center justify-around px-3 py-1.5" }, QUICK_REACTIONS.map((e) => React.createElement("button", { key: e, "aria-label": e, onClick: () => { onReact(e); onClose(); }, className: "text-[22px] w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.bg } }, e))),
+            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 2, padding: "4px 8px 2px", borderTop: `1px solid ${colors.border}` } },
+                items.map((it, k) => React.createElement("button", { key: k, onClick: () => { onClose(); it.act(); }, className: "flex flex-col items-center justify-center gap-1 rounded-xl", style: { padding: "9px 2px", minHeight: 62 } },
+                    React.createElement(it.icon, { size: 20, color: it.danger ? colors.danger : colors.text }),
+                    React.createElement("span", { className: "text-[11px] font-bold leading-tight text-center", style: { color: it.danger ? colors.danger : colors.textMuted } }, it.label))))));
+}
 function MediaBubble({ m, onView }) {
     const { colors } = useTheme();
     const [bad, setBad] = useState(false);
@@ -1079,6 +1092,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
     const [showAttachMenu, setShowAttachMenu] = useState(false);
     const [viewOnceNext, setViewOnceNext] = useState(false);
     const [viewOnce, setViewOnce] = useState(null);   // C100: عارضٌ مستقلّ للصورة/الفيديو لمرّة واحدة (بلا تنزيل/توجيه/تقليب)
+    const [headMenu, setHeadMenu] = useState(false);   // C101: قائمة ⋮ في رأس المحادثة
     const [menuReact, setMenuReact] = useState(false);
     const [forwardingText, setForwardingText] = useState(null);
     const [showCallChoice, setShowCallChoice] = useState(false);
@@ -1132,13 +1146,24 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
             } }));
     }
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col relative" },
-        React.createElement(TopBar, { onTitlePress: conversation.peerUid && window.SawaChat && window.SawaChat.renameContact ? () => window.SawaChat.renameContact(conversation.peerUid) : undefined, title: conversation.isSavedMessages ? t("rsayly_almhfwza") : conversation.name, avatar: !conversation.isSavedMessages, photo: conversation.photo || null, subtitle: !online ? tl("أنت غير متّصل", "You're offline") : isTyping ? t("ch_yktb") : (isOnline ? t("ch_mtsl_alan") : null), onBack: onBack, actions: React.createElement("div", { className: "flex flex-row items-center gap-3" },
+        // C101: الضغط على الاسم يفتح معلومات المحادثة (كان يفتح التسمية مباشرةً)، والتسمية من قائمة ⋮
+        React.createElement(TopBar, { onTitlePress: onOpenInfo || undefined, title: conversation.isSavedMessages ? t("rsayly_almhfwza") : conversation.name, avatar: !conversation.isSavedMessages, photo: conversation.photo || null, subtitle: !online ? tl("أنت غير متّصل", "You're offline") : isTyping ? t("ch_yktb") : (isOnline ? t("ch_mtsl_alan") : null), onBack: onBack, actions: React.createElement("div", { className: "flex flex-row items-center gap-3" },
                 React.createElement("button", { "aria-label": t("bhth"), onClick: () => setShowSearch(!showSearch) },
                     React.createElement(Search, { size: 18, color: "#fff" })),
                 !conversation.isSavedMessages && (React.createElement("button", { "aria-label": t("atsal"), onClick: () => setShowCallChoice(!showCallChoice) },
                     React.createElement(Phone, { size: 18, color: "#fff" }))),
-                React.createElement("button", { "aria-label": t("malwmat"), onClick: onOpenInfo },
+                React.createElement("button", { "aria-label": t("malwmat"), onClick: () => setHeadMenu((v) => !v) },
                     React.createElement(MoreVertical, { size: 18, color: "#fff" }))) }),
+        headMenu && React.createElement(React.Fragment, null,
+            React.createElement("div", { onClick: () => setHeadMenu(false), style: { position: "fixed", inset: 0, zIndex: 45, backgroundColor: "rgba(0,0,0,0.001)" } }),
+            React.createElement("div", { className: "sawa-pop-in", dir: "rtl", style: { position: "fixed", top: "calc(env(safe-area-inset-top,0px) + 58px)", right: 10, zIndex: 46, minWidth: 210, backgroundColor: colors.card, borderRadius: 14, boxShadow: "0 10px 30px rgba(0,0,0,0.25)", overflow: "hidden", border: `1px solid ${colors.border}` } },
+                [
+                    onOpenInfo ? { label: conversation.isSavedMessages ? t("malwmat") : tl("معلومات جهة الاتّصال", "Contact info"), icon: Info, act: onOpenInfo } : null,
+                    conversation.peerUid && window.SawaChat && window.SawaChat.renameContact ? { label: (window.SawaChat.nickOf && window.SawaChat.nickOf(conversation.peerUid)) || !conversation.unnamed ? tl("تغيير الاسم", "Rename") : tl("إضافة اسم", "Add a name"), icon: Edit2, act: () => window.SawaChat.renameContact(conversation.peerUid) } : null,
+                    { label: t("bhth"), icon: Search, act: () => setShowSearch(true) },
+                ].filter(Boolean).map((it, i) => React.createElement("button", { key: i, onClick: () => { setHeadMenu(false); it.act(); }, className: `w-full flex ${rowStart()} items-center gap-3 px-4 py-3`, style: { borderTop: i ? `1px solid ${colors.border}` : "none", color: colors.text } },
+                    React.createElement(it.icon, { size: 17, color: colors.textMuted }),
+                    React.createElement("span", { className: `flex-1 ${textStart()} text-[14px] font-bold` }, it.label))))),
         // C91: يظهر برمزه فقط ⇒ «أضف اسمه» (تسمية تظهر لك وحدك)
         conversation.unnamed && window.SawaChat && window.SawaChat.renameContact && React.createElement("button", { onClick: () => window.SawaChat.renameContact(conversation.peerUid), className: "w-full flex flex-row items-center gap-2 px-4 py-2.5 border-b", style: { backgroundColor: "#FFF7E6", borderColor: "#F5D9A8" } },
             React.createElement(Edit3, { size: 16, color: "#B45309" }),
@@ -1357,18 +1382,13 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                 React.createElement(ShareContactPicker, { colors, onPick: (txts) => { [].concat(txts).forEach((tx, i) => setTimeout(() => onSend(tx, null), i * 120)); setSharingContact(false); } })))),
         msgMenu && (() => {
             // C100: حالة صفّ التفاعلات في الشاشة نفسها — كانت داخل مكوّنٍ يُعاد إنشاؤه مع كلّ رسم فينطوي الصفّ أثناء اللمس
-            const MsgMenuSheet = () => {
-                const showReactions = menuReact, setShowReactions = setMenuReact;
-                return (React.createElement(React.Fragment, null,
-                    React.createElement("div", { onClick: () => setMsgMenu(null), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.35)" } }),
-                    React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 41, backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 16 } },
-                        React.createElement("div", { className: "w-10 h-1 rounded-full mx-auto my-3", style: { backgroundColor: colors.border } }),
-                        showReactions && (React.createElement("div", { className: `flex ${rowStart()} gap-3 px-5 py-3 border-b`, style: { borderColor: colors.border } }, QUICK_REACTIONS.map((e) => (React.createElement("button", { key: e, onClick: () => { onReact(msgMenu.id, e); setShowReactions(false); setMsgMenu(null); }, className: "text-xl" }, e))))),
-                        (msgMenu.deleted
+            // C101: قائمة الرسالة مضغوطة — صفّ التفاعلات ثمّ شبكة أزرار (كانت قائمةً طويلة تغطّي الشاشة والرسائل)
+            const MsgMenuSheet = () => React.createElement(MsgActionSheet, { colors, onClose: () => setMsgMenu(null), preview: msgMenu.text,
+                onReact: msgMenu.deleted ? null : (e) => onReact(msgMenu.id, e),
+                items: (msgMenu.deleted
                             // C100: المحذوفة: «حذف عندي» فقط
                             ? [{ icon: Trash2, label: t("hdhf"), act: () => setDeletingMsg({ id: msgMenu.id, mine: false }), danger: true }]
                             : [
-                            { icon: Smile, label: t("tfaal"), act: () => setShowReactions((v) => !v), toggle: true },
                             { icon: MessageCircle, label: t("rd"), act: () => setReplyTo({ id: msgMenu.id, text: msgMenu.text, by: msgMenu.by || null }) },
                             ...(msgMenu.viewOnce ? [] : [{ icon: Share2, label: t("twjyh_2"), act: () => setForwardingText({ id: msgMenu.id, text: msgMenu.text, cid: conversation.id }) }]),
                             ...(msgMenu.type !== "sticker" && !msgMenu.viewOnce ? [{ icon: ArrowUpRight, label: tl("مشاركة خارج سوا", "Share outside Sawa"), act: () => shareMessageOut(messages.find((x) => x.id === msgMenu.id), showToast) }] : []),
@@ -1379,11 +1399,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                             // C100: التعديل للنصّ وحده (كان يظهر للصور والملفّات والموقع فلا يحدث شيء)
                             ...(msgMenu.mine && (!msgMenu.type || msgMenu.type === "text") ? [{ icon: Edit2, label: t("tadyl"), act: () => { setEditingMessageId(msgMenu.id); setEditingText(msgMenu.text); } }] : []),
                             { icon: Trash2, label: t("hdhf"), act: () => setDeletingMsg({ id: msgMenu.id, mine: msgMenu.mine }), danger: true },
-                        ]).map((it) => (React.createElement("button", { key: it.label, onClick: () => { it.act(); if (!it.toggle)
-                                setMsgMenu(null); }, className: `w-full flex ${rowStart()} items-center gap-3 px-5 py-3.5 border-t`, style: { borderColor: colors.border, backgroundColor: it.toggle && showReactions ? colors.primaryLight : "transparent" } },
-                            React.createElement(it.icon, { size: 17, color: it.danger ? colors.danger : it.toggle && showReactions ? colors.primary : colors.textMuted }),
-                            React.createElement("span", { className: `flex-1 ${textStart()} text-sm font-bold`, style: { color: it.danger ? colors.danger : it.toggle && showReactions ? colors.primary : colors.text } }, it.label)))))));
-            };
+                        ]) });
             return MsgMenuSheet();
         })(),
         deletingMsg && (React.createElement(React.Fragment, null,
@@ -2125,14 +2141,10 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
         React.createElement(RecordingBar, { isRecording: recorder.isRecording, seconds: recorder.seconds, micError: recorder.micError, onCancel: recorder.cancel, maxSeconds: recorder.maxSeconds }),
         viewingImage && (React.createElement(MediaLightbox, { items: mediaItems, startIndex: Math.max(0, mediaItems.findIndex((it) => it.url === viewingImage)), onClose: () => setViewingImage(null), onForward: (it) => { setViewingImage(null); setForwardingText({ id: it.id, text: it.name, cid: group.id }); } })),
         forwardingText && (React.createElement(ForwardPickerScreen, { conversations: allConversations, groups: allGroups, contacts: contactsForForward, currentConversationId: group.id, onForward: (destinationIds) => { onForward(forwardingText, destinationIds); setForwardingText(null); }, onClose: () => setForwardingText(null) })),
-        groupMsgMenu && (React.createElement(React.Fragment, null,
-            React.createElement("div", { onClick: () => setGroupMsgMenu(null), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.35)" } }),
-            React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 41, backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 12, overflow: "hidden" } },
-                React.createElement("div", { className: "px-5 pt-3 pb-2 border-b", style: { borderColor: colors.border } },
-                    React.createElement("span", { className: `block ${textStart()} text-[11px] truncate`, style: { color: colors.textMuted } }, groupMsgMenu.text || "")),
-                onReact && React.createElement("div", { className: `flex ${rowStart()} gap-3 px-5 py-3 border-b`, style: { borderColor: colors.border } }, QUICK_REACTIONS.map((e) => React.createElement("button", { key: e, className: "text-xl", onClick: () => { onReact(groupMsgMenu.id, e); setGroupMsgMenu(null); } }, e))),
-                // C100: المحذوفة ⇒ لا شيء سوى الحذف · لمرّةٍ واحدة ⇒ لا توجيه ولا مشاركة ولا نسخ · التعديل للنصّ وحده
-                (groupMsgMenu.deleted ? [] : [
+        // C101: ورقةٌ مضغوطة كالخاصّة
+        groupMsgMenu && React.createElement(MsgActionSheet, { colors, onClose: () => setGroupMsgMenu(null), preview: groupMsgMenu.text || "",
+            onReact: onReact && !groupMsgMenu.deleted ? (e) => onReact(groupMsgMenu.id, e) : null,
+            items: (groupMsgMenu.deleted ? [] : [
                     { icon: MessageCircle, label: t("rd"), act: () => setGReply({ id: groupMsgMenu.id, text: groupMsgMenu.text || "", senderId: groupMsgMenu.senderId, senderName: groupMsgMenu.senderName }) },
                     ...(groupMsgMenu.viewOnce ? [] : [
                         { icon: Share2, label: t("twjyh_2"), act: () => setForwardingText({ id: groupMsgMenu.id, text: groupMsgMenu.text, cid: group.id }) },
@@ -2140,12 +2152,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                     ...(msgFirstUrl(groupMsgMenu.text) && (!groupMsgMenu.type || groupMsgMenu.type === "text") ? [{ icon: LinkIcon, label: tl("نسخ الرابط", "Copy link"), act: () => { copyText(msgFirstUrl(groupMsgMenu.text)); showToast(t("gc_tm_alnskh"), "success"); } }] : []),
                     ...(groupMsgMenu.text && (!groupMsgMenu.type || groupMsgMenu.type === "text") ? [{ icon: Copy, label: t("nskh"), act: () => { copyText(groupMsgMenu.text || ""); showToast(t("gc_tm_alnskh"), "success"); } }] : []),
                 ]).concat(groupMsgMenu.mine && groupMsgMenu.text && !groupMsgMenu.deleted && (!groupMsgMenu.type || groupMsgMenu.type === "text") ? [{ icon: Edit2, label: t("tadyl"), act: () => { setEditingMessageId(groupMsgMenu.id); setEditingText(groupMsgMenu.text || ""); } }] : [])
-                .concat(onDeleteMessage ? [{ icon: Trash2, label: t("hdhf"), act: () => setGDel({ id: groupMsgMenu.id, canAll: !groupMsgMenu.deleted && (groupMsgMenu.mine || isAdmin) }) }] : [])
-                .map((item, ii) => React.createElement("button", { key: ii, onClick: () => { item.act(); setGroupMsgMenu(null); }, className: `w-full flex ${rowStart()} items-center gap-3 px-5 py-3 border-b`, style: { borderColor: colors.border } },
-                    React.createElement(item.icon, { size: 16, color: colors.textMuted }),
-                    React.createElement("span", { className: "text-sm font-bold", style: { color: colors.text } }, item.label))),
-                React.createElement("button", { onClick: () => setGroupMsgMenu(null), className: "w-full px-5 py-3" },
-                    React.createElement("span", { className: "text-sm font-bold", style: { color: colors.textMuted } }, t("ilgha")))))),
+                .concat(onDeleteMessage ? [{ icon: Trash2, label: t("hdhf"), act: () => setGDel({ id: groupMsgMenu.id, canAll: !groupMsgMenu.deleted && (groupMsgMenu.mine || isAdmin) }) }] : []) }),
         null));
 }
 function UnifiedSearchScreen({ conversations, groups, shipments, taxiTripsHistory, messagesByConversation, groupMessages, onOpenChat, onOpenGroup, onClose }) {
