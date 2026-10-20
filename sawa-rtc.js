@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c110";
+  var VERSION = "c111";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -505,6 +505,43 @@
     w.appendChild(b); w.appendChild(t); w._b = b; w._t = t;
     return w;
   }
+  // C111: سحب صورتي الصغيرة في مكالمة الفيديو — تلتصق بأقرب زاوية عند الإفلات وتُحفظ لما بعدها
+  function pipPlace(v, k) {
+    k = /^[tb][lr]$/.test(k || "") ? k : "tl";
+    v.style.transition = "none";
+    v.style.left = k[1] === "l" ? "14px" : "auto"; v.style.right = k[1] === "r" ? "14px" : "auto";
+    v.style.top = k[0] === "t" ? "calc(env(safe-area-inset-top,0px) + 76px)" : "auto";
+    v.style.bottom = k[0] === "b" ? "calc(env(safe-area-inset-bottom,0px) + 128px)" : "auto";
+  }
+  function pipDrag(v) {
+    v.style.touchAction = "none"; v.style.cursor = "grab";
+    pipPlace(v, lsGet("sawa-pip"));
+    var dr = null;
+    v.addEventListener("pointerdown", function (e) {
+      var r = v.getBoundingClientRect();
+      dr = { dx: e.clientX - r.left, dy: e.clientY - r.top, x0: e.clientX, y0: e.clientY, moved: false };
+      try { v.setPointerCapture(e.pointerId); } catch (x) {}
+      e.stopPropagation();
+    });
+    v.addEventListener("pointermove", function (e) {
+      if (!dr) return;
+      if (!dr.moved && Math.abs(e.clientX - dr.x0) + Math.abs(e.clientY - dr.y0) < 6) return;
+      dr.moved = true;
+      var W = global.innerWidth, H = global.innerHeight, w = v.offsetWidth, h = v.offsetHeight;
+      v.style.left = Math.max(4, Math.min(W - w - 4, e.clientX - dr.dx)) + "px"; v.style.top = Math.max(4, Math.min(H - h - 4, e.clientY - dr.dy)) + "px";
+      v.style.right = "auto"; v.style.bottom = "auto";
+      e.preventDefault(); e.stopPropagation();
+    });
+    var up = function (e) {
+      if (!dr) return; var moved = dr.moved; dr = null;
+      if (e) e.stopPropagation();
+      if (!moved) return;
+      var r = v.getBoundingClientRect(), k = (r.top + r.height / 2 < global.innerHeight / 2 ? "t" : "b") + (r.left + r.width / 2 < global.innerWidth / 2 ? "l" : "r");
+      lsSet("sawa-pip", k); pipPlace(v, k);
+    };
+    v.addEventListener("pointerup", up); v.addEventListener("pointercancel", up);
+    v.addEventListener("click", function (e) { e.stopPropagation(); });
+  }
   function buildUi() {
     if (ui.root) return ui;
     var r = el("div", "position:fixed;inset:0;z-index:2147483000;background:linear-gradient(160deg,#0f3d2c,#071a12);color:#fff;display:none;flex-direction:column;align-items:stretch;font-family:system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;overflow:hidden;user-select:none;-webkit-user-select:none");
@@ -514,6 +551,7 @@
     var ra = el("audio", "display:none"); ra.autoplay = true;
     var lv = el("video", "position:absolute;top:calc(env(safe-area-inset-top,0px) + 76px);left:14px;width:100px;height:142px;border-radius:14px;object-fit:cover;background:#123;display:none;transform:scaleX(-1);box-shadow:0 4px 16px rgba(0,0,0,.5);z-index:2");
     lv.autoplay = true; lv.playsInline = true; lv.muted = true; lv.setAttribute("playsinline", "");
+    pipDrag(lv);   // C111: صورتي الصغيرة تُسحب إلى أيّ زاوية (وتُحفظ الزاوية)
     var top = el("div", "position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 8px;background:linear-gradient(rgba(0,0,0,.45),transparent)");
     var topName = el("div", "font:700 15px system-ui;opacity:0;transition:opacity .2s;text-shadow:0 1px 3px #000");
     var minBtn = el("button", "background:rgba(255,255,255,.14);border:0;color:#fff;border-radius:18px;padding:7px 12px;font:600 12px system-ui;cursor:pointer", L("تصغير ▾", "Minimize ▾"));
@@ -598,6 +636,8 @@
       bar.appendChild(btn("🔄", L("تبديل", "Flip"), "rgba(255,255,255,.16)", switchCam));
     }
     if (c.routes || (NB() && NB().setSpeaker)) { var sp = c.out !== "ear"; var rb = btn(sp ? "🔊" : "👂", sp ? L("المكبّر", "Speaker") : L("السمّاعة", "Earpiece"), sp ? "#e8f5ee" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
+    // C111: تحويل المكالمة الصوتيّة إلى فيديو (بموافقة الطرف الآخر)
+    if (c.state === "connected" && c.type !== "video") bar.appendChild(btn("📹", c.vreqOut ? L("…بانتظاره", "…waiting") : L("فيديو", "Video"), "rgba(255,255,255,.16)", function () { askVideo(cur); }));
     if (c.state === "connected") bar.appendChild(btn("➕", L("إضافة", "Add"), "rgba(255,255,255,.16)", function () { pickPerson(cur); }));
     bar.appendChild(btn("📞", L("إنهاء", "End"), "#d64545", function () { hangup(); }));
     bar.lastChild._b.style.transform = "rotate(135deg)";
@@ -835,13 +875,67 @@
       .catch(function (e) { log("restart", e && e.message); });
   }
 
+  // ---------- C111: تحويل المكالمة الصوتيّة إلى فيديو ----------
+  // الطالب يكتب vreq ⇒ الآخر يرى «يريد تحويل المكالمة إلى فيديو» (قبول/رفض) ⇒ vok|vno.
+  // عند القبول: الطالب يكتب vup = معرّف مكالمة فيديو جديدة، ينهي الصوتيّة بصمت ويتّصل بالفيديو؛ والآخر ينهيها بصمت ويردّ تلقائيّاً.
+  // (المكالمة الصوتيّة قد تكون على المحرّك الأصليّ ⚡ — والفيديو على WebView — فمكالمةٌ جديدة أضمن من إعادة التفاوض.)
+  function askVideo(c) {
+    if (!c || !c.ref || c.state !== "connected" || c.type === "video") return;
+    if (c.vreqOut) { toast(L("بانتظار موافقته…", "Waiting for them…")); return; }
+    c.vreqN = (c.vreqN || 0) + 1; c.vreqOut = c.vreqN;
+    c.ref.update({ vreq: { by: myUid(), n: c.vreqN, ts: TS() } }).catch(function () {});
+    toast(L("طلبتَ تحويل المكالمة إلى فيديو — بانتظار موافقته", "Asked to switch to video — waiting"));
+    clearTimeout(c.timers.vreq);
+    c.timers.vreq = setTimeout(function () { if (c.vreqOut && !c.done) { c.vreqOut = 0; toast(L("لم يردّ على طلب الفيديو", "No answer to the video request")); if (cur === c) paint(c); } }, 30000);
+    paint(c);
+  }
+  function vPromptClose(c) { if (c && c.vbox) { try { c.vbox.remove(); } catch (e) {} c.vbox = null; } }
+  function vPrompt(c, n) {
+    if (!ui.root) return;
+    vPromptClose(c);
+    if (ui.min) minimize(false);
+    var box = el("div", "position:absolute;left:16px;right:16px;top:38%;z-index:6;background:rgba(8,30,21,.96);border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:18px 16px;text-align:center;box-shadow:0 10px 34px rgba(0,0,0,.55)");
+    box.setAttribute("role", "dialog");
+    box.appendChild(el("div", "font:800 26px system-ui;margin-bottom:6px", "📹"));
+    box.appendChild(el("div", "font:700 15px system-ui;margin-bottom:14px;line-height:1.6", L((c.name || "") + " يريد تحويل المكالمة إلى فيديو", (c.name || "") + " wants to switch to video")));
+    var row = el("div", "display:flex;gap:10px;justify-content:center");
+    var yes = el("button", "flex:1;max-width:150px;border:0;border-radius:14px;padding:11px;font:800 14px system-ui;color:#fff;background:#21a366;cursor:pointer", L("قبول", "Accept"));
+    var no = el("button", "flex:1;max-width:150px;border:0;border-radius:14px;padding:11px;font:700 14px system-ui;color:#fff;background:rgba(255,255,255,.16);cursor:pointer", L("رفض", "Decline"));
+    yes.onclick = function (e) { e.stopPropagation(); vPromptClose(c); c.vAccepted = n; c.ref.update({ vok: n }).catch(function () {}); toast(L("جارٍ التحويل إلى فيديو…", "Switching to video…")); };
+    no.onclick = function (e) { e.stopPropagation(); vPromptClose(c); c.ref.update({ vno: n }).catch(function () {}); };
+    row.appendChild(yes); row.appendChild(no); box.appendChild(row);
+    ui.root.appendChild(box); c.vbox = box;
+    clearTimeout(c.timers.vbox); c.timers.vbox = setTimeout(function () { vPromptClose(c); }, 30000);
+  }
+  function videoBits(c, v) {   // يُستدعى من مراقبَي الطرفين؛ true ⇒ انتهت هذه المكالمة (تحويل)
+    var me = myUid();
+    if (v.vreq && v.vreq.by !== me && v.vreq.n !== c.vreqSeen && c.state === "connected") { c.vreqSeen = v.vreq.n; vPrompt(c, v.vreq.n); }
+    if (c.vreqOut && v.vno === c.vreqOut) { c.vreqOut = 0; clearTimeout(c.timers.vreq); toast(L("رفض تحويل المكالمة إلى فيديو", "Video switch declined")); if (cur === c) paint(c); }
+    if (c.vreqOut && v.vok === c.vreqOut && !c.vupSent) {
+      c.vupSent = true; clearTimeout(c.timers.vreq);
+      var nid = "k" + Date.now().toString(36) + rid(7), peer = c.peer, name = c.name, oid = c.id;
+      c.ref.update({ vup: nid }).then(function () {
+        c.silent = true; finish(c, "upgraded");
+        startCall(peer, name, "video", { id: nid, auto: true, from: oid });
+      }).catch(function (e) { log("vup", e && e.message); c.vupSent = false; });
+      return false;
+    }
+    if (v.vup && c.vAccepted && !c.vupSeen) {
+      c.vupSeen = true; wantAnswer[v.vup] = 1;
+      c.silent = true; finish(c, "upgraded", { remote: true });
+      return true;
+    }
+    return false;
+  }
+
   // ---------- المتّصل ----------
-  function startCall(peer, name, type) {
+  function startCall(peer, name, type, opt) {
+    opt = opt || {};
     if (!enabled() || !peer || peer === myUid()) return false;
-    if (busy()) { if (cur && ui.min) minimize(false); else if (gc && gui.min) gMinimize(false); toast(L("أنت في مكالمة الآن", "You're already in a call")); return true; }
+    if (busy() && !opt.auto) { if (cur && ui.min) minimize(false); else if (gc && gui.min) gMinimize(false); toast(L("أنت في مكالمة الآن", "You're already in a call")); return true; }
     type = type === "video" ? "video" : "audio";
     var me = myUid(), d = db();
-    var c = cur = newCall({ id: "k" + Date.now().toString(36) + rid(7), role: "caller", peer: peer, name: name || nameOf(peer), type: type, state: "starting" });
+    var c = cur = newCall({ id: opt.id || ("k" + Date.now().toString(36) + rid(7)), role: "caller", peer: peer, name: name || nameOf(peer), type: type, state: "starting" });
     seen[c.id] = 1;
     show(c);
     c.native = nativeAudioOk(type);   // C95
@@ -852,7 +946,9 @@
       return c.pc.createOffer().then(function (o) { return c.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); }).then(function (o) {
         if (c.done) return;
         c.ref = d.ref("calls/" + c.id);
-        return c.ref.set({ from: me, to: peer, type: type, fromName: myName() || "", state: "ringing", ts: TS(), offer: sdpOf(o) });
+        var rec = { from: me, to: peer, type: type, fromName: myName() || "", state: "ringing", ts: TS(), offer: sdpOf(o) };
+        if (opt.from) rec.vfrom = opt.from;   // C111: تحويلٌ من مكالمة صوتيّة
+        return c.ref.set(rec);
       }).then(function () {
         if (c.done) { if (c.ref) c.ref.remove().catch(function () {}); return; }
         c.live = true;
@@ -863,8 +959,9 @@
         flushIceOut(c);
         listen(c, c.ref, "value", function (s) { onCallerValue(c, s.val()); }, function () { finish(c, "remote", { remote: true }); });
         listen(c, c.ref.child("ic_callee"), "child_added", function (s) { addRemoteIce(c, s.val()); });
-        wcall("call.ring", { to: peer, callId: c.id, type: type }).catch(function (e) { log("ring", e && e.message); });
-        setState(c, "ringing"); playTone("back");
+        if (!opt.auto) wcall("call.ring", { to: peer, callId: c.id, type: type }).catch(function (e) { log("ring", e && e.message); });   // التحويل: هو أمام التطبيق الآن
+        // C111: «يرنّ» فقط حين يؤكّد جهازه وصول المكالمة (rung) — قبلها «جارٍ الاتّصال…» (كان «يرنّ» دائماً ولو كان هاتفه مغلقاً)
+        if (c.rung) { setState(c, "ringing"); playTone("back"); } else setState(c, "calling");
         c.timers.ring = setTimeout(function () { if (!c.accepted) finish(c, "noanswer"); }, RING_MS);
       });
     }).catch(function (e) {
@@ -878,7 +975,9 @@
   function onCallerValue(c, v) {
     if (c.done) return;
     if (!v) { finish(c, "remote", { remote: true }); return; }
+    if (videoBits(c, v) || c.done) return;
     if (v.up && !c.upSeen) { c.upSeen = true; c.silent = true; finish(c, "upgraded", { remote: true }); groupJoinDirect(v.up, c.type, null, c.upgrading ? "starter" : "joiner"); return; }
+    if (v.rung && !c.rung) { c.rung = true; if (c.state === "calling") { setState(c, "ringing"); playTone("back"); } }
     if (v.acc && !c.accepted) {
       c.accepted = true; clearTimeout(c.timers.ring); stopTone();
       setState(c, "connecting");
@@ -933,9 +1032,10 @@
       }
       var c = cur = newCall({ id: id, role: "callee", peer: v.from, name: name, type: v.type === "video" ? "video" : "audio", state: "incoming", ref: ref, inbox: inbox, offer: v.offer });
       c.live = true;
+      if (!v.rung) ref.update({ rung: TS() }).catch(function () {});   // C111: المتّصل يرى «يرنّ…» الآن
       show(c);
       // C72: التطبيق الأصليّ في الخلفيّة يرنّ بنغمة الهاتف — لا نرنّ مرّتين
-      if (!(NB() && document.visibilityState === "hidden")) playTone("ring");
+      if (!wantAnswer[id] && !(NB() && document.visibilityState === "hidden")) playTone("ring");
       if (wantAnswer[id]) { delete wantAnswer[id]; setTimeout(function () { if (cur === c && c.state === "incoming") accept(false); }, 250); }
       listen(c, ref, "value", function (s) { onCalleeValue(c, s.val()); }, function () { finish(c, "remote", { remote: true }); });
       c.timers.ring = setTimeout(function () { if (c.state === "incoming") finish(c, "missed", { remote: true }); }, RING_MS + 5000);
@@ -945,6 +1045,7 @@
   function onCalleeValue(c, v) {
     if (c.done) return;
     if (!v) { finish(c, c.connectedAt ? "remote" : "missed", { remote: true }); return; }
+    if (videoBits(c, v) || c.done) return;
     if (v.acc && v.acc !== devId) { c.silent = true; finish(c, "elsewhere", { remote: true }); return; }   // ردّ جهازٌ آخر لي
     if (v.up && !c.upSeen && c.connectedAt) { c.upSeen = true; c.silent = true; finish(c, "upgraded", { remote: true }); groupJoinDirect(v.up, c.type, null, c.upgrading ? "starter" : "joiner"); return; }
     if (v.reoffer && v.reoffer.n > c.reSeen && c.pc && c.remoteSet) {
@@ -1045,7 +1146,7 @@
   function finish(c, reason, opts) {
     if (!c || c.done) return;
     if (c.role === "callee") nativeCallDone(c.id);   // C72
-    opts = opts || {}; c.done = true; clearCallNotifications(); earOff(); bgAudio(false);
+    opts = opts || {}; c.done = true; clearCallNotifications(); earOff(); bgAudio(false); vPromptClose(c);
     clearTimers(c); stopTone(); wakeOff();
     c.offs.forEach(function (f) { f(); }); c.offs = [];
     // أخبر الطرف الآخر
