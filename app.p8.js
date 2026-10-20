@@ -2520,15 +2520,60 @@ function AppInner() {
             : t("tmt_idafa_qryb_wrbthm", { createdCount }), "success");
     }
     // إضافة عدة أقارب دفعة واحدة لشخص محدَّد — من الشجرة أو من قائمة الأفراد
-    function addRelativesBulk(groupId, person, sel, names, decisions = {}) {
+    // C104: سلسلة أصولٍ مكتوبة لشخص (bottomId): يُعاد استعمال الموجود إن طابق اسمُه ونسبُه، ويُنشأ الناقص بصلةٍ مشتقّة
+    function resolveNasab(groupId, bottomId, bottomKin, chain, persons, rels) {
+        const gRels = rels.filter((r) => r.groupId === groupId);
+        const byId = {}; persons.forEach((p) => { byId[p.id] = p; });
+        const parentOf = (pid, g) => { const r = gRels.find((x) => x.type === "parent" && x.target === pid && byId[x.source] && (byId[x.source].gender || "male") === g); return r ? byId[r.source] : null; };
+        // أبٌ مسجَّل لصاحب السلسلة: إن طابق أوّلَ اسمٍ نصعد منه، وإلّا تعارضٌ ⇒ لا نضيف شيئاً
+        let start = 0, ids = [], created = [], prevKin = bottomKin, cur = byId[bottomId] ? parentOf(bottomId, "male") : null;
+        while (cur && start < chain.length) {
+            if (normalizeArabicName(cur.local_name) !== normalizeArabicName(chain[start])) return { ids: [], created: [], conflict: start === 0 ? cur.local_name : null, linkFrom: null };
+            ids.push(cur.id); prevKin = cur.kinship || prevKin; start++;
+            cur = parentOf(cur.id, "male");
+        }
+        if (cur) return { ids, created: [], conflict: null, linkFrom: null };   // السلسلة كلّها موجودة
+        const linkFrom = ids.length ? ids[ids.length - 1] : bottomId;
+        const parentName = (pid) => { const pr = parentOf(pid, "male"); return pr ? normalizeArabicName(pr.local_name) : null; };
+        for (let i = start; i < chain.length; i++) {
+            const nm = chain[i], next = (chain[i + 1] || "").trim();
+            const same = persons.filter((p) => normalizeArabicName(p.local_name) === normalizeArabicName(nm) && (p.gender || "male") === "male");
+            let found = null;
+            if (next) found = same.find((p) => parentName(p.id) === normalizeArabicName(next)) || null;
+            else if (same.length === 1) found = same[0];
+            const kin = deriveKinship(prevKin, "parent", "male") || "أخرى";
+            if (found) { ids.push(found.id); prevKin = found.kinship || kin; continue; }
+            const id = `gp-${Date.now()}-n${i}-${Math.random().toString(36).slice(2, 5)}`;
+            created.push({ id, local_name: nm, kinship: kin, gender: "male", proximity: proximityForKinship(kin), alive: true, favorite: false, locations: [],
+                lastContactDate: null, addedAt: Date.now(), contacts: null, notes: "", linkedTo: null });
+            ids.push(id); prevKin = kin;
+        }
+        return { ids, created, conflict: null, linkFrom };
+    }
+    // روابط السلسلة: الشخص ← والده ← جدّه … (بلا تكرار ولا أكثر من والدين)
+    function nasabEdges(groupId, bottomId, ids, rels) {
+        const out = []; const chainIds = [bottomId, ...ids];
+        for (let i = 0; i < chainIds.length - 1; i++) {
+            const child = chainIds[i], parent = chainIds[i + 1];
+            const all = rels.concat(out);
+            if (all.some((r) => r.groupId === groupId && r.type === "parent" && r.source === parent && r.target === child)) continue;
+            if (all.filter((r) => r.groupId === groupId && r.type === "parent" && r.target === child).length >= 2) break;
+            out.push({ id: `k-${Date.now()}-nb${i}-${Math.random().toString(36).slice(2, 5)}`, groupId, source: parent, target: child, type: "parent", inferred: "inherited" });
+        }
+        return out;
+    }
+    function addRelativesBulk(groupId, person, sel, names0, decisions = {}) {
         const relKey = sel.key;
+        // C104: «فلان بن فلان» ⇒ الاسم وحده، والنسب أصولٌ تُضاف وتُربط
+        const parsed = (names0 || []).map(splitNasab);
+        const names = parsed.map((x) => x.name);
         // الصلة نسبةً لصاحب الشجرة لا للشخص المُضاف إليه
         const rawAnchor = (groupPersons[groupId] || []).find((x) => x.id === person.id) || person;
         const derived = kinPreview(groupPersons[groupId] || [], kinshipRelations.filter((r) => r.groupId === groupId), rawAnchor, relKey, sel.gender) || deriveKinship(rawAnchor.kinship, relKey, sel.gender);   // C75
         const existing = groupPersons[groupId] || [];
         const reusedId = (n) => {
             var _a;
-            if (decisions[n.trim().toLowerCase()] !== "same")
+            if (!n || decisions[n.trim().toLowerCase()] !== "same")
                 return null;
             return ((_a = existing.find((p) => p.local_name.trim().toLowerCase() === n.trim().toLowerCase())) === null || _a === void 0 ? void 0 : _a.id) || null;
         };
@@ -2540,6 +2585,36 @@ function AppInner() {
             lastContactDate: null, addedAt: Date.now(), contacts: null, notes: "", linkedTo: null,
         }))
             .filter(Boolean);
+        // C104: أصول كلّ اسمٍ جديد كُتب بنسبه
+        const nasabPersons = [], nasabRels = [], nasabConflicts = [], coParentOf = {};
+        {
+            let allP = existing.concat(created), allR = kinshipRelations.slice();
+            const myName = normalizeArabicName(rawAnchor.local_name || "");
+            const myFather = (() => { const r = allR.find((x) => x.groupId === groupId && x.type === "parent" && x.target === person.id && ((allP.find((p) => p.id === x.source) || {}).gender || "male") === "male"); return r ? allP.find((p) => p.id === r.source) : null; })();
+            parsed.forEach((x, i) => {
+                let chain = x.chain.slice();
+                if (!chain.length || reusedId(names[i])) return;
+                if (relKey === "child") {
+                    if (rawAnchor.gender !== "female") return;   // أبوهم هو صاحب البطاقة — «بن فلان» نسبُه هو، موجود
+                    // أمٌّ: أوّل اسمٍ أبو الطفل — زوجها بالاسم إن وُجد
+                    const sp = kinshipRelations.filter((r) => r.groupId === groupId && (r.type === "spouse" || r.type === "ex_spouse") && (r.source === person.id || r.target === person.id))
+                        .map((r) => allP.find((p) => p.id === (r.source === person.id ? r.target : r.source))).filter(Boolean)
+                        .find((p) => normalizeArabicName(p.local_name) === normalizeArabicName(chain[0]));
+                    if (sp) { coParentOf[ids[i]] = sp.id; return; }
+                    coParentOf[ids[i]] = "none";
+                } else if (relKey === "sibling" && sel.half !== "mother") {
+                    if (myFather && normalizeArabicName(myFather.local_name) === normalizeArabicName(chain[0])) return;   // الأب نفسه — تسري الأبوّة
+                    if (myFather) { nasabConflicts.push(x.name); return; }
+                }
+                const kinBottom = (created.find((c) => c.id === ids[i]) || {}).kinship || "أخرى";
+                const r = resolveNasab(groupId, ids[i], kinBottom, chain, allP, allR);
+                if (r.conflict) { nasabConflicts.push(x.name); return; }
+                const e = nasabEdges(groupId, ids[i], r.ids, allR);
+                nasabPersons.push(...r.created); nasabRels.push(...e);
+                allP = allP.concat(r.created); allR = allR.concat(e);
+            });
+            void myName;
+        }
         // اتجاه العلاقة من منظور صاحب البطاقة
         const edges = ids.map((id) => relKey === "parent" ? { source: id, target: person.id, type: "parent" }
             : relKey === "child" ? { source: person.id, target: id, type: "parent" }
@@ -2565,8 +2640,10 @@ function AppInner() {
                 return;
             }
         }
-        setGroupPersons((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), ...created] }));
-        setKinshipRelations((prev) => {
+        setGroupPersons((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), ...created, ...nasabPersons] }));
+        if (nasabConflicts.length) setTimeout(() => showToast(tl("لم يُضَف نسب: " + nasabConflicts.join("، ") + " — يختلف عن والدٍ مسجَّل", "Lineage skipped for: " + nasabConflicts.join(", ")), "info"), 600);
+        setKinshipRelations((prev0) => {
+            const prev = prev0.concat(nasabRels.filter((e) => !prev0.some((r) => r.groupId === e.groupId && r.type === "parent" && r.source === e.source && r.target === e.target)));
             const seen = new Set(prev.map((r) => `${r.groupId}|${[r.source, r.target].sort().join("-")}`));
             const accepted = [];
             edges.forEach((e) => {
@@ -2580,7 +2657,7 @@ function AppInner() {
             });
             // نستنتج زواج الوالدين، ثم نُسري الأبوّة على الإخوة
             let out = [...prev, ...accepted];
-            if (relKey === "child") ids.forEach((cid) => { const cop = coParentEdge(groupId, person.id, cid, out, sel.coParent); if (cop) out = [...out, cop]; });   // C81
+            if (relKey === "child") ids.forEach((cid) => { const cop = coParentEdge(groupId, person.id, cid, out, coParentOf[cid] || sel.coParent); if (cop) out = [...out, cop]; });   // C81 · C104: أبٌ مكتوب بالاسم
             const childIds = new Set(accepted.filter((r) => r.type === "parent").map((r) => r.target));
             childIds.forEach((cid) => {
                 const sp = inferSpouseFromParents(groupId, cid, out);
@@ -2740,7 +2817,18 @@ function AppInner() {
     }
     function editPerson(groupId, personId, data) {
         var _a;
-        const { linkedTo, motherApplicable, motherId, motherCandidateIds, kinLabel, kinAlso, kinComputed, kinStored, kinSection, ...personData0 } = data;
+        const { linkedTo, motherApplicable, motherId, motherCandidateIds, kinLabel, kinAlso, kinComputed, kinStored, kinSection, ancestorChain, ...personData0 } = data;
+        // C104: النسب المكتوب في الاسم عند التعديل ⇒ أصولٌ تُضاف وتُربط (إن لم يعارض والداً مسجَّلاً)
+        if (ancestorChain && ancestorChain.length) {
+            const gp = groupPersons[groupId] || [], me0 = gp.find((p) => p.id === personId) || {};
+            const r = resolveNasab(groupId, personId, me0.kinship || "أخرى", ancestorChain, gp, kinshipRelations);
+            if (r.conflict) setTimeout(() => showToast(tl("لم يُضَف النسب: والده المسجَّل «" + r.conflict + "»", "Lineage not added: recorded father is " + r.conflict), "info"), 700);
+            else {
+                const e = nasabEdges(groupId, personId, r.ids, kinshipRelations);
+                if (r.created.length) setGroupPersons((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), ...r.created] }));
+                if (e.length) setKinshipRelations((prev) => { let next = prev.concat(e.filter((x) => !prev.some((y) => y.groupId === x.groupId && y.type === "parent" && y.source === x.source && y.target === x.target))); [personId, ...r.ids].forEach((id) => { next = [...next, ...inferParentsForSiblings(groupId, id, next)]; }); return next; });
+            }
+        }
         // C75: القرابة المعروضة محسوبةٌ من منظورك — لا تُكتب فوق المخزَّنة (وإلّا كتب المنضمّ منظوره عند الجميع).
         //      تُحفظ فقط إن غيّرها المستخدم فعلاً لشخصٍ بلا طريقٍ في الشجرة.
         const viewP = ((famPersons[groupId] || []).find((p) => p.id === personId)) || {};

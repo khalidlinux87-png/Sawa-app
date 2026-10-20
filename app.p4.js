@@ -817,7 +817,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
     const [localName, setLocalName] = useState((person === null || person === void 0 ? void 0 : person.local_name) || "");
     // نسب مكتوب داخل الاسم: «أسامة بن إبراهيم بن محمد» — نُفكّكه لسلسلة
     // فيُضاف الأصول تلقائياً بدل إدخال كل واحد على حدة.
-    const chainParts = localName.split(/\s+(?:بن|بنت|bin|bint|ibn)\s+/i).map((s) => s.trim()).filter(Boolean);
+    const chainParts = localName.split(NASAB_RE).map((s) => s.trim()).filter(Boolean);   // C104: وابن/ابنة أيضاً، وفي التعديل كذلك
     const hasChain = chainParts.length > 1;
     const [useChain, setUseChain] = useState(true);
     // عند فتح النموذج بعلاقة محدَّدة سلفاً (من الشجرة)، نضبط صلة القرابة لتوافقها
@@ -889,9 +889,9 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
             motherId: motherApplicable ? motherId : null,
             motherCandidateIds: motherApplicable ? wivesOfFather.map((w) => w.id) : [],
             // عند تفكيك النسب نحفظ الاسم الأول فقط، والأصول تُضاف كأشخاص
-            local_name: (hasChain && useChain && !isEdit ? chainParts[0] : localName).trim(),
+            local_name: (hasChain && useChain ? chainParts[0] : localName).trim(),
             // سلسلة الأصول للمعالجة في AppInner
-            ancestorChain: hasChain && useChain && !isEdit ? chainParts.slice(1) : null,
+            ancestorChain: hasChain && useChain ? chainParts.slice(1) : null,
             kinship,
             gender: gender || null,
             proximity: proximityForKinship(kinship),
@@ -947,7 +947,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                     React.createElement(UserCircle, { size: 15, color: colors.primary }),
                     React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.primary } }, t("jhat_alatsal")))),
             contactImportError && (React.createElement("p", { className: "text-[10px] mb-3", style: { color: colors.textMuted } }, t("mtsfhk_ma_ydam_akhtyar"))),
-            hasChain && !isEdit && (React.createElement(FamCard, { className: "mb-3", style: { borderColor: colors.primary } },
+            hasChain && (React.createElement(FamCard, { className: "mb-3", style: { borderColor: colors.primary } },
                 React.createElement("div", { className: `flex ${rowStart()} items-start gap-2 mb-2` },
                     React.createElement(GitBranch, { size: 14, color: colors.primary, className: "mt-0.5 shrink-0" }),
                     React.createElement("div", { className: `flex-1 ${textStart()}` },

@@ -1902,6 +1902,12 @@ function buildGenDepth(parentOf, persons, selfId) {
     // لا تنزل تحت الصفر: أبناء صاحب الشجرة جيلُه في هذا الوسم
     return (id) => Math.max(0, base - raw(id));
 }
+// C104: النسب داخل الاسم في كلّ إضافة: «عثمان بن البكري بن أحمد» ⇒ الاسم «عثمان» وأصوله [البكري، أحمد]
+const NASAB_RE = /\s+(?:بن|بنت|ابن|ابنة|bin|bint|ibn)\s+/i;
+function splitNasab(str) {
+    const parts = String(str || "").split(NASAB_RE).map((x) => x.trim()).filter(Boolean);
+    return { name: parts[0] || String(str || "").trim(), chain: parts.slice(1) };
+}
 function QuickRelativesSheet({ person, existingPersons = [], relations = [], startRel, onSave, onClose }) {
     const { colors } = useTheme();
     // نُخفي ما لا يناسب جنس الشخص: لا زوجات لامرأة ولا زوج لرجل
@@ -1923,7 +1929,10 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
     const [decisions, setDecisions] = useState({});
     const [savedBatches, setSavedBatches] = useState([]); // ما أُضيف في هذه الجلسة
     // فاصلة عربية أو لاتينية — تُبقي الأسماء المركّبة اسماً واحداً
-    const names = namesText.split(/[,،]/).map((s) => s.trim()).filter(Boolean);
+    const rawNames = namesText.split(/[,،]/).map((s) => s.trim()).filter(Boolean);
+    // C104: «فلان بن فلان» ⇒ الاسم وحده للمطابقة، والنسب يُضاف أصولاً عند الحفظ
+    const parsedNames = rawNames.map(splitNasab);
+    const names = parsedNames.map((x) => x.name);
     // النسب يميّز ما لا يميّزه الاسم: «صديق» عمُّك و«صديق» والدُ زوجتك
     // اسمان متطابقان وأصلان مختلفان. الصلة الخام وحدها تُضلّل أكثر ممّا تدلّ
     // لأنها منسوبة لصاحبها لا للمستخدم: «الوالد» تعني والد زوجتك لا والدك.
@@ -2026,7 +2035,8 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
             names.length > 0 && (React.createElement("p", { className: `text-[11px] ${textStart()} mb-3`, style: { color: colors.primary } },
                 names.length,
                 " \u0627\u0633\u0645: ",
-                names.join(" · "))),
+                parsedNames.map((x) => x.chain.length ? x.name + " ← " + x.chain.join(" ← ") : x.name).join(" · "))),
+            parsedNames.some((x) => x.chain.length) && React.createElement("p", { className: `text-[10px] ${textStart()} mb-3`, style: { color: colors.textMuted } }, tl("🌳 النسب المكتوب (بن/بنت فلان) يُضاف أصولاً ويُربط تلقائيّاً", "🌳 Written lineage (bin/bint) will be added as ancestors and linked")),
             parentLimit && (React.createElement(FamCard, { className: `mb-3 flex ${rowStart()} items-start gap-2`, style: { borderColor: colors.danger } },
                 React.createElement(AlertTriangle, { size: 14, color: colors.danger, className: "mt-0.5 shrink-0" }),
                 React.createElement("p", { className: `text-[11px] flex-1 ${textStart()}`, style: { color: colors.danger } }, maxAllowed === 1
@@ -2056,7 +2066,7 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
             React.createElement(FamButton, { label: undecided.length > 0 ? t("hdd_asma_mkrra_awla", { length: undecided.length })
                     : overLimit ? (maxAllowed === 1 ? "اسم واحد فقط" : t("akthr_mn", { maxAllowed }))
                         : t("idafa_qryb_wrbthm_balshjra", { length: names.length }), disabled: names.length === 0 || undecided.length > 0 || parentLimit, onPress: () => {
-                    onSave(person, sel.key === "sibling" && sibHalf ? { ...sel, half: sibHalf } : sel.key === "child" ? { ...sel, coParent } : sel, names, decisions);
+                    onSave(person, sel.key === "sibling" && sibHalf ? { ...sel, half: sibHalf } : sel.key === "child" ? { ...sel, coParent } : sel, rawNames, decisions);
                     // نُفرغ الحقل ونُبقي الشيت مفتوحاً — الغالب أن يتبع الأبناءَ بناتٌ
                     setNamesText("");
                     setDecisions({});
