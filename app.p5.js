@@ -426,6 +426,61 @@ function DailyReminderCard({ card, onClose, onFamily }) {
                 React.createElement("button", { onClick: onFamily, className: "flex-1", style: { padding: "12px 8px", borderRadius: 14, background: "linear-gradient(135deg,#2F80C8,#1E3A63)", color: "#fff", fontSize: 14, fontWeight: 800 } }, "🤍 " + t("sla_alrhm")),
                 React.createElement("button", { onClick: share, "aria-label": tl("مشاركة", "Share"), style: { padding: "12px 16px", borderRadius: 14, backgroundColor: colors.bg, color: colors.text, fontSize: 14, fontWeight: 800, border: `1px solid ${colors.border}` } }, tl("مشاركة", "Share")))));
 }
+// C107: ربط قريبٍ بحسابه في سوا — برمزه · من جهات اتّصالي · أو دعوةٌ لمن ليس في سوا (رابطٌ باسمه في الشجرة)
+function FamLinkSheet({ person, onClose }) {
+    const { colors } = useTheme();
+    const [code, setCode] = useState("");
+    const [q, setQ] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [sentTo, setSentTo] = useState(null);
+    const SS = window.SawaSync, SC = window.SawaChat;
+    const sg = SS && SS.serverGid ? SS.serverGid(person._gid) : null;
+    const people = (SC && SC.contacts ? SC.contacts() : []).filter((c) => c && c.uid && !c.anon);
+    const shown = q.trim() ? people.filter((c) => normalizeArabicName(c.name || "").includes(normalizeArabicName(q.trim())) || String(c.code || "").includes(q.replace(/\D/g, ""))) : people.slice(0, 30);
+    const digits = code.replace(/\D/g, "");
+    const errText = (m) => /person taken/.test(m) ? tl("هذا الشخص مربوطٌ بحسابٍ آخر", "This person is already linked")
+        : /already linked/.test(m) ? tl("صاحب هذا الحساب مربوطٌ بشخصٍ آخر في الشجرة", "That account is linked to another person here")
+        : /use this is me/.test(m) ? tl("هذا رمزك أنت — استعمل «هذا أنا»", "That's your own code — use “This is me”")
+        : /rate_limited/.test(m) ? tl("طلباتٌ كثيرة — جرّب بعد قليل", "Too many requests — try later")
+        : /bad_code/.test(m) ? tl("الرمز غير صحيح — ١٠ أرقام", "Invalid code — 10 digits")
+        : /removed/.test(m) ? tl("هذا الحساب أُزيل من العائلة", "This account was removed from the family") : m;
+    const send = (payload, label) => {
+        if (!sg || busy) return;
+        setBusy(true);
+        SS.call("fam.linkReq", Object.assign({ groupId: sg, personId: person.id }, payload)).then((b) => {
+            if (b && b.found === false) { window.SawaSync.toast && window.SawaSync.toast(tl("لا حساب بهذا الرمز (أو أخفى صاحبه رمزه)", "No account with this code (or it's hidden)")); return; }
+            setSentTo((b && b.name) || label || "");
+        }).catch((e) => { const m = (e && e.message) || String(e); window.SawaSync.toast && window.SawaSync.toast(errText(m)); }).then(() => setBusy(false));
+    };
+    const box = { backgroundColor: colors.bg, border: `1px solid ${colors.border}`, color: colors.text };
+    return React.createElement(FamSheet, { title: tl("ربط «" + person.local_name + "» بحساب سوا", "Link «" + person.local_name + "» to a Sawa account"), onClose, z: 45 },
+        sentTo != null ? React.createElement("div", { className: "text-center py-6" },
+            React.createElement("div", { className: "text-3xl mb-2" }, "📨"),
+            React.createElement("p", { className: "text-sm font-extrabold mb-1", style: { color: colors.text } }, tl("أُرسل الطلب", "Request sent") + (sentTo ? tl(" إلى " + sentTo, " to " + sentTo) : "")),
+            React.createElement("p", { className: "text-[12px] leading-relaxed", style: { color: colors.textMuted } }, tl("يصله إشعار «هل هذا أنت؟» — يُربط حين يوافق، وينضمّ إلى الشجرة مشاهداً.", "They get an “Is this you?” notification — linked when they accept (joining as a viewer).")),
+            React.createElement("button", { onClick: onClose, className: "mt-4 px-6 py-2.5 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary } }, tl("تمّ", "Done")))
+        : React.createElement("div", { className: "pt-1" },
+            React.createElement("p", { className: `text-[11.5px] mb-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, tl("لا يُربط أحدٌ بلا موافقته: يصله طلب «هل هذا أنت؟» فإن وافق يُربط ويستطيع أقاربه مراسلته والاتّصال به من الشجرة.", "No one is linked without consent: they get an “Is this you?” request.")),
+            // ١) برمز سوا
+            React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, tl("رمز سوا (١٠ أرقام)", "Sawa code (10 digits)")),
+            React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-4` },
+                React.createElement("input", { dir: "ltr", inputMode: "numeric", value: code, onChange: (e) => setCode(e.target.value.replace(/[^\d\s٠-٩]/g, "").slice(0, 14)), placeholder: "123 456 7890", className: "flex-1 min-w-0 rounded-xl px-3 py-2.5 text-[15px] tracking-wider", style: box }),
+                React.createElement("button", { disabled: busy || digits.length !== 10, onClick: () => send({ code: digits }), className: "px-4 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary, opacity: busy || digits.length !== 10 ? 0.5 : 1 } }, busy ? "…" : tl("إرسال", "Send"))),
+            // ٢) من جهات اتّصالي
+            people.length > 0 && React.createElement(React.Fragment, null,
+                React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, tl("أو من جهات اتّصالك في سوا", "Or from your Sawa contacts")),
+                people.length > 6 && React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: q, onChange: (e) => setQ(e.target.value), placeholder: tl("ابحث بالاسم أو الرمز", "Search name or code"), className: "w-full rounded-xl px-3 py-2 text-sm mb-2", style: box }),
+                React.createElement("div", { className: "rounded-xl overflow-hidden mb-4", style: { border: `1px solid ${colors.border}`, maxHeight: 230, overflowY: "auto" } },
+                    shown.map((c, i) => React.createElement("button", { key: c.uid, disabled: busy, onClick: () => send({ uid: c.uid }, c.name), className: `w-full flex ${rowStart()} items-center gap-3 px-3 py-2.5`, style: { borderTop: i ? `1px solid ${colors.border}` : "none", backgroundColor: colors.card } },
+                        React.createElement(FamAvatar, { name: c.name, photo: c.photo, size: 34 }),
+                        React.createElement("span", { className: `flex-1 ${textStart()} text-[13.5px] font-bold`, style: { color: colors.text } }, c.name),
+                        React.createElement("span", { className: "text-[11px] font-extrabold", style: { color: colors.primary } }, tl("ربط", "Link")))))),
+            // ٣) ليس في سوا
+            React.createElement("div", { className: "rounded-2xl p-3", style: { backgroundColor: colors.primary + "0d" } },
+                React.createElement("p", { className: `text-[12px] font-extrabold mb-1 ${textStart()}`, style: { color: colors.text } }, tl("ليس في سوا بعد؟", "Not on Sawa yet?")),
+                React.createElement("p", { className: `text-[11px] mb-2 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, tl("أرسل له دعوةً باسمه في الشجرة (واتساب أو غيره): حين يسجّل ويفتحها يُسأل «هل أنت " + person.local_name + "؟» فيُربط.", "Send an invite for this person: when they sign up and open it, they're asked to confirm and get linked.")),
+                React.createElement("button", { onClick: () => { if (SS && SS.inviteFor) SS.inviteFor(person._gid, person.id, person.local_name); }, className: "w-full py-2.5 rounded-xl text-sm font-extrabold", style: { backgroundColor: colors.card, color: colors.primary, border: `1px solid ${colors.primary}55` } }, "📩 " + tl("إرسال دعوة", "Send invite")))));
+}
 function MsgActionSheet({ colors, onClose, preview, onReact, items }) {
     return React.createElement(React.Fragment, null,
         React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.22)" } }),
