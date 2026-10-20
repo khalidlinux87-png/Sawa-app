@@ -4,9 +4,9 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v309';
+const VERSION = 'sawa-v310';
 // C83: «ما الجديد» — يظهر لكلّ مستخدم في «حسابي ← تحديث التطبيق». سطرٌ واحد بلا علامة ' (‎\n‎ لسطرٍ جديد). يُحدَّث مع كلّ نسخة.
-const NOTES = '• المكالمات: حين يتراكم التأخير على شبكة الجوّال يخفّض التطبيق معدّل الصوت تلقائيّاً حتّى يزول، ثمّ يرفعه\n• حزم صوتٍ أقلّ (٤٠ مللي ث) لتقليل الضغط على الشبكة';
+const NOTES = '• حوّل المكالمة الصوتيّة إلى فيديو بزرّ 📹 (بموافقة الطرف الآخر)\n• اسحب صورتك الصغيرة في مكالمة الفيديو إلى أيّ زاوية\n• «يرنّ…» فقط حين يصل الاتّصال هاتفه فعلاً، وإلّا «جارٍ الاتّصال…»\n• علامتا الوصول تظهران داخل المحادثة فوراً، وتصلان ولو كان تطبيقه مغلقاً';
 // P2: على العناوين القديمة/البديلة (Netlify · sawaap.pages.dev · sawaaap.com بلا www) يصير عامل الخدمة «مُخلياً»:
 //     يمسح المخزون، يحوّل الصفحات المفتوحة إلى العنوان الرسميّ، ثمّ يلغي نفسه. على www.sawaaap.com يعمل كالمعتاد.
 //     (لا يُحذف هذا قبل أن ينتقل كلّ المستخدمين.)
@@ -150,6 +150,11 @@ self.addEventListener('push', (e) => {
   let p = {};
   try { p = e.data ? e.data.json() : {}; } catch (x) { p = {}; }
   const d = (p && p.data) || p || {};
+  // C111: إقرار «رنّت»/«وصلت» (موقّع من الخادم) — المرسِل يرى «يرنّ…» وعلامتين ولو كان التطبيق مغلقاً
+  try {
+    const ack = d.to && (d.t === 'call' && d.rk ? { k: 'r', call: d.call, to: d.to, s: d.rk } : d.t === 'msg' && d.dk ? { k: 'd', cid: d.cid, to: d.to, ts: Number(d.ts), s: d.dk } : null);
+    if (ack) e.waitUntil(fetch('https://sawa-deploy-test.khalidlinux87.workers.dev/ack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ack) }).catch(() => {}));
+  } catch (x) {}
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
     const vis = cs.find((c) => c.visibilityState === 'visible' && c.focused);
     // التطبيق أمامك: هو يرنّ بنفسه (SawaRTC) أو يعرض تنبيهاً — بلا إشعارٍ مكرّر. الإشعار التجريبيّ (C56) يُعرض دائماً ليراه المستخدم
