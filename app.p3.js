@@ -1396,6 +1396,7 @@ function FamilyPersonDetailScreen({ onChangeParent, person, persons = [], relati
     const kv = (label, value, Icon) => React.createElement(FamCard, { className: "flex-1 min-w-0", style: { marginBottom: 0, padding: 12 } },
         React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 text-[10.5px] font-bold mb-1`, style: { color: colors.textMuted } }, Icon && React.createElement(Icon, { size: 11 }), label),
         React.createElement("div", { className: `text-[13px] font-extrabold truncate ${textStart()}`, style: { color: colors.text } }, value));
+    const [linkOpen, setLinkOpen] = useState(false);   // C107
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col", style: { backgroundColor: colors.bg } },
         React.createElement(FamHeader, { title: person.local_name, subtitle: personKinLabel(person) + (!person.alive ? t("fg_mtwfa") : ""), onBack: onBack, compact: true },
             React.createElement("div", { style: { height: 30 } })),
@@ -1425,6 +1426,10 @@ function FamilyPersonDetailScreen({ onChangeParent, person, persons = [], relati
                     React.createElement(FamAction, { icon: MessageCircle, label: tl("رسالة", "Message"), bg: colors.primary, onPress: () => { try { onMarkContact && onMarkContact(person.id); } catch (e) { } window.__sawaFamContact && window.__sawaFamContact(person.acctUid, person.local_name, "msg"); } }),
                     React.createElement(FamAction, { icon: Phone, label: tl("اتّصال سوا", "Sawa call"), bg: "#16A34A", onPress: () => { try { onMarkContact && onMarkContact(person.id); } catch (e) { } window.__sawaFamContact && window.__sawaFamContact(person.acctUid, person.local_name, "audio"); } }),
                     React.createElement(FamAction, { icon: Video, label: tl("فيديو", "Video"), bg: "#7C3AED", onPress: () => { try { onMarkContact && onMarkContact(person.id); } catch (e) { } window.__sawaFamContact && window.__sawaFamContact(person.acctUid, person.local_name, "video"); } }))),
+            // C107: المحرّر يربط هذا القريب بحسابه (رمز · جهات الاتّصال · دعوة)
+            !person.acctUid && person.alive !== false && canEdit && person._gid && window.SawaSync && window.SawaSync.isCloud && window.SawaSync.isCloud(person._gid) && React.createElement(FamCard, { style: { paddingTop: 2, paddingBottom: 2 } },
+                React.createElement(FamRow, { icon: LinkIcon, last: true, title: tl("ربط بحساب سوا", "Link to a Sawa account"), sub: tl("برمزه أو من جهات اتّصالك، أو دعوة إن لم يكن في سوا — ثمّ رسالة واتّصال من هنا", "By code, from contacts, or invite — then message & call from here"), onPress: () => setLinkOpen(true) })),
+            linkOpen && React.createElement(FamLinkSheet, { person, onClose: () => setLinkOpen(false) }),
             // C106: لم يُربط بعد وأنا لم أربط نفسي ⇒ «هذا أنا»
             !person.acctUid && person.alive !== false && person._gid && window.SawaSync && window.SawaSync.isCloud && window.SawaSync.isCloud(person._gid) && !(persons || []).some((x) => x.acctMe) && React.createElement(FamCard, { style: { paddingTop: 2, paddingBottom: 2 } },
                 React.createElement(FamRow, { icon: UserCheck, last: true, title: tl("هذا أنا — اربط حسابي بهذا الشخص", "This is me — link my account"), sub: tl("تظهر القرابات منك، ويراسلك أقاربك ويتّصلون بك من الشجرة", "Relations show from you, and relatives can message or call you from the tree"), onPress: () => window.__sawaFamClaim && window.__sawaFamClaim(person._gid, person.id) })),
