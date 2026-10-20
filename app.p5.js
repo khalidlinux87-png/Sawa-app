@@ -427,6 +427,16 @@ function DailyReminderCard({ card, onClose, onFamily }) {
                 React.createElement("button", { onClick: share, "aria-label": tl("مشاركة", "Share"), style: { padding: "12px 16px", borderRadius: 14, backgroundColor: colors.bg, color: colors.text, fontSize: 14, fontWeight: 800, border: `1px solid ${colors.border}` } }, tl("مشاركة", "Share")))));
 }
 // C107: ربط قريبٍ بحسابه في سوا — برمزه · من جهات اتّصالي · أو دعوةٌ لمن ليس في سوا (رابطٌ باسمه في الشجرة)
+function famLinkErr(m) {
+    m = String(m || "");
+    return /person taken/.test(m) ? tl("هذا الشخص مربوطٌ بحسابٍ آخر", "This person is already linked")
+        : /already linked/.test(m) ? tl("صاحب هذا الحساب مربوطٌ بشخصٍ آخر في الشجرة", "That account is linked to another person here")
+        : /use this is me/.test(m) ? tl("هذا رمزك أنت — استعمل «هذا أنا»", "That's your own code — use “This is me”")
+        : /rate_limited/.test(m) ? tl("طلباتٌ كثيرة — جرّب بعد قليل", "Too many requests — try later")
+        : /bad_code/.test(m) ? tl("الرمز غير صحيح — ١٠ أرقام", "Invalid code — 10 digits")
+        : /removed/.test(m) ? tl("هذا الحساب أُزيل من العائلة", "This account was removed from the family") : /not a contact/.test(m) ? tl("ليس من جهات اتّصالك ولا من أعضاء العائلة", "Not your contact or a family member")
+        : /not allowed|editor/.test(m) ? tl("الربط للمحرّرين فقط", "Only editors can link") : m;
+}
 function FamLinkSheet({ person, onClose }) {
     const { colors } = useTheme();
     const [code, setCode] = useState("");
@@ -439,18 +449,22 @@ function FamLinkSheet({ person, onClose }) {
     const sg = SS && SS.serverGid ? SS.serverGid(person._gid) : null;
     // C108: كلّ جهات الاتّصال (كانت أوّل ٣٠ فقط) — والبحث بالتسمية والاسم الحقيقيّ والرمز والرقم: «قلبي 💓» = Doaa Siddig
     const people = (SC && SC.contacts ? SC.contacts() : []).filter((c) => c && c.uid);
+    // C109: رقمه المحفوظ في الشجرة لحسابٍ موثَّق في سوا؟ ⇒ اقتراحٌ جاهز بضغطة
+    const [phoneHit, setPhoneHit] = useState(null);
+    const myPhone = person && person.contacts && person.contacts.phone ? String(person.contacts.phone) : "";
+    useEffect(() => {
+        if (!sg || !SS || !SS.call || !myPhone) return;
+        let dead = false;
+        Promise.resolve(SS.call("fam.suggest", { groupId: sg, personId: person.id })).then((b) => { if (!dead && b && b.sugg && b.sugg[0]) setPhoneHit(b.sugg[0]); }).catch(() => { });
+        return () => { dead = true; };
+    }, [sg, person.id, myPhone]);
     const hay = (c) => normalizeArabicName([c.name, c.realName, c.nick].filter(Boolean).join(" ")).toLowerCase();
     const qq = normalizeArabicName(q.trim()).toLowerCase(), qd = q.replace(/\D/g, "");
     const pFirst = normalizeArabicName(String(person.local_name || "").split(" ")[0]).toLowerCase();
     const ranked = people.slice().sort((a, b) => (hay(b).includes(pFirst) ? 1 : 0) - (hay(a).includes(pFirst) ? 1 : 0));
     const shown = (qq || qd.length >= 3) ? ranked.filter((c) => (qq && hay(c).includes(qq)) || (qd.length >= 3 && (String(c.code || "").includes(qd) || String(c.phone || "").replace(/\D/g, "").includes(qd)))) : ranked.slice(0, 200);
     const digits = code.replace(/\D/g, "");
-    const errText = (m) => /person taken/.test(m) ? tl("هذا الشخص مربوطٌ بحسابٍ آخر", "This person is already linked")
-        : /already linked/.test(m) ? tl("صاحب هذا الحساب مربوطٌ بشخصٍ آخر في الشجرة", "That account is linked to another person here")
-        : /use this is me/.test(m) ? tl("هذا رمزك أنت — استعمل «هذا أنا»", "That's your own code — use “This is me”")
-        : /rate_limited/.test(m) ? tl("طلباتٌ كثيرة — جرّب بعد قليل", "Too many requests — try later")
-        : /bad_code/.test(m) ? tl("الرمز غير صحيح — ١٠ أرقام", "Invalid code — 10 digits")
-        : /removed/.test(m) ? tl("هذا الحساب أُزيل من العائلة", "This account was removed from the family") : m;
+    const errText = famLinkErr;
     const send = (payload, label, key) => {
         if (busy) return;
         setErr("");
@@ -459,7 +473,7 @@ function FamLinkSheet({ person, onClose }) {
         let p0;
         try { p0 = Promise.resolve(SS.call("fam.linkReq", Object.assign({ groupId: sg, personId: person.id }, payload))); } catch (e) { p0 = Promise.reject(e); }
         p0.then((b) => {
-            if (b && b.found === false) { setErr(tl("لا حساب بهذا الرمز (أو أخفى صاحبه رمزه)", "No account with this code (or it's hidden)")); return; }
+            if (b && b.found === false) { setErr(key === "phone" ? tl("لم يعد الرقم مطابقاً لحسابٍ موثَّق", "The number no longer matches a verified account") : tl("لا حساب بهذا الرمز (أو أخفى صاحبه رمزه)", "No account with this code (or it's hidden)")); return; }
             setSentTo((b && b.name) || label || "");
         }).catch((e) => { const m = (e && e.message) || String(e); try { console.log("[famlink]", m); } catch (x) { } setErr(errText(m)); }).then(() => { setBusy(false); setPending(null); });
     };
@@ -472,6 +486,12 @@ function FamLinkSheet({ person, onClose }) {
             React.createElement("button", { onClick: onClose, className: "mt-4 px-6 py-2.5 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary } }, tl("تمّ", "Done")))
         : React.createElement("div", { className: "pt-1" },
             React.createElement("p", { className: `text-[11.5px] mb-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, tl("لا يُربط أحدٌ بلا موافقته: يصله طلب «هل هذا أنت؟» فإن وافق يُربط ويستطيع أقاربه مراسلته والاتّصال به من الشجرة.", "No one is linked without consent: they get an “Is this you?” request.")),
+            phoneHit && React.createElement("div", { className: "rounded-2xl p-3 mb-4", style: { backgroundColor: "#E3F4EC", border: "1px solid #0F7A5533" } },
+                React.createElement("p", { className: `text-[12.5px] font-extrabold mb-1 ${textStart()}`, style: { color: "#0F7A55" } }, "📱 " + tl("رقمه في الشجرة لحسابٍ موثَّق في سوا", "His number in the tree matches a verified Sawa account")),
+                React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
+                    React.createElement(FamAvatar, { name: phoneHit.name || person.local_name, size: 34 }),
+                    React.createElement("span", { className: `flex-1 min-w-0 truncate text-[13.5px] font-bold ${textStart()}`, style: { color: colors.text } }, phoneHit.name || person.local_name, phoneHit.pending ? React.createElement("span", { className: "block text-[10.5px] font-normal", style: { color: colors.textMuted } }, tl("أُرسل له طلبٌ سابقاً", "Already requested")) : null),
+                    React.createElement("button", { disabled: busy, onClick: () => send({ byPhone: true }, phoneHit.name, "phone"), className: "px-4 py-2 rounded-xl text-[12.5px] font-extrabold text-white shrink-0", style: { backgroundColor: "#0F7A55", opacity: busy ? 0.6 : 1 } }, pending === "phone" ? tl("…جارٍ", "…") : phoneHit.pending ? tl("أعد الإرسال", "Resend") : tl("ربط", "Link")))),
             // ١) برمز سوا
             React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, tl("رمز سوا (١٠ أرقام)", "Sawa code (10 digits)")),
             React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-4` },
