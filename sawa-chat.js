@@ -785,6 +785,12 @@
     chatsUnsub = d.collection("chats").where("members", "array-contains", uid).onSnapshot(function (snap) {
       var next = {};
       snap.forEach(function (doc) { var x = doc.data() || {}; x.cid = doc.id; next[doc.id] = x; });
+      // C111: علامات الوصول والقراءة داخل المحادثة تُبنى من reads/delivered في وثيقة المحادثة — كانت لا تُعاد إلّا مع رسالةٍ جديدة،
+      //       فيبقى خطٌّ واحد داخل المحادثة وفي القائمة خطّان (خالد). الآن: تغيّرا ⇒ نعيد رسم رسائل تلك المحادثة.
+      Object.keys(next).forEach(function (cid) {
+        var o = chats[cid], x = next[cid];
+        if (o && days[cid] && (JSON.stringify(o.reads || {}) !== JSON.stringify(x.reads || {}) || JSON.stringify(o.delivered || {}) !== JSON.stringify(x.delivered || {}))) setTimeout(function () { publishMessages(cid); }, 0);
+      });
       chats = next; chatsLoaded = true;
       e2eWatch();
       for (var v in virtualChats) if (chats[v]) delete virtualChats[v];
