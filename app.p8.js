@@ -1688,21 +1688,30 @@ function AppInner() {
     // ⛔ لا محاكاة (C2): لا «وصلت/قُرئت» بمؤقّتات ولا ردود آليّة ولا «يكتب…» مزيّف.
     //    محادثة السحابة ⇒ SawaChat (إرسالٌ حقيقيّ وحالاتٌ من الخادم)؛ غير ذلك ⇒ تُحفظ محلّياً فقط.
     function cloudChat(id) { const SC = window.SawaChat; return SC && SC.isCloud && SC.isCloud(id) ? SC : null; }
+    // C107: «آخر تواصل» في صلة الرحم يتحدّث وحده عند رسالةٍ أو مكالمةٍ مع قريبٍ مربوطٍ بحسابه.
+    //       (كانت المطابقة بالاسم الأوّل وحده: رسالةٌ لـ«أحمد» تحدّث كلّ «أحمد» في كلّ الشجر) — الآن بالحساب المربوط،
+    //       وبلا ربط: اسمٌ مطابقٌ تماماً لشخصٍ واحد فقط.
+    function touchFamilyByUid(uid, fallbackName) {
+        const hits = [];
+        Object.keys(famPersons || {}).forEach((gId) => (famPersons[gId] || []).forEach((p) => { if (uid && p.acctUid === uid && !p.acctMe) hits.push([gId, p.id]); }));
+        if (!hits.length && fallbackName) {
+            const nm = normalizeArabicName(fallbackName);
+            const byName = [];
+            Object.keys(groupPersons || {}).forEach((gId) => (groupPersons[gId] || []).forEach((p) => { if (nm && normalizeArabicName(p.local_name || "") === nm && !isSelfPerson(p)) byName.push([gId, p.id]); }));
+            if (byName.length === 1) hits.push(byName[0]);
+        }
+        if (!hits.length) return;
+        const now = Date.now(), today = new Date().toDateString();
+        setGroupPersons((prev) => {
+            let changed = false; const out = { ...prev };
+            hits.forEach(([gId, pid]) => { out[gId] = (out[gId] || []).map((p) => { if (p.id !== pid || (p.lastContactDate && new Date(p.lastContactDate).toDateString() === today)) return p; changed = true; return { ...p, lastContactDate: now }; }); });
+            return changed ? out : prev;
+        });
+    }
     function touchFamilyContact(conversationId) {
-        // تحديث آخر تواصل في صلة الرحم إذا كان الاسم يطابق شخصاً
         const conv = conversations.find(c => c.id === conversationId);
         if (!conv) return;
-        setGroupPersons(prev => {
-            const updated = { ...prev };
-            Object.keys(updated).forEach(gId => {
-                updated[gId] = updated[gId].map(p => {
-                    const fn = p.local_name && p.local_name.split(" ")[0] && p.local_name.split(" ")[0].toLowerCase();
-                    if (fn && conv.name && conv.name.toLowerCase().includes(fn)) return { ...p, lastContactDate: Date.now() };
-                    return p;
-                });
-            });
-            return updated;
-        });
+        touchFamilyByUid(conv.peerUid || null, conv.isSavedMessages ? null : conv.name);
     }
     function sendChatMessage(conversationId, text, replyTo) {
         const SC = cloudChat(conversationId);
@@ -2084,6 +2093,16 @@ function AppInner() {
     const [starredMessages, setStarredMessages] = useState([]);
     const [typingConversations, setTypingConversations] = useState([]);
     const [callLog, setCallLog] = usePersistedState("callLog", initialCallLog);
+    // مكالمةٌ اكتملت مع قريبٍ مربوط
+    const callSeenRef = useRef(null);
+    useEffect(() => {
+        const top = (callLog || [])[0];
+        if (!top) return;
+        if (callSeenRef.current === null) { callSeenRef.current = top.id; return; }
+        if (top.id === callSeenRef.current) return;
+        callSeenRef.current = top.id;
+        if (top.duration && top.peerUid) touchFamilyByUid(top.peerUid, null);
+    }, [callLog]);
     // C27: شارة «فائتة» على تبويب المكالمات تُحسب منذ آخر فتحٍ للتبويب (كانت تبقى ما دام في السجلّ مكالمةٌ فائتة)
     const [missedSeenAt, setMissedSeenAt] = usePersistedState("missedSeenAt", 0, 50);
     const missedNew = callLog.filter((c) => c.type === "missed" && (c.timestamp || 0) > (missedSeenAt || 0)).length;
