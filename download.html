@@ -54,7 +54,7 @@
 </main>
 <script>
   // C118: الملفّ يُنشر تلقائيّاً من بناء أندرويد على GitHub (Releases ← android-latest)
-  var REPO = "khalidlinux87/Sawa-android";
+  var REPO = "khalidlinux87-png/Sawa-android";
   var url = "https://github.com/" + REPO + "/releases/download/android-latest/Sawa.apk";
   document.getElementById("dl").href = url;
   fetch("https://api.github.com/repos/" + REPO + "/releases/tags/android-latest").then(function (r) { return r.ok ? r.json() : null; }).then(function (rel) {
