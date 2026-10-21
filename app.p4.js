@@ -375,6 +375,36 @@ function famLinkCall(gid, payload) {
     if (!sg || !SS || !SS.call) return Promise.reject(new Error(tl("هذه الشجرة ليست على الخادم بعد", "This tree isn't on the server yet")));
     try { return Promise.resolve(SS.call("fam.linkReq", Object.assign({ groupId: sg }, payload))); } catch (e) { return Promise.reject(e); }
 }
+// C114: «المُزالون» — من أزاله المالك لا يعود بأيّ رابط (يرى «تعذّر الانضمام»). هنا يعيد المالك السماح له.
+function FamBannedCard({ groupId }) {
+    const { colors } = useTheme();
+    const [list, setList] = useState(null);
+    const [busy, setBusy] = useState(null);
+    useEffect(() => {
+        const SS = window.SawaSync, sg = famSG(groupId);
+        if (!sg || !SS || !SS.call) return;
+        let dead = false;
+        Promise.resolve(SS.call("member.banned", { groupId: sg })).then((b) => { if (!dead) setList((b && b.banned) || []); }).catch(() => { if (!dead) setList([]); });
+        return () => { dead = true; };
+    }, [groupId]);
+    if (!list || !list.length) return null;
+    const allow = (u) => {
+        const SS = window.SawaSync, sg = famSG(groupId);
+        if (!sg || busy) return;
+        setBusy(u.uid);
+        Promise.resolve(SS.call("member.unban", { groupId: sg, uid: u.uid }))
+            .then(() => { setList((l) => (l || []).filter((x) => x.uid !== u.uid)); if (SS.toast) SS.toast(tl("أُعيد السماح لـ" + (u.name || "العضو") + " — أرسل له رابط الدعوة من جديد", "Allowed again — send them the invite link")); })
+            .catch((e) => { if (SS.toast) SS.toast(tl("تعذّر: ", "Failed: ") + ((e && e.message) || e)); })
+            .then(() => setBusy(null));
+    };
+    return React.createElement(FamCard, null,
+        React.createElement("div", { className: `text-[14px] font-extrabold ${textStart()}`, style: { color: colors.text } }, tl("المُزالون", "Removed") + " (" + list.length + ")"),
+        React.createElement("p", { className: `text-[11.5px] mt-1 mb-2 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, tl("من أزلتَه لا يستطيع الانضمام بأيّ رابط حتّى تعيد السماح له.", "People you removed can't rejoin by link until you allow them.")),
+        list.map((u, i) => React.createElement("div", { key: u.uid, className: `flex ${rowStart()} items-center gap-2.5 py-2`, style: { borderTop: i ? `1px solid ${colors.border}` : "none" } },
+            React.createElement(FamAvatar, { name: u.name || "؟", size: 34 }),
+            React.createElement("span", { className: `flex-1 min-w-0 truncate text-[13.5px] font-bold ${textStart()}`, style: { color: colors.text } }, u.name || tl("عضو", "Member")),
+            React.createElement("button", { disabled: busy === u.uid, onClick: () => allow(u), className: "px-3.5 py-2 rounded-xl text-[12px] font-extrabold shrink-0", style: { backgroundColor: colors.primary, color: "#fff", opacity: busy === u.uid ? 0.6 : 1 } }, busy === u.uid ? "…" : tl("إعادة السماح", "Allow again")))));
+}
 function FamPhoneSuggestCard({ groupId, persons, onOpenPerson }) {
     const { colors } = useTheme();
     const [list, setList] = useState(null);
@@ -501,6 +531,7 @@ function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, se
                 React.createElement(FamRow, { icon: FileClock, title: t("sjl_nshat_almjmwaa"), onPress: onOpenActivityLog, last: true }))),
             cloud && canEdit && React.createElement(FamPhoneSuggestCard, { groupId, persons, onOpenPerson }),
             pickFor && React.createElement(MemberPersonPicker, { groupId, member: pickFor, persons, onClose: () => setPickFor(null) }),
+            cloud && canManage && React.createElement(FamBannedCard, { groupId }),
             React.createElement("div", null,
                 cloud && React.createElement("div", { className: `text-[13px] font-extrabold mb-2 px-0.5 ${textStart()}`, style: { color: colors.text } }, t("mb_alaada", { n: list.length })),
                 cloud && canManage && list.length > 1 && React.createElement("p", { className: `text-[10.5px] mb-2 px-0.5 ${textStart()}`, style: { color: colors.textMuted } }, t("mb_tap_role")),

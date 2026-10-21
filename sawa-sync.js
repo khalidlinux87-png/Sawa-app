@@ -1310,6 +1310,22 @@
     var tok = null, jp = null, jpn = "";
     try { var qs = new URLSearchParams(global.location.search); tok = qs.get("join"); jp = qs.get("p"); jpn = qs.get("pn") || ""; } catch (e) {}
     if (!tok) return;
+    joinWith(tok, jp, jpn);
+  }
+  // C114: رسائل الانضمام بالعربيّة وبالسبب الحقيقيّ (كانت «تعذّر الانضمام: removed from this family»)
+  function joinErr(m) {
+    m = String(m || "");
+    if (/expired/.test(m)) return L("انتهت صلاحيّة رابط الدعوة — اطلب رابطاً جديداً", "This invite link has expired");
+    if (/removed from this family/.test(m)) return L("سبق أن أزالك مالك هذه العائلة، فلا يقبل الخادم انضمامك برابط. اطلب منه أن يعيد السماح لك من «الأعضاء ← المُزالون».", "The owner removed you earlier — ask them to allow you again (Members → Removed).");
+    if (/not found/.test(m)) return L("رابط الدعوة غير صالح — اطلب رابطاً جديداً", "Invalid invite link");
+    if (/deleted/.test(m)) return L("حُذفت هذه العائلة", "This family was deleted");
+    if (/Failed to fetch|network|timeout/i.test(m)) return L("لا اتّصال بالإنترنت — جرّب الرابط مرّةً أخرى", "No connection — try the link again");
+    return L("تعذّر الانضمام: ", "Couldn't join: ") + m;
+  }
+  // C114: الانضمام في مكانه (بلا إعادة تحميل) — فتح الرابط أثناء مكالمة كان يعيد تحميل التطبيق فتسقط المكالمة
+  function joinWith(tok, jp, jpn) {
+    jpn = jpn || "";
+    toast(L("جارٍ الانضمام…", "Joining…"));
     onReady(function () {
       whenApp(function () {
         call("invite.accept", { token: tok }).then(function (b) {
@@ -1327,8 +1343,9 @@
           });
         }).catch(function (e) {
           var m = (e && e.message) || "";
-          toast(/expired/.test(m) ? L("انتهت صلاحيّة رابط الدعوة", "This invite link has expired")
-                                  : L("تعذّر الانضمام: ", "Couldn't join: ") + m);
+          log("join:", m);
+          var t = joinErr(m); toast(t);
+          if (/removed from this family/.test(m)) try { global.alert(t); } catch (x) {}
         }).then(function () {
           try { var u = new URL(global.location.href); u.searchParams.delete("join"); u.searchParams.delete("p"); u.searchParams.delete("pn"); global.history.replaceState(null, "", u.toString()); } catch (e) {}
         });
@@ -1725,6 +1742,7 @@
     watchGroup: watchGroup, serverGid: serverGid,
     // C106: «هذا أنا» على الخادم — يربط حسابي بشخصٍ في الشجرة (أو يفكّه بـ null)
     inviteFor: inviteFor, adoptGroup: adoptGroup,   // C107
+    join: function (tok, p, pn) { if (!tok) return false; joinWith(tok, p, pn); return true; },   // C114
     claim: function (lg, personId, target) { var sg = serverGid(lg); if (!sg) return Promise.resolve(null); return call("fam.claim", { groupId: sg, personId: personId == null ? null : personId, target: target || undefined }); },
     isCloud: function (lg) { return !!serverGid(lg); },
     call: function (op, payload) { return call(op, payload); }, toast: function (m) { toast(m); },

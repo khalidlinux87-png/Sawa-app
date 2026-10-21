@@ -81,6 +81,7 @@
       else if (p.get("chat")) d = { cid: p.get("chat") };
       else if (p.get("requests")) d = { t: "req" };
       else if (p.get("famreq")) d = { t: "famreq" };   // C107
+      else if (p.get("join") && global.SawaSync && global.SawaSync.join) return global.SawaSync.join(p.get("join"), p.get("p"), p.get("pn"));   // C114: في مكانه — لا تسقط مكالمة جارية
       else if (p.get("contact") || p.get("join")) return false;   // دعوة: تحميلٌ كامل يعالجها
       // C88: رمز QR مُسح بكاميرا الهاتف والتطبيق مفتوح ⇒ كان «يُعالَج» ولا يحدث شيء
       else if (p.get("code")) { var cd = codeDigits(p.get("code")); if (cd.length === 10) { whenReady(function () { findSheet(cd); }); return true; } return false; }
@@ -639,7 +640,10 @@
     var u = null; try { u = new URL(t); } catch (e) {}
     if (u && /(^|\.)sawaaap\.com$/i.test(u.hostname) || (u && u.origin === global.location.origin)) {
       if (u.searchParams.get("join")) {
-        if (global.confirm(L("هذا رابط دعوة للانضمام إلى عائلة في «صلة رحم». الانضمام؟", "This is a family invite. Join?"))) global.location.assign(global.location.origin + "/?join=" + encodeURIComponent(u.searchParams.get("join")));
+        if (global.confirm(L("هذا رابط دعوة للانضمام إلى عائلة في «صلة رحم». الانضمام؟", "This is a family invite. Join?"))) {
+          if (global.SawaSync && global.SawaSync.join) global.SawaSync.join(u.searchParams.get("join"), u.searchParams.get("p"), u.searchParams.get("pn"));   // C114
+          else global.location.assign(global.location.origin + "/?join=" + encodeURIComponent(u.searchParams.get("join")));
+        }
         return "join";
       }
       if (global.__sawaNativeOpen && global.__sawaNativeOpen(u.href) && (u.searchParams.get("chat") || u.searchParams.get("call") || u.searchParams.get("requests"))) return "link";
