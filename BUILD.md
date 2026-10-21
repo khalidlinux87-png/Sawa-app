@@ -1522,3 +1522,11 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - sawa-chat: رابط ?join داخل المحادثة أو من الإشعار/الماسح ⇒ SawaSync.join بلا إعادة تحميل (كانت تسقط المكالمة الجارية).
 - اختبار: t/e2e114.mjs (٨/٨).
 - **الرفع:** Worker: worker-3.js · Sawa-app: sawa-sync.js + sawa-chat.js + app.p4.js + BUILD.md + sw.js (v313) أخيراً.
+
+## 🖥 C115 — إخفاء بيانات الشبكة · مشاركة الشاشة · تجهيز Google Play · sw v314 · sawa-rtc c115 · native c115
+- **بيانات الخادم/الوسيط/التأخير للمدير فقط:** isAdm() من SawaChat.adminCached/checkAdmin (ADMIN_EMAIL على الخادم). المستخدم يرى «📶 الشبكة ضعيفة/سيّئة» فقط عند الحاجة. «تشخيص الاتّصال» في الغرفة للمدير فقط.
+- **مشاركة الشاشة في الغرفة:** «المزيد ← مشاركة الشاشة» ⇒ نافذة تأكيد (الشاشة كلّها مرئيّة ومنها الإشعارات) ⇒ getDisplayMedia (≤15 إطاراً، contentHint=detail) تحلّ محلّ الكاميرا في الإرسال نفسه (شبكة/SFU) · members.scr ⇒ عرضٌ كامل (contain) بلا انعكاس · شريط أحمر «تشارك شاشتك · إيقاف» · زرّ الكاميرا يوقفها · إيقاف النظام يوقفها. غير متاحة في تطبيق أندرويد (WebView لا يدعم getDisplayMedia).
+- **Google Play:** targetSdk/compileSdk 36 (شرط ٣١ أغسطس ٢٠٢٦) · AGP 8.9.1 + Gradle 8.11.1 · WebRTC 144.7559.15 (صفحات 16 KB) · edge-to-edge: هوامش insets للواجهة + شريط حالة بلون سوا + لوحة المفاتيح · الرجوع عبر OnBackPressedDispatcher (Android 16 لا يستدعي onBackPressed) · build.yml: versionName نظيف 2.0.N + فحص 16 KB وtargetSdk في ملخّص التشغيل.
+- صور المتجر: play/phone-1..6.png (1080×1920) · feature-graphic-1024x500.png · icon-512.png — من التطبيق الحقيقيّ ببياناتٍ توضيحيّة.
+- اختبار: t/rtc/run115.mjs (١٢/١٢) · run111 · run112.
+- **الرفع:** Sawa-android: sawa-native.zip (c115) + .github/workflows/build.yml · Sawa-app: sawa-rtc.js + BUILD.md + sw.js (v314) أخيراً.

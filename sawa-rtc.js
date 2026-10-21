@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c113";
+  var VERSION = "c115";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -617,7 +617,7 @@
     ui.rv.style.display = vid ? "block" : "none";
     ui.mid.style.visibility = vid && c.state === "connected" ? "hidden" : "visible";
     ui.topName.style.opacity = vid ? "1" : "0";
-    if (vid && c.state === "connected") ui.topName.textContent = (c.name || "") + " · " + statusText(c) + (c.route ? " · " + callNetText(c) : "") + (c.q != null && c.q <= 1 ? " · " + (c.q === 0 ? L("شبكة سيّئة", "bad network") : L("شبكة ضعيفة", "weak network")) : "");   // C93: والتأخير في الفيديو أيضاً
+    if (vid && c.state === "connected") ui.topName.textContent = (c.name || "") + " · " + statusText(c) + (isAdm() ? (c.route ? " · " + callNetText(c) : "") + (c.q != null && c.q <= 1 ? " · " + (c.q === 0 ? L("شبكة سيّئة", "bad network") : L("شبكة ضعيفة", "weak network")) : "") : (netLine(c) ? " · " + netLine(c) : ""));   // C115   // C93: والتأخير في الفيديو أيضاً
     if (ui.min) paintPill();
   }
   function paint(c) {
@@ -758,7 +758,7 @@
       var dD = jbD - (c.sJbD || 0), dN = jbN - (c.sJbN || 0); c.sJbD = jbD; c.sJbN = jbN;
       if (dN > 0) c.jb = Math.round(dD / dN * 1000);
       c.lagHist = (c.lagHist || []).concat([Math.round((rtt || 0) / 2 + (c.jb || 0))]).slice(-40);
-      if (c === cur && ui.sub && c.type !== "video") ui.sub.textContent = callNetText(c);
+      if (c === cur && ui.sub && c.type !== "video") ui.sub.textContent = netLine(c);
       c.qHist = (c.qHist || []).concat([q]).slice(-6);
       var h = c.qHist, bad = h.length >= 2 && h.slice(-2).every(function (x) { return x <= 1; }), good = h.length >= 4 && h.slice(-4).every(function (x) { return x >= 2; });
       var vt = c.local && c.local.getVideoTracks()[0];
@@ -803,6 +803,15 @@
     if (cfColo || Date.now() - cfColoAt < 60000) return; cfColoAt = Date.now();
     try { fetch(global.location.origin + "/cdn-cgi/trace", { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : ""; }).then(function (t) { var m = /colo=([A-Z]{3})/.exec(t || ""); if (m) cfColo = m[1]; }).catch(function () {}); } catch (e) {}
   }
+  // C115: بيانات الخادم والوسيط والتأخير لمدير التطبيق وحده (ADMIN_EMAIL على الخادم) — المستخدم يرى «الشبكة ضعيفة» فقط عند الحاجة
+  var admAsked = false;
+  function isAdm() {
+    try { var ch = C(); if (!ch) return false; if (ch.checkAdmin && !admAsked) { admAsked = true; ch.checkAdmin(); } return !!(ch.adminCached && ch.adminCached()); } catch (e) { return false; }
+  }
+  function netLine(c) {
+    if (isAdm()) return callNetText(c);
+    return c.q != null && c.q <= 1 ? (c.q === 0 ? L("📶 الشبكة سيّئة", "📶 bad network") : L("📶 الشبكة ضعيفة", "📶 weak network")) : "";
+  }
   function callNetText(c) {
     // C94: الرقم مفصّلاً — «شبكة» = نصف زمن الذهاب والعودة · «مخزن» = ما ينتظره الصوت في الهاتف لتنعيم التقطّع
     var net = Math.round((c.rtt || 0) / 2), jb = Math.round(c.jb || 0), lag = net + jb;
@@ -825,7 +834,7 @@
         c.route = relay ? "relay" : "direct"; c.proto = String(lc.relayProtocol || lc.protocol || "").toLowerCase() || null;
         var rr = lc.candidateType === "relay" ? relayOfUrl(lc.url) : null; c.relayLbl = rr ? rr.label : null; c.relayId = rr ? rr.id : null;   // C94: أيّ وسيط
         log("route", lc.candidateType, "→", rc.candidateType, c.proto);
-        if (ui.sub && c === cur) ui.sub.textContent = relay ? L("عبر خادم وسيط", "via relay") : L("اتّصال مباشر", "direct");
+        if (ui.sub && c === cur && isAdm()) ui.sub.textContent = relay ? L("عبر خادم وسيط", "via relay") : L("اتّصال مباشر", "direct");   // C115: للمدير فقط
       }).catch(function () {});
     } catch (e) {}
   }
@@ -2578,8 +2587,54 @@
   // ---------- أفعالي ----------
   function rMember(r, patch) { if (!r.live) return; rRef(r, "members/" + myUid()).update(patch).catch(function (e) { log("rmember", e && e.message); }); }
   function rToggleMic(r) { r = r || rm; if (!r || !r.local) return; r.mic = !r.mic; r.local.getAudioTracks().forEach(function (t) { t.enabled = r.mic; }); if (r.mic) r.askUnmute = false; rMember(r, { mic: r.mic }); rTile(r, "__me"); rPaint(r); }
+  // ---------- C115: مشاركة الشاشة في الغرفة ----------
+  // خطوتان حتّى لا تُضغط خطأً: «المزيد ← مشاركة الشاشة» ثمّ نافذة تأكيد تشرح أنّ الشاشة كلّها ستظهر. أثناء المشاركة شريطٌ أحمر ثابت «إيقاف».
+  // الشاشة تحلّ محلّ الكاميرا في الإرسال نفسه (شبكة مباشرة أو SFU) فلا تفاوض جديد. members/{me}.scr ⇒ الآخرون يعرضونها كاملةً (contain).
+  function scrSupported() { try { return !NB() && !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia); } catch (e) { return false; } }
+  function rScreenAsk(r) {
+    r = r || rm; if (!r || !r.live) return;
+    if (r.scr) { rScreenStop(r); return; }
+    if (!scrSupported()) { toast(NB() ? L("مشاركة الشاشة غير متاحة في تطبيق أندرويد بعد — متاحة من المتصفّح على الحاسوب", "Screen sharing isn't available in the Android app yet — use a computer browser") : L("هذا المتصفّح لا يدعم مشاركة الشاشة", "This browser can't share the screen")); return; }
+    if (r.low) { toast(L("أوقف «بيانات قليلة» أوّلاً", "Turn off low-data mode first")); return; }
+    if (r.meta.audioOnly && !amHost(r)) { toast(L("الغرفة صوتيّة فقط بقرار المضيف", "Audio-only room (host setting)")); return; }
+    sheet(L("مشاركة الشاشة؟", "Share your screen?"), function (body, close) {
+      body.appendChild(el("div", "padding:4px 18px 12px;font:500 13px/1.8 system-ui;color:#cbd5e1;text-align:center", L("سيرى كلُّ من في الغرفة ما على شاشتك — ومنه الإشعارات والرسائل التي تظهر أثناءها. أغلق ما لا تريد عرضه قبل البدء.", "Everyone in the room will see your screen — including notifications. Close anything private first.")));
+      item(body, "🖥", L("ابدأ مشاركة الشاشة", "Start sharing"), function () { close(); rScreenStart(r); });
+      item(body, "✕", L("إلغاء", "Cancel"), function () { close(); });
+    });
+  }
+  function rScreenStart(r) {
+    var me = myUid(), cams = Object.keys(r.members).filter(function (u) { return u !== me && r.members[u].cam; }).length, camCap = rBig(r) ? SFU_CAMS : ROOM_CAMS;
+    if (!r.camOn && cams >= camCap) { toast(L("الحدّ " + camCap + " صور في الغرفة — اطلب من المضيف إيقاف كاميرا أحدهم", "Max " + camCap + " videos in the room")); return; }
+    navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 10, max: 15 }, width: { max: 1920 }, height: { max: 1080 } }, audio: false }).then(function (s) {
+      if (r.done || rm !== r) { stopStream(s); return; }
+      var t = s.getVideoTracks()[0]; try { t.contentHint = "detail"; } catch (e) {}
+      if (r.camOn && r.camTrack) { try { r.camTrack.stop(); } catch (e) {} r.scrHadCam = true; }
+      r.camTrack = t; r.camOn = true; r.scr = true;
+      t.onended = function () { if (r.scr && r.camTrack === t) rScreenStop(r); };   // «إيقاف» من شريط النظام
+      Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); });
+      sfuCam(r); rMember(r, { cam: true, scr: true }); rTile(r, "__me"); rPaint(r); rScrBar(r);
+      toast(L("تشارك شاشتك الآن", "You're sharing your screen"));
+    }).catch(function (e) { if (!(e && /NotAllowed|Abort/i.test(e.name))) toast(L("تعذّرت مشاركة الشاشة", "Couldn't share the screen")); });
+  }
+  function rScreenStop(r) {
+    r = r || rm; if (!r || !r.scr) return;
+    r.scr = false; try { if (r.camTrack) r.camTrack.stop(); } catch (e) {}
+    r.camTrack = null; r.camOn = false; r.scrHadCam = false;
+    Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); });
+    sfuCam(r); rMember(r, { cam: false, scr: false }); rTile(r, "__me"); rPaint(r); rScrBar(r);
+    toast(L("أوقفتَ مشاركة الشاشة", "Stopped sharing"));
+  }
+  function rScrBar(r) {
+    if (rui.scrBar) { try { rui.scrBar.remove(); } catch (e) {} rui.scrBar = null; }
+    if (!r || !r.scr || !rui.root) return;
+    var b = el("button", "position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 112px);left:50%;transform:translateX(-50%);z-index:9;border:0;border-radius:20px;padding:8px 16px;background:#dc2626;color:#fff;font:800 13px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.4);cursor:pointer", L("🖥 تشارك شاشتك · إيقاف", "🖥 Sharing screen · Stop"));
+    b.onclick = function (e) { e.stopPropagation(); rScreenStop(r); };
+    rui.root.appendChild(b); rui.scrBar = b;
+  }
   function rToggleCam(r) {
     r = r || rm; if (!r || !r.live) return;
+    if (r.scr) { rScreenStop(r); return; }   // C115: زرّ الكاميرا أثناء المشاركة يوقفها
     if (r.camOn) {
       r.camOn = false; try { if (r.camTrack) r.camTrack.stop(); } catch (e) {} r.camTrack = null;
       Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); });
@@ -2599,7 +2654,7 @@
     }).catch(function (e) { toast(mediaError(e) || L("تعذّر تشغيل الكاميرا", "Couldn't start the camera")); });
   }
   function rFlip(r) {
-    r = r || rm; if (!r || !r.camOn || r.switching) return;
+    r = r || rm; if (!r || !r.camOn || r.switching || r.scr) return;
     var want = r.facing === "user" ? "environment" : "user"; r.switching = true;
     try { r.camTrack.stop(); } catch (e) {}
     navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: want }, width: { ideal: 640 }, height: { ideal: 480 } } })
@@ -2660,6 +2715,7 @@
     r = r || rm; if (!r) return;
     if (r.done) { if (rm === r) rm = null; return; }
     opts = opts || {}; r.done = true; bgAudio(false);
+    if (r.scr) { r.scr = false; try { if (r.camTrack) r.camTrack.stop(); } catch (e) {} } rScrBar(null);   // C115
     if (reason === "retry") r.silentRetry = true;
     var me = myUid(), ref = r.ref, wasHost = amHost(r), members = r.members, meta = r.meta;
     for (var k in r.timers) { clearTimeout(r.timers[k]); clearInterval(r.timers[k]); } r.timers = {};
@@ -2924,11 +2980,12 @@
       }, 8000);
       if (!wantV || showV) { clearTimeout(p.camWait); p.camWait = null; if (!m.cam) p.camRetried = false; }
     }
-    if (isMe) { if (showV && (!t.v.srcObject || t.v.srcObject.getVideoTracks()[0] !== vt)) t.v.srcObject = new global.MediaStream([vt]); t.v.style.transform = r.facing === "environment" ? "none" : "scaleX(-1)"; }
+    if (isMe) { if (showV && (!t.v.srcObject || t.v.srcObject.getVideoTracks()[0] !== vt)) t.v.srcObject = new global.MediaStream([vt]); t.v.style.transform = r.scr || r.facing === "environment" ? "none" : "scaleX(-1)"; }
     else {
       if (p && t.a.srcObject !== p.stream) { t.a.srcObject = p.stream; try { t.a.play().catch(function () {}); } catch (e) {} }
       if (showV && t.v.srcObject !== p.stream) t.v.srcObject = p.stream;
     }
+    t.v.style.objectFit = (isMe ? r.scr : m && m.scr) ? "contain" : "";   // C115: الشاشة كاملةً بلا قصّ
     if (showV) try { t.v.play().catch(function () {}); } catch (e) {}
     t.v.style.display = showV ? "block" : "none"; t.av.style.display = showV ? "none" : "flex";
     setAv(t.av, isMe ? (myName() || "أ") : name, isMe ? myUid() : uid); if (!photoOf(isMe ? myUid() : uid)) t.av.style.backgroundImage = avGrad(isMe ? myUid() : uid);
@@ -3098,8 +3155,9 @@
       item(body, "➕", L("دعوة من جهات الاتّصال", "Invite contacts"), function () { close(); rInvite(); });
       item(body, "📝", L("المحضر: قرارات · مهامّ · نقاط", "Minutes: decisions · tasks · points"), function () { close(); rOpenPanel("notes"); });
       item(body, r.low ? "🎥" : "📶", r.low ? L("إعادة الفيديو", "Video back on") : L("بيانات قليلة (صوتٌ فقط)", "Low data (audio only)"), function () { close(); rToggleLow(r); });
-      if (r.camOn) item(body, "🔄", L("تبديل الكاميرا", "Flip camera"), function () { close(); rFlip(r); });
-      item(body, "🔧", L("تشخيص الاتّصال", "Connection diagnostics"), function () { close(); rDiag(); });
+      if (r.camOn && !r.scr) item(body, "🔄", L("تبديل الكاميرا", "Flip camera"), function () { close(); rFlip(r); });
+      item(body, "🖥", r.scr ? L("إيقاف مشاركة الشاشة", "Stop screen sharing") : L("مشاركة الشاشة", "Share screen"), function () { close(); rScreenAsk(r); }, !!r.scr);   // C115
+      if (isAdm()) item(body, "🔧", L("تشخيص الاتّصال", "Connection diagnostics"), function () { close(); rDiag(); });   // C115: للمدير فقط
       if (amHost(r)) {
         item(body, "🔇", L("كتم الجميع", "Mute everyone"), function () { close(); rMuteAll(); });
         item(body, "⏹", L("إنهاء الغرفة للجميع", "End room for everyone"), function () { close(); rEndAll(); }, true);
