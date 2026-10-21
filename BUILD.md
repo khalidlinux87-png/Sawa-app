@@ -1541,3 +1541,8 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - TopBar: pt-10 الثابت ⇒ env(safe-area-inset-top)+12px وارتفاعٌ أدنى 60 (مع Android 16 صار الشريط الفارغ ظاهراً) · زرّ الرجوع بمساحة لمسٍ دائريّة.
 - ChatScreen: زرّان مباشران (فيديو · صوت) startCallFromHeader بدل القائمة المنسدلة · البحث انتقل إلى ⋮ (يبقى زرّاً في «رسائلي المحفوظة») · أزرار 40×40.
 - **الرفع:** Sawa-app: app.p2.js + app.p5.js + BUILD.md + sw.js (v316) أخيراً.
+
+## 📥 C118 — رابط تنزيل APK مباشر · build.yml · download.html
+- build.yml: permissions contents:write + خطوة «Publish APK for direct download» ⇒ GitHub Release «android-latest» يُستبدل ملفّه Sawa.apk في كلّ بناء على main · الرابط الثابت: https://github.com/<owner>/Sawa-android/releases/download/android-latest/Sawa.apk · الملخّص ينبّه إن كان المستودع خاصّاً (الرابط لا يعمل لغيرك).
+- Sawa-app: download.html (www.sawaaap.com/download) — زرّ تنزيل + خطوات التثبيت + النسخة وحجمها وتاريخها من GitHub API. REPO = "khalidlinux87/Sawa-android" (عدّله إن كان اسم الحساب مختلفاً).
+- **الرفع:** Sawa-android: .github/workflows/build.yml (يبدأ بناءً) · Sawa-app: download.html + BUILD.md.

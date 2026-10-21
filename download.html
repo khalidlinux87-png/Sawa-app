@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>تنزيل سوا لأندرويد</title>
+<meta name="theme-color" content="#2F80C8">
+<link rel="icon" href="./icons/favicon.png">
+<style>
+  :root{--p:#2F80C8;--pd:#1E5FA8;--t:#1f2d3a;--m:#5b6b7c;--bg:#F5F7FA;--card:#fff;--line:#E2E8F0}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--t);font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif}
+  .hero{background:linear-gradient(150deg,var(--pd),var(--p) 55%,#22A69A);color:#fff;padding:calc(env(safe-area-inset-top,0px) + 36px) 20px 64px;text-align:center}
+  .logo{width:104px;height:104px;border-radius:28px;background:#fff;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:0 12px 30px rgba(0,0,0,.2)}
+  .logo img{width:84px;height:84px}
+  h1{margin:0;font-size:30px;font-weight:800}
+  .sub{margin:6px 0 0;opacity:.92;font-size:15px}
+  main{max-width:520px;margin:-40px auto 32px;padding:0 16px}
+  .card{background:var(--card);border-radius:22px;padding:20px;box-shadow:0 8px 24px rgba(30,41,59,.08);margin-bottom:14px}
+  .btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:16px;border-radius:16px;background:var(--p);color:#fff;font:800 17px system-ui;text-decoration:none;box-shadow:0 8px 20px rgba(47,128,200,.35)}
+  .btn:active{transform:scale(.98)}
+  .meta{text-align:center;color:var(--m);font-size:13px;margin-top:10px;min-height:18px}
+  h2{font-size:16px;margin:0 0 10px}
+  ol{margin:0;padding-inline-start:22px;line-height:1.9;font-size:14.5px}
+  .note{font-size:13px;color:var(--m);line-height:1.8;margin:0}
+  .soon{display:inline-block;background:#E5F4E4;color:#1E7A4C;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:800;margin-top:12px}
+  @media (prefers-color-scheme: dark){:root{--t:#e5edf5;--m:#9fb0c2;--bg:#0f172a;--card:#1e293b;--line:#334155}}
+</style>
+</head>
+<body>
+<div class="hero">
+  <div class="logo"><img src="./icons/icon-192.png" alt="سوا"></div>
+  <h1>سوا لأندرويد</h1>
+  <p class="sub">محادثات · مكالمات · غرف · وصلة الرحم</p>
+  <span class="soon">قريباً على Google Play</span>
+</div>
+<main>
+  <div class="card">
+    <a class="btn" id="dl" href="#">⬇️ تنزيل التطبيق</a>
+    <div class="meta" id="meta">آخر نسخة</div>
+  </div>
+  <div class="card">
+    <h2>طريقة التثبيت</h2>
+    <ol>
+      <li>اضغط «تنزيل التطبيق» وانتظر حتى يكتمل الملف <b>Sawa.apk</b>.</li>
+      <li>افتح الملف من الإشعار أو من «التنزيلات».</li>
+      <li>إن ظهر «لا يُسمح بالتثبيت من هذا المصدر»: اضغط <b>الإعدادات</b> وفعّل «السماح من هذا المصدر»، ثمّ ارجع.</li>
+      <li>اضغط <b>تثبيت</b>، ثمّ <b>فتح</b>.</li>
+    </ol>
+  </div>
+  <div class="card">
+    <p class="note">لديك سوا مثبّتاً؟ ثبّت النسخة الجديدة فوقه مباشرةً — محادثاتك وعائلتك تبقى كما هي. وعندما يُنشر التطبيق في Google Play ستصلك التحديثات منه تلقائيّاً.</p>
+  </div>
+</main>
+<script>
+  // C118: الملفّ يُنشر تلقائيّاً من بناء أندرويد على GitHub (Releases ← android-latest)
+  var REPO = "khalidlinux87/Sawa-android";
+  var url = "https://github.com/" + REPO + "/releases/download/android-latest/Sawa.apk";
+  document.getElementById("dl").href = url;
+  fetch("https://api.github.com/repos/" + REPO + "/releases/tags/android-latest").then(function (r) { return r.ok ? r.json() : null; }).then(function (rel) {
+    if (!rel) return;
+    var a = (rel.assets || []).filter(function (x) { return x.name === "Sawa.apk"; })[0];
+    var v = (rel.name || "").replace(/^.*?(\d+\.\d+\.\d+).*$/, "$1");
+    var d = new Date(rel.published_at || rel.created_at);
+    var mb = a ? (a.size / 1048576).toFixed(1) + " MB" : "";
+    document.getElementById("meta").textContent = "النسخة " + v + (mb ? " · " + mb : "") + " · " + d.toLocaleDateString("ar-EG", { day: "numeric", month: "long", year: "numeric" });
+  }).catch(function () {});
+</script>
+</body>
+</html>
