@@ -1530,3 +1530,8 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - صور المتجر: play/phone-1..6.png (1080×1920) · feature-graphic-1024x500.png · icon-512.png — من التطبيق الحقيقيّ ببياناتٍ توضيحيّة.
 - اختبار: t/rtc/run115.mjs (١٢/١٢) · run111 · run112.
 - **الرفع:** Sawa-android: sawa-native.zip (c115) + .github/workflows/build.yml · Sawa-app: sawa-rtc.js + BUILD.md + sw.js (v314) أخيراً.
+
+## 🧹 C116 — تجهيز المراجعة · sw v315 · app.p3
+- SHOW_SOON_SERVICES=false يخفي بطاقات «قريباً» (المحفظة، لحظات، إرسال، تاكسي) في «استكشف» — مراجعو Play يرفضون الميزات غير العاملة، والمحفظة تستدعي إقرار الخدمات الماليّة.
+- C115b (native): إصلاح خطأ ترجمة في IncomingCallActivity (متغيّر b مكرّر داخل lambda) · build.yml يكتب سبب فشل البناء في Annotations والملخّص · setup-java@v5.
+- **الرفع:** Sawa-app: app.p3.js + BUILD.md + sw.js (v315) أخيراً.

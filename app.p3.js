@@ -103,6 +103,8 @@ const RELIGIOUS_OCCASIONS = [
 // ============================================================================
 // شاشات صلة الرحم — نفس بنية سوا الحقيقية (Discover > صلة الرحم)
 // ============================================================================
+// C116: خدمات «قريباً» مخفيّة (مراجعو Google Play يرفضون الميزات التي لا تعمل؛ و«المحفظة» تستدعي أسئلة الخدمات الماليّة). true ⇒ تعود.
+const SHOW_SOON_SERVICES = false;
 function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOpenMoments, onOpenErsal, onOpenTaxi, onOpenWallet }) {
     const { colors } = useTheme();
     const { showToast } = useToast();
@@ -172,8 +174,8 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
                         ? React.createElement(AlertCircle, { size: 13, color: "#fca5a5", className: "shrink-0" })
                         : React.createElement(Sparkles, { size: 13, color: "rgba(255,255,255,0.8)", className: "shrink-0" }),
                     React.createElement("span", { className: "text-[11px] font-bold", style: { color: familyHint.urgent ? "#fca5a5" : "rgba(255,255,255,0.9)" } }, familyHint.text)))),
-            React.createElement("div", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("alkhdmat")),
-            React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+            SHOW_SOON_SERVICES && React.createElement("div", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("alkhdmat")),
+            SHOW_SOON_SERVICES && React.createElement("div", { className: "grid grid-cols-2 gap-3" },
                 React.createElement("button", { onClick: soon, "aria-disabled": true, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { position: "relative", opacity: 0.55, backgroundColor: colors.card, borderColor: colors.border, minHeight: 138, justifyContent: "center" } },
                     soonBadge(),
                     React.createElement("div", { className: "w-14 h-14 rounded-xl flex items-center justify-center", style: { backgroundColor: colors.primaryLight } },
@@ -186,7 +188,7 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
                         React.createElement(Image, { size: 26, color: "#7B1FA2" })),
                     React.createElement("div", { className: "text-xs font-extrabold", style: { color: colors.text } }, t("lhzat_alasdqa")),
                     React.createElement("div", { className: "text-[10px] leading-snug", style: { color: colors.textMuted } }, t("shark_swra_aw_khatra")))),
-                React.createElement("div", { className: "grid grid-cols-2 gap-3 mt-3" },
+                SHOW_SOON_SERVICES && React.createElement("div", { className: "grid grid-cols-2 gap-3 mt-3" },
                     React.createElement("button", { onClick: soon, "aria-disabled": true, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { position: "relative", opacity: 0.55, backgroundColor: colors.card, borderColor: colors.border } },
                     soonBadge(),
                         React.createElement("div", { className: "w-14 h-14 rounded-xl flex items-center justify-center", style: { backgroundColor: "#E0F2F1" } },
