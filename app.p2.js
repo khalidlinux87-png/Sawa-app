@@ -406,8 +406,8 @@ function Pic({ photo, letter, size, bg, color, className, style, children }) {
 }
 function TopBar({ title, subtitle, onBack, actions, avatar, photo, onTitlePress }) {
     const { colors } = useTheme();
-    return (React.createElement("div", { className: `flex items-center px-4 pt-10 pb-3 ${rowStart()}`, style: { backgroundColor: colors.primary } },
-        onBack && React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack, className: `${ms("2")}` },
+    return (React.createElement("div", { className: `flex items-center px-3 pb-2.5 ${rowStart()}`, style: { backgroundColor: colors.primary, paddingTop: "calc(env(safe-area-inset-top,0px) + 12px)", minHeight: 60 } },   // C117: كان pt-10 ثابتاً ⇒ شريطٌ أزرق فارغ فوق الرأس (أوضح مع Android 16)
+        onBack && React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack, className: `w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${ms("1")}` },
             React.createElement(ChevronLeft, { color: "#fff", size: 22 })),
         // الأفاتار داخل كتلة الاسم لا شقيقاً لها، وإلا انفصل عنه في الصف المعكوس.
         // avatar: true = الحرف الأول من العنوان، أو نص مخصّص.

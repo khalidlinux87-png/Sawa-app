@@ -1535,3 +1535,9 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - SHOW_SOON_SERVICES=false يخفي بطاقات «قريباً» (المحفظة، لحظات، إرسال، تاكسي) في «استكشف» — مراجعو Play يرفضون الميزات غير العاملة، والمحفظة تستدعي إقرار الخدمات الماليّة.
 - C115b (native): إصلاح خطأ ترجمة في IncomingCallActivity (متغيّر b مكرّر داخل lambda) · build.yml يكتب سبب فشل البناء في Annotations والملخّص · setup-java@v5.
 - **الرفع:** Sawa-app: app.p3.js + BUILD.md + sw.js (v315) أخيراً.
+
+## 📞 C117 — رأس المحادثة · sw v316 · app.p2 · app.p5
+- خالد: قائمة الاتّصال المنسدلة تغطّي الاسم، والرأس فيه شريطٌ أزرق فارغ.
+- TopBar: pt-10 الثابت ⇒ env(safe-area-inset-top)+12px وارتفاعٌ أدنى 60 (مع Android 16 صار الشريط الفارغ ظاهراً) · زرّ الرجوع بمساحة لمسٍ دائريّة.
+- ChatScreen: زرّان مباشران (فيديو · صوت) startCallFromHeader بدل القائمة المنسدلة · البحث انتقل إلى ⋮ (يبقى زرّاً في «رسائلي المحفوظة») · أزرار 40×40.
+- **الرفع:** Sawa-app: app.p2.js + app.p5.js + BUILD.md + sw.js (v316) أخيراً.

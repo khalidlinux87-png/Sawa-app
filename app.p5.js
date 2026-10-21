@@ -1273,6 +1273,11 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
         clearDraft();
         setReplyTo(null);
     }
+    function startCallFromHeader(kind) {   // C117
+        if (conversation.cloud && conversation.peerUid && cloudCallTo({ uid: conversation.peerUid, name: conversation.name }, kind)) return;
+        if (conversation.cloud) { showToast(CALL_FAIL_MSG(), "error"); return; }
+        setActiveCall(kind);
+    }
     if (activeCall) {
         return (React.createElement(CallOverlay, { contactName: conversation.name, callType: activeCall, availableContacts: (allConversations || []).filter((x) => !x.isSavedMessages).map((x) => x.name), requireApproval: callSettings === null || callSettings === void 0 ? void 0 : callSettings.requireApproval, onEnd: (duration, wasConnected, participants) => {
                 onLogCall(conversation.name, activeCall, duration, wasConnected, participants);
@@ -1281,16 +1286,19 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
     }
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col relative" },
         // C101: الضغط على الاسم يفتح معلومات المحادثة (كان يفتح التسمية مباشرةً)، والتسمية من قائمة ⋮
-        React.createElement(TopBar, { onTitlePress: onOpenInfo || undefined, title: conversation.isSavedMessages ? t("rsayly_almhfwza") : conversation.name, avatar: !conversation.isSavedMessages, photo: conversation.photo || null, subtitle: !online ? tl("أنت غير متّصل", "You're offline") : isTyping ? t("ch_yktb") : (isOnline ? t("ch_mtsl_alan") : null), onBack: onBack, actions: React.createElement("div", { className: "flex flex-row items-center gap-3" },
-                React.createElement("button", { "aria-label": t("bhth"), onClick: () => setShowSearch(!showSearch) },
-                    React.createElement(Search, { size: 18, color: "#fff" })),
-                !conversation.isSavedMessages && (React.createElement("button", { "aria-label": t("atsal"), onClick: () => setShowCallChoice(!showCallChoice) },
-                    React.createElement(Phone, { size: 18, color: "#fff" }))),
-                React.createElement("button", { "aria-label": t("malwmat"), onClick: () => setHeadMenu((v) => !v) },
-                    React.createElement(MoreVertical, { size: 18, color: "#fff" }))) }),
+        React.createElement(TopBar, { onTitlePress: onOpenInfo || undefined, title: conversation.isSavedMessages ? t("rsayly_almhfwza") : conversation.name, avatar: !conversation.isSavedMessages, photo: conversation.photo || null, subtitle: !online ? tl("أنت غير متّصل", "You're offline") : isTyping ? t("ch_yktb") : (isOnline ? t("ch_mtsl_alan") : null), onBack: onBack, actions: React.createElement("div", { className: "flex flex-row items-center gap-0.5" },
+                // C117: زرّان مباشران كتطبيقات المراسلة (فيديو · صوت) بدل قائمةٍ منسدلة كانت تغطّي الاسم — والبحث في ⋮
+                !conversation.isSavedMessages && React.createElement("button", { "aria-label": t("mkalma_fydyw"), onClick: () => startCallFromHeader("video"), className: "w-10 h-10 rounded-full flex items-center justify-center active:bg-white/20" },
+                    React.createElement(Video, { size: 21, color: "#fff" })),
+                !conversation.isSavedMessages && React.createElement("button", { "aria-label": t("mkalma_swtya"), onClick: () => startCallFromHeader("audio"), className: "w-10 h-10 rounded-full flex items-center justify-center active:bg-white/20" },
+                    React.createElement(Phone, { size: 19, color: "#fff" })),
+                conversation.isSavedMessages && React.createElement("button", { "aria-label": t("bhth"), onClick: () => setShowSearch(!showSearch), className: "w-10 h-10 rounded-full flex items-center justify-center active:bg-white/20" },
+                    React.createElement(Search, { size: 19, color: "#fff" })),
+                React.createElement("button", { "aria-label": t("malwmat"), onClick: () => setHeadMenu((v) => !v), className: "w-10 h-10 rounded-full flex items-center justify-center active:bg-white/20" },
+                    React.createElement(MoreVertical, { size: 19, color: "#fff" }))) }),
         headMenu && React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setHeadMenu(false), style: { position: "fixed", inset: 0, zIndex: 45, backgroundColor: "rgba(0,0,0,0.001)" } }),
-            React.createElement("div", { className: "sawa-pop-in", dir: "rtl", style: { position: "fixed", top: "calc(env(safe-area-inset-top,0px) + 58px)", right: 10, zIndex: 46, minWidth: 210, backgroundColor: colors.card, borderRadius: 14, boxShadow: "0 10px 30px rgba(0,0,0,0.25)", overflow: "hidden", border: `1px solid ${colors.border}` } },
+            React.createElement("div", { className: "sawa-pop-in", dir: "rtl", style: { position: "fixed", top: "calc(env(safe-area-inset-top,0px) + 62px)", right: 10, zIndex: 46, minWidth: 210, backgroundColor: colors.card, borderRadius: 14, boxShadow: "0 10px 30px rgba(0,0,0,0.25)", overflow: "hidden", border: `1px solid ${colors.border}` } },
                 [
                     onOpenInfo ? { label: conversation.isSavedMessages ? t("malwmat") : tl("معلومات جهة الاتّصال", "Contact info"), icon: Info, act: onOpenInfo } : null,
                     conversation.peerUid && window.SawaChat && window.SawaChat.renameContact ? { label: (window.SawaChat.nickOf && window.SawaChat.nickOf(conversation.peerUid)) || !conversation.unnamed ? tl("تغيير الاسم", "Rename") : tl("إضافة اسم", "Add a name"), icon: Edit2, act: () => window.SawaChat.renameContact(conversation.peerUid) } : null,
