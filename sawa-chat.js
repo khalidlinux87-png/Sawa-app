@@ -44,6 +44,21 @@
   } catch (e) {}
   // C72: داخل تطبيق أندرويد الأصليّ (WebView + SawaNativeBridge) — الإشعارات عبر FCM الأصليّ لا Web Push
   function NB() { try { return global.SawaNativeBridge || null; } catch (e) { return null; } }
+  // C123: تطبيق iOS الأصليّ — جسر window.SawaIOS (منفصل عن أندرويد)
+  function IOSB() { try { return global.SawaIOS || null; } catch (e) { return null; } }
+  // زرّ «المتابعة باستخدام Apple» بمواصفات Apple (أسود، شعار Apple، بحجم زرّ Google نفسه أو أكبر)
+  function appleBtn(round) {
+    var b = mk("button", "display:flex;align-items:center;justify-content:center;gap:8px;width:100%;box-sizing:border-box;min-height:50px;padding:12px 16px;border:0;border-radius:" + (round ? "999px" : "12px") + ";background:#000;color:#fff;font:600 17px -apple-system,system-ui;cursor:pointer;margin-bottom:10px");
+    b.type = "button";
+    var lg = mk("span", "font-size:20px;line-height:1;margin-top:-3px", "\uF8FF");
+    b.appendChild(lg); b.appendChild(mk("span", "", L("المتابعة باستخدام Apple", "Continue with Apple")));
+    b.onclick = function () {
+      if (!S() || !S().linkApple) { toast(L("جارٍ تحميل التطبيق… حاول بعد لحظة", "Still loading… try again")); return; }
+      try { Promise.resolve(S().linkApple()).catch(function () {}); } catch (e) {}
+    };
+    return b;
+  }
+  function iosNoGoogle() { var b = IOSB(); return !!(b && !b.hasGoogle); }
   // C84: WebView في تطبيق أندرويد لا يعرف navigator.share ⇒ نوصله بقائمة المشاركة الأصليّة (واتساب، تيليجرام…)
   try {
     if (NB() && NB().share && global.navigator && !global.navigator.share) {
@@ -100,7 +115,7 @@
   var natPermWait = [];
   global.__sawaNativePerm = function (st) { var w = natPermWait; natPermWait = []; w.forEach(function (f) { try { f(st); } catch (e) {} }); emitPush(); };
   function isStandalone() {
-    if (NB()) return true;
+    if (NB() || IOSB()) return true;
     try { if (global.matchMedia && global.matchMedia("(display-mode: standalone)").matches) return true; } catch (e) {}
     try { if (global.navigator.standalone === true) return true; } catch (e) {}
     try { if (String(document.referrer || "").indexOf("android-app://") === 0) return true; } catch (e) {}
@@ -2125,12 +2140,13 @@
   var VAPID_KEY = "BIXTjlI7zsibBBqZXkdIGu7tEnqVKf9Rf63v20ZdfNiNs6jj5olbf-a1SJ1SpnNm3OcC807QpPEUR7GrwMAuGdw";   // ← مفتاح Web Push العامّ (Firebase Console ← Cloud Messaging ← Web Push certificates)
   function pushSupported() {
     if (NB()) return true;
+    if (IOSB()) return true;   // C123
     try { return !!(VAPID_KEY && global.navigator && navigator.serviceWorker && global.PushManager && global.Notification && firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()); }
     catch (e) { return false; }
   }
   function pushToken() {
-    if (NB()) return new Promise(function (res, rej) {
-      var t = ""; try { t = NB().fcmToken(); } catch (e) {}
+    if (NB() || IOSB()) return new Promise(function (res, rej) {
+      var t = ""; try { t = IOSB() ? (IOSB().fcm || "") : NB().fcmToken(); } catch (e) {}
       if (t) return res(t);
       var to = setTimeout(function () { rej(new Error("no native token")); }, 20000);
       natTokWait.push(function (x) { clearTimeout(to); if (x) res(x); else rej(new Error("no native token")); });
@@ -2147,6 +2163,7 @@
   function isIOS() { return /iPhone|iPad|iPod/.test(navigator.userAgent || ""); }
   function pushState() {   // "granted" | "default" | "denied" | "off" (سُمح ثمّ أوقفه المستخدم من سوا) | "unsupported"
     if (NB()) { var np = "default"; try { np = NB().notifPermission() || "default"; } catch (e) {} if (np === "granted" && lsGet("sawa_push_off", 0)) return "off"; return np; }
+    if (IOSB()) { var ip = IOSB().notif || "default"; if (ip === "granted" && lsGet("sawa_push_off", 0)) return "off"; return ip; }   // C123
     if (!pushSupported()) return "unsupported";
     var p; try { p = Notification.permission; } catch (e) { return "unsupported"; }
     if (p === "granted" && lsGet("sawa_push_off", 0)) return "off";
@@ -2161,6 +2178,17 @@
           "Notifications are blocked for Sawa. Do both, then reopen Sawa:\n1) Long-press the Sawa icon → App info → Notifications → Allow.\n2) Open Chrome → ⋮ → Settings → Site settings → Notifications → find sawaaap.com → Allow (or remove it from the Blocked list).");
   }
   function enablePush() {
+    if (IOSB()) {   // C123: إذن iOS ثمّ رمز FCM الأصليّ (يصل عبر __sawaNativeToken)
+      try { localStorage.removeItem("sawa_push_off"); } catch (e) {}
+      return IOSB().call("requestNotifPermission").then(function (r) {
+        var st = (r && r.state) || "default";
+        try { IOSB().notif = st; } catch (e) {}
+        if (st !== "granted") { emitPush(); toast(st === "denied" ? L("الإشعارات محظورة — فعّلها من الإعدادات ← الإشعارات ← سوا", "Notifications are blocked — enable them in Settings → Notifications → Sawa") : L("لم تُفعَّل الإشعارات", "Notifications weren't turned on")); return false; }
+        lsSet("sawa_push", {});
+        return pushToken().then(registerToken).then(function () { toast(L("الإشعارات مفعّلة ✓", "Notifications on ✓")); hideBanner(); emitPush(); return true; },
+          function (e) { toast(L("تعذّر تفعيل الإشعارات: ", "Couldn't enable notifications: ") + ((e && e.message) || e)); emitPush(); return false; });
+      });
+    }
     if (NB()) {   // C72: إذن أندرويد ثمّ رمز FCM الأصليّ
       try { localStorage.removeItem("sawa_push_off"); } catch (e) {}
       return new Promise(function (res) {
@@ -2198,7 +2226,7 @@
     var prev = lsGet("sawa_push", {});
     lsSet("sawa_push", {}); lsSet("sawa_push_off", Date.now());
     var p = prev.token ? call("push.unregister", { token: prev.token }).catch(function () {}) : Promise.resolve();
-    try { firebase.messaging().deleteToken().catch(function () {}); } catch (e) {}
+    if (!IOSB()) try { firebase.messaging().deleteToken().catch(function () {}); } catch (e) {}
     emitPush();
     return p;
   }
@@ -2246,7 +2274,7 @@
     if (st === "default" || st === "denied") return maybeBanner(st);
     if (st !== "granted") return;
     var prev = lsGet("sawa_push", {});
-    if (NB()) { pushToken().then(registerToken).catch(function (e) { log("native token:", (e && e.message) || e); }); return; }   // C72: أندرويد يجدّد رمزه وحده (onNewToken)
+    if (NB() || IOSB()) { pushToken().then(registerToken).catch(function (e) { log("native token:", (e && e.message) || e); }); return; }   // C72: أندرويد يجدّد رمزه وحده (onNewToken)
     resubFlagged().then(function (flag) {
       if (flag) return rotateToken("subscription changed");
       // C100: موعد التدوير من آخر تدوير (prev.ts يتجدّد مع كلّ فحص فلم يكن التدوير الأسبوعيّ يحدث)
@@ -3263,9 +3291,11 @@
       "Your account is a guest on this phone only. Link it to Google or email to sign in from any device and keep your chats and code."), "#9a6700", "#fdf3d8"));
     var gh = mk("div", "display:flex;justify-content:center;min-height:44px;margin:12px 0 8px");
     var g = mkBtn(L("المتابعة بحساب Google", "Continue with Google"), "primary");
+    if (IOSB() && IOSB().hasApple) { var ab = appleBtn(false); ab.style.marginTop = "12px"; var ac = ab.onclick; ab.onclick = function () { s.close(); ac(); }; s.box.appendChild(ab); }
     s.box.appendChild(gh); s.box.appendChild(g);
+    if (iosNoGoogle()) { gh.style.display = "none"; g.style.display = "none"; }
     g.onclick = function () { if (!S() || !S().linkGoogle) { toast(L("جارٍ تحميل التطبيق… حاول بعد لحظة", "Still loading… try again")); return; } s.close(); try { Promise.resolve(S().linkGoogle()).catch(function () {}); } catch (e) {} };
-    if (S() && S().renderGoogleButton) S().renderGoogleButton(gh).then(function (ok) { if (ok) g.style.display = "none"; }, function () { gh.style.display = "none"; }); else gh.style.display = "none";
+    if (!iosNoGoogle()) { if (S() && S().renderGoogleButton) S().renderGoogleButton(gh).then(function (ok) { if (ok) g.style.display = "none"; }, function () { gh.style.display = "none"; }); else gh.style.display = "none"; }
     var em = mkBtn(L("بالبريد الإلكتروني", "With email")); em.style.marginTop = "8px"; em.onclick = function () { s.close(); emailSheet(); }; s.box.appendChild(em);
     var c = mkBtn(L("لاحقاً", "Later"), "ghost"); c.style.marginTop = "6px"; c.onclick = s.close; s.box.appendChild(c);
     // بعد نجاح الربط تُغلق الورقة وحدها
@@ -3687,8 +3717,10 @@
       var gh = oc("div", "ob-gsi"); gh.style.cssText = "display:flex;justify-content:center;min-height:44px;margin-bottom:10px";
       var em = bigBtn(L("المتابعة بالبريد الإلكتروني", "Continue with email"), null, "mail");
       var gu = bigBtn(L("جرّب بدون حساب", "Try without an account"), "link");
+      if (IOSB() && IOSB().hasApple) ft.appendChild(appleBtn(true));
       ft.appendChild(gh); ft.appendChild(g); ft.appendChild(em);
-      (function () {
+      if (iosNoGoogle()) { gh.style.display = "none"; g.style.display = "none"; }
+      else (function () {
         var tries = 0;
         (function tryGsi() {
           if (!onb || onb.step !== "login") return;

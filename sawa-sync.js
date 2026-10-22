@@ -983,9 +983,9 @@
     } catch (e) { return Promise.resolve(false); }
   }
   function sawaNameNow() { try { var c = global.SawaChat; var p = c && c.profile && c.profile(); return (p && p.name) || null; } catch (e) { return null; } }
-  function afterLinked(msg) {
+  function afterLinked(msg, nameHint) {
     var u = firebase.auth().currentUser; if (u) setUser(u);
-    return syncAuthName(sawaNameNow()).then(function () {
+    return syncAuthName(sawaNameNow() || nameHint).then(function () {
       restartWatch();
       return indexMine().then(function () { toast(msg); renderPanel(); refreshMyGroups(); });
     });
@@ -1021,29 +1021,36 @@
   // رمز هويّة Google ⇒ ربط الهويّة المجهولة به (لا شيء يضيع)، أو الدخول به وتبنّي عائلات هذا الجهاز إن كان الحساب قائماً
   function googleCredential(idToken) {
     if (!hasFirebase()) return Promise.reject({ code: "sawa/no-server" });
+    return idpCredential(firebase.auth.GoogleAuthProvider.credential(idToken), "Google");
+  }
+  // C123: الدخول/الربط بأيّ مزوّد (Google · Apple) — المسار نفسه: ربط الهويّة المجهولة، أو الدخول وتبنّي عائلات هذا الجهاز
+  function idpCredential(cred, P, preferName) {
     var auth = firebase.auth(), user = auth.currentUser;
-    var cred = firebase.auth.GoogleAuthProvider.credential(idToken);
-    if (user && !user.isAnonymous) return afterLinked(L("حسابك مربوطٌ سلفاً", "Already linked"));
+    var done = function (msg) { return afterLinked(msg, preferName); };
+    if (user && !user.isAnonymous) return done(L("حسابك مربوطٌ سلفاً", "Already linked"));
     indexMine();
     if (user && user.isAnonymous && state.uid) {
       return user.getIdToken().then(function (oldTok) {
         return user.linkWithCredential(cred).then(function () {
-          return afterLinked(L("رُبط حسابك بـGoogle ✓ — ادخل به من أيّ جهاز", "Linked to Google ✓ — sign in with it on any device"));
+          return done(L("رُبط حسابك بـ" + P + " ✓ — ادخل به من أيّ جهاز", "Linked to " + P + " ✓ — sign in with it on any device"));
         }).catch(function (e) {
           var code = e && e.code;
           if (code === "auth/credential-already-in-use" || code === "auth/email-already-in-use" || code === "auth/account-exists-with-different-credential") {
-            return auth.signInWithCredential(cred).then(function () { return adoptFrom(oldTok).catch(function () { return null; }); })
-              .then(function () { return afterLinked(L("دخلتَ بحسابك على Google ✓ ونُقلت عائلات هذا الجهاز إليه", "Signed in with Google ✓ — this device's families moved to your account")); });
+            var c2 = (e && e.credential) || cred;   // Apple: الـnonce يُستهلك مرّةً — Firebase يعيد بيانات اعتمادٍ صالحة في الخطأ
+            return auth.signInWithCredential(c2).then(function () { return adoptFrom(oldTok).catch(function () { return null; }); })
+              .then(function () { return done(L("دخلتَ بحسابك على " + P + " ✓ ونُقلت عائلات هذا الجهاز إليه", "Signed in with " + P + " ✓ — this device's families moved to your account")); });
           }
           throw e;
         });
       });
     }
-    return auth.signInWithCredential(cred).then(function () { return afterLinked(L("دخلتَ بحسابك على Google ✓", "Signed in with Google ✓")); });
+    return auth.signInWithCredential(cred).then(function () { return done(L("دخلتَ بحسابك على " + P + " ✓", "Signed in with " + P + " ✓")); });
   }
   // زرّ Google الرسميّ داخل حاوية (شاشة البداية) — يعيد true إن رُسم
   // C72: داخل تطبيق أندرويد الأصليّ — Google تمنع الدخول من WebView؛ نطلب الحساب من الهاتف نفسه (Credential Manager) ثمّ نكمل بالرمز كما في GIS
   function NB() { try { return global.SawaNativeBridge || null; } catch (e) { return null; } }
+  // C123: تطبيق iOS الأصليّ (WKWebView) — جسرٌ منفصل window.SawaIOS
+  function IOSB() { try { return global.SawaIOS || null; } catch (e) { return null; } }
   // C73: سجلّ ردود الجسر الأصليّ مشترك بين الملفّات (الدخول، القفل، ماسح QR)
   var natCbs = global.__sawaNatCbs = global.__sawaNatCbs || {}, natSeq = 0;
   global.__sawaNativeCb = function (id, r) { var c = global.__sawaNatCbs || {}, f = c[id]; delete c[id]; if (f) f(r || {}); };
@@ -1056,16 +1063,38 @@
         if (r.ok && r.idToken) res(r.idToken);
         else rej(new Error(r.error || "cancelled"));
       };
+      if (IOSB()) { IOSB().call("googleSignIn").then(natCbs[id]); return; }
       try { NB().googleSignIn(id); } catch (e) { clearTimeout(to); delete natCbs[id]; rej(e); }
     }).then(function (tok) { return googleCredential(tok); }, function (e) {
       var m = String((e && e.message) || e);
       if (/Cancel/i.test(m)) return;   // أغلق المستخدم النافذة
+      if (/NoGoogleConfig/i.test(m)) { toast(L("الدخول بـGoogle غير متاحٍ في هذه النسخة — استعمل Apple أو البريد", "Google sign-in isn't available in this version — use Apple or email")); return; }
       if (/NoCredential/i.test(m)) { toast(L("لا يوجد حساب Google على هذا الهاتف — أضفه من إعدادات الهاتف ← الحسابات", "No Google account on this phone — add one in Settings → Accounts")); return; }
       toast(L("تعذّر الدخول بـGoogle: ", "Google sign-in failed: ") + m.slice(0, 120));
     });
   }
+  // C123: Sign in with Apple (تطبيق iOS) — شرط App Store ما دام Google متاحاً. الاسم يأتي في أوّل دخولٍ فقط
+  function hasApple() { var b = IOSB(); return !!(b && b.hasApple); }
+  function hasGoogle() { var b = IOSB(); return b ? !!b.hasGoogle : true; }
+  function linkApple() {
+    if (!hasFirebase()) { toast(L("تعذّر الاتصال بالخادم", "Can't reach the server")); return Promise.resolve(); }
+    if (!hasApple()) return Promise.resolve();
+    return IOSB().call("appleSignIn").then(function (r) {
+      if (!r || !r.ok || !r.idToken) {
+        var m = String((r && r.error) || "");
+        if (!/Cancel/i.test(m)) toast(L("تعذّر الدخول بـApple: ", "Apple sign-in failed: ") + m.slice(0, 120));
+        return;
+      }
+      var cred = new firebase.auth.OAuthProvider("apple.com").credential({ idToken: r.idToken, rawNonce: r.rawNonce });
+      return idpCredential(cred, "Apple", r.name || null).catch(function (e) {
+        var code = (e && e.code) || "";
+        if (code === "auth/operation-not-allowed") toast(L("الدخول بـApple غير مفعّل في الخادم بعد", "Apple sign-in isn't enabled on the server yet"));
+        else toast(L("تعذّر الدخول: ", "Sign-in failed: ") + (code || (e && e.message) || e));
+      });
+    });
+  }
   function renderGoogleButton(host) {
-    if (NB()) return Promise.reject(new Error("native"));   // زرّنا الاحتياطيّ يظهر ويستدعي linkGoogle ⇒ الدخول الأصليّ
+    if (NB() || IOSB()) return Promise.reject(new Error("native"));   // زرّنا الاحتياطيّ يظهر ويستدعي linkGoogle ⇒ الدخول الأصليّ
     return loadGsi().then(function (id) {
       gsiReady(id);
       host.innerHTML = "";
@@ -1090,7 +1119,7 @@
     }).catch(function () { return false; });
   }
   function isStandaloneApp() {
-    if (NB()) return true;
+    if (NB() || IOSB()) return true;
     try { if (global.matchMedia && global.matchMedia("(display-mode: standalone)").matches) return true; } catch (e) {}
     try { if (global.navigator.standalone === true) return true; } catch (e) {}
     try { if (String(document.referrer || "").indexOf("android-app://") === 0) return true; } catch (e) {}
@@ -1098,7 +1127,7 @@
   }
   function linkGoogle() {
     if (!hasFirebase()) { toast(L("تعذّر الاتصال بالخادم", "Can't reach the server")); return; }
-    if (NB()) return nativeGoogle();
+    if (NB() || IOSB()) return nativeGoogle();
     // C54: في التطبيق المثبّت لا إعادة توجيه — GIS أوّلاً، وإن لم يُعرض نعود للنافذة المنبثقة
     if (isStandaloneApp()) {
       return gisPrompt().then(function (ok) { if (ok) return; return linkGoogleLegacy(); });
@@ -1738,7 +1767,7 @@
   global.SawaSync = {
     connect: connect, onReady: onReady, getToken: getToken,
     push: push, observe: observe, bindApp: bindApp,
-    uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, renderGoogleButton: renderGoogleButton, googleCredential: googleCredential, gisPrompt: gisPrompt, loadGsi: loadGsi, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, syncAuthName: syncAuthName, shareLink: shareLink,
+    uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, linkApple: linkApple, hasApple: hasApple, hasGoogle: hasGoogle, isIOSApp: function () { return !!IOSB(); }, renderGoogleButton: renderGoogleButton, googleCredential: googleCredential, gisPrompt: gisPrompt, loadGsi: loadGsi, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, syncAuthName: syncAuthName, shareLink: shareLink,
     watchGroup: watchGroup, serverGid: serverGid,
     // C106: «هذا أنا» على الخادم — يربط حسابي بشخصٍ في الشجرة (أو يفكّه بـ null)
     inviteFor: inviteFor, adoptGroup: adoptGroup,   // C107
