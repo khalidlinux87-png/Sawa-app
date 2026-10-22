@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c115";
+  var VERSION = "c119";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -956,6 +956,8 @@
     seen[c.id] = 1;
     show(c);
     c.native = nativeAudioOk(type);   // C95
+    if (dbUp === false) dbNudge("call");   // C119: قاعدة البيانات منقطعة (بعد الخلفيّة) ⇒ إعادة الاتّصال الآن لا بعد ثوانٍ
+    warmAt = 0; warmUp("call");
     Promise.all([c.native ? Promise.resolve(nativeLocal()) : getMedia(type), getIce()]).then(function (r) {
       if (c.done) { stopStream(r[0]); return; }
       c.local = r[0]; attachLocal(c); paint(c);
@@ -1897,6 +1899,7 @@
     if (rm && rm.code === code) { if (rui.min) rMinimize(false); return true; }
     if (busy()) { toast(L("أنت في مكالمة الآن", "You're already in a call")); return true; }
     var r = rm = rNew({ code: code, title: opts.title || "", state: "starting" });
+    if (rejoinEl) { try { rejoinEl.remove(); } catch (e) {} rejoinEl = null; }   // C119
     if (opts.mic === false) r.startMuted = true;
     r.ref = db().ref("rooms/" + code);
     rShow(r);
@@ -2711,6 +2714,22 @@
   // ---------- المغادرة ----------
   var R_END = { full: ["الغرفة ممتلئة (٨ أشخاص حاليّاً)", "The room is full"], kicked: ["أخرجك المضيف من الغرفة", "The host removed you"], denied: ["لم يسمح لك المضيف بالدخول", "The host didn't let you in"],
                 ended: ["أنهى المضيف الغرفة", "The host ended the room"], timeup: ["انتهى وقت الغرفة", "Room time is up"] };
+  // ---------- C119: الرجوع إلى الغرفة ----------
+  var LASTROOM = "sawa_lastroom", rejoinEl = null;
+  function lastRoom() { try { var v = JSON.parse(lsGet(LASTROOM) || "null"); return v && v.code && Date.now() - v.at < 3 * 3600000 ? v : null; } catch (e) { return null; } }
+  function lastRoomSet(v) { try { if (v) lsSet(LASTROOM, JSON.stringify(v)); else global.localStorage.removeItem(LASTROOM); } catch (e) {} }
+  function rejoinPill() {
+    var v = lastRoom();
+    if (rejoinEl) { try { rejoinEl.remove(); } catch (e) {} rejoinEl = null; }
+    if (!v || rm || !global.document || !document.body) return;
+    var w = el("div", "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 86px);z-index:2147482999;display:flex;align-items:center;gap:6px;background:#1E3A63;color:#fff;border-radius:24px;padding:6px 6px 6px 8px;box-shadow:0 8px 24px rgba(0,0,0,.3);direction:rtl;font-family:system-ui;max-width:calc(100vw - 32px)");
+    var go = el("button", "border:0;background:#2F80C8;color:#fff;border-radius:18px;padding:8px 14px;font:800 13px system-ui;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62vw", "🎥 " + L("الرجوع إلى «" + (v.title || L("الغرفة", "room")) + "»", "Back to «" + (v.title || "room") + "»"));
+    go.onclick = function () { lastRoomSet(null); rejoinPill(); roomJoin(v.code); };
+    var x = el("button", "border:0;background:rgba(255,255,255,.14);color:#fff;border-radius:50%;width:30px;height:30px;font:700 14px system-ui;cursor:pointer;flex-shrink:0", "✕");
+    x.setAttribute("aria-label", L("إخفاء", "Dismiss"));
+    x.onclick = function () { lastRoomSet(null); rejoinPill(); };
+    w.appendChild(go); w.appendChild(x); document.body.appendChild(w); rejoinEl = w;
+  }
   function rLeave(r, reason, opts) {
     r = r || rm; if (!r) return;
     if (r.done) { if (rm === r) rm = null; return; }
@@ -2736,7 +2755,8 @@
         if (wasHost && others.length && reason !== "ended") step = ref.child("meta/host").set(others[0]).catch(function () {});   // الاستضافة لأقدم الحاضرين
         step.then(function () { return ref.child("members/" + me).remove(); }).then(function () { return ref.child("sig/" + me).remove(); }).then(function () {
           // آخر من يغادر (وهو المضيف): يحذف الغرفة — وتبقى «بطاقتها» إن كانت مجدولة لموعدٍ قادم
-          if (wasHost && (!others.length || reason === "ended")) {
+          // C119: آخر من يغادر لا يحذف الغرفة (إلّا «إنهاء للجميع») — يستطيع الرجوع إليها؛ الخادم ينظّف الفارغة بعد ٣ ساعات من إنشائها
+          if (wasHost && reason === "ended") {
             var keep = meta && meta.sched && meta.sched > Date.now() - 3600000 && reason !== "ended";
             // C16: البطاقة المحفوظة تحتفظ بمالكها وموعد تنظيفها (القواعد ترفض حذف المالك)
             var card = keep ? { host: meta.owner || me, title: meta.title || "", ts: meta.ts || Date.now(), sched: meta.sched, locked: false, lobby: !!meta.lobby } : null;
@@ -2752,6 +2772,10 @@
       participants: Object.keys(r.met).map(function (u) { return r.met[u]; }), cloud: true, room: r.code });
     if (rm === r) rm = null;
     log("rend", r.code, reason);
+    // C119: «الرجوع إلى الغرفة» بعد مغادرتها (حتى لا تضيع) — لا بعد انتهائها أو الإخراج
+    if (r.live && reason === "left") lastRoomSet({ code: r.code, title: r.title || "", at: Date.now() });
+    else if (reason === "ended" || reason === "kicked" || reason === "denied" || (reason === "error" && lastRoom() && lastRoom().code === r.code)) lastRoomSet(null);
+    setTimeout(rejoinPill, 300);
     if (reason === "retry") return;   // C69: إعادة محاولةٍ صامتة — الواجهة تبقى لمحاولة الدخول التالية
     if (reason === "left" && !opts.text) { rHide(); return; }
     var tx = opts.text || (R_END[reason] && L(R_END[reason][0], R_END[reason][1])) || L("غادرت الغرفة", "You left the room");
@@ -3176,7 +3200,7 @@
   function rLeaveConfirm() {
     var r = rm; if (!r) return;
     sheet(L("مغادرة الغرفة؟", "Leave the room?"), function (body, close) {
-      item(body, "🚪", L("مغادرة", "Leave"), function () { close(); rLeave(r, "left"); }, true);
+      item(body, "🚪", L("مغادرة (يمكنك الرجوع إليها)", "Leave (you can come back)"), function () { close(); rLeave(r, "left"); }, true);   // C119
       if (amHost(r)) item(body, "⏹", L("إنهاء للجميع", "End for everyone"), function () { close(); rEndAll(); }, true);
       item(body, "↩", L("البقاء", "Stay"), close);
     });
@@ -3726,13 +3750,24 @@
   }
   // العودة من الخلفيّة وقاعدة البيانات منقطعة ⇒ هزّة بعد ثانيتين إن لم تعد وحدها
   try { document.addEventListener("visibilitychange", function () { if (document.visibilityState !== "visible") return; setTimeout(function () { if (dbUp === false) dbNudge("resume"); }, 2000); }); } catch (e) {}
+  // C119: «أوّل مكالمة أبطأ من الثانية» — قبل المكالمة نجهّز ما يبرد حين يبقى التطبيق في الخلفيّة:
+  //       رمز الدخول (ينتهي كلّ ساعة ⇒ تجديده رحلةٌ إضافيّة)، اتّصال قاعدة البيانات (يُقطع في الخلفيّة)، وبيانات الوسيط.
+  //       يُستدعى عند العودة إلى التطبيق وعند فتح محادثة (نيّة اتّصال) وعند بدء المكالمة نفسها.
+  var warmAt = 0;
+  function warmUp(why) {
+    if (Date.now() - warmAt < 20000) return; warmAt = Date.now();
+    try { var u = global.firebase && firebase.auth && firebase.auth().currentUser; if (u) u.getIdToken().catch(function () {}); } catch (e) {}
+    try { if (dbUp === false) dbNudge("warm " + (why || "")); } catch (e) {}
+    try { if (myUid()) getIce(); } catch (e) {}
+  }
+  try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") warmUp("resume"); }); } catch (e) {}
   function boot() {
     handleCallParam(); handleRoomParam();
     setTimeout(watchDb, 1500); setInterval(watchDb, 5000);
     setInterval(function () {
       var u = myUid();
       if (u && u !== lastUid && db()) {
-        lastUid = u; watchInbox(u); schedRefresh(true);
+        lastUid = u; watchInbox(u); schedRefresh(true); setTimeout(rejoinPill, 1500);   // C119
         var w = uidWaiters; uidWaiters = []; w.forEach(function (f) { try { f(); } catch (e) {} });
       }
     }, 700);
@@ -3740,7 +3775,7 @@
 
   global.SawaRTC = {
     version: VERSION, supported: supported, enabled: enabled, bindApp: bindApp,
-    call: startCall, accept: accept, decline: decline, hangup: hangup,
+    call: startCall, accept: accept, decline: decline, hangup: hangup, warm: warmUp,   // C119
     active: function () { return cur ? { id: cur.id, peer: cur.peer, name: cur.name, type: cur.type, state: cur.state, role: cur.role, route: cur.route || null, out: cur.out || null, routes: !!cur.routes } : null; },
     _cur: function () { return cur; }, _incoming: incoming, _dev: devId,
     _restart: function () { if (cur && cur.pc) { cur.state = "reconnecting"; iceRestart(cur); } },

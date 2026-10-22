@@ -580,6 +580,17 @@ if (typeof window !== "undefined" && !window.__lpBound) {
     window.addEventListener("scroll", lpClear, true);
     try { const css = document.createElement("style"); css.textContent = "[data-message-id],[data-message-id] *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}"; document.head.appendChild(css); } catch (e) { }
 }
+// C119: لا تظليل نصٍّ بلمسةٍ طويلة في أيّ مكان (كانت القوائم والأسماء تُظلَّل ويظهر شريط «نسخ · تحديد الكلّ») —
+//       النسخ من قائمة الرسالة «نسخ» أو من وضع التحديد. حقول الكتابة وحدها تبقى قابلةً للتحديد.
+(function () {
+    try {
+        if (document.getElementById("sawa-noselect")) return;
+        const css = document.createElement("style"); css.id = "sawa-noselect";
+        css.textContent = "html,body,body *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}" +
+            "input,textarea,select,[contenteditable],[contenteditable] *,.sawa-selectable,.sawa-selectable *{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}";
+        (document.head || document.documentElement).appendChild(css);
+    } catch (e) { }
+})();
 function longPress(open) {
     return {
         onTouchStart: (e) => {

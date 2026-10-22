@@ -1544,5 +1544,13 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 
 ## 📥 C118 — رابط تنزيل APK مباشر · build.yml · download.html
 - build.yml: permissions contents:write + خطوة «Publish APK for direct download» ⇒ GitHub Release «android-latest» يُستبدل ملفّه Sawa.apk في كلّ بناء على main · الرابط الثابت: https://github.com/<owner>/Sawa-android/releases/download/android-latest/Sawa.apk · الملخّص ينبّه إن كان المستودع خاصّاً (الرابط لا يعمل لغيرك).
-- Sawa-app: download.html (www.sawaaap.com/download) — زرّ تنزيل + خطوات التثبيت + النسخة وحجمها وتاريخها من GitHub API. REPO = "khalidlinux87/Sawa-android" (عدّله إن كان اسم الحساب مختلفاً).
+- Sawa-app: download.html (www.sawaaap.com/download) — زرّ تنزيل + خطوات التثبيت + النسخة وحجمها وتاريخها من GitHub API. REPO = "khalidlinux87-png/Sawa-android".
 - **الرفع:** Sawa-android: .github/workflows/build.yml (يبدأ بناءً) · Sawa-app: download.html + BUILD.md.
+
+## ✅ C119 — التحديد · تظليل النصّ · الرجوع إلى الغرفة · تسخين الاتّصال · sw v317 · app.p2 · app.p5 · sawa-rtc c119
+- **تظليل النصّ:** style#sawa-noselect يمنع التحديد ونافذة «نسخ · تحديد الكلّ» في كلّ الواجهة؛ الحقول (input/textarea/contenteditable) و.sawa-selectable وحدها قابلة للتحديد.
+- **تحديد عدّة رسائل (فرديّة ومجموعات):** قائمة الرسالة ← «تحديد» ⇒ اللمس يحدّد/يلغي (onClickCapture يمنع فتح الصور والروابط أثناءه) · شريط MsgSelectBar: نسخ (النصوص بأسطر) · حفظ (الفرديّة) · توجيه (forwardingText.multi) · حذف (عندي/عند الجميع إن كانت كلّها لي أو أنا مشرف) · «رجوع» يخرج من التحديد (SelBackGuard).
+- **الرجوع إلى الغرفة:** آخر من يغادر لا يحذف الغرفة إلّا «إنهاء للجميع» (الخادم ينظّف الفارغة بعد ٣ س) · sawa_lastroom + زرّ عائم «🎥 الرجوع إلى «…»» (يظهر بعد المغادرة وعند فتح التطبيق، ٣ س) · «مغادرة (يمكنك الرجوع إليها)».
+- **أوّل مكالمة أبطأ:** warmUp — تجديد رمز الدخول + هزّ قاعدة البيانات إن كانت منقطعة + بيانات الوسيط، عند العودة للتطبيق وفتح محادثة وبدء المكالمة (dbNudge فوراً إن كانت منقطعة).
+- اختبار: t/app/sel.mjs · t/rtc/run119.mjs (٥/٥) · run111 · run115.
+- **الرفع:** Sawa-app: sawa-rtc.js + app.p2.js + app.p5.js + BUILD.md + sw.js (v317) أخيراً.
