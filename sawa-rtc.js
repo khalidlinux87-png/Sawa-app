@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c119";
+  var VERSION = "c120";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -274,6 +274,7 @@
         if (!sn.track) return;
         senderTune(sn, function (pr) {
           if (sn.track && sn.track.kind === "audio") { pr.encodings[0].priority = "high"; pr.encodings[0].networkPriority = "high"; }
+          else if (sn.track.__scr) { pr.degradationPreference = "maintain-resolution"; pr.encodings[0].maxBitrate = 1200000; pr.encodings[0].maxFramerate = 15; }   // C120: الشاشة نصٌّ دقيق
           else { pr.degradationPreference = "balanced"; if (videoBitrate) pr.encodings[0].maxBitrate = videoBitrate; }
         });
       });
@@ -2428,21 +2429,24 @@
       var a = r.local && r.local.getAudioTracks()[0];
       if (p.at) p.at.sender.replaceTrack(a || null).catch(function () {});
       var low = r.members[p.uid] && r.members[p.uid].low;
-      if (p.vt) p.vt.sender.replaceTrack(r.camOn && r.camTrack && !low && !r.low ? r.camTrack : null).catch(function () {});
+      var scrT = r.scr && r.scrTrack && !r.low ? r.scrTrack : null;
+      // C120: الشاشة على مسارٍ ثالث (sct) والكاميرا تبقى؛ طرفٌ بنسخةٍ قديمة (بلا sct) ⇒ الشاشة مكان الكاميرا له
+      if (p.vt) p.vt.sender.replaceTrack(scrT && !p.sct ? scrT : (r.camOn && r.camTrack && !low && !r.low ? r.camTrack : null)).catch(function () {});
+      if (p.sct) p.sct.sender.replaceTrack(scrT).then(function () { if (scrT && p.pc) tuneSenders(p.pc, null); }).catch(function () {});
     } catch (e) {}
   }
   function rPeer(r, uid, sess, offerer) {
     var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: new global.MediaStream(), pid: rid(6), t0: Date.now() };   // C63: pid يميّز اتّصالاً جديداً عن إعادة تفاوض
     var pc = p.pc = new global.RTCPeerConnection({ iceServers: r.ice || STUN });
-    if (offerer) { p.at = pc.addTransceiver("audio", { direction: "sendrecv" }); p.vt = pc.addTransceiver("video", { direction: "sendrecv" }); rSenders(r, p); }
+    if (offerer) { p.at = pc.addTransceiver("audio", { direction: "sendrecv" }); p.vt = pc.addTransceiver("video", { direction: "sendrecv" }); p.sct = pc.addTransceiver("video", { direction: "sendrecv" }); rSenders(r, p); }   // C120: sct = الشاشة
     // C66: المرشّحات تُجمَّع وتُرسل دفعةً كلّ ١٢٠ ms (كانت كتابةً لكلّ مرشّح — ١٠ إلى ٢٠ كتابةً لكلّ طرف على شبكةٍ بطيئة)
     p.iceOut = [];
     var flushOut = function () { p.iceT = null; if (r.done || !p.iceOut.length) return; var b = p.iceOut; p.iceOut = []; rSend(r, uid, sess, b.length === 1 ? { t: "ice", cand: b[0] } : { t: "ice", cands: b }); };
     pc.onicecandidate = function (e) { if (!e.candidate || !e.candidate.candidate) { flushOut(); return; } p.iceOut.push(iceJson(e.candidate)); if (!p.iceT) p.iceT = setTimeout(flushOut, 120); };
     pc.ontrack = function (e) {
       if (p.stream.getTracks().indexOf(e.track) < 0) try { p.stream.addTrack(e.track); } catch (x) {}
-      e.track.onunmute = function () { rTile(r, uid); }; e.track.onmute = function () { rTile(r, uid); };
-      rTile(r, uid); rLevelWatch(r, uid, p.stream);
+      e.track.onunmute = function () { rTile(r, uid); rScrTiles(r); }; e.track.onmute = function () { rTile(r, uid); rScrTiles(r); };
+      rTile(r, uid); rScrTiles(r); rLevelWatch(r, uid, p.stream);
     };
     pc.onconnectionstatechange = function () {
       var s = pc.connectionState;
@@ -2480,7 +2484,7 @@
       p.pc.setRemoteDescription({ type: "offer", sdp: msg.sdp }).then(function () {
         p.pc.getTransceivers().forEach(function (t) {
           var k = t.receiver && t.receiver.track && t.receiver.track.kind;
-          if (k === "audio" && !p.at) p.at = t; else if (k === "video" && !p.vt) p.vt = t;
+          if (k === "audio" && !p.at) p.at = t; else if (k === "video" && !p.vt) p.vt = t; else if (k === "video" && !p.sct && t !== p.vt) p.sct = t;   // C120
           try { if (t.direction !== "sendrecv") t.direction = "sendrecv"; } catch (e) {}
         });
         rSenders(r, p); gFlush(p);
@@ -2607,37 +2611,73 @@
     });
   }
   function rScreenStart(r) {
+    // C120: كما في Meet — الشاشة مسارٌ إضافيّ والكاميرا تبقى. الغرفة الكبيرة (SFU) وحدها تُبدّل الكاميرا بالشاشة.
+    var viaCam = rBig(r);
     var me = myUid(), cams = Object.keys(r.members).filter(function (u) { return u !== me && r.members[u].cam; }).length, camCap = rBig(r) ? SFU_CAMS : ROOM_CAMS;
-    if (!r.camOn && cams >= camCap) { toast(L("الحدّ " + camCap + " صور في الغرفة — اطلب من المضيف إيقاف كاميرا أحدهم", "Max " + camCap + " videos in the room")); return; }
+    if (viaCam && !r.camOn && cams >= camCap) { toast(L("الحدّ " + camCap + " صور في الغرفة — اطلب من المضيف إيقاف كاميرا أحدهم", "Max " + camCap + " videos in the room")); return; }
+    if (Object.keys(r.members).some(function (u) { return u !== me && r.members[u].scr; })) { toast(L("شخصٌ آخر يعرض شاشته الآن", "Someone else is presenting")); return; }
     navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 10, max: 15 }, width: { max: 1920 }, height: { max: 1080 } }, audio: false }).then(function (s) {
       if (r.done || rm !== r) { stopStream(s); return; }
-      var t = s.getVideoTracks()[0]; try { t.contentHint = "detail"; } catch (e) {}
-      if (r.camOn && r.camTrack) { try { r.camTrack.stop(); } catch (e) {} r.scrHadCam = true; }
-      r.camTrack = t; r.camOn = true; r.scr = true;
-      t.onended = function () { if (r.scr && r.camTrack === t) rScreenStop(r); };   // «إيقاف» من شريط النظام
+      var t = s.getVideoTracks()[0]; try { t.contentHint = "detail"; } catch (e) {} t.__scr = true;
+      r.scr = true; r.scrViaCam = viaCam; r.scrTrack = t;
+      if (viaCam) { if (r.camOn && r.camTrack) { try { r.camTrack.stop(); } catch (e) {} } r.camTrack = t; r.camOn = true; }
+      t.onended = function () { if (r.scr && r.scrTrack === t) rScreenStop(r); };   // «إيقاف» من شريط النظام
       Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); });
-      sfuCam(r); rMember(r, { cam: true, scr: true }); rTile(r, "__me"); rPaint(r); rScrBar(r);
-      toast(L("تشارك شاشتك الآن", "You're sharing your screen"));
+      if (viaCam) sfuCam(r);
+      rMember(r, viaCam ? { cam: true, scr: true, scrCam: true } : { scr: true }); rTile(r, "__me"); rScrTiles(r); rPaint(r); rScrBar(r);
+      toast(L("تعرض شاشتك الآن للجميع", "You're presenting"));
     }).catch(function (e) { if (!(e && /NotAllowed|Abort/i.test(e.name))) toast(L("تعذّرت مشاركة الشاشة", "Couldn't share the screen")); });
   }
   function rScreenStop(r) {
     r = r || rm; if (!r || !r.scr) return;
-    r.scr = false; try { if (r.camTrack) r.camTrack.stop(); } catch (e) {}
-    r.camTrack = null; r.camOn = false; r.scrHadCam = false;
+    var viaCam = r.scrViaCam;
+    r.scr = false; r.scrViaCam = false; try { if (r.scrTrack) r.scrTrack.stop(); } catch (e) {}
+    r.scrTrack = null;
+    if (viaCam) { r.camTrack = null; r.camOn = false; }
     Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); });
-    sfuCam(r); rMember(r, { cam: false, scr: false }); rTile(r, "__me"); rPaint(r); rScrBar(r);
-    toast(L("أوقفتَ مشاركة الشاشة", "Stopped sharing"));
+    if (viaCam) sfuCam(r);
+    rMember(r, viaCam ? { cam: false, scr: false, scrCam: false } : { scr: false }); rTile(r, "__me"); rScrTiles(r); rPaint(r); rScrBar(r);
+    toast(L("أوقفتَ عرض الشاشة", "Stopped presenting"));
+  }
+  // C120: «منصّة» العرض — بلاطةٌ كبيرة لشاشة من يعرض (تتصدّر الشبكة تلقائيّاً) والبقيّة صفٌّ صغير تحتها، مع زرّ ملء الشاشة
+  function rScrTiles(r) {
+    if (!rui.root || !r || r.done) return;
+    var want = {};
+    Object.keys(r.members).forEach(function (u) {
+      var m = r.members[u], p = r.peers[u];
+      if (!m || !m.scr || m.scrCam || !p || !p.sct || !p.sct.receiver) return;
+      var tr = p.sct.receiver.track; if (!tr || tr.readyState !== "live") return;
+      want["scr:" + u] = { uid: u, track: tr };
+    });
+    Object.keys(rui.tiles).forEach(function (k) { if (k.indexOf("scr:") === 0 && !want[k]) { var o = rui.tiles[k]; try { o.v.srcObject = null; o.box.remove(); } catch (e) {} delete rui.tiles[k]; } });
+    Object.keys(want).forEach(function (k) {
+      var w = want[k], t = rui.tiles[k];
+      if (!t) {
+        var box = el("div", "position:relative;border-radius:16px;overflow:hidden;background:#000;min-height:0;display:flex;align-items:center;justify-content:center;border:2px solid #2F80C8");
+        var v = el("video", "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000"); v.autoplay = true; v.playsInline = true; v.muted = true; v.setAttribute("playsinline", "");
+        var lab = el("div", "position:absolute;bottom:8px;right:8px;max-width:70%;background:rgba(0,0,0,.55);color:#fff;border-radius:14px;padding:5px 10px;font:700 12px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
+        var fs = el("button", "position:absolute;bottom:8px;left:8px;width:38px;height:38px;border-radius:50%;border:0;background:rgba(255,255,255,.92);color:#111;font:800 17px system-ui;cursor:pointer", "⛶");
+        fs.setAttribute("aria-label", L("ملء الشاشة", "Full screen"));
+        fs.onclick = function (e) { e.stopPropagation(); try { if (document.fullscreenElement) document.exitFullscreen(); else (box.requestFullscreen || box.webkitRequestFullscreen).call(box); } catch (x) {} };
+        box.appendChild(v); box.appendChild(lab); box.appendChild(fs);
+        var a = el("audio", "");
+        t = rui.tiles[k] = { box: box, v: v, av: el("div", ""), lab: lab, tags: el("div", ""), a: a, scr: true };
+      }
+      t.lab.textContent = "🖥 " + L("شاشة ", "Screen · ") + rName(r, w.uid);
+      if (!t.v.srcObject || t.v.srcObject.getVideoTracks()[0] !== w.track) { t.v.srcObject = new global.MediaStream([w.track]); try { t.v.play().catch(function () {}); } catch (e) {} }
+    });
+    rLayout(r);
   }
   function rScrBar(r) {
     if (rui.scrBar) { try { rui.scrBar.remove(); } catch (e) {} rui.scrBar = null; }
     if (!r || !r.scr || !rui.root) return;
-    var b = el("button", "position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 112px);left:50%;transform:translateX(-50%);z-index:9;border:0;border-radius:20px;padding:8px 16px;background:#dc2626;color:#fff;font:800 13px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.4);cursor:pointer", L("🖥 تشارك شاشتك · إيقاف", "🖥 Sharing screen · Stop"));
+    var b = el("button", "position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 112px);left:50%;transform:translateX(-50%);z-index:9;border:0;border-radius:20px;padding:8px 16px;background:#dc2626;color:#fff;font:800 13px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.4);cursor:pointer", L("🖥 تعرض شاشتك · إيقاف", "🖥 Presenting · Stop"));
     b.onclick = function (e) { e.stopPropagation(); rScreenStop(r); };
     rui.root.appendChild(b); rui.scrBar = b;
   }
   function rToggleCam(r) {
     r = r || rm; if (!r || !r.live) return;
-    if (r.scr) { rScreenStop(r); return; }   // C115: زرّ الكاميرا أثناء المشاركة يوقفها
+    if (r.scr && r.scrViaCam) { rScreenStop(r); return; }   // C115: في الغرفة الكبيرة الشاشة مكان الكاميرا ⇒ زرّ الكاميرا يوقفها
     if (r.camOn) {
       r.camOn = false; try { if (r.camTrack) r.camTrack.stop(); } catch (e) {} r.camTrack = null;
       Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); });
@@ -2657,7 +2697,7 @@
     }).catch(function (e) { toast(mediaError(e) || L("تعذّر تشغيل الكاميرا", "Couldn't start the camera")); });
   }
   function rFlip(r) {
-    r = r || rm; if (!r || !r.camOn || r.switching || r.scr) return;
+    r = r || rm; if (!r || !r.camOn || r.switching || (r.scr && r.scrViaCam)) return;
     var want = r.facing === "user" ? "environment" : "user"; r.switching = true;
     try { r.camTrack.stop(); } catch (e) {}
     navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: want }, width: { ideal: 640 }, height: { ideal: 480 } } })
@@ -2734,7 +2774,7 @@
     r = r || rm; if (!r) return;
     if (r.done) { if (rm === r) rm = null; return; }
     opts = opts || {}; r.done = true; bgAudio(false);
-    if (r.scr) { r.scr = false; try { if (r.camTrack) r.camTrack.stop(); } catch (e) {} } rScrBar(null);   // C115
+    if (r.scr) { r.scr = false; try { if (r.scrTrack) r.scrTrack.stop(); } catch (e) {} } rScrBar(null);   // C115/C120
     if (reason === "retry") r.silentRetry = true;
     var me = myUid(), ref = r.ref, wasHost = amHost(r), members = r.members, meta = r.meta;
     for (var k in r.timers) { clearTimeout(r.timers[k]); clearInterval(r.timers[k]); } r.timers = {};
@@ -2990,7 +3030,7 @@
     var isMe = uid === "__me", m = isMe ? r.members[me] || { mic: r.mic, cam: r.camOn, hand: r.hand } : r.members[uid], p = isMe ? null : r.peers[uid];
     if (!isMe && !m) { var old = rui.tiles[uid]; if (old) { try { old.v.srcObject = null; old.a.srcObject = null; old.box.remove(); old.a.remove(); } catch (e) {} delete rui.tiles[uid]; } rLayout(r); return; }
     var t = rTileEl(uid), name = isMe ? L("أنت", "You") : rName(r, uid);
-    var vt = isMe ? (r.camOn ? r.camTrack : null) : p && p.stream.getVideoTracks().filter(function (x) { return x.readyState === "live" && !x.muted; })[0];
+    var vt = isMe ? (r.camOn ? r.camTrack : null) : p && (p.vt && p.vt.receiver && p.vt.receiver.track ? [p.vt.receiver.track] : p.stream.getVideoTracks()).filter(function (x) { return x.readyState === "live" && !x.muted; })[0];   // C120: الكاميرا من مسارها (لا الشاشة)
     var hidV = !isMe && !!(r.hideV && r.hideV[uid]);
     var showV = !!vt && !hidV && (isMe ? r.camOn : (m.cam && !r.low));
     // C15: الطرف شغّل الكاميرا ولا تصل الصورة ⇒ بعد ٨ ثوانٍ نعيد التفاوض (مرّة) ونقول ذلك بدل صورةٍ رماديّة صامتة
@@ -3004,12 +3044,12 @@
       }, 8000);
       if (!wantV || showV) { clearTimeout(p.camWait); p.camWait = null; if (!m.cam) p.camRetried = false; }
     }
-    if (isMe) { if (showV && (!t.v.srcObject || t.v.srcObject.getVideoTracks()[0] !== vt)) t.v.srcObject = new global.MediaStream([vt]); t.v.style.transform = r.scr || r.facing === "environment" ? "none" : "scaleX(-1)"; }
+    if (isMe) { if (showV && (!t.v.srcObject || t.v.srcObject.getVideoTracks()[0] !== vt)) t.v.srcObject = new global.MediaStream([vt]); t.v.style.transform = (r.scr && r.scrViaCam) || r.facing === "environment" ? "none" : "scaleX(-1)"; }
     else {
       if (p && t.a.srcObject !== p.stream) { t.a.srcObject = p.stream; try { t.a.play().catch(function () {}); } catch (e) {} }
       if (showV && t.v.srcObject !== p.stream) t.v.srcObject = p.stream;
     }
-    t.v.style.objectFit = (isMe ? r.scr : m && m.scr) ? "contain" : "";   // C115: الشاشة كاملةً بلا قصّ
+    t.v.style.objectFit = (isMe ? r.scr && r.scrViaCam : m && m.scr && m.scrCam) ? "contain" : "";   // C115: الشاشة كاملةً بلا قصّ
     if (showV) try { t.v.play().catch(function () {}); } catch (e) {}
     t.v.style.display = showV ? "block" : "none"; t.av.style.display = showV ? "none" : "flex";
     setAv(t.av, isMe ? (myName() || "أ") : name, isMe ? myUid() : uid); if (!photoOf(isMe ? myUid() : uid)) t.av.style.backgroundImage = avGrad(isMe ? myUid() : uid);
@@ -3037,6 +3077,8 @@
     // C45: بلاطتي تُرسم فور إنشائها (كانت تبقى فارغةً بلا اسم حتى أوّل تبديلٍ أو حديث)
     if (!rui.tiles.__me) { rTileEl("__me"); if (!rui.paintingMe) { rui.paintingMe = true; try { rTile(r, "__me"); } finally { rui.paintingMe = false; } } }
     ids = ids.filter(function (u) { return rui.tiles[u]; });
+    var scrIds = Object.keys(rui.tiles).filter(function (k) { return k.indexOf("scr:") === 0; });   // C120
+    ids = scrIds.concat(ids);
     // C91: من كاميرته تعمل أوّلاً (لا تضيع صورةٌ في آخر الشبكة)
     var camOf = function (u) { return u === "__me" ? !!r.camOn : !!(r.members[u] && r.members[u].cam && !(r.hideV && r.hideV[u])); };
     ids.sort(function (a, b) { return (camOf(b) - camOf(a)) || (ids.indexOf(a) - ids.indexOf(b)); });
@@ -3061,6 +3103,7 @@
   // C91: من يُعرض كبيراً — المثبَّت يدويّاً، أو (وضع «المتحدّث») من يتكلّم منذ ثانيتين (بلا ارتجاف)
   function rFocus(r, ids) {
     if (r.pin && ids.indexOf(r.pin) >= 0) return r.pin;
+    var sc = ids.filter(function (u) { return String(u).indexOf("scr:") === 0; })[0]; if (sc) return sc;   // C120: الشاشة المعروضة تتصدّر
     if (r.pin) r.pin = null;
     if (r.view !== "speaker") return null;
     var now = Date.now(), sp = r.speaker && r.speaker !== "__me" ? r.speaker : null;
@@ -3179,7 +3222,7 @@
       item(body, "➕", L("دعوة من جهات الاتّصال", "Invite contacts"), function () { close(); rInvite(); });
       item(body, "📝", L("المحضر: قرارات · مهامّ · نقاط", "Minutes: decisions · tasks · points"), function () { close(); rOpenPanel("notes"); });
       item(body, r.low ? "🎥" : "📶", r.low ? L("إعادة الفيديو", "Video back on") : L("بيانات قليلة (صوتٌ فقط)", "Low data (audio only)"), function () { close(); rToggleLow(r); });
-      if (r.camOn && !r.scr) item(body, "🔄", L("تبديل الكاميرا", "Flip camera"), function () { close(); rFlip(r); });
+      if (r.camOn && !(r.scr && r.scrViaCam)) item(body, "🔄", L("تبديل الكاميرا", "Flip camera"), function () { close(); rFlip(r); });
       item(body, "🖥", r.scr ? L("إيقاف مشاركة الشاشة", "Stop screen sharing") : L("مشاركة الشاشة", "Share screen"), function () { close(); rScreenAsk(r); }, !!r.scr);   // C115
       if (isAdm()) item(body, "🔧", L("تشخيص الاتّصال", "Connection diagnostics"), function () { close(); rDiag(); });   // C115: للمدير فقط
       if (amHost(r)) {
