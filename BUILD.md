@@ -1615,3 +1615,15 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - iOS: CFBundleDisplayName = Sawa ومنطقة التطوير en · Sawa/ar.lproj/InfoPlist.strings (سوا + نصوص الأذونات بالعربيّة) · Sawa/en.lproj/InfoPlist.strings (Sawa + الأذونات بالإنجليزيّة — تفيد المراجعة أيضاً).
 - Android: values/strings.xml app_name = Sawa · values-ar/strings.xml = سوا.
 - **الرفع:** Sawa-ios: project.yml + Sawa/ar.lproj/InfoPlist.strings + Sawa/en.lproj/InfoPlist.strings · Sawa-android: sawa-native.zip (c125، يشمل C124).
+
+## 🇬🇧 C126 — الواجهة الإنجليزيّة + صور App Store بالإنجليزيّة · sw v324
+- فقاعات المحادثة (الخاصّة والمجموعات): رسائلي على اليمين في الإنجليزيّة أيضاً (alignItems حسب isRTL) — كانت على اليسار.
+- «رسائل غير مقروءة» ⇒ "Unread messages" · بطاقة التذكير: التاريخ الهجريّ بالإنجليزيّة ونوع النصّ (Verse/Hadith/Narration/Wisdom/Poetry) · بطاقة «حان وقت التواصل»: "20 days" بدل «20 يوماً».
+- صور App Store الإنجليزيّة من واجهةٍ إنجليزيّة كاملة (t/app/seed-en.mjs · screens-en.mjs · t/rtc/callshots-en.mjs · play/make-ios2.mjs) — 1206×2622 و1320×2868.
+- **الرفع:** Sawa-app: app.p4.js + app.p5.js + BUILD.md + sw.js (v324) أخيراً.
+
+## 📞 C127 — آيفون: المكالمة على المكبّر فقط · sw v325 · sawa-rtc c127 · Sawa-ios
+- خالد: «على آيفون المكالمة فقط بمكبّر الصوت» — WebKit يشغّل الميكروفون بوضعٍ يُخرج الصوت من المكبّر، وزرّ المكبّر/السمّاعة كان لأندرويد فقط.
+- sawa-rtc: RB() جسر توجيه موحّد (SawaNativeBridge أو SawaIOS) لـsetSpeaker/setProximity · bgAudio يستدعي setInCall في iOS · الصوتيّة تبدأ على السمّاعة، والفيديو على المكبّر (كما في أندرويد).
+- NativeBridge.swift: setSpeaker ⇒ CallAudio (playAndRecord + voiceChat بلا defaultToSpeaker + overrideOutputAudioPort، وإعادة التطبيق عند تغيّر المسار أو إن أعاد WebKit الضبط؛ البلوتوث والسمّاعات الخارجيّة تُحترم) · setProximity ⇒ حسّاس القرب · setInCall ⇒ منع قفل الشاشة.
+- **الرفع:** Sawa-app: sawa-rtc.js + BUILD.md + sw.js (v325) أخيراً · Sawa-ios: Sawa/NativeBridge.swift ثمّ تشغيل TestFlight.

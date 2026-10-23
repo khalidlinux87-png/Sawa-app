@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c124";
+  var VERSION = "c127";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -342,13 +342,13 @@
       .then(function (x) { c.routing = false; return x; });
   }
   // C92: التطبيق الأصليّ يوجّه الصوت بنفسه (وضع الاتّصال) — يعمل ولو لم يكشف WebView مدخلَي «المكبّر/السمّاعة»
-  function nativeSpk(on) { try { if (NB() && NB().setSpeaker) NB().setSpeaker(!!on); } catch (e) {} }
+  function nativeSpk(on) { try { if (RB()) RB().setSpeaker(!!on); } catch (e) {} }
   function nativeRoute(c, which) {
     c.out = which; nativeSpk(which === "spk");
     if (which === "ear") { wakeOff(); earArm(); } else { wakeOn(); earOff(); }
     paint(c);
   }
-  function toggleRoute() { var c = cur; if (!c) return; var w = c.out === "ear" ? "spk" : "ear"; if (c.routes) setRoute(c, w); else if (NB() && NB().setSpeaker) nativeRoute(c, w); }
+  function toggleRoute() { var c = cur; if (!c) return; var w = c.out === "ear" ? "spk" : "ear"; if (c.routes) setRoute(c, w); else if (RB()) nativeRoute(c, w); }
   function stopStream(s) { try { s && s.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} }
   function mediaError(e) {
     var n = e && e.name;
@@ -421,12 +421,22 @@
   try { if (global.navigator && navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", function (ev) { var m = ev.data || {}; if (m.type === "sawa-hangup" && ongoingEnd) { try { ongoingEnd(); } catch (e) {} } }); } catch (e) {}
   // C72: تطبيق أندرويد الأصليّ — خدمةٌ أماميّة حقيقيّة (CallService) بدل الصوت الخافت وإشعار عامل الخدمة
   function NB() { try { return global.SawaNativeBridge || null; } catch (e) { return null; } }
+  // C127: تطبيق iOS — توجيه الصوت (السمّاعة/المكبّر) وحسّاس القرب ومنع القفل عبر جسر SawaIOS
+  function IOSB() { try { return global.SawaIOS || null; } catch (e) { return null; } }
+  var iosRoute = {
+    setSpeaker: function (on) { try { IOSB().call("setSpeaker", { on: !!on }); } catch (e) {} },
+    setProximity: function (on) { try { IOSB().call("setProximity", { on: !!on }); } catch (e) {} return true; },
+    setInCall: function (on) { try { IOSB().call("setInCall", { on: !!on }); } catch (e) {} }
+  };
+  // جسر التوجيه: أندرويد (SawaNativeBridge) أو iOS (SawaIOS) — null في المتصفّح
+  function RB() { var n = NB(); if (n && n.setSpeaker) return n; return IOSB() ? iosRoute : null; }
   var wantAnswer = {};
   global.__sawaNativeHangup = function () { if (ongoingEnd) { try { ongoingEnd(); } catch (e) {} } };
   global.__sawaNativeDecline = function (id) { if (cur && cur.id === id && cur.state === "incoming") decline(); };
   function nativeCallDone(id) { try { if (NB() && id) NB().callDone(String(id)); } catch (e) {} }
   function bgAudio(on, title, onEnd) {
     ongoingEnd = on ? onEnd : null;
+    if (IOSB()) iosRoute.setInCall(!!on);   // C127: منع قفل الشاشة + وضع المكالمة في iOS
     if (NB()) { try { NB().setInCall(!!on, String(title || "")); } catch (e) {} }
     else { keepAlive(!!on); ongoingNote(!!on, title); }
     try {
@@ -480,11 +490,11 @@
   }
   // C82: في تطبيق أندرويد الأصليّ نستعمل حسّاس القرب الحقيقيّ (تنطفئ الشاشة عند الأذن فقط وتعود فوراً) بدل الشاشة السوداء
   var earNative = false;
-  function earOff() { clearTimeout(earT); earT = null; if (earEl) { try { earEl.remove(); } catch (e) {} earEl = null; } if (earNative) { earNative = false; try { NB().setProximity(false); } catch (e) {} } }
+  function earOff() { clearTimeout(earT); earT = null; if (earEl) { try { earEl.remove(); } catch (e) {} earEl = null; } if (earNative) { earNative = false; try { RB().setProximity(false); } catch (e) {} } }
   function earArm() {
     clearTimeout(earT);
-    if (NB() && NB().setProximity) {
-      if (cur && cur.out === "ear" && !cur.done && cur.state === "connected") { try { earNative = !!NB().setProximity(true) || true; } catch (e) {} }
+    if (RB()) {
+      if (cur && cur.out === "ear" && !cur.done && cur.state === "connected") { try { earNative = !!RB().setProximity(true) || true; } catch (e) {} }
       return;
     }
     earT = setTimeout(function () { if (cur && cur.out === "ear" && !cur.done && cur.state === "connected") earOn(); }, 5000);
@@ -652,7 +662,7 @@
       bar.appendChild(btn(c.camOff ? "🚫" : "📷", c.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), c.camOff ? "#e8f5ee" : "rgba(255,255,255,.16)", toggleCam));
       bar.appendChild(btn("🔄", L("تبديل", "Flip"), "rgba(255,255,255,.16)", switchCam));
     }
-    if (c.routes || (NB() && NB().setSpeaker)) { var sp = c.out !== "ear"; var rb = btn(sp ? "🔊" : "👂", sp ? L("المكبّر", "Speaker") : L("السمّاعة", "Earpiece"), sp ? "#e8f5ee" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
+    if (c.routes || (RB())) { var sp = c.out !== "ear"; var rb = btn(sp ? "🔊" : "👂", sp ? L("المكبّر", "Speaker") : L("السمّاعة", "Earpiece"), sp ? "#e8f5ee" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
     // C111: تحويل المكالمة الصوتيّة إلى فيديو (بموافقة الطرف الآخر)
     if (c.state === "connected" && c.type !== "video") bar.appendChild(btn("📹", c.vreqOut ? L("…بانتظاره", "…waiting") : L("فيديو", "Video"), "rgba(255,255,255,.16)", function () { askVideo(cur); }));
     if (c.state === "connected") bar.appendChild(btn("➕", L("إضافة", "Add"), "rgba(255,255,255,.16)", function () { pickPerson(cur); }));
@@ -879,8 +889,8 @@
     if (c.done) return;
     if (s === "connected") {
       clearTimeout(c.timers.conn); clearTimeout(c.timers.lost); delete c.timers.lost;
-      if (!c.connectedAt) { c.connectedAt = Date.now(); softDrop(c); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); }); if (c.out === "ear" && NB() && NB().setProximity) setTimeout(earArm, 0);
-        if (NB() && NB().setSpeaker) nativeRoute(c, c.type === "video" ? "spk" : "ear");   // C92
+      if (!c.connectedAt) { c.connectedAt = Date.now(); softDrop(c); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); }); if (c.out === "ear" && RB()) setTimeout(earArm, 0);
+        if (RB()) nativeRoute(c, c.type === "video" ? "spk" : "ear");   // C92
         if (!c.native) audioRoutes().then(function (rt) {   // C15: المكالمة الصوتيّة تبدأ على سمّاعة الأذن كالهاتف، والفيديو على المكبّر
           if (!rt || c.done || cur !== c) return;
           c.routes = rt; c.out = "spk";
