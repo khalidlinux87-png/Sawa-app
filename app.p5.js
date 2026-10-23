@@ -395,7 +395,7 @@ function DailyReminderCard({ card, onClose, onFamily }) {
     const ks = DAILY_KIND_STYLE[card.kind] || { c: colors.primary, bg: colors.primaryLight, open: "", close: "", icon: "🤍" };
     const now = new Date();
     let hijri = "", greg = "";
-    try { hijri = new Intl.DateTimeFormat("ar-SA-u-ca-islamic-umalqura", { day: "numeric", month: "long", year: "numeric" }).format(now); } catch (e) { }
+    try { hijri = new Intl.DateTimeFormat(isRTL() ? "ar-SA-u-ca-islamic-umalqura" : "en-u-ca-islamic-umalqura", { day: "numeric", month: "long", year: "numeric" }).format(now); } catch (e) { }
     try { greg = new Intl.DateTimeFormat(isRTL() ? "ar-u-nu-arab" : "en", { weekday: "long", day: "numeric", month: "long" }).format(now); } catch (e) { }
     const poem = card.kind === "شعر";
     const share = () => {
@@ -416,7 +416,7 @@ function DailyReminderCard({ card, onClose, onFamily }) {
                 greg && React.createElement("div", { style: { fontSize: 11.5, opacity: 0.8, marginTop: 2 } }, greg)),
             // النصّ
             React.createElement("div", { style: { padding: "20px 22px 8px", textAlign: "center" } },
-                React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", borderRadius: 999, fontSize: 12, fontWeight: 800, color: ks.c, backgroundColor: isDark ? ks.c + "33" : ks.bg } }, ks.icon, " ", card.kind || ""),
+                React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", borderRadius: 999, fontSize: 12, fontWeight: 800, color: ks.c, backgroundColor: isDark ? ks.c + "33" : ks.bg } }, ks.icon, " ", isRTL() ? (card.kind || "") : ({ "آية": "Verse", "حديث": "Hadith", "أثر": "Narration", "حكمة": "Wisdom", "شعر": "Poetry" }[card.kind] || card.kind || "")),   // C126
                 React.createElement("p", { style: { marginTop: 14, fontFamily: "'Amiri','Noto Naskh Arabic','Noto Serif Arabic','Traditional Arabic',serif", fontSize: card.text.length > 160 ? 19 : 22, lineHeight: poem ? 2.1 : 1.95, fontWeight: 700, color: tc, whiteSpace: poem ? "pre-line" : "normal" } },
                     ks.open && React.createElement("span", { style: { color: ks.c, margin: "0 4px" } }, ks.open), card.text, ks.close && React.createElement("span", { style: { color: ks.c, margin: "0 4px" } }, ks.close)),
                 card.source && React.createElement("div", { style: { marginTop: 10, display: "flex", alignItems: "center", gap: 8, justifyContent: "center", color: colors.textMuted, fontSize: 12.5 } },
@@ -570,7 +570,7 @@ function UnreadDivider() {
     const { colors } = useTheme();
     return (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 my-3` },
         React.createElement("div", { className: "flex-1 h-px", style: { backgroundColor: colors.primary + "55" } }),
-        React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full", style: { color: colors.primary, backgroundColor: colors.primaryLight } }, "رسائل غير مقروءة"),
+        React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full", style: { color: colors.primary, backgroundColor: colors.primaryLight } }, tl("رسائل غير مقروءة", "Unread messages")),
         React.createElement("div", { className: "flex-1 h-px", style: { backgroundColor: colors.primary + "55" } })));
 }
 
@@ -1414,7 +1414,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                     return (React.createElement(React.Fragment, { key: m.id },
                         dayLabel && React.createElement(DayDivider, { label: dayLabel }),
                         showDivider && React.createElement(UnreadDivider, null),
-                        React.createElement("div", { "data-message-id": m.id, onClickCapture: sel ? (e) => { e.stopPropagation(); e.preventDefault(); toggleSel(m.id); } : undefined, className: "flex flex-col mb-1 rounded-lg transition-colors", style: { alignItems: mine ? "flex-start" : "flex-end", backgroundColor: sel && sel.indexOf(m.id) >= 0 ? colors.primary + "2E" : m.id === currentMatchId ? colors.accent + "33" : "transparent", cursor: sel ? "pointer" : undefined, paddingTop: sel ? 2 : undefined, paddingBottom: sel ? 2 : undefined } },
+                        React.createElement("div", { "data-message-id": m.id, onClickCapture: sel ? (e) => { e.stopPropagation(); e.preventDefault(); toggleSel(m.id); } : undefined, className: "flex flex-col mb-1 rounded-lg transition-colors", style: { alignItems: (mine === isRTL()) ? "flex-start" : "flex-end", backgroundColor: sel && sel.indexOf(m.id) >= 0 ? colors.primary + "2E" : m.id === currentMatchId ? colors.accent + "33" : "transparent", cursor: sel ? "pointer" : undefined, paddingTop: sel ? 2 : undefined, paddingBottom: sel ? 2 : undefined } },
                         m.forwarded && (React.createElement("span", { className: `text-[9px] mb-0.5 flex ${rowStart()} items-center gap-1`, style: { color: colors.textMuted } },
                             React.createElement(Send, { size: 9, style: { transform: "scaleX(-1)" } }),
                             t("rsala_mwjha"))),
@@ -2081,7 +2081,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                     }),
                     m.anonymous && React.createElement("p", { className: "text-[9px] mt-1", style: { color: colors.textMuted } }, t("tswyt_mjhwl_asma_almswtyn"))));
             }
-            return (React.createElement("div", { key: m.id, "data-message-id": m.id, onClickCapture: sel ? (e) => { e.stopPropagation(); e.preventDefault(); toggleSel(m.id); } : undefined, className: "flex flex-col mb-2 rounded-lg", style: { alignItems: mine ? "flex-start" : "flex-end", backgroundColor: sel && sel.indexOf(m.id) >= 0 ? colors.primary + "2E" : m.id === currentMatchId ? colors.accent + "33" : "transparent", cursor: sel ? "pointer" : undefined } },
+            return (React.createElement("div", { key: m.id, "data-message-id": m.id, onClickCapture: sel ? (e) => { e.stopPropagation(); e.preventDefault(); toggleSel(m.id); } : undefined, className: "flex flex-col mb-2 rounded-lg", style: { alignItems: (mine === isRTL()) ? "flex-start" : "flex-end", backgroundColor: sel && sel.indexOf(m.id) >= 0 ? colors.primary + "2E" : m.id === currentMatchId ? colors.accent + "33" : "transparent", cursor: sel ? "pointer" : undefined } },
                 m.forwarded && (React.createElement("span", { className: `text-[9px] mb-0.5 flex ${rowStart()} items-center gap-1`, style: { color: colors.textMuted } },
                     React.createElement(Send, { size: 9, style: { transform: "scaleX(-1)" } }),
                     t("rsala_mwjha"))),

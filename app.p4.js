@@ -1675,7 +1675,7 @@ const FamilyReminderCard = React.memo(function FamilyReminderCard({ onOpenPerson
                     React.createElement("b", null, urgentPerson.local_name),
                     " ",
                     neverLogged ? tl("منذ أضفته قبل ", "since you added them ") : t("mndh") + " ",
-                    React.createElement("b", null, daysAr(days)),
+                    React.createElement("b", null, tl(daysAr(days), days + (days === 1 ? " day" : " days"))),   // C126: كانت «20 يوماً» في الواجهة الإنجليزيّة
                     overdue.length > 1 && tl(` (و${othersAr(overdue.length - 1)})`, ` (+${overdue.length - 1} more)`))),
             React.createElement("div", { className: "flex flex-col gap-1 shrink-0" },
                 React.createElement("button", { onClick: () => handleChat(urgentPerson), className: "px-3 py-1.5 rounded-xl text-[10px] font-extrabold", style: { backgroundColor: isVeryLate ? "#ef4444" : colors.accent, color: "#fff" } }, onOpenPerson ? tl("تواصل الآن", "Reach out") : t("raslh_alan")),
