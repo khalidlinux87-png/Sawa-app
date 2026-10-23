@@ -1578,3 +1578,35 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 ## 🔧 C122b — تشخيص عرض الشاشة · sw v321 · sawa-rtc c122
 - «تشخيص الاتّصال» (للمدير) يعرض لكلّ مشارك: نسخته (v أو «قديمة») · هل يعرض (🖥 sct/cam) · عدد المسارات (m=3 sct) · ما يصلني منه من كاميرا/شاشة (الأبعاد · الإطارات/ث · المفكوكة) · ما أرسله إليه.
 - **الرفع:** Sawa-app: sawa-rtc.js + sawa-chat.js (C122) + BUILD.md + sw.js (v321) أخيراً.
+
+## 🍎 C123 — تطبيق iOS جاهز لـApp Store · sw v322 · worker v67-ios · sawa-sync/sawa-chat
+- **Sawa-ios:** NativeBridge.swift (window.SawaIOS: appleSignIn · googleSignIn · requestNotifPermission · notifState · share · openSettings · setBadge) · AppDelegate (FirebaseMessaging، فتح الإشعار ⇒ ?chat/?call/?requests/?famreq/?room، والتطبيق مفتوح ⇒ __sawaNativePush) · WebViewController (WKAppBoundDomains ليعمل sw.js، تحميل رابط الإشعار عند الإقلاع) · PrivacyInfo.xcprivacy · آيفون فقط · Entitlements (aps + applesignin) · سير العمل يكتب GoogleService-Info.plist من سرّ GOOGLE_SERVICE_INFO_PLIST ويُظهر أخطاء البناء في Annotations.
+- **sawa-sync:** IOSB() · idpCredential(cred, P, name) يجمع Google وApple (ربط الضيف/الدخول/التبنّي) · linkApple · hasApple/hasGoogle/isIOSApp · nativeGoogle يمرّ بـSawaIOS.
+- **sawa-chat:** زرّ «المتابعة باستخدام Apple» (أسود، فوق Google) في البداية و«اربط حسابك» · زرّ Google يُخفى إن لم يتوفّر معرّف iOS · الإشعارات: pushState/pushToken/enablePush/refreshPush فروع iOS.
+- **worker v67:** apnsOf(data) في fcmSend والإشعار التجريبيّ — تنبيه APNs مرئيّ، collapse-id للمكالمة/الفائتة، thread-id للمحادثة.
+- اختبار: t/app/ios.mjs (الزرّ يظهر، Google يُخفى بلا معرّف) · t/ack.test.mjs ALL PASS.
+- **الرفع:** Worker: worker-3.js · Sawa-app: sawa-sync.js + sawa-chat.js + BUILD.md + sw.js (v322) أخيراً · Sawa-ios: الملفّات كلّها من Sawa-ios.zip.
+
+## 🔑 C123b — TestFlight: خطأ 401 وتوقيع حزم Firebase
+- البناء الموقَّع فشل بـ«Communication with Apple failed (401)» ⇒ Apple رفضت مفتاح API (مفتاحٌ خطأ/Key ID/Issuer) فلم تُنشأ شهادة.
+- خطوة «Verify API key» (Ruby: JWT ES256 ⇒ /v1/apps?filter[bundleId]) قبل البناء: تشرح 401/403/التطبيق غير موجود بالعربيّة.
+- التوقيع التلقائيّ صار لهدف التطبيق وحده (project.yml: CODE_SIGN_STYLE ${SAWA_SIGN} · DEVELOPMENT_TEAM ${SAWA_TEAM} من xcodegen) بدل فرضه من سطر الأوامر على حزم Firebase.
+- **الرفع:** Sawa-ios: project.yml + .github/workflows/ios-testflight.yml + ios-build.yml.
+
+## ⏱ C123c — TestFlight: فحص المفتاح أوّلاً على Linux · اختيار جهاز Mac
+- أجهزة macos-26 مزدحمة («not acquired by Runner») ⇒ وظيفة verify على ubuntu-latest (الأسرار + فحص مفتاح Apple خلال ثوانٍ)، ثمّ testflight (needs: verify).
+- مُدخل runner عند التشغيل: macos-26 أو macos-15 · فحصٌ يرفض البناء إن لم يكن Xcode 26.
+- **الرفع:** Sawa-ios: .github/workflows/ios-testflight.yml.
+
+## ✍️ C123d — TestFlight: توقيعٌ يدويّ عبر الـAPI بدل التوقيع السحابيّ
+- الأرشفة نجحت لكنّ «Export IPA» علق ٤٣ دقيقة (IDEDistribution مع -allowProvisioningUpdates) حتى انتهى الوقت.
+- الآن: asc.rb (Ruby، JWT ES256) ينشئ لكلّ تشغيل شهادة Apple Distribution (CSR محلّيّ) وملفّ توفير IOS_APP_STORE، ويضمن قدرتَي Push وSign in with Apple على com.sawaaap.app · سلسلة مفاتيح مؤقّتة + set-key-partition-list (لا نوافذ إذنٍ تعلّق codesign) · أرشفة وتصدير يدويّان بلا اتّصالٍ بـApple · الرفع بـxcrun altool · حذف الشهادة والملفّ دائماً في النهاية.
+- project.yml: CODE_SIGN_IDENTITY/PROVISIONING_PROFILE_SPECIFIER/aps-environment من متغيّرات SAWA_* · مهلة لكلّ خطوة.
+- **الرفع:** Sawa-ios: project.yml + .github/workflows/ios-testflight.yml + ios-build.yml.
+
+## 🎧 C124 — تشويش وصدى المكالمة الصوتيّة · sw v323 · sawa-rtc c124 · native c124
+- خالد: «مكالمات الفيديو أفضل من الصوتيّة، وما زال في الصوتيّة تشويش وصدى». السبب ليس الخادم (الوسيط واحد) بل المحرّك: الصوتيّة الثنائيّة على أندرويد كانت على NativeRtc (C95) والفيديو على WebView.
+- **ويب (فوريّ):** nativeAudioOk لا يختار الأصليّ إلّا إن كان sawa-nrtc = "1" ⇒ الصوتيّة تعمل بمحرّك الفيديو نفسه افتراضيّاً · المدير يلمس سطر الشبكة في شاشة المكالمة للتبديل (من المكالمة القادمة؛ ⚡ = الأصليّ).
+- **أندرويد (بناء جديد):** NativeRtc: REMOTE_GAIN 2.5 ⇒ 1.4 (قصّ القمم + تسرّب للميكروفون) · JB_MAX_PACKETS 25 ⇒ 50 (ثانية) · audioJitterBufferFastAccelerate false.
+- اختبار: t/rtc/run111 ALL PASS.
+- **الرفع:** Sawa-app: sawa-rtc.js + BUILD.md + sw.js (v323) أخيراً · Sawa-android: sawa-native.zip (c124).

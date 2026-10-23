@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c122";
+  var VERSION = "c124";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -193,7 +193,9 @@
     try {
       var nb = NB();
       if (type === "video" || !nb || !nb.rtcNew || !nb.rtcMicOk || !nb.rtcMicOk()) return false;
-      if (lsGet("sawa-nrtc") === "0") return false;
+      // C124: المحرّك الافتراضيّ صار محرّك WebView نفسه الذي تعمل به مكالمات الفيديو (صوتٌ أنعم وصدى أقلّ عند خالد).
+      //       الأصليّ (⚡) لمن فعّله المدير من سطر الشبكة في شاشة المكالمة — للمقارنة.
+      if (lsGet("sawa-nrtc") !== "1") return false;
       return !(Date.now() - Number(lsGet("sawa-nrtc-fail") || 0) < 86400000);
     } catch (e) { return false; }
   }
@@ -568,6 +570,15 @@
     var nm = el("div", "font:800 24px system-ui;margin-top:14px");
     var st = el("div", "font:600 15px system-ui;color:#bfe3d0");
     var sub = el("div", "font:500 11px system-ui;color:#8fb8a4;min-height:14px");
+    // C124: المدير يبدّل محرّك الصوت للمكالمات الصوتيّة القادمة بلمس سطر الشبكة (أندرويد فقط)
+    sub.addEventListener("click", function () {
+      try {
+        var nb = NB(); if (!isAdm() || !nb || !nb.rtcNew) return;
+        var on = lsGet("sawa-nrtc") === "1"; lsSet("sawa-nrtc", on ? "0" : "1"); try { localStorage.removeItem("sawa-nrtc-fail"); } catch (e) {}
+        toast(on ? L("محرّك الصوت: WebView (كالفيديو) — من المكالمة القادمة", "Audio engine: WebView — from the next call")
+                 : L("محرّك الصوت: الأصليّ ⚡ — من المكالمة القادمة", "Audio engine: native ⚡ — from the next call"));
+      } catch (e) {}
+    });
     mid.appendChild(av); mid.appendChild(nm); mid.appendChild(st); mid.appendChild(sub);
     var bar = el("div", "position:relative;z-index:3;display:flex;flex-wrap:wrap;gap:8px 0;justify-content:space-evenly;align-items:flex-start;padding:14px 6px calc(env(safe-area-inset-bottom,0px) + 22px);background:linear-gradient(transparent,rgba(0,0,0,.55))");
     r.appendChild(rv); r.appendChild(ra); r.appendChild(lv); r.appendChild(top); r.appendChild(mid); r.appendChild(bar);
