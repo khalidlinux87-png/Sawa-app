@@ -1610,3 +1610,8 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - **أندرويد (بناء جديد):** NativeRtc: REMOTE_GAIN 2.5 ⇒ 1.4 (قصّ القمم + تسرّب للميكروفون) · JB_MAX_PACKETS 25 ⇒ 50 (ثانية) · audioJitterBufferFastAccelerate false.
 - اختبار: t/rtc/run111 ALL PASS.
 - **الرفع:** Sawa-app: sawa-rtc.js + BUILD.md + sw.js (v323) أخيراً · Sawa-android: sawa-native.zip (c124).
+
+## 🔤 C125 — اسم التطبيق حسب لغة الهاتف · native c125 · Sawa-ios
+- iOS: CFBundleDisplayName = Sawa ومنطقة التطوير en · Sawa/ar.lproj/InfoPlist.strings (سوا + نصوص الأذونات بالعربيّة) · Sawa/en.lproj/InfoPlist.strings (Sawa + الأذونات بالإنجليزيّة — تفيد المراجعة أيضاً).
+- Android: values/strings.xml app_name = Sawa · values-ar/strings.xml = سوا.
+- **الرفع:** Sawa-ios: project.yml + Sawa/ar.lproj/InfoPlist.strings + Sawa/en.lproj/InfoPlist.strings · Sawa-android: sawa-native.zip (c125، يشمل C124).
