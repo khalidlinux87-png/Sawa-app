@@ -1904,7 +1904,7 @@
       stState.unsub.push(d.collection("stories").where("aud", "array-contains", uid).onSnapshot(function (snap) {
         var o = {}; snap.forEach(function (doc) { var v = doc.data() || {}; if (doc.id !== uid) o[doc.id] = { owner: doc.id, name: v.name || "", items: v.items || [] }; });
         stState.others = o; stEmit();
-      }, function (e) { log("stories:", e && e.message); }));
+      }, function (e) { log("stories:", e && e.message); stState.unsub = []; clearTimeout(stState.rt); stState.rt = setTimeout(function () { if (state.uid === uid && !stState.unsub.length) startStories(uid); }, 15000); }));   // C133b
       stState.unsub.push(d.collection("stories").doc(uid).onSnapshot(function (doc) { var v = doc && doc.exists ? doc.data() : null; stState.mine = v; stEmit(); }, function () {}));
     } catch (e) { log("stories", e && e.message); }
     // تحديث العدّاد والحلقات حين تنتهي قصّة
@@ -1976,13 +1976,26 @@
       mo.unsub = d.collection("moments").where("aud", "array-contains", uid).limit(mo.limit).onSnapshot(function (snap) {
         var arr = []; snap.forEach(function (doc) { var v = doc.data() || {}; v.id = doc.id; arr.push(v); });
         arr.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
-        mo.list = arr; mo.more = snap.size >= mo.limit; mo.loaded = true; mo.err = null; moEmit();
-      }, function (e) { mo.err = (e && e.message) || String(e); mo.loaded = true; log("moments:", mo.err); moEmit(); });
+        mo.list = arr; mo.more = snap.size >= mo.limit; mo.loaded = true; mo.err = null; mo.retry = 0; moEmit();
+      }, function (e) {
+        // C133b: المستمع يموت عند الخطأ (مثلاً «لا صلاحيّة» قبل نشر القواعد أو انقطاع) ⇒ نعيده بمهلةٍ متزايدة بدل أن تبقى الخلاصة فارغةً حتّى إعادة التشغيل
+        mo.err = (e && e.message) || String(e); mo.loaded = true; mo.unsub = null; log("moments:", mo.err); moEmit();
+        mo.retry = Math.min(60000, (mo.retry || 2500) * 2); clearTimeout(mo.rt); mo.rt = setTimeout(function () { if (state.uid === uid && !mo.unsub) startMoments(uid); }, mo.retry);
+      });
     } catch (e) { log("moments", e && e.message); }
   }
+  try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && state.uid) { if (!mo.unsub || mo.err) { mo.retry = 0; startMoments(state.uid); } if (!stState.unsub.length) startStories(state.uid); } }); } catch (e) {}
   function stopMoments() { if (mo.unsub) { try { mo.unsub(); } catch (e) {} } mo.unsub = null; }
   function moLoadMore() { mo.limit += 30; if (state.uid) startMoments(state.uid); }
-  function moMuted() { return lsGet(MO_MUTE_KEY, {}) || {}; }
+  function moMuted() {
+    var m = Object.assign({}, lsGet(MO_MUTE_KEY, {}) || {});
+    try { (mo.prefs && mo.prefs.mute || []).forEach(function (u) { m[u] = 1; }); (prefs && prefs.blocked || []).forEach(function (u) { m[u] = 1; }); } catch (e) {}   // C133b: المحظورون لا تظهر لحظاتهم
+    return m;
+  }
+  function moSetMute(map) {
+    lsSet(MO_MUTE_KEY, map);
+    var ids = Object.keys(map); moPrefs().then(function () { return call("moment.prefs", { mute: ids }); }).then(function (r) { if (r) mo.prefs = { close: r.close || [], hide: r.hide || [], mute: r.mute || [] }; moEmit(); }).catch(function () {});
+  }
   function moUpload(pid, blob) {
     var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
     var mid = newMediaId().replace(/[^a-z0-9]/g, ""), meta = d.collection("moments").doc(pid).collection("media").doc(mid);
@@ -2013,7 +2026,7 @@
       });
     }).then(function (blob) { return (mo.urls[it.mid] = URL.createObjectURL(blob)); });
   }
-  function moPrefs() { if (mo.prefs) return Promise.resolve(mo.prefs); return call("moment.prefs", {}).then(function (r) { mo.prefs = { close: r.close || [], hide: r.hide || [] }; return mo.prefs; }); }
+  function moPrefs() { if (mo.prefs) return Promise.resolve(mo.prefs); return call("moment.prefs", {}).then(function (r) { mo.prefs = { close: r.close || [], hide: r.hide || [], mute: r.mute || [] }; moEmit(); return mo.prefs; }); }
   function moAudLabel(mode) {
     mode = String(mode || "contacts");
     if (mode === "contacts") return L("جهات اتّصالي", "My contacts");
@@ -2098,6 +2111,7 @@
     paint();
     if (state.uid && !mo.unsub) startMoments(state.uid);
     try { localStorage.setItem("sawa_mom_seen", String(Date.now())); } catch (e) {}
+    if (state.uid) moPrefs().catch(function () {});   // C133b: «أخفيتُ لحظاتهم» من الخادم (على كلّ أجهزتي)
     return { unmount: function () { if (mo.view === view) mo.view = null; host.innerHTML = ""; }, paint: paint };
   }
   function moEmpty(T, ic, title, sub) {
@@ -2124,12 +2138,7 @@
       if (p.text.length > 320) { var more = mk("button", "border:0;background:transparent;color:" + T.primary + ";font:800 13px system-ui;padding:0 14px 10px", L("عرض المزيد", "See more")); more.onclick = function () { tx.style.maxHeight = "none"; more.remove(); }; c.appendChild(more); }
     }
     if (p.media && p.media.length) c.appendChild(moGrid(p, T));
-    if (p.loc) {
-      var lc = mk("a", "display:flex;align-items:center;gap:6px;margin:10px 12px 0;padding:9px 12px;border-radius:12px;background:" + T.bg + ";color:" + T.text + ";font:700 13px system-ui;text-decoration:none");
-      lc.href = "https://maps.google.com/?q=" + p.loc.lat + "," + p.loc.lng; lc.target = "_blank"; lc.rel = "noopener";
-      lc.appendChild(moIcon(MI.pin, 16, T.danger)); lc.appendChild(mk("span", "flex:1", p.loc.label || L("موقع مُشارَك", "Shared location"))); lc.appendChild(mk("span", "color:" + T.muted + ";font-weight:600", L("فتح ↗", "Open ↗")));
-      c.appendChild(lc);
-    }
+    if (p.loc && isFinite(Number(p.loc.lat)) && isFinite(Number(p.loc.lng))) c.appendChild(moLocCard(p.loc, T));
     if (p.poll && p.poll.opts) c.appendChild(moPoll(p, T));
     var stats = mk("div", "display:flex;justify-content:space-between;padding:10px 14px 6px;font:600 12.5px system-ui;color:" + T.muted);
     var ls = mk("button", "border:0;background:transparent;color:inherit;font:inherit;padding:0", likes.length ? "❤️ " + likes.length : "");
@@ -2180,6 +2189,30 @@
     });
     return g;
   }
+  // C133b: الموقع بخريطةٍ مصغّرة (بلاطات OpenStreetMap حول النقطة) + اسم المكان + فتح في الخرائط
+  function moMapTiles(lat, lng, z, w, h) {
+    var box = mk("div", "position:relative;width:100%;height:" + h + "px;overflow:hidden;background:#e5e7eb;direction:ltr");
+    var n = Math.pow(2, z), xt = (Number(lng) + 180) / 360 * n, lr = Number(lat) * Math.PI / 180, yt = (1 - Math.log(Math.tan(lr) + 1 / Math.cos(lr)) / Math.PI) / 2 * n;
+    var tx = Math.floor(xt), ty = Math.floor(yt), px = (xt - tx) * 256, py = (yt - ty) * 256;
+    var layer = mk("div", "position:absolute;left:50%;top:50%;width:768px;height:768px;margin-left:" + (-256 - px) + "px;margin-top:" + (-256 - py) + "px");
+    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+      var im = mk("img", "position:absolute;width:256px;height:256px;left:" + ((dx + 1) * 256) + "px;top:" + ((dy + 1) * 256) + "px"); im.alt = ""; im.loading = "lazy";
+      im.src = "https://tile.openstreetmap.org/" + z + "/" + (((tx + dx) % n) + n) % n + "/" + (ty + dy) + ".png"; layer.appendChild(im);
+    }
+    box.appendChild(layer);
+    var pin = mk("div", "position:absolute;left:50%;top:50%;transform:translate(-50%,-100%);font-size:30px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))", "📍"); box.appendChild(pin);
+    box.appendChild(mk("div", "position:absolute;bottom:2px;right:4px;font:500 9px system-ui;color:#374151;background:rgba(255,255,255,.75);padding:0 3px;border-radius:3px", "© OpenStreetMap"));
+    return box;
+  }
+  function moLocCard(loc, T) {
+    var a = mk("a", "display:block;margin:10px 12px 0;border-radius:14px;overflow:hidden;border:1px solid " + T.border + ";text-decoration:none;color:" + T.text);
+    a.href = "https://maps.google.com/?q=" + loc.lat + "," + loc.lng; a.target = "_blank"; a.rel = "noopener";
+    a.appendChild(moMapTiles(loc.lat, loc.lng, 15, 0, 150));
+    var row = mk("div", "display:flex;align-items:center;gap:6px;padding:9px 12px;background:" + T.card + ";font:700 13px system-ui");
+    row.appendChild(moIcon(MI.pin, 16, T.danger)); row.appendChild(mk("span", "flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis", loc.label || L("موقع مُشارَك", "Shared location")));
+    row.appendChild(mk("span", "color:" + T.muted + ";font-weight:600", L("فتح ↗", "Open ↗"))); a.appendChild(row);
+    return a;
+  }
   function moPoll(p, T) {
     var votes = p.votes || {}, mine = votes[state.uid], total = 0, cnt = p.poll.opts.map(function () { return 0; });
     Object.keys(votes).forEach(function (u) { var i = votes[u]; if (cnt[i] != null) { cnt[i]++; total++; } });
@@ -2214,7 +2247,7 @@
       });
     } else {
       add(L("💬 مراسلة ", "💬 Message ") + moName(p.by, p.name), "", function () { try { openDm(p.by); } catch (e) { openDmWith(p.by); } });
-      add(L("🙈 إخفاء لحظات ", "🙈 Hide moments from ") + moName(p.by, p.name), "", function () { var m = moMuted(); m[p.by] = 1; lsSet(MO_MUTE_KEY, m); moEmit(); toast(L("لن تظهر لك لحظاته — تُعيدها من ⚙︎ في أعلى اللحظات", "Hidden — undo from ⚙︎ at the top")); });
+      add(L("🙈 إخفاء لحظات ", "🙈 Hide moments from ") + moName(p.by, p.name), "", function () { var m = lsGet(MO_MUTE_KEY, {}) || {}; m[p.by] = 1; (mo.prefs && mo.prefs.mute || []).forEach(function (u) { m[u] = 1; }); moSetMute(m); moEmit(); toast(L("لن تظهر لك لحظاته — تُعيدها من ⚙︎ في أعلى اللحظات", "Hidden — undo from ⚙︎ at the top")); });
       add(L("🚩 إبلاغ عن اللحظة", "🚩 Report moment"), "danger", function () {
         call("report.create", { target: p.by, reason: "other", note: ("moment " + p.id + ": " + (p.text || "")).slice(0, 480) }).then(function () { toast(L("وصلنا بلاغك ✓ — سنراجعه", "Report sent ✓")); }, function (e) { toast(L("تعذّر الإرسال: ", "Couldn't send: ") + ((e && e.message) || e)); });
       });
@@ -2235,12 +2268,12 @@
         moPickPeople(L("المقرّبون", "Close friends"), pr.close, function (u) { call("moment.prefs", { close: u }).then(function (r) { mo.prefs = { close: r.close || [], hide: r.hide || [] }; toast(L("حُفظ ✓", "Saved ✓")); }); });
       });
       row("🙈", L("لا تُظهر لحظاتي لـ", "Never show my moments to") + " (" + pr.hide.length + ")", L("يُستثنون من كلّ لحظةٍ جديدة", "Excluded from every new moment"), function () {
-        moPickPeople(L("لا تُظهر لحظاتي لـ", "Never show my moments to"), pr.hide, function (u) { call("moment.prefs", { hide: u }).then(function (r) { mo.prefs = { close: r.close || [], hide: r.hide || [] }; toast(L("حُفظ ✓", "Saved ✓")); }); });
+        moPickPeople(L("لا تُظهر لحظاتي لـ", "Never show my moments to"), pr.hide, function (u) { call("moment.prefs", { hide: u }).then(function (r) { mo.prefs = { close: r.close || [], hide: r.hide || [], mute: r.mute || [] }; toast(L("حُفظ ✓ — يشمل لحظاتك السابقة", "Saved ✓ — applies to earlier moments too")); }); });
       });
-      var m = moMuted(), ids = Object.keys(m);
+      var m0 = Object.assign({}, lsGet(MO_MUTE_KEY, {}) || {}); (pr.mute || []).forEach(function (u) { m0[u] = 1; }); var ids = Object.keys(m0);
       row("👁", L("أخفيتُ لحظاتهم عندي", "People whose moments I hid") + " (" + ids.length + ")", ids.length ? L("اضغط لإظهارهم من جديد", "Tap to show them again") : L("لا أحد", "Nobody"), function () {
         if (!ids.length) return;
-        moPickPeople(L("أبقِ مخفيّاً", "Keep hidden"), ids, function (keep) { var n = {}; keep.forEach(function (u) { n[u] = 1; }); lsSet(MO_MUTE_KEY, n); moEmit(); s.close(); toast(L("حُفظ ✓", "Saved ✓")); });
+        moPickPeople(L("أبقِ مخفيّاً", "Keep hidden"), ids, function (keep) { var n = {}; keep.forEach(function (u) { n[u] = 1; }); moSetMute(n); moEmit(); s.close(); toast(L("حُفظ ✓", "Saved ✓")); });
       });
     }, function (e) { s.box.appendChild(note(L("تعذّر التحميل: ", "Couldn't load: ") + ((e && e.message) || e), "#b42318")); });
   }
@@ -2407,7 +2440,7 @@
   function momentComposer(opts) {
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return; }
     opts = opts || {};
-    var T = moTheme(opts.colors), aud = { mode: "contacts" }, hide = [], media = [], loc = null, poll = null, busy = false;
+    var T = moTheme(opts.colors), aud = { mode: "contacts" }, hide = [], media = [], loc = null, poll = null, busy = false, locPending = null;
     var ov = mk("div", "position:fixed;inset:0;z-index:2147483003;background:" + T.card + ";color:" + T.text + ";display:flex;flex-direction:column;font-family:system-ui");
     ov.dir = isAr() ? "rtl" : "ltr"; document.body.appendChild(ov);
     var top = mk("div", "display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;border-bottom:1px solid " + T.border);
@@ -2458,8 +2491,10 @@
         prev.appendChild(c);
       });
       extras.innerHTML = "";
+      if (locPending) extras.appendChild(mk("div", "margin-top:10px;padding:12px;border-radius:14px;background:" + T.bg + ";font:700 13.5px system-ui;color:" + T.muted, "📍 " + L("جارٍ تحديد موقعك…", "Getting your location…")));
       if (loc) {
-        var lc = mk("div", "display:flex;align-items:center;gap:8px;margin-top:10px;padding:10px 12px;border-radius:14px;background:" + T.bg);
+        var mp = moMapTiles(loc.lat, loc.lng, 15, 0, 130); mp.style.borderRadius = "14px"; mp.style.marginTop = "10px"; extras.appendChild(mp);
+        var lc = mk("div", "display:flex;align-items:center;gap:8px;margin-top:6px;padding:10px 12px;border-radius:14px;background:" + T.bg);
         lc.appendChild(moIcon(MI.pin, 18, T.danger));
         var li = mk("input", "flex:1;border:0;background:transparent;outline:none;color:" + T.text + ";font:700 14px system-ui"); li.placeholder = L("اسم المكان (اختياريّ)", "Place name (optional)"); li.value = loc.label || ""; li.maxLength = 80;
         li.oninput = function () { loc.label = li.value; }; lc.appendChild(li);
@@ -2489,25 +2524,34 @@
     }
     fiImg.onchange = function () { var f = fiImg.files; addFiles(f, false); fiImg.value = ""; };
     fiVid.onchange = function () { var f = fiVid.files; addFiles(f, true); fiVid.value = ""; };
+    // C133b: الموقع — كان يُطلب بدقّةٍ عالية فقط (١٥ ث) فيفشل داخل البيوت، ومن ينشر قبل وصوله تُنشر اللحظة بلا موقع.
+    //        الآن: سريعٌ أوّلاً (الشبكة) ثمّ دقيق، وبطاقة «جارٍ تحديد موقعك…»، و«نشر» ينتظره.
+    function geo(hi, ms) { return new Promise(function (res, rej) { navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: hi, timeout: ms, maximumAge: 300000 }); }); }
     function addLoc() {
       if (!(navigator.geolocation)) { toast(L("هذا الجهاز لا يدعم تحديد الموقع", "Location isn't supported")); return; }
-      toast(L("📍 جارٍ تحديد موقعك…", "📍 Getting your location…"));
-      navigator.geolocation.getCurrentPosition(function (pos) { loc = { lat: pos.coords.latitude, lng: pos.coords.longitude, label: "" }; paint(); },
-        function (e) { toast(e && e.code === 1 ? L("لم يُسمح بالوصول إلى الموقع", "Location permission denied") : L("تعذّر تحديد الموقع", "Couldn't get location")); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+      if (locPending) return;
+      locPending = geo(false, 12000).catch(function (e) { if (e && e.code === 1) throw e; return geo(true, 20000); }).then(function (pos) {
+        loc = { lat: pos.coords.latitude, lng: pos.coords.longitude, label: loc && loc.label || "" }; locPending = null; paint(); return loc;
+      }, function (e) {
+        locPending = null; paint();
+        toast(e && e.code === 1 ? L("لم يُسمح بالوصول إلى الموقع — فعّله من إعدادات الهاتف لسوا", "Location permission denied — enable it for Sawa in settings") : L("تعذّر تحديد الموقع — جرّب في مكانٍ مكشوف", "Couldn't get your location — try outdoors"));
+        return null;
+      });
+      paint();
     }
     post.onclick = function () {
       if (busy) return;
       var text = ta.value.trim(), pl = null;
       if (poll) { var opts2 = poll.opts.map(function (o) { return o.trim(); }).filter(Boolean); if (opts2.length < 2) { toast(L("الاستطلاع يحتاج خيارين على الأقلّ", "A poll needs at least 2 options")); return; } pl = { q: poll.q.trim(), opts: opts2 }; }
-      if (!text && !media.length && !pl && !loc) { toast(L("اكتب شيئاً أو أضف صورة", "Write something or add a photo")); return; }
+      if (!text && !media.length && !pl && !loc && !locPending) { toast(L("اكتب شيئاً أو أضف صورة", "Write something or add a photo")); return; }
       busy = true; post.disabled = true; post.style.opacity = ".6";
-      var pid = newPid(), out = [], k = 0;
+      var pid = newPid(), out = [], k = 0, waitLoc = locPending ? (post.textContent = L("انتظار الموقع…", "Waiting for location…"), locPending) : Promise.resolve();
       var step = function () {
         if (k >= media.length) return Promise.resolve();
         var m = media[k++]; post.textContent = L("رفع ", "Uploading ") + k + "/" + media.length + "…";
         return moUpload(pid, m.blob).then(function (mid) { out.push({ mid: mid, t: m.video ? "video" : "image", thumb: m.thumb, w: m.w, h: m.h, dur: m.dur }); return step(); });
       };
-      step().then(function () {
+      waitLoc.then(step).then(function () {
         post.textContent = L("نشر…", "Posting…");
         return call("moment.post", { pid: pid, text: text, media: out, loc: loc, poll: pl, aud: aud, hide: hide });
       }).then(function (r) {
