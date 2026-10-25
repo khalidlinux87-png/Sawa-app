@@ -2209,13 +2209,20 @@
     else if (n === 3) { g.style.gridTemplateColumns = "2fr 1fr"; g.style.gridTemplateRows = "1fr 1fr"; }
     else g.style.gridTemplateColumns = "1fr 1fr";
     m.forEach(function (it, i) {
-      var ratio = n === 1 && it.w && it.h ? Math.max(0.6, Math.min(1.6, it.w / it.h)) : 1;
-      var cell = mk("button", "position:relative;border:0;padding:0;overflow:hidden;background:#111 center/cover no-repeat;" + (n === 1 ? "aspect-ratio:" + ratio + ";max-height:520px" : "aspect-ratio:1") + (n === 3 && i === 0 ? ";grid-row:span 2;aspect-ratio:auto" : ""));
-      if (it.thumb) cell.style.backgroundImage = "url(" + it.thumb + ")";
+      // C137: كانت max-height تُضيّق عرض الفيديو الطوليّ فيظهر شريطٌ رماديّ بجانبه ⇒ نسبةٌ لا تقلّ عن ٤:٥ وعرضٌ كامل (الزائد يُقصّ)
+      var ratio = n === 1 && it.w && it.h ? Math.max(0.8, Math.min(1.6, it.w / it.h)) : 1;
+      var cell = mk("button", "position:relative;width:100%;border:0;padding:0;overflow:hidden;background:#111 center/cover no-repeat;" + (n === 1 ? "aspect-ratio:" + ratio : "aspect-ratio:1") + (n === 3 && i === 0 ? ";grid-row:span 2;aspect-ratio:auto" : ""));
+      var cover = it.poster || it.thumb;   // C137: غلاف الفيديو بدقّةٍ واضحة (poster) — والقديم مصغّرٌ ضبابيّ
+      if (cover) cell.style.backgroundImage = "url(" + cover + ")";
       var shown = false;
       var load = function () {
         moMedia(p.id, it).then(function (u) {
-          if (it.t === "video") { var v = mk("video", "position:absolute;inset:0;width:100%;height:100%;object-fit:cover"); v.src = u; v.muted = true; v.playsInline = true; v.preload = "metadata"; if (it.thumb) v.poster = it.thumb; cell.insertBefore(v, cell.firstChild); }
+          if (it.t === "video") {
+            var v = mk("video", "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:transparent"); v.muted = true; v.playsInline = true; v.preload = "auto";
+            if (it.poster) v.poster = it.poster;
+            else v.addEventListener("loadeddata", function () { cell.style.backgroundImage = "none"; });   // لحظاتٌ قديمة: أوّل إطارٍ حقيقيّ بدل المصغّر الضبابيّ
+            v.src = u + "#t=0.5"; cell.insertBefore(v, cell.firstChild);
+          }
           else { cell.style.backgroundImage = "url(" + u + ")"; }
           shown = true;
         }).catch(function () { cell.appendChild(mk("div", "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font:700 12px system-ui;background:rgba(0,0,0,.35)", L("تعذّر التحميل — اضغط", "Failed — tap"))); });
@@ -2362,7 +2369,7 @@
       moMedia(p.id, it).then(function (u) {
         stage.innerHTML = "";
         var el = it.t === "video" ? mk("video", "max-width:100%;max-height:100%") : mk("img", "max-width:100%;max-height:100%;object-fit:contain");
-        el.src = u; if (it.t === "video") { el.controls = true; el.playsInline = true; el.autoplay = true; }
+        el.src = u; if (it.t === "video") { el.controls = true; el.playsInline = true; el.autoplay = true; if (it.poster) el.poster = it.poster; }
         stage.appendChild(el);
         if (m.length > 1) [[-1, "‹"], [1, "›"]].forEach(function (z) {
           var b = mk("button", "position:absolute;top:50%;transform:translateY(-50%);" + ((z[0] < 0) !== isAr() ? "left" : "right") + ":8px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;font:800 22px system-ui", z[1]);
@@ -2726,14 +2733,45 @@
     ov.onclick = function () { ov.remove(); }; ov.appendChild(bar); document.body.appendChild(ov);
     return ov;
   }
-  // ضغطةٌ مطوّلة (لمس أو فأرة) — تمنع تحديد النصّ وقائمة النظام
+  // ضغطةٌ مطوّلة — C138: بأحداث اللمس (كـlongPress في التطبيق) لا بأحداث المؤشّر: على أندرويد كان النظام يُلغي المؤشّر (pointercancel)
+  //   قبل انتهاء المهلة فلا تُفتح القائمة. contextmenu احتياطٌ: إن ألغى النظام اللمسة فضغطته المطوّلة تفتحها هو، والزرّ الأيمن على الحاسوب.
   function moLong(el, fn, ms) {
-    var t = null, fired = false, x0 = 0, y0 = 0;
-    el.addEventListener("pointerdown", function (e) { fired = false; x0 = e.clientX; y0 = e.clientY; clearTimeout(t); t = setTimeout(function () { fired = true; try { if (navigator.vibrate) navigator.vibrate(8); } catch (x) {} fn(); }, ms || 430); });
-    el.addEventListener("pointermove", function (e) { if (Math.abs(e.clientX - x0) > 10 || Math.abs(e.clientY - y0) > 10) clearTimeout(t); });
-    ["pointerup", "pointerleave", "pointercancel"].forEach(function (ev) { el.addEventListener(ev, function () { clearTimeout(t); }); });
-    el.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+    var t = null, fired = false, x0 = 0, y0 = 0, at = 0;
+    var clear = function () { if (t) { clearTimeout(t); t = null; } };
+    var go = function () { t = null; fired = true; try { if (navigator.vibrate) navigator.vibrate(12); } catch (x) {} fn(); };
+    el.addEventListener("touchstart", function (e) { at = Date.now(); fired = false; clear(); if (!e.touches || e.touches.length !== 1) return; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t = setTimeout(go, ms || 450); }, { passive: true });
+    el.addEventListener("touchmove", function (e) { var q = e.touches && e.touches[0]; if (q && Math.hypot(q.clientX - x0, q.clientY - y0) > 10) clear(); }, { passive: true });
+    el.addEventListener("touchend", function (e) { clear(); if (fired && e.cancelable) e.preventDefault(); });
+    el.addEventListener("touchcancel", clear);
+    el.addEventListener("mousedown", function (e) { if (Date.now() - at < 1500 || e.button !== 0) return; fired = false; clear(); x0 = e.clientX; y0 = e.clientY; t = setTimeout(go, ms || 450); });
+    el.addEventListener("mousemove", function (e) { if (t && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) clear(); });
+    el.addEventListener("mouseup", clear); el.addEventListener("mouseleave", clear);
+    el.addEventListener("contextmenu", function (e) { e.preventDefault(); e.stopPropagation(); if (fired) return; clear(); fired = true; fn(); });
     el.addEventListener("click", function (e) { if (fired) { fired = false; e.stopPropagation(); e.preventDefault(); } }, true);
+  }
+
+  // C137: غلاف الفيديو — إطارٌ واضح (حتّى ٧٢٠ بكسل، JPEG ≤ ~٩٠ كيلوبايت) بدل المصغّر الضبابيّ (٨ آلاف حرف)
+  function moPosterOf(blob, dur) {
+    return new Promise(function (res, rej) {
+      var url = URL.createObjectURL(blob), v = document.createElement("video"), done = false;
+      var end = function (x) { if (done) return; done = true; try { URL.revokeObjectURL(url); } catch (e) {} if (x) res(x); else rej(new Error("poster")); };
+      v.muted = true; v.playsInline = true; v.preload = "auto";
+      v.onloadeddata = function () { try { v.currentTime = Math.min(1, Math.max(0.1, (v.duration || dur || 2) * 0.1)); } catch (e) { end(null); } };
+      v.onseeked = function () {
+        try {
+          var w = v.videoWidth, h = v.videoHeight; if (!w || !h) return end(null);
+          var k = Math.min(1, 720 / Math.max(w, h)), c = document.createElement("canvas"); c.width = Math.round(w * k); c.height = Math.round(h * k);
+          c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+          var q = 0.8, d = c.toDataURL("image/jpeg", q);
+          while (d.length > 120000 && q > 0.4) { q -= 0.1; d = c.toDataURL("image/jpeg", q); }
+          if (d.length > 120000) { var c2 = document.createElement("canvas"); c2.width = Math.round(c.width * 0.7); c2.height = Math.round(c.height * 0.7); c2.getContext("2d").drawImage(c, 0, 0, c2.width, c2.height); d = c2.toDataURL("image/jpeg", 0.7); }
+          end(d.length <= 120000 ? d : null);
+        } catch (e) { end(null); }
+      };
+      v.onerror = function () { end(null); };
+      setTimeout(function () { end(null); }, 8000);
+      v.src = url;
+    });
   }
   function moCopySheet(text) { copyText(String(text || "")); toast(L("نُسخ النصّ ✓", "Text copied ✓")); }
   function moBurst(el) {
@@ -2922,7 +2960,9 @@
         (video ? prepareVideo(f) : prepareImage(f)).then(function (r) {
           if (video && r.duration && r.duration > 31) { toast(L("الفيديو أطول من ٣٠ ثانية — قصّه أوّلاً", "Video is longer than 30 s — trim it first")); return; }
           if (!video && media.length >= 4) return;
-          var b = r.blob || f; media.push({ blob: b, video: video, url: URL.createObjectURL(b), thumb: r.thumb || null, w: r.w || null, h: r.h || null, dur: r.duration || null }); paint();
+          var b = r.blob || f, item = { blob: b, video: video, url: URL.createObjectURL(b), thumb: r.thumb || null, w: r.w || null, h: r.h || null, dur: r.duration || null };
+          media.push(item); paint();
+          if (video) item.posterP = moPosterOf(b, r.duration).then(function (pp) { item.poster = pp; return pp; }, function () { return null; });   // C137
         }).catch(function () { toast(L("تعذّر قراءة الملفّ", "Couldn't read the file")); });
       });
     }
@@ -2953,7 +2993,7 @@
       var step = function () {
         if (k >= media.length) return Promise.resolve();
         var m = media[k++]; post.textContent = L("رفع ", "Uploading ") + k + "/" + media.length + "…";
-        return moUpload(pid, m.blob).then(function (mid) { out.push({ mid: mid, t: m.video ? "video" : "image", thumb: m.thumb, w: m.w, h: m.h, dur: m.dur }); return step(); });
+        return Promise.resolve(m.posterP || null).then(function () { return moUpload(pid, m.blob); }).then(function (mid) { out.push({ mid: mid, t: m.video ? "video" : "image", thumb: m.thumb, poster: m.poster || null, w: m.w, h: m.h, dur: m.dur }); return step(); });
       };
       waitLoc.then(step).then(function () {
         post.textContent = L("نشر…", "Posting…");
