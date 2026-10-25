@@ -66,16 +66,16 @@ function CallOverlay({ contactName, callType, onEnd, requireApproval = false, av
         React.createElement("div", { className: "flex flex-col items-center" },
             React.createElement("div", { className: "w-24 h-24 rounded-full flex items-center justify-center mb-4", style: { backgroundColor: colors.primaryLight } },
                 React.createElement(User, { size: 40, color: colors.primaryDark })),
-            React.createElement("h2", { className: "text-lg font-extrabold text-white" }, isGroupCall ? "مكالمة جماعية" : contactName),
+            React.createElement("h2", { className: "text-lg font-extrabold text-white" }, isGroupCall ? tl("مكالمة جماعية", "Group call") : contactName),
             React.createElement("p", { className: "text-sm mt-1", style: { color: "#8A93A0" } }, isGroupCall
-                ? (extras.length + 1) + " مشاركين · " + (callType === "video" ? "فيديو" : "صوتية")
-                : (callType === "video" ? "مكالمة فيديو مشفّرة" : "مكالمة صوتية مشفّرة")),
-            React.createElement("p", { className: "text-xs mt-2", style: { color: "#5AA9E6" } }, status === "waitingApproval" ? "بانتظار موافقة الطرف الآخر…" : status === "ringing" ? "يتصل…" : status === "ending" ? "جارٍ الإنهاء…" : formatDuration(duration)),
+                ? (extras.length + 1) + tl(" مشاركين · ", " participants · ") + (callType === "video" ? tl("فيديو", "Video") : tl("صوتية", "Voice"))
+                : (callType === "video" ? tl("مكالمة فيديو مشفّرة", "Encrypted video call") : tl("مكالمة صوتية مشفّرة", "Encrypted voice call"))),
+            React.createElement("p", { className: "text-xs mt-2", style: { color: "#5AA9E6" } }, status === "waitingApproval" ? tl("بانتظار موافقة الطرف الآخر…", "Waiting for approval…") : status === "ringing" ? tl("يتصل…", "Calling…") : status === "ending" ? tl("جارٍ الإنهاء…", "Ending…") : formatDuration(duration)),
             isGroupCall && (React.createElement("div", { className: `flex ${rowStart()} flex-wrap justify-center gap-2 mt-4 px-4` }, [{ name: contactName, state: "connected" }, ...extras].map((p) => (React.createElement("div", { key: p.name, className: `flex ${rowStart()} items-center gap-1.5 px-2.5 py-1.5 rounded-full`, style: { backgroundColor: "#262B33" } },
                 React.createElement("span", { className: "w-1.5 h-1.5 rounded-full", style: { backgroundColor: p.state === "connected" ? "#22C55E" : "#F59E0B" } }),
                 React.createElement("span", { className: "text-[11px] font-bold text-white" }, p.name),
-                React.createElement("span", { className: "text-[9px]", style: { color: "#8A93A0" } }, p.state === "connected" ? "" : "يرن…"),
-                p.name !== contactName && (React.createElement("button", { onClick: () => removePerson(p.name), "aria-label": "إخراج " + p.name },
+                React.createElement("span", { className: "text-[9px]", style: { color: "#8A93A0" } }, p.state === "connected" ? "" : tl("يرن…", "Ringing…")),
+                p.name !== contactName && (React.createElement("button", { onClick: () => removePerson(p.name), "aria-label": tl("إخراج ", "Remove ") + p.name },
                     React.createElement(X, { size: 11, color: "#8A93A0" }))))))))),
         callType === "video" && status === "connected" && (React.createElement("div", { className: "w-full flex-1 mx-6 rounded-2xl flex items-center justify-center relative overflow-hidden", style: { backgroundColor: "#171B21" } }, camOff ? (React.createElement("div", { className: "flex flex-col items-center gap-2" },
             React.createElement(VideoOff, { size: 36, color: "#8A93A0" }),
@@ -83,7 +83,7 @@ function CallOverlay({ contactName, callType, onEnd, requireApproval = false, av
             React.createElement(Video, { size: 40, color: "#8A93A0" }),
             React.createElement("button", { onClick: () => setFrontCam((v) => !v), className: `absolute top-3 left-3 px-2.5 py-1.5 rounded-xl flex ${rowStart()} items-center gap-1.5`, style: { backgroundColor: "#00000088" }, "aria-label": t("tbdyl_alkamyra") },
                 React.createElement(RotateCcw, { size: 13, color: "#fff" }),
-                React.createElement("span", { className: "text-[10px] font-bold text-white" }, frontCam ? "أمامية" : "خلفية")))))),
+                React.createElement("span", { className: "text-[10px] font-bold text-white" }, frontCam ? tl("أمامية", "Front") : tl("خلفية", "Back"))))))),
         React.createElement("div", { className: `flex ${rowStart()} items-center gap-6` },
             React.createElement("button", { "aria-label": t("ktm"), onClick: () => setMuted(!muted), className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: muted ? colors.primary : "#262B33" } },
                 React.createElement(MicOff, { size: 20, color: "#fff" })),
@@ -91,7 +91,7 @@ function CallOverlay({ contactName, callType, onEnd, requireApproval = false, av
                 React.createElement(PhoneOff, { size: 24, color: "#fff" })),
             React.createElement("button", { onClick: () => setSpeakerOn(!speakerOn), className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: speakerOn ? colors.primary : "#262B33" }, "aria-label": t("mkbr_alswt") },
                 React.createElement(Volume2, { size: 20, color: "#fff" })),
-            callType === "video" && (React.createElement("button", { onClick: () => setCamOff(!camOff), className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: camOff ? colors.primary : "#262B33" }, "aria-label": camOff ? "تشغيل الكاميرا" : "إيقاف الكاميرا" }, camOff ? React.createElement(VideoOff, { size: 20, color: "#fff" }) : React.createElement(Video, { size: 20, color: "#fff" }))),
+            callType === "video" && (React.createElement("button", { onClick: () => setCamOff(!camOff), className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: camOff ? colors.primary : "#262B33" }, "aria-label": camOff ? tl("تشغيل الكاميرا", "Turn camera on") : tl("إيقاف الكاميرا", "Turn camera off") }, camOff ? React.createElement(VideoOff, { size: 20, color: "#fff" }) : React.createElement(Video, { size: 20, color: "#fff" }))),
             status === "connected" && availableContacts.length > 0 && (React.createElement("button", { onClick: () => setShowAddPeople(true), className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#262B33" }, "aria-label": t("idafa_shkhs_llmkalma") },
                 React.createElement(UserPlus, { size: 20, color: "#fff" })))),
         showAddPeople && (React.createElement(React.Fragment, null,
@@ -136,7 +136,7 @@ function GroupCallOverlay({ groupName, members, callType, onEnd }) {
         React.createElement("div", { className: "flex flex-col items-center" },
             React.createElement("h2", { className: "text-lg font-extrabold text-white" }, groupName),
             React.createElement("p", { className: "text-sm mt-1", style: { color: "#8A93A0" } },
-                callType === "video" ? "مكالمة فيديو جماعية" : "مكالمة صوتية جماعية",
+                callType === "video" ? tl("مكالمة فيديو جماعية", "Group video call") : tl("مكالمة صوتية جماعية", "Group voice call"),
                 " \u00B7 ",
                 joinedIds.length,
                 "/",
@@ -148,7 +148,7 @@ function GroupCallOverlay({ groupName, members, callType, onEnd }) {
             return (React.createElement("div", { key: m.id, className: "rounded-xl flex flex-col items-center justify-center py-4", style: { backgroundColor: "#171B21", opacity: joined ? 1 : 0.4 } },
                 React.createElement(Pic, { photo: m.photo || null, letter: (_a = m.name) === null || _a === void 0 ? void 0 : _a.charAt(0), size: 48, bg: colors.primary, color: "#fff", className: "mb-1.5" }),
                 React.createElement("span", { className: "text-xs font-bold text-white" }, m.name),
-                React.createElement("span", { className: "text-[10px] mt-0.5", style: { color: joined ? "#5AA9E6" : "#8A93A0" } }, joined ? "متّصل" : "جارٍ الانضمام…")));
+                React.createElement("span", { className: "text-[10px] mt-0.5", style: { color: joined ? "#5AA9E6" : "#8A93A0" } }, joined ? tl("متّصل", "Connected") : tl("جارٍ الانضمام…", "Joining…"))));
         })),
         React.createElement("div", { className: `flex ${rowStart()} items-center gap-6` },
             React.createElement("button", { "aria-label": t("ktm"), onClick: () => setMuted(!muted), className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: muted ? colors.primary : "#262B33" } },
@@ -212,7 +212,7 @@ function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, 
                 React.createElement("div", { style: { height: "100%", width: Math.round(prog * 100) + "%", backgroundColor: mine ? "#fff" : colors.primary, transition: "width .25s linear" } })),
             React.createElement("span", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, !url && loading ? "⏳ " + duration : !url && failed ? "↻ " + tl("أعد التنزيل", "Retry") : (playing || elapsed) ? Math.floor(elapsed / 60) + ":" + String(elapsed % 60).padStart(2, "0") : duration)),
         transcript && (React.createElement("button", { onClick: () => setShowTranscript(!showTranscript), className: "mt-1.5" },
-            React.createElement("span", { className: "text-[10px] font-bold underline", style: { color: mine ? "#ffffffdd" : colors.primary } }, showTranscript ? "إخفاء النص" : "عرض النص"))),
+            React.createElement("span", { className: "text-[10px] font-bold underline", style: { color: mine ? "#ffffffdd" : colors.primary } }, showTranscript ? tl("إخفاء النص", "Hide text") : tl("عرض النص", "Show text")))),
         transcript && showTranscript && (React.createElement("p", { className: "text-xs mt-1", style: { color: mine ? "#fff" : colors.text } }, transcript))));
 }
 // ============================================================
@@ -555,7 +555,7 @@ function MediaBubble({ m, onView }) {
                 : pill(isVid ? tl("فيديو", "Video") : tl("صورة", "Photo"))));
 }
 if (typeof document !== "undefined" && !document.getElementById("sawa-spin-css")) { try { const c = document.createElement("style"); c.id = "sawa-spin-css"; c.textContent = "@keyframes sawaSpin{to{transform:rotate(360deg)}}"; document.head.appendChild(c); } catch (e) { } }
-function MediaUnavailable({ label = "الوسائط غير متاحة", note = "لم تُحفظ بين الجلسات في وضع المعاينة" }) {
+function MediaUnavailable({ label = tl("الوسائط غير متاحة", "Media unavailable"), note = tl("لم تُحفظ بين الجلسات في وضع المعاينة", "Not kept between sessions in preview mode") }) {
     const { colors } = useTheme();
     return (React.createElement("div", { className: "rounded-xl flex flex-col items-center justify-center gap-1 px-4 py-6", style: { backgroundColor: colors.border + "44", minWidth: 160 } },
         React.createElement(Images, { size: 20, color: colors.textMuted }),
@@ -909,11 +909,11 @@ function RecordingBar({ isRecording, seconds, micError, onCancel, maxSeconds }) 
             React.createElement("span", { className: "text-xs font-bold tabular-nums shrink-0", style: { color: colors.danger } },
                 Math.floor(seconds / 60), ":", String(seconds % 60).padStart(2, "0")),
             // تنبيه قبل بلوغ الحد الأقصى بعشر ثوانٍ
-            (left !== null && left <= 10) && React.createElement("span", { className: "text-[10px] shrink-0", style: { color: colors.textMuted } }, "يتبقّى " + left + " ث"),
+            (left !== null && left <= 10) && React.createElement("span", { className: "text-[10px] shrink-0", style: { color: colors.textMuted } }, tl("يتبقّى ", "") + left + tl(" ث", "s left")),
             React.createElement("span", { className: "flex-1" }),
             onCancel && React.createElement("button", { onClick: onCancel, className: `flex ${rowStart()} items-center gap-1 rounded-full px-2.5 py-1 shrink-0`, style: { backgroundColor: colors.card } },
                 React.createElement(Trash2, { size: 12, color: colors.danger }),
-                React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.danger } }, "إلغاء"))),
+                React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.danger } }, tl("إلغاء", "Cancel")))),
         micError && React.createElement("div", { className: "px-3 py-1.5" },
             React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } }, t("tadhr_alwswl_llmykrwfwn_takd")))));
 }
@@ -1112,9 +1112,9 @@ function MediaLightbox({ items: itemsIn, startIndex = 0, onClose, onForward }) {
                 ? React.createElement("video", { src: cur.url, controls: true, className: "max-w-full max-h-full rounded-lg" })
                 : React.createElement("img", { ref: imgRef, src: cur.url, alt: t("swra_mkbra"), draggable: false, className: "max-w-full rounded-lg object-contain", style: { maxHeight: "100%", transform: `translate(${tx}px, ${ty}px) scale(${zoom})`, transition: (pinchRef.current || panRef.current) ? "none" : "transform .18s ease", transformOrigin: "center center" } })),
             // أسهم التنقّل — تظهر فقط حين يوجد ما ينتقل إليه
-            zoom === 1 && list.length > 1 && idx > 0 && React.createElement("button", { "aria-label": "السابق", onClick: () => go(-1), className: "absolute right-2 w-9 h-9 rounded-full flex items-center justify-center", style: btn },
+            zoom === 1 && list.length > 1 && idx > 0 && React.createElement("button", { "aria-label": tl("السابق", "Previous"), onClick: () => go(-1), className: "absolute right-2 w-9 h-9 rounded-full flex items-center justify-center", style: btn },
                 React.createElement(ChevronRight, { size: 20, color: "#fff" })),
-            zoom === 1 && list.length > 1 && idx < list.length - 1 && React.createElement("button", { "aria-label": "التالي", onClick: () => go(1), className: "absolute left-2 w-9 h-9 rounded-full flex items-center justify-center", style: btn },
+            zoom === 1 && list.length > 1 && idx < list.length - 1 && React.createElement("button", { "aria-label": tl("التالي", "Next"), onClick: () => go(1), className: "absolute left-2 w-9 h-9 rounded-full flex items-center justify-center", style: btn },
                 React.createElement(ChevronLeft, { size: 20, color: "#fff" }))),
         // النقاط — تُخفى إن كثرت حتى لا تمتلئ الشاشة
         list.length > 1 && list.length <= 12 && React.createElement("div", { dir: "ltr", className: "flex flex-row items-center justify-center gap-1.5 pb-2" }, list.map(function (it, n) {
@@ -1124,13 +1124,13 @@ function MediaLightbox({ items: itemsIn, startIndex = 0, onClose, onForward }) {
         React.createElement("div", { className: "flex flex-row items-center justify-center gap-8 pb-8 pt-2" },
             React.createElement("button", { onClick: handleDownload, className: "flex flex-col items-center gap-1" },
                 React.createElement("div", { className: "w-10 h-10 rounded-full flex items-center justify-center", style: btn }, React.createElement(Download, { size: 18, color: "#fff" })),
-                React.createElement("span", { className: "text-[10px]", style: { color: "#fff" } }, "تحميل")),
+                React.createElement("span", { className: "text-[10px]", style: { color: "#fff" } }, tl("تحميل", "Download"))),
             React.createElement("button", { onClick: handleShare, className: "flex flex-col items-center gap-1" },
                 React.createElement("div", { className: "w-10 h-10 rounded-full flex items-center justify-center", style: btn }, React.createElement(Share2, { size: 18, color: "#fff" })),
-                React.createElement("span", { className: "text-[10px]", style: { color: "#fff" } }, "مشاركة")),
+                React.createElement("span", { className: "text-[10px]", style: { color: "#fff" } }, tl("مشاركة", "Share"))),
             onForward && React.createElement("button", { onClick: () => onForward(cur), className: "flex flex-col items-center gap-1" },
                 React.createElement("div", { className: "w-10 h-10 rounded-full flex items-center justify-center", style: btn }, React.createElement(Forward, { size: 18, color: "#fff" })),
-                React.createElement("span", { className: "text-[10px]", style: { color: "#fff" } }, "توجيه")))));
+                React.createElement("span", { className: "text-[10px]", style: { color: "#fff" } }, tl("توجيه", "Forward"))))));
 }
 
 // C23: المحادثات السرّيّة — فوق مربّع الكتابة شريطٌ «مشفّرة بين الطرفين · رمز الأمان»، أو بوّابة التفعيل بدل الكتابة
@@ -1458,7 +1458,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
             React.createElement("span", { className: "text-xs flex-1 truncate", style: { color: colors.textMuted } },
                 t("ch_alrd_ala"),
                 replyTo.text))),
-        showStickerPicker && (React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 p-2 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } }, STICKER_SET.map((s) => (React.createElement("button", { key: s, onClick: () => { onSendSticker(s); setShowStickerPicker(false); }, className: "w-10 h-10 rounded-xl flex items-center justify-center text-xl", style: { backgroundColor: colors.bg } }, s))))),
+        showStickerPicker && React.createElement(EmojiTray, { colors, onPick: (e) => setText(composerInsert(text, e)), onSticker: (s) => { onSendSticker(s); setShowStickerPicker(false); } }),
         conversation.e2e ? React.createElement(E2eBar, { e2e: conversation.e2e }) : null,
         isBlocked ? (React.createElement("div", { className: `flex ${rowStart()} items-center justify-center gap-2 p-3 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement(Ban, { size: 14, color: colors.danger }),
@@ -1472,7 +1472,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                     const oversized = files.filter((f) => f.size > MAX_FILE_SIZE_BYTES);
                     const validFiles = files.filter((f) => f.size <= MAX_FILE_SIZE_BYTES);
                     if (oversized.length > 0) {
-                        showToast(`تعذّر إرسال ${oversized.length > 1 ? `${oversized.length} ملفات` : oversized[0].name} — الحد الأقصى ${MAX_FILE_SIZE_LABEL} في المعاينة`, "error");
+                        showToast(tl(`تعذّر إرسال ${oversized.length > 1 ? `${oversized.length} ملفات` : oversized[0].name} — الحد الأقصى ${MAX_FILE_SIZE_LABEL} في المعاينة`, `Couldn't send ${oversized.length > 1 ? `${oversized.length} files` : oversized[0].name} — max ${MAX_FILE_SIZE_LABEL} in preview`), "error");
                     }
                     if (validFiles.length === 0)
                         return;
@@ -1496,7 +1496,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                     setShowAttachMenu(false);
                     files.forEach((file, i) => {
                         if (file.size > MAX_FILE_SIZE_BYTES) {
-                            showToast(`تعذّر إرسال ${file.name} (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL} في المعاينة`, "error");
+                            showToast(tl(`تعذّر إرسال ${file.name} (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL} في المعاينة`, `Couldn't send ${file.name} (${formatFileSize(file.size)}) — max ${MAX_FILE_SIZE_LABEL} in preview`), "error");
                             return;
                         }
                         const kind = /^image\/(jpeg|png|webp|gif|heic|heif)$/i.test(file.type) ? "image" : /^video\//i.test(file.type) ? "video" : "file";
@@ -1952,7 +1952,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                     React.createElement("div", { className: "text-[11px] mb-2", style: { color: colors.textMuted } },
                         t("gc_alijmaly"),
                         m.totalAmount.toLocaleString(loc()),
-                        " \u062C.\u0633 \u00B7 ",
+                        tl(" \u062C.\u0633 \u00B7 ", " SDG · "),
                         ((_a = BILL_SPLIT_TYPES.find((x) => x.key === m.splitType)) ? t(_a.labelKey) : t("spl_baltsawy"))),
                     React.createElement("div", { className: "h-1.5 rounded-full mb-1", style: { backgroundColor: colors.border } },
                         React.createElement("div", { className: "h-1.5 rounded-full", style: { width: `${pct}%`, backgroundColor: colors.success } })),
@@ -1992,7 +1992,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                             m.raised.toLocaleString(loc()),
                             t("gc_mn"),
                             m.goal.toLocaleString(loc()),
-                            " \u062C.\u0633 (",
+                            tl(" \u062C.\u0633 (", " SDG ("),
                             pct,
                             "%)"),
                         m.deadline && React.createElement("span", null,
@@ -2060,7 +2060,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                         canEdit && (React.createElement("button", { onClick: () => { setEditingPollId(m.id); setPollQuestion(m.question); setPollOptions(m.options.map((o) => o.text)); openTool("poll"); } },
                             React.createElement(Edit3, { size: 12, color: colors.textMuted })))),
                     (m.deadline || m.editedAt) && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-2` },
-                        m.deadline && (React.createElement("span", { className: "text-[10px] font-bold", style: { color: isExpired ? colors.danger : colors.textMuted } }, isExpired ? t("gc_anthat_almhla") : `تنتهي ${new Date(m.deadline).toLocaleString(loc(), { day: "numeric", month: "short", hour: "numeric", minute: "numeric" })}`)),
+                        m.deadline && (React.createElement("span", { className: "text-[10px] font-bold", style: { color: isExpired ? colors.danger : colors.textMuted } }, isExpired ? t("gc_anthat_almhla") : tl(`تنتهي ${new Date(m.deadline).toLocaleString(loc(), { day: "numeric", month: "short", hour: "numeric", minute: "numeric" })}`, `Ends ${new Date(m.deadline).toLocaleString(loc(), { day: "numeric", month: "short", hour: "numeric", minute: "numeric" })}`))),
                         m.editedAt && React.createElement("span", { className: "text-[9px]", style: { color: colors.textMuted } }, t("madl")))),
                     m.options.map((opt, i) => {
                         const pct = totalVotes > 0 ? Math.round((opt.votes.length / totalVotes) * 100) : 0;
@@ -2122,7 +2122,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
             }
             return out;
             })()),
-        showGStickers && (React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 p-2 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } }, STICKER_SET.map((st) => (React.createElement("button", { key: st, onClick: () => { onSendSticker(st); setShowGStickers(false); }, className: "w-10 h-10 rounded-xl flex items-center justify-center text-xl", style: { backgroundColor: colors.bg } }, st))))),
+        showGStickers && React.createElement(EmojiTray, { colors, onPick: (e) => handleTextChange(composerInsert(text, e)), onSticker: (st) => { onSendSticker(st); setShowGStickers(false); } }),
         showMentions && (React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 p-2 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } }, group.members.filter((m) => m.id !== myUserId).map((m) => (React.createElement("button", { key: m.id, onClick: () => insertMention(m.name), className: "text-xs rounded-full border px-2.5 py-1", style: { borderColor: colors.border, color: colors.text } },
             "@",
             m.name))))),
@@ -2164,9 +2164,9 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 billSplitType === "custom" && (React.createElement("p", { className: "text-[10px]", style: { color: billCustomSum === Number(billTotal) ? colors.success : colors.danger } },
                     t("gc_almjmwa"),
                     billCustomSum.toLocaleString(loc()),
-                    " \u0645\u0646 ",
+                    tl(" \u0645\u0646 ", " of "),
                     (Number(billTotal) || 0).toLocaleString(loc()),
-                    " \u062C.\u0633")))),
+                    tl(" \u062C.\u0633", " SDG"))))),
             React.createElement("button", { onClick: handleCreateBillSplit, disabled: !canCreateBillSplit, className: "w-full mt-2 py-3 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary, opacity: canCreateBillSplit ? 1 : 0.5 } }, t("insha_aqtsam_alfatwra")))),
         showFundraiserForm && (React.createElement(ToolSheet, { title: t("jma_tbraat"), onClose: () => setShowFundraiserForm(false) },
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: fundCause, onChange: (e) => setFundCause(e.target.value), placeholder: t("alsbb_mthal_msaada_asra"), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
@@ -2244,7 +2244,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                     e.target.value = "";
                     setShowAttachMenu(false);
                     const big = files.filter((f) => f.size > MAX_FILE_SIZE_BYTES);
-                    if (big.length) showToast(`تعذّر إرسال ${big.length > 1 ? big.length + " ملفات" : big[0].name} — الحد الأقصى ${MAX_FILE_SIZE_LABEL}`, "error");
+                    if (big.length) showToast(tl(`تعذّر إرسال ${big.length > 1 ? big.length + " ملفات" : big[0].name} — الحد الأقصى ${MAX_FILE_SIZE_LABEL}`, `Couldn't send ${big.length > 1 ? big.length + " files" : big[0].name} — max ${MAX_FILE_SIZE_LABEL}`), "error");
                     files.filter((f) => f.size <= MAX_FILE_SIZE_BYTES).forEach((file) => {
                         const isVideo = file.type.startsWith("video/");
                         if (group.cloud) { onSendFile(file.name, file.size, null, isVideo ? "video" : "image", file); return; }
@@ -2260,7 +2260,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                     setShowAttachMenu(false);
                     files.forEach((file, i) => {
                         if (file.size > MAX_FILE_SIZE_BYTES) {
-                            showToast(`تعذّر إرسال ${file.name} (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL} في المعاينة`, "error");
+                            showToast(tl(`تعذّر إرسال ${file.name} (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL} في المعاينة`, `Couldn't send ${file.name} (${formatFileSize(file.size)}) — max ${MAX_FILE_SIZE_LABEL} in preview`), "error");
                             return;
                         }
                         const kind = /^image\/(jpeg|png|webp|gif|heic|heif)$/i.test(file.type) ? "image" : /^video\//i.test(file.type) ? "video" : "file";
@@ -2396,7 +2396,7 @@ function UnifiedSearchScreen({ conversations, groups, shipments, taxiTripsHistor
                         React.createElement("div", { className: "text-xs", style: { color: colors.text } }, m.text))))))),
             matchedGroupMessages.length > 0 && (React.createElement(React.Fragment, null,
                 React.createElement("h4", { className: "text-xs font-extrabold mb-2 mt-3", style: { color: colors.text } },
-                    "\u0631\u0633\u0627\u0626\u0644 \u0645\u0637\u0627\u0628\u0642\u0629 (",
+                    tl("\u0631\u0633\u0627\u0626\u0644 \u0645\u0637\u0627\u0628\u0642\u0629 (", "Matching messages ("),
                     matchedGroupMessages[0].groupName,
                     ")"),
                 matchedGroupMessages.map((m) => (React.createElement("button", { key: m.id, onClick: () => onOpenGroup(m.groupData), className: `w-full ${textStart()}` },
@@ -2437,7 +2437,7 @@ function NewBroadcastListScreen({ conversations, onCreate, onClose }) {
             React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, t("asm_alqayma_lk_ant")),
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: name, onChange: (e) => setName(e.target.value), placeholder: t("mthal_asdqa_alaml"), className: "w-full border rounded-xl px-3 py-3 text-sm mb-4", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
             React.createElement("label", { className: "text-xs font-bold mb-2 block", style: { color: colors.text } },
-                "\u0627\u062E\u062A\u0631 \u0627\u0644\u0645\u0633\u062A\u0644\u0645\u064A\u0646 (",
+                tl("\u0627\u062E\u062A\u0631 \u0627\u0644\u0645\u0633\u062A\u0644\u0645\u064A\u0646 (", "Choose recipients ("),
                 selectedIds.length,
                 ")"),
             conversations.length === 0 && React.createElement("p", { className: "text-xs text-center mt-4", style: { color: colors.textMuted } }, t("ma_fyh_mhadthat_bad")),
@@ -2462,7 +2462,7 @@ function BroadcastListScreen({ list, conversations, myUserId, onSend, onBack }) 
         React.createElement("div", { className: `p-3 border-b flex ${rowStart()} items-center gap-1.5`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement(Users2, { size: 13, color: colors.primary }),
             React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } },
-                "\u0628\u062B \u0625\u0644\u0649 ",
+                tl("\u0628\u062B \u0625\u0644\u0649 ", "Broadcast to "),
                 recipients.length,
                 ": ",
                 recipients.map((r) => r.name).join("، "))),
@@ -2472,9 +2472,9 @@ function BroadcastListScreen({ list, conversations, myUserId, onSend, onBack }) 
                 React.createElement("div", { className: "max-w-[78%] rounded-2xl border px-3 py-2", style: { backgroundColor: colors.primary, borderColor: colors.border } },
                     React.createElement("span", { className: "text-sm text-white" }, m.text)),
                 React.createElement("span", { className: "text-[9px] mt-0.5", style: { color: colors.textMuted } },
-                    "\u0628\u064F\u062B\u064E\u0651\u062A \u0644\u0640",
+                    tl("\u0628\u064F\u062B\u064E\u0651\u062A \u0644\u0640", "Sent to "),
                     recipients.length,
-                    " \u0634\u062E\u0635"))))),
+                    tl(" \u0634\u062E\u0635", " people")))))),
         React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-2 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement(ChatComposerInput, { value: text, onChange: setText, placeholder: t("aktb_rsala_llbth"), onEnter: handleSend }),
             React.createElement("button", { "aria-label": t("irsal"), onClick: handleSend, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary } },
@@ -2597,7 +2597,7 @@ function NotificationCenterScreen({ notifications, onMarkRead, onBack }) {
         React.createElement(TopBar, { title: t("mrkz_alishaarat"), onBack: onBack }),
         availableCategories.length > 2 && (React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 px-4 py-2.5 border-b`, style: { borderColor: colors.border } }, availableCategories.map((c) => React.createElement(Chip, { key: c.key, label: t(c.labelKey), active: category === c.key, onPress: () => setCategory(c.key) })))),
         React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
-            filtered.length === 0 && React.createElement(EmptyState, { icon: BellIcon, label: category === "all" ? "لا توجد إشعارات جديدة" : "لا توجد إشعارات بهذا التصنيف" }),
+            filtered.length === 0 && React.createElement(EmptyState, { icon: BellIcon, label: category === "all" ? tl("لا توجد إشعارات جديدة", "No new notifications") : tl("لا توجد إشعارات بهذا التصنيف", "No notifications in this category") }),
             filtered.map((n) => {
                 const Icon = NOTIF_TYPE_ICONS[n.type] || BellIcon;
                 return (React.createElement("button", { key: n.id, onClick: () => onMarkRead(n.id), className: `w-full ${textStart()}` },
@@ -2622,7 +2622,7 @@ function SessionsScreen({ sessions, onRevoke, onRevokeAll, onBack }) {
                 React.createElement("div", { className: "flex-1" },
                     React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, s.device),
                     React.createElement("div", { className: "text-xs mt-0.5", style: { color: colors.textMuted } },
-                        "\u0622\u062E\u0631 \u0646\u0634\u0627\u0637: ",
+                        tl("\u0622\u062E\u0631 \u0646\u0634\u0627\u0637: ", "Last active: "),
                         s.lastActive)),
                 React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => onRevoke(s.id) },
                     React.createElement(X, { size: 18, color: colors.danger }))))))));

@@ -1688,12 +1688,24 @@
         toast(action === "open" ? L("لا تطبيق على هاتفك يفتح هذا النوع — جرّب «حفظ» أو «مشاركة»", "No app can open this type — try Save or Share") : L("تعذّر: ", "Failed: ") + ((r && r.error) || "")); return false;
       }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); return false; });
     }
+    // C129: آيفون — الملفّ إلى ورقة المشاركة الأصليّة (WKWebView لا ينزّل blob:) · بناءٌ قديم بلا هذه الميزة يردّ ok:false فنكمل
+    if (IOSB() && blob.size < 12 * 1024 * 1024) {
+      return blobPartB64(blob, 0, blob.size).then(function (b64) {
+        return IOSB().call("share", { fileName: name || "file", fileB64: b64, mime: mime || blob.type || "" });
+      }).then(function (r) {
+        if (r && (r.ok || r.file)) return true;
+        return webSave();
+      }, function () { return webSave(); });
+    }
+    return webSave();
+    function webSave() {
     if (action === "share" && navigator.canShare) {
       try { var f = new File([blob], name || "file", { type: mime || blob.type }); if (navigator.canShare({ files: [f] })) return navigator.share({ files: [f] }).then(function () { return true; }, function () { return false; }); } catch (e) {}
     }
     var u = URL.createObjectURL(blob), a = document.createElement("a"); a.href = u; a.download = name || "file"; a.target = "_blank";
     document.body.appendChild(a); a.click(); setTimeout(function () { try { a.remove(); URL.revokeObjectURL(u); } catch (e) {} }, 4000);
     return Promise.resolve(true);
+    }
   }
   function blobOfUrl(u) { return fetch(u).then(function (r) { return r.blob(); }); }
   // ملفٌّ عامّ: يُنزَّل ثمّ «فتح · حفظ · مشاركة»
@@ -2156,10 +2168,19 @@
   function registerToken(tok) {
     var prev = lsGet("sawa_push", {});
     // C84: نجدّد التسجيل كلّ ٣ أيّام ولو لم يتغيّر الرمز — الخادم يحذف الأجهزة القديمة (٦٠ يوماً/أكثر من ٥)، وكان الهاتف يظنّ نفسه مسجّلاً للأبد
-    if (prev.token === tok && prev.uid === state.uid && Date.now() - (prev.ts || 0) < 3 * 86400000) return Promise.resolve(true);
-    return call("push.register", { token: tok, ua: (navigator.userAgent || "").slice(0, 150), prevUid: prev.uid && prev.uid !== state.uid ? prev.uid : null })
-      .then(function () { lsSet("sawa_push", { token: tok, uid: state.uid, ts: Date.now() }); return true; });
+    // C129: لغة الإشعارات = لغة التطبيق — تُرسل مع التسجيل، وتغيير اللغة يعيد التسجيل
+    var lang = isAr() ? "ar" : "en";
+    if (prev.token === tok && prev.uid === state.uid && (prev.lang || "ar") === lang && Date.now() - (prev.ts || 0) < 3 * 86400000) return Promise.resolve(true);
+    return call("push.register", { token: tok, ua: (navigator.userAgent || "").slice(0, 150), lang: lang, prevUid: prev.uid && prev.uid !== state.uid ? prev.uid : null })
+      .then(function () { lsSet("sawa_push", { token: tok, uid: state.uid, ts: Date.now(), lang: lang }); return true; });
   }
+  try {
+    global.addEventListener("sawa-lang", function () {
+      setTimeout(function () {
+        try { if (!state.uid || pushState() !== "granted") return; pushToken().then(registerToken).catch(function () {}); } catch (e) {}
+      }, 600);
+    });
+  } catch (e) {}
   function isIOS() { return /iPhone|iPad|iPod/.test(navigator.userAgent || ""); }
   function pushState() {   // "granted" | "default" | "denied" | "off" (سُمح ثمّ أوقفه المستخدم من سوا) | "unsupported"
     if (NB()) { var np = "default"; try { np = NB().notifPermission() || "default"; } catch (e) {} if (np === "granted" && lsGet("sawa_push_off", 0)) return "off"; return np; }
@@ -3505,6 +3526,7 @@
     "#sawa-onb .ob-b3{width:220px;height:220px;background:#22c7b4;bottom:-110px;inset-inline-start:12%;opacity:.3;animation-delay:-10s}",
     "#sawa-onb .ob-top,#sawa-onb .ob-body,#sawa-onb .ob-foot{position:relative;z-index:1;width:100%;max-width:460px;margin:0 auto}",
     "#sawa-onb .ob-top{display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top,0px) + 14px) 18px 0;min-height:56px}",
+    "#sawa-onb .ob-lang{margin-inline-start:auto;flex:none;font:700 13px system-ui;color:#fff;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:7px 14px;cursor:pointer}",
     "#sawa-onb .ob-bar{flex:1;display:flex;gap:5px}",
     "#sawa-onb .ob-seg{flex:1;height:4px;border-radius:4px;background:rgba(255,255,255,.22);overflow:hidden}",
     "#sawa-onb .ob-seg i{display:block;height:100%;width:0;background:#fff;border-radius:4px}",
@@ -3631,6 +3653,14 @@
     if (step === "find") return installable() ? "install" : pushState() === "default" ? "notify" : "code";
     return null;
   }
+  function onbSetLang(lang) {
+    try {
+      localStorage.setItem("sawaLang", lang); global.__SAWA_LANG = lang;
+      document.documentElement.lang = lang; document.documentElement.dir = lang === "en" ? "ltr" : "rtl";
+      if (onb && onb.el) onb.el.dir = lang === "en" ? "ltr" : "rtl";
+      global.dispatchEvent(new CustomEvent("sawa-lang", { detail: lang }));
+    } catch (e) {}
+  }
   function onbFrame(step) {
     var el = onb.el; el.innerHTML = "";
     if (onb.timer) { clearInterval(onb.timer); onb.timer = null; }
@@ -3644,6 +3674,13 @@
       var bar = oc("div", "ob-bar"); bar.setAttribute("role", "progressbar"); bar.setAttribute("aria-valuemin", "1"); bar.setAttribute("aria-valuemax", String(ONB_STEPS.length)); bar.setAttribute("aria-valuenow", String(i + 1));
       ONB_STEPS.forEach(function (_, k) { var sg = oc("div", "ob-seg" + (k < i ? " done" : k === i ? " cur" : "")); sg.appendChild(mk("i")); bar.appendChild(sg); });
       top.appendChild(bk); top.appendChild(bar); top.appendChild(oc("div", "ob-count", arNum(i + 1) + "/" + arNum(ONB_STEPS.length)));
+    }
+    // C129: اختيار اللغة قبل الدخول (الترحيب وإنشاء الحساب) — كانت الشاشات بالعربيّة دائماً حتى يدخل المستخدم ويغيّرها
+    if (step === "welcome" || step === "login" || step === "email") {
+      var lg = oc("button", "ob-lang"); lg.type = "button";
+      lg.textContent = isAr() ? "English" : "العربية"; lg.setAttribute("aria-label", isAr() ? "Switch to English" : "التبديل إلى العربية");
+      lg.onclick = function () { onbSetLang(isAr() ? "en" : "ar"); onbGo(step); };
+      top.appendChild(lg);
     }
     el.appendChild(top);
     var body = oc("div", "ob-body"), foot = oc("div", "ob-foot");

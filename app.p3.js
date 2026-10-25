@@ -869,22 +869,22 @@ function AdvancedSearchScreen({ persons, relations = [], onBack, onOpenPerson })
     // الدرجات الست كما هي في مصدر الحقيقة — لا تُختصر ولا تُخلط بالصلات.
     // (التصميم عرض أربعة خيارات أحدها «أبناء العمومة»، وهي صلة لا درجة.)
     const proximityOptions = [
-        { k: "all", label: "الكل" },
+        { k: "all", label: tl("الكل", "All") },
         ...Object.entries(proximityLabels).map(([k, label]) => ({
             k, label, days: proximityContactDays[k],
         })),
     ];
     const branchOptions = [
-        { k: "all", label: "الكل" },
-        { k: "paternal", label: "جهة الأب" },
-        { k: "maternal", label: "جهة الأم" },
-        { k: "both", label: "الجذع المشترك" },
+        { k: "all", label: tl("الكل", "All") },
+        { k: "paternal", label: tl("جهة الأب", "Father's side") },
+        { k: "maternal", label: tl("جهة الأم", "Mother's side") },
+        { k: "both", label: tl("الجذع المشترك", "Common root") },
     ];
     const statusOptions = [
-        { k: "alive", label: "على قيد الحياة" },
-        { k: "deceased", label: "متوفّى" },
-        { k: "overdue", label: "تأخّر التواصل" },
-        { k: "favorite", label: "مفضّل" },
+        { k: "alive", label: tl("على قيد الحياة", "Living") },
+        { k: "deceased", label: tl("متوفّى", "Deceased") },
+        { k: "overdue", label: tl("تأخّر التواصل", "Overdue contact") },
+        { k: "favorite", label: tl("مفضّل", "Favorite") },
     ];
     const toggleStatus = (k) => setStatusKeys((prev) => prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]);
     const results = persons.filter((p) => {
@@ -945,7 +945,7 @@ function AdvancedSearchScreen({ persons, relations = [], onBack, onOpenPerson })
                     React.createElement(X, { size: 14, color: colors.textMuted })))),
             React.createElement(Group, { icon: Users2, title: t("drja_alqraba") }, proximityOptions.map((o) => (React.createElement(Pill, { key: o.k, active: proximity === o.k, label: o.label, sub: o.days ? t("y_days", { days: o.days }) : null, onPress: () => setProximity(o.k) })))),
             React.createElement(Group, { icon: GitBranch, title: t("fra_alaayla") }, branchOptions.map((o) => (React.createElement(Pill, { key: o.k, active: branch === o.k, label: o.label, onPress: () => setBranch(o.k) })))),
-            cities.length > 0 && (React.createElement(Group, { icon: MapPin, title: t("almwqa"), action: cities.length > 5 && (React.createElement("button", { onClick: () => setShowAllCities((v) => !v), className: "text-[10px] font-bold", style: { color: colors.accent } }, showAllCities ? "أقل" : `+${cities.length - 5}`)) },
+            cities.length > 0 && (React.createElement(Group, { icon: MapPin, title: t("almwqa"), action: cities.length > 5 && (React.createElement("button", { onClick: () => setShowAllCities((v) => !v), className: "text-[10px] font-bold", style: { color: colors.accent } }, showAllCities ? tl("أقل", "Less") : `+${cities.length - 5}`)) },
                 React.createElement(Pill, { active: city === "all", label: t("alkl"), onPress: () => setCity("all") }),
                 visibleCities.map((c) => (React.createElement(Pill, { key: c.city, active: city === c.city, label: c.city, sub: `${c.n}`, onPress: () => setCity(c.city) }))))),
             React.createElement(Group, { icon: AlertCircle, title: t("alhala") }, statusOptions.map((o) => (React.createElement(Pill, { key: o.k, active: statusKeys.includes(o.k), label: o.label, onPress: () => toggleStatus(o.k) })))),
@@ -953,11 +953,11 @@ function AdvancedSearchScreen({ persons, relations = [], onBack, onOpenPerson })
                 React.createElement("div", { className: "flex-1 rounded-xl px-3 py-2.5 text-center", style: { backgroundColor: colors.primaryLight, border: `1px solid ${colors.primary}44` } },
                     React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.primaryDark } },
                         results.length,
-                        " \u0646\u062A\u064A\u062C\u0629"),
+                        tl(" \u0646\u062A\u064A\u062C\u0629", " results")),
                     activeCount > 0 && (React.createElement("span", { className: `text-[10px] ${me("1.5")}`, style: { color: colors.primaryDark } },
                         "(",
                         activeCount,
-                        " \u0645\u0631\u0634\u0650\u0651\u062D)"))),
+                        tl(" \u0645\u0631\u0634\u0650\u0651\u062D)", " filters)")))),
                 activeCount > 0 && (React.createElement("button", { onClick: resetAll, className: "rounded-xl px-3 py-2.5 text-[11px] font-bold shrink-0", style: { backgroundColor: colors.card, color: colors.danger, border: `1px solid ${colors.border}` } }, t("msh_alkl")))),
             results.length === 0 ? (React.createElement(FamCard, null,
                 React.createElement("p", { className: "text-xs text-center py-4", style: { color: colors.textMuted } }, t("la_ntayj_mtabqa_jrb")))) : (results.map((p) => {
@@ -1577,7 +1577,7 @@ function FamilyStatsScreen({ persons, relations, onBack }) {
             React.createElement(FamCard, null, Object.keys(genCounts).map(Number).sort((a, b) => a - b).map((g) => (React.createElement("div", { key: g, className: `flex ${rowStart()} items-center gap-2 mb-2` },
                 React.createElement("span", { className: `text-xs w-20 ${textEnd()}`, style: { color: colors.textMuted } },
                     genCounts[g],
-                    " \u0641\u0631\u062F"),
+                    tl(" \u0641\u0631\u062F", " people")),
                 React.createElement("div", { className: "flex-1 h-2 rounded-full", style: { backgroundColor: colors.border } },
                     React.createElement("div", { className: "h-2 rounded-full", style: { width: `${(genCounts[g] / persons.length) * 100}%`, backgroundColor: colors.primary } })),
                 React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, genLabels[g] || t("ft_gen_n", { n: g + 1 })))))),
@@ -1587,9 +1587,9 @@ function FamilyStatsScreen({ persons, relations, onBack }) {
                     React.createElement(AlertTriangle, { size: 16, color: colors.danger }),
                     React.createElement("span", { className: "text-sm", style: { color: colors.text } },
                         React.createElement("b", null, longestNoContact.local_name),
-                        " \u2014 \u0645\u0627 \u062A\u0648\u0627\u0635\u0644\u062A \u0645\u0639\u0647 \u0645\u0646 ",
+                        tl(" \u2014 \u0645\u0627 \u062A\u0648\u0627\u0635\u0644\u062A \u0645\u0639\u0647 \u0645\u0646 ", " — haven't been in touch for "),
                         daysSinceLongest,
-                        " \u064A\u0648\u0645\u060C \u0623\u0637\u0648\u0644 \u0645\u062F\u0629 \u0628\u0627\u0644\u0639\u0627\u0626\u0644\u0629")))))));
+                        tl(" \u064A\u0648\u0645\u060C \u0623\u0637\u0648\u0644 \u0645\u062F\u0629 \u0628\u0627\u0644\u0639\u0627\u0626\u0644\u0629", " days, the longest in the family"))))))));
 }
 // C79: «تغيير الأب/الأم» — اختيار والدٍ آخر لشخصٍ واحد (لا يمسّ إخوته)، أو إزالة الربط الخاطئ.
 //      المرشّحون من الجنس المناسب، ولا أحد من نسل الشخص (دورة)، وزوجات الأب / أزواج الأم أوّلاً.
@@ -2054,7 +2054,7 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
             React.createElement("textarea", { dir: isRTL() ? "rtl" : "ltr", value: namesText, onChange: (e) => setNamesText(e.target.value), placeholder: t("mthal_mhmd_fatma_amr"), rows: 3, className: "w-full rounded-xl px-3 py-2.5 text-sm mb-2", style: { backgroundColor: colors.card, color: colors.text, border: `1px solid ${colors.border}`, minWidth: 0, resize: "none" } }),
             names.length > 0 && (React.createElement("p", { className: `text-[11px] ${textStart()} mb-3`, style: { color: colors.primary } },
                 names.length,
-                " \u0627\u0633\u0645: ",
+                tl(" \u0627\u0633\u0645: ", " names: "),
                 parsedNames.map((x) => x.chain.length ? x.name + " ← " + x.chain.join(" ← ") : x.name).join(" · "))),
             parsedNames.some((x) => x.chain.length) && React.createElement("p", { className: `text-[10px] ${textStart()} mb-3`, style: { color: colors.textMuted } }, tl("🌳 النسب المكتوب (بن/بنت فلان) يُضاف أصولاً ويُربط تلقائيّاً", "🌳 Written lineage (bin/bint) will be added as ancestors and linked")),
             parentLimit && (React.createElement(FamCard, { className: `mb-3 flex ${rowStart()} items-start gap-2`, style: { borderColor: colors.danger } },
@@ -2084,7 +2084,7 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
                                 } }, t("shkhs_akhr")))));
                 }))),
             React.createElement(FamButton, { label: undecided.length > 0 ? t("hdd_asma_mkrra_awla", { length: undecided.length })
-                    : overLimit ? (maxAllowed === 1 ? "اسم واحد فقط" : t("akthr_mn", { maxAllowed }))
+                    : overLimit ? (maxAllowed === 1 ? tl("اسم واحد فقط", "Only one name") : t("akthr_mn", { maxAllowed }))
                         : t("idafa_qryb_wrbthm_balshjra", { length: names.length }), disabled: names.length === 0 || undecided.length > 0 || parentLimit, onPress: () => {
                     onSave(person, sel.key === "sibling" && sibHalf ? { ...sel, half: sibHalf } : sel.key === "child" ? { ...sel, coParent } : sel, rawNames, decisions);
                     // نُفرغ الحقل ونُبقي الشيت مفتوحاً — الغالب أن يتبع الأبناءَ بناتٌ
@@ -2226,7 +2226,7 @@ function FocusView({ data, onGo, onOpenMenu, colors, onAddRelative, onClaimStep 
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mt-3 mb-2` },
                 React.createElement("div", { className: "flex-1", style: { height: 1, backgroundColor: colors.border } }),
                 React.createElement("span", { className: "text-[10px] font-extrabold shrink-0", style: { color: colors.textMuted } },
-                    "\u0627\u0644\u0623\u062D\u0641\u0627\u062F (",
+                    tl("\u0627\u0644\u0623\u062D\u0641\u0627\u062F (", "Grandchildren ("),
                     grandchildren.length,
                     ")"),
                 React.createElement("div", { className: "flex-1", style: { height: 1, backgroundColor: colors.border } })),
@@ -2949,15 +2949,7 @@ function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, r
             lines.push("", t("ghyr_mrtbtyn_bay_alaqa"));
             unlinkedPersons.forEach((p) => lines.push(`- ${p.local_name}`));
         }
-        const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = t("ft_mlf_shjra");
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        saveFileOut(new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" }), t("ft_mlf_shjra"), "text/plain");   // C129
     }
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col relative", style: { backgroundColor: colors.bg } },
         React.createElement(FamHeader, { compact: true, title: t("shjra_alaayla"), onBack: onBack,

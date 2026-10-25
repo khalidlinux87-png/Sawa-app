@@ -839,7 +839,7 @@ function FamilyChainAddSheet({ existingPersons, relations = [], onSave, onClose 
             React.createElement("label", { className: `text-[11.5px] font-bold mb-1.5 block ${textStart()}`, style: { color: colors.textMuted } },
                 t("fc_abna_"),
                 targetName,
-                " \u2014 \u0630\u0643\u0648\u0631 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"),
+                tl(" \u2014 \u0630\u0643\u0648\u0631 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", " — males (optional)")),
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: sonsText, onChange: (e) => setSonsText(e.target.value), placeholder: t("mthal_mhmd_ahmd"), className: "fam-in outline-none w-full rounded-2xl px-3.5 py-3 text-sm mb-3", style: { backgroundColor: colors.bg, color: colors.text, border: "1.5px solid transparent" } }),
             React.createElement("label", { className: `text-[11.5px] font-bold mb-1.5 block ${textStart()}`, style: { color: colors.textMuted } },
                 t("fc_bnat_"),
@@ -1331,7 +1331,7 @@ function FamilyAddEventSheet({ persons, relations = [], initial, onSave, onClose
             React.createElement(FamCard, { className: `mb-4 flex ${rowStart()} items-center gap-2` },
                 React.createElement(Lightbulb, { size: 14, color: colors.accent }),
                 React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } },
-                    "\u0627\u0644\u0625\u062C\u0631\u0627\u0621 \u0627\u0644\u0645\u0642\u062A\u0631\u062D \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B: ",
+                    tl("\u0627\u0644\u0625\u062C\u0631\u0627\u0621 \u0627\u0644\u0645\u0642\u062A\u0631\u062D \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B: ", "Suggested action: "),
                     eventSuggestedActionLabel(type))),
             React.createElement(FamButton, { label: t("hfz_alhdth"), disabled: !title.trim() || !personId, onPress: () => { onSave(personId, type, title.trim(), dateInputToTs(dateStr), desc.trim()); onClose(); } }))));
 }
@@ -1400,14 +1400,14 @@ function LockedChatsScreen({ conversations, lockedConversationIds, correctPin, o
                 isRateLocked ? (React.createElement("div", { className: "flex flex-col items-center gap-3" },
                     React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: colors.danger + "22" } },
                         React.createElement(Lock, { size: 24, color: colors.danger })),
-                    React.createElement("p", { className: "text-sm font-extrabold", style: { color: colors.danger } }, "\u0645\u062D\u0627\u0648\u0644\u0627\u062A \u0643\u062B\u064A\u0631\u0629 \u2014 \u0627\u0646\u062A\u0638\u0631"),
+                    React.createElement("p", { className: "text-sm font-extrabold", style: { color: colors.danger } }, tl("\u0645\u062D\u0627\u0648\u0644\u0627\u062A \u0643\u062B\u064A\u0631\u0629 \u2014 \u0627\u0646\u062A\u0638\u0631", "Too many attempts — wait")),
                     React.createElement("p", { className: "text-2xl font-extrabold tabular-nums", style: { color: colors.danger } },
                         lockSecondsLeft,
-                        "\u062B"),
+                        tl("\u062B", "s")),
                     React.createElement("p", { className: "text-xs text-center", style: { color: colors.textMuted } },
-                        "\u0628\u0639\u062F ",
+                        tl("\u0628\u0639\u062F ", "In "),
                         lockSecondsLeft,
-                        " \u062B\u0627\u0646\u064A\u0629 \u064A\u0645\u0643\u0646\u0643 \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u062C\u062F\u062F\u0627\u064B"))) : (React.createElement(React.Fragment, null,
+                        tl(" \u062B\u0627\u0646\u064A\u0629 \u064A\u0645\u0643\u0646\u0643 \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u062C\u062F\u062F\u0627\u064B", " seconds you can try again")))) : (React.createElement(React.Fragment, null,
                     React.createElement("input", { dir: "ltr", type: "password", value: enteredPin, onChange: (e) => setEnteredPin(e.target.value.replace(/\D/g, "").slice(0, 6)), placeholder: t("rmz_qfl_alttbyq"), className: "w-40 border rounded-xl px-3 py-3 text-center text-lg tracking-widest mb-3", style: { borderColor: error ? colors.danger : colors.border, color: colors.text, backgroundColor: colors.card }, autoFocus: true, onKeyDown: (e) => { if (e.key === "Enter" && enteredPin)
                             handleSubmit(); } }),
                     error && (React.createElement("p", { className: "text-xs mb-3", style: { color: colors.danger } },
@@ -1428,7 +1428,7 @@ function LockedChatsScreen({ conversations, lockedConversationIds, correctPin, o
                             React.createElement("span", { className: "text-base font-extrabold", style: { color: colors.primaryDark } }, (_a = c.name) === null || _a === void 0 ? void 0 : _a.charAt(0))),
                         React.createElement("div", { className: "flex-1" },
                             React.createElement("div", { className: "font-bold text-sm", style: { color: colors.text } }, c.name),
-                            React.createElement("div", { className: "text-xs mt-0.5", style: { color: colors.textMuted } }, c.lastMessage || "لا رسائل بعد")))));
+                            React.createElement("div", { className: "text-xs mt-0.5", style: { color: colors.textMuted } }, c.lastMessage || tl("لا رسائل بعد", "No messages yet"))))));
             }))));
 }
 function StarredMessagesScreen({ starredMessages, onOpenConversation, onBack }) {
@@ -1738,7 +1738,7 @@ function ArchivedChatsScreen({ conversations, archivedIds, mutedIds, onOpenChat,
                         React.createElement("div", { style: { display: "flex", flexDirection: isRTL() ? "row" : "row-reverse", direction: "ltr", alignItems: "center", justifyContent: "space-between" } },
                             React.createElement("span", { className: "text-[10px] shrink-0", style: { color: colors.textMuted } }, formatChatTime(c.updatedAt)),
                             React.createElement("span", { className: "font-bold text-sm truncate", style: { color: colors.text, direction: isRTL() ? "rtl" : "ltr" } }, c.isSavedMessages ? t("rsayly_almhfwza") : c.name)),
-                        React.createElement("div", { className: `text-xs mt-0.5 truncate ${textStart()}`, style: { color: colors.textMuted } }, c.lastMessage || "اضغط لفتح المحادثة")),
+                        React.createElement("div", { className: `text-xs mt-0.5 truncate ${textStart()}`, style: { color: colors.textMuted } }, c.lastMessage || tl("اضغط لفتح المحادثة", "Tap to open the chat"))),
                     mutedIds.includes(c.id) && React.createElement(BellOff, { size: 13, color: colors.textMuted, className: `shrink-0 ${ms("1.5")}` })),
                 React.createElement("button", { onClick: () => onUnarchive(c.id), className: `px-2.5 py-1.5 rounded-xl text-[10px] font-bold shrink-0 ${me("2")}`, style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("astaada"))))))));
 }
@@ -1790,8 +1790,8 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
     function handleArchive(id, name) {
         onArchiveConv === null || onArchiveConv === void 0 ? void 0 : onArchiveConv(id);
         clearTimeout(undoArchiveTimerRef.current);
-        showToast(`أُرشفت "${name}" — اضغط تراجع`, "info", {
-            action: "تراجع",
+        showToast(tl(`أُرشفت "${name}" — اضغط تراجع`, `Archived "${name}" — tap Undo`), "info", {
+            action: tl("تراجع", "Undo"),
             onAction: () => { onArchiveConv === null || onArchiveConv === void 0 ? void 0 : onArchiveConv(id); }, // second call = toggle back (parent handles)
         });
     }
@@ -1887,7 +1887,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                 React.createElement(X, { size: 19, color: colors.primary })),
             React.createElement("span", { className: "flex-1 text-sm font-extrabold", style: { color: colors.primary, textAlign: "right" } },
                 selectedIds.length,
-                " \u0645\u062D\u062F\u062F\u0629"),
+                tl(" \u0645\u062D\u062F\u062F\u0629", " selected")),
             React.createElement("button", { "aria-label": t("mqrw"), onClick: () => { selectedIds.forEach((id) => onToggleReadConv === null || onToggleReadConv === void 0 ? void 0 : onToggleReadConv(id)); setSelectedIds([]); }, title: t("thdyd_kmqrw") },
                 React.createElement(CheckCheck, { size: 18, color: colors.primary })),
             React.createElement("button", { "aria-label": t("ktm_altnbyhat"), onClick: () => { selectedIds.forEach((id) => onMuteConv === null || onMuteConv === void 0 ? void 0 : onMuteConv(id)); setSelectedIds([]); }, title: t("ktm") },
@@ -1954,8 +1954,8 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                         React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "#6366f118" } },
                             React.createElement(Link2, { size: 20, color: "#6366f1" })),
                         React.createElement("div", { className: "flex-1", style: { textAlign: isRTL() ? "right" : "left" } },
-                            React.createElement("span", { className: "text-[15.5px] font-bold block leading-snug", style: { color: colors.text } }, "انضمام إلى غرفة"),
-                            React.createElement("span", { className: "text-[12.5px] block mt-0.5", style: { color: colors.textMuted } }, "برابطها أو رمزها")))),
+                            React.createElement("span", { className: "text-[15.5px] font-bold block leading-snug", style: { color: colors.text } }, tl("انضمام إلى غرفة", "Join a room")),
+                            React.createElement("span", { className: "text-[12.5px] block mt-0.5", style: { color: colors.textMuted } }, tl("برابطها أو رمزها", "By link or code"))))),
                     React.createElement("div", { style: { height: 1, backgroundColor: colors.border, margin: "6px 0" } }),
                     React.createElement("button", { onClick: () => { setShowNewMenu(false); onScanQr(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },
                         React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.textMuted + "18" } },
@@ -1980,18 +1980,18 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                 )
             )
         ); }))),
-        React.createElement("div", { ref: listScrollRef, className: "flex-1 overflow-y-auto min-h-0",
+        React.createElement("div", { ref: listScrollRef, className: "flex-1 overflow-y-auto min-h-0", style: { overflowAnchor: "none" },
+            // C129: اهتزاز التبويبات عند التمرير للأسفل — إخفاؤها يغيّر ارتفاع القائمة فيقفز scrollTop فتعود فتختفي…
+            //       الآن: لا إخفاء إلّا إن كانت القائمة أطول من الشاشة بوضوح · مسافة ٢٤ بكسل في الاتّجاه نفسه · تجاهل الأحداث ٣٥٠ مللي ث بعد كلّ تبديل
             onScroll: function(e) {
-                var el = e.currentTarget;
-                var currentY = el.scrollTop;
-                if (currentY <= 0) {
-                    setShowTabs(true);
-                } else if (currentY > lastScrollY.current + 5) {
-                    setShowTabs(false);
-                } else if (currentY < lastScrollY.current - 5) {
-                    setShowTabs(true);
-                }
-                lastScrollY.current = currentY;
+                var el = e.currentTarget, y = el.scrollTop, now = Date.now(), st = lastScrollY;
+                if (st.lock && now < st.lock) { st.current = y; st.acc = 0; return; }
+                var d = y - st.current; st.current = y;
+                if (y <= 4) { if (!showTabs) { setShowTabs(true); st.lock = now + 350; } st.acc = 0; return; }
+                if (el.scrollHeight - el.clientHeight < 140) { if (!showTabs) { setShowTabs(true); st.lock = now + 350; } return; }
+                st.acc = (st.acc > 0) === (d > 0) ? (st.acc || 0) + d : d;
+                if (st.acc > 24 && showTabs) { setShowTabs(false); st.lock = now + 350; st.acc = 0; }
+                else if (st.acc < -24 && !showTabs) { setShowTabs(true); st.lock = now + 350; st.acc = 0; }
             } },
             showStoriesRow && (React.createElement(StoriesRow, { momentsPosts: momentsPosts, onOpenMoments: onOpenMoments, conversations: conversations, onOpenChat: onOpenChat, myName: myName })),
             showFamilyReminders && (React.createElement(FamilyReminderCard, { groupPersons: groupPersons, groupSchedules: groupSchedules, conversations: conversations, onStartChat: onOpenChat, onOpenPerson: onOpenFamilyPerson })),
@@ -2001,18 +2001,14 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.primary } }, t("mjmwaa_jdyda"))),
                 React.createElement("span", { className: "text-xs font-bold", style: { color: colors.textMuted } },
                     groups.length,
-                    " \u0645\u062C\u0645\u0648\u0639\u0629"))),
+                    tl(" \u0645\u062C\u0645\u0648\u0639\u0629", groups.length === 1 ? " group" : " groups")))),
             activeTab === "all" && upcomingBirthdays.length > 0 && (React.createElement("div", { className: `mx-4 mt-3 rounded-2xl px-4 py-3 flex ${rowStart()} items-center gap-3`, style: { backgroundColor: colors.accent + "18", border: `1px solid ${colors.accent}44` } },
                 React.createElement("span", { style: { fontSize: 22 } }, "\uD83C\uDF82"),
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
                     React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.accent } },
-                        "\u0639\u064A\u062F \u0645\u064A\u0644\u0627\u062F ",
-                        upcomingBirthdays[0].local_name,
-                        " \u0642\u0631\u064A\u0628\u0627\u064B!"),
+                        tl("\u0639\u064A\u062F \u0645\u064A\u0644\u0627\u062F " + upcomingBirthdays[0].local_name + " \u0642\u0631\u064A\u0628\u0627\u064B!", upcomingBirthdays[0].local_name + "'s birthday is coming up!")),
                     upcomingBirthdays.length > 1 && (React.createElement("span", { className: "text-[10px] block mt-0.5", style: { color: colors.textMuted } },
-                        "\u0648",
-                        upcomingBirthdays.length - 1,
-                        " \u0645\u0646\u0627\u0633\u0628\u0629 \u0623\u062E\u0631\u0649 \u0647\u0630\u0627 \u0627\u0644\u0623\u0633\u0628\u0648\u0639"))),
+                        tl("\u0648" + (upcomingBirthdays.length - 1) + " \u0645\u0646\u0627\u0633\u0628\u0629 \u0623\u062E\u0631\u0649 \u0647\u0630\u0627 \u0627\u0644\u0623\u0633\u0628\u0648\u0639", "+" + (upcomingBirthdays.length - 1) + " more this week")))),
                 React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0", style: { backgroundColor: colors.accent, color: "#fff" } }, t("hdha_alasbwa")))),
             React.createElement("div", { className: "px-3 py-2" },
                 visibleConversations.length === 0 && groups.length === 0 && broadcastLists.length === 0 && React.createElement(EmptyState, { icon: MessageCircle, label: t("la_twjd_mhadthat_bad") }),
@@ -2036,7 +2032,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                             React.createElement("div", { className: "font-bold text-sm", style: { color: colors.text } }, b.name),
                             React.createElement("div", { className: "text-xs mt-0.5", style: { color: colors.textMuted } },
                                 b.recipientIds.length,
-                                " \u0645\u0633\u062A\u0644\u0645 \u00B7 \u0642\u0627\u0626\u0645\u0629 \u0628\u062B")),
+                                tl(" \u0645\u0633\u062A\u0644\u0645 \u00B7 \u0642\u0627\u0626\u0645\u0629 \u0628\u062B", " recipients · Broadcast list"))),
                         React.createElement(isRTL() ? ChevronLeft : ChevronRight, { size: 16, color: colors.textMuted }))))),
                 activeTab === "all" && scheduledRooms.filter((r) => r.at > Date.now()).slice(0, 2).map((r) => (React.createElement("div", { key: r.id, className: `rounded-xl px-3 py-2.5 mb-1.5 flex ${rowStart()} items-center gap-3`, style: { backgroundColor: colors.accent + "12", border: `1px solid ${colors.accent}40` } },
                     React.createElement(CalendarDays, { size: 17, color: colors.accent, className: "shrink-0" }),
@@ -2066,7 +2062,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                                 React.createElement("span", { className: "text-[10px] shrink-0", style: { color: colors.textMuted } }, formatChatTime(g.updatedAt)),
                                 React.createElement("span", { className: "font-extrabold text-[15px] truncate", style: { color: colors.text, direction: isRTL() ? "rtl" : "ltr" } }, g.name)),
                             React.createElement("div", { className: "mt-0.5 flex items-center gap-1.5", style: { direction: isRTL() ? "rtl" : "ltr" } },
-                                React.createElement("div", { className: "text-xs truncate flex-1", style: { color: colors.textMuted, textAlign: isRTL() ? "right" : "left", minWidth: 0 } }, chatDrafts && chatDrafts["g:" + g.id] ? React.createElement(React.Fragment, null, React.createElement("span", { style: { color: colors.danger, fontWeight: 700 } }, "مسودّة: "), chatDrafts["g:" + g.id]) : (g.lastMessage || t("aada_mjmwaa", { length: g.members.length }))),
+                                React.createElement("div", { className: "text-xs truncate flex-1", style: { color: colors.textMuted, textAlign: isRTL() ? "right" : "left", minWidth: 0 } }, chatDrafts && chatDrafts["g:" + g.id] ? React.createElement(React.Fragment, null, React.createElement("span", { style: { color: colors.danger, fontWeight: 700 } }, tl("مسودّة: ", "Draft: ")), chatDrafts["g:" + g.id]) : (g.lastMessage || t("aada_mjmwaa", { length: g.members.length }))),
                                 g.unread > 0 && (React.createElement("span", { className: "min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center text-[10.5px] font-extrabold text-white shrink-0", style: { backgroundColor: colors.primary } }, g.unread))))))); const rowC = (c) => (React.createElement(SwipeableConvCard, { key: c.id, isMuted: mutedConversations.includes(c.id), isPinned: pinnedConversations.includes(c.id), onArchive: () => handleArchive(c.id, c.name), onMute: () => onMuteConv === null || onMuteConv === void 0 ? void 0 : onMuteConv(c.id), onPin: () => onPinConv === null || onPinConv === void 0 ? void 0 : onPinConv(c.id), onDelete: () => setConfirmDeleteId(c.id) },
                     React.createElement(Card, { className: `flex ${rowStart()} items-center cursor-pointer`, style: { cursor: "pointer" } },
                         React.createElement("button", { onClick: () => { if (selectionMode) {
@@ -2116,7 +2112,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                                         ? React.createElement("span", { className: "truncate" },
                                             React.createElement("span", { style: { color: colors.danger, fontWeight: 700 } }, t("mswdda_")),
                                             chatDrafts[c.id])
-                                        : React.createElement("span", { className: "truncate" }, c.isSavedMessages ? t("ahfz_mlahzatk_wmlfatk") : typingConversations.includes(c.id) ? t("yktb_alan") : (c.lastMessage || "اضغط لفتح المحادثة")),
+                                        : React.createElement("span", { className: "truncate" }, c.isSavedMessages ? t("ahfz_mlahzatk_wmlfatk") : typingConversations.includes(c.id) ? t("yktb_alan") : (c.lastMessage || tl("اضغط لفتح المحادثة", "Tap to open the chat"))),
                                     (!c.isSavedMessages && c.lastFromMe && c.lastMessage && !typingConversations.includes(c.id)) ? React.createElement(c.lastStatus === "pending" ? Clock : c.lastStatus === "failed" ? AlertCircle : c.lastStatus === "sent" ? Check : CheckCheck, { size: 13, className: "shrink-0", color: c.lastStatus === "read" ? "#34B7F1" : c.lastStatus === "failed" ? colors.danger : colors.textMuted }) : null,
                                     // C89: التثبيت والكتم وعدد غير المقروء في سطر المعاينة (كان عموداً منفصلاً بجانب الوقت مع سهمٍ لا حاجة له)
                                     React.createElement("span", { className: "flex-1" }),
@@ -2130,12 +2126,12 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                 React.createElement("div", { className: "w-10 h-1 rounded-full mx-auto my-3", style: { backgroundColor: colors.border } }),
                 React.createElement("p", { className: "text-sm font-extrabold text-center mb-2 px-4 truncate", style: { color: colors.text } }, ctxMenu.name),
                 [
-                    { icon: Check, label: "تحديد", act: () => setSelectedIds([ctxMenu.id]) },
-                    { icon: Pin, label: pinnedConversations.includes(ctxMenu.id) ? "إلغاء التثبيت" : "تثبيت للأعلى", act: () => onPinConv === null || onPinConv === void 0 ? void 0 : onPinConv(ctxMenu.id) },
-                    { icon: BellOff, label: mutedConversations.includes(ctxMenu.id) ? "رفع الكتم" : "كتم الإشعارات", act: () => onMuteConv === null || onMuteConv === void 0 ? void 0 : onMuteConv(ctxMenu.id) },
-                    { icon: CheckCheck, label: ctxMenu.unread > 0 ? "تحديد كمقروء" : "تحديد كغير مقروء", act: () => onToggleReadConv === null || onToggleReadConv === void 0 ? void 0 : onToggleReadConv(ctxMenu.id) },
-                    { icon: Archive, label: "أرشفة", act: () => onArchiveConv === null || onArchiveConv === void 0 ? void 0 : onArchiveConv(ctxMenu.id) },
-                    { icon: Trash2, label: "حذف المحادثة", act: () => { setConfirmDeleteId(ctxMenu.id); }, danger: true },
+                    { icon: Check, label: tl("تحديد", "Select"), act: () => setSelectedIds([ctxMenu.id]) },
+                    { icon: Pin, label: pinnedConversations.includes(ctxMenu.id) ? tl("إلغاء التثبيت", "Unpin") : tl("تثبيت للأعلى", "Pin to top"), act: () => onPinConv === null || onPinConv === void 0 ? void 0 : onPinConv(ctxMenu.id) },
+                    { icon: BellOff, label: mutedConversations.includes(ctxMenu.id) ? tl("رفع الكتم", "Unmute") : tl("كتم الإشعارات", "Mute notifications"), act: () => onMuteConv === null || onMuteConv === void 0 ? void 0 : onMuteConv(ctxMenu.id) },
+                    { icon: CheckCheck, label: ctxMenu.unread > 0 ? tl("تحديد كمقروء", "Mark as read") : tl("تحديد كغير مقروء", "Mark as unread"), act: () => onToggleReadConv === null || onToggleReadConv === void 0 ? void 0 : onToggleReadConv(ctxMenu.id) },
+                    { icon: Archive, label: tl("أرشفة", "Archive"), act: () => onArchiveConv === null || onArchiveConv === void 0 ? void 0 : onArchiveConv(ctxMenu.id) },
+                    { icon: Trash2, label: tl("حذف المحادثة", "Delete chat"), act: () => { setConfirmDeleteId(ctxMenu.id); }, danger: true },
                 ].map((it) => (React.createElement("button", { key: it.label, onClick: () => { it.act(); setCtxMenu(null); }, className: `w-full flex ${rowStart()} items-center gap-3 px-5 py-3.5 border-t`, style: { borderColor: colors.border } },
                     React.createElement(it.icon, { size: 17, color: it.danger ? colors.danger : colors.textMuted }),
                     React.createElement("span", { className: `flex-1 ${textStart()} text-sm font-bold`, style: { color: it.danger ? colors.danger : colors.text } }, it.label))))))),
@@ -2147,7 +2143,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                     React.createElement("div", { className: "w-12 h-12 rounded-full flex items-center justify-center mb-3", style: { backgroundColor: colors.danger + "18" } },
                         React.createElement(Trash2, { size: 22, color: colors.danger })),
                     React.createElement("p", { className: "text-sm font-extrabold text-center mb-1", style: { color: colors.text } }, t("hdhf_almhadtha")),
-                    React.createElement("p", { className: "text-xs text-center mb-4", style: { color: colors.textMuted } }, "\u0644\u0627 \u064A\u0645\u0643\u0646 \u0627\u0644\u062A\u0631\u0627\u062C\u0639 \u0639\u0646 \u0627\u0644\u062D\u0630\u0641")),
+                    React.createElement("p", { className: "text-xs text-center mb-4", style: { color: colors.textMuted } }, tl("\u0644\u0627 \u064A\u0645\u0643\u0646 \u0627\u0644\u062A\u0631\u0627\u062C\u0639 \u0639\u0646 \u0627\u0644\u062D\u0630\u0641", "This can't be undone"))),
                 React.createElement("button", { onClick: () => { onDeleteConv === null || onDeleteConv === void 0 ? void 0 : onDeleteConv(confirmDeleteId); setConfirmDeleteId(null); }, className: "w-full px-5 py-3.5 border-t", style: { borderColor: colors.border } },
                     React.createElement("span", { className: `block ${textStart()} text-sm font-extrabold`, style: { color: colors.danger } }, t("hdhf_almhadtha"))),
                 React.createElement("button", { onClick: () => setConfirmDeleteId(null), className: "w-full px-5 py-3.5 border-t", style: { borderColor: colors.border } },
@@ -2319,7 +2315,8 @@ function ChatComposerInput({ value, onChange, placeholder, disabled, onEnter }) 
         rows: 1,
         enterKeyHint: enterSends() ? "send" : "enter",
         value: value,
-        onChange: (e) => onChange(e.target.value),
+        onChange: (e) => { onChange(e.target.value); composerCaret(e.target); },
+        onSelect: (e) => composerCaret(e.target), onBlur: (e) => composerCaret(e.target),   // C129: موضع المؤشّر لإدراج الإيموجي
         onKeyDown: function (e) {
             // Enter يُرسل، و Shift+Enter سطر جديد — كما اعتاد المستخدم
             if (e.key === "Enter" && !e.shiftKey && onEnter && enterSends()) { e.preventDefault(); onEnter(); }
@@ -2365,6 +2362,27 @@ function RideChatScreen({ driverName, onSendToDriver, messages, onClose }) {
                 React.createElement(Send, { size: 16, color: "#fff", style: { transform: "scaleX(-1)" } })))));
 }
 const STICKER_SET = ["🎉", "❤️", "😂", "👍", "🔥", "😢", "😮", "🎊", "🙏", "👏", "😴", "🥳"];
+// C129: زرّ الإيموجي يُدرج في نصّ الرسالة (كان كلّ إيموجي يُرسل ملصقاً منفرداً) · الملصقات الكبيرة في صفٍّ مستقلّ
+const EMOJI_SET = ["😀", "😁", "😂", "🤣", "😊", "😇", "🙂", "😉", "😍", "🥰", "😘", "😋", "😎", "🤗", "🤔", "😐", "🙄", "😏", "😌", "😴", "😢", "😭", "😮", "😱", "😡", "🥺", "🤲", "🙏", "👍", "👎", "👏", "🙌", "👌", "✌️", "🤝", "💪", "❤️", "🤍", "💚", "💙", "💛", "💔", "🌹", "🌸", "🌙", "⭐", "☀️", "🔥", "🎉", "🎂", "🎁", "☕", "🍽️", "🕋", "📿", "🤲🏽", "✅", "❌", "‼️", "❓", "💯", "👋"];
+let COMPOSER_CARET = null;
+function composerCaret(el) { try { COMPOSER_CARET = { el, s: el.selectionStart, e: el.selectionEnd }; } catch (er) { } }
+function composerInsert(cur, ins) {
+    const c = COMPOSER_CARET;
+    if (c && c.el && c.el.isConnected && c.el.value === cur && c.s != null) {
+        const next = cur.slice(0, c.s) + ins + cur.slice(c.e);
+        c.s = c.e = c.s + ins.length;
+        return next;
+    }
+    return cur + ins;
+}
+function EmojiTray({ colors, onPick, onSticker }) {
+    return React.createElement("div", { className: "border-t", style: { borderColor: colors.border, backgroundColor: colors.card } },
+        React.createElement("div", { className: "flex flex-wrap justify-center gap-0.5 px-1 pt-1.5 overflow-y-auto", style: { maxHeight: 176 } },
+            EMOJI_SET.map((e) => React.createElement("button", { key: e, "aria-label": e, onMouseDown: (ev) => ev.preventDefault(), onClick: () => onPick(e), className: "w-10 h-10 rounded-xl flex items-center justify-center text-[22px]" }, e))),
+        onSticker && React.createElement("div", { className: "flex items-center gap-1 px-2 py-1.5 border-t overflow-x-auto", style: { borderColor: colors.border } },
+            React.createElement("span", { className: "text-[10.5px] font-bold shrink-0 px-1", style: { color: colors.textMuted } }, tl("ملصق:", "Sticker:")),
+            STICKER_SET.map((st) => React.createElement("button", { key: st, "aria-label": st, onClick: () => onSticker(st), className: "w-9 h-9 rounded-xl flex items-center justify-center text-xl shrink-0", style: { backgroundColor: colors.bg } }, st))));
+}
 const DISAPPEARING_OPTIONS = [
     { key: 0, labelKey: "dis_mattl" },
     { key: 3600, labelKey: "dis_saa" },
@@ -2400,10 +2418,10 @@ const MAX_FILE_SIZE_BYTES = 16 * 1024 * 1024; // 16 ميجابايت — حدّ 
 const MAX_FILE_SIZE_LABEL = "16 ميجابايت";
 function formatFileSize(bytes) {
     if (bytes < 1024 * 1024)
-        return `${Math.round(bytes / 1024)} كيلوبايت`;
+        return tl(`${Math.round(bytes / 1024)} كيلوبايت`, `${Math.round(bytes / 1024)} KB`);
     if (bytes < 1024 * 1024 * 1024)
-        return `${(bytes / (1024 * 1024)).toFixed(1)} ميجابايت`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} جيجابايت`;
+        return tl(`${(bytes / (1024 * 1024)).toFixed(1)} ميجابايت`, `${(bytes / (1024 * 1024)).toFixed(1)} MB`);
+    return tl(`${(bytes / (1024 * 1024 * 1024)).toFixed(2)} جيجابايت`, `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`);
 }
 const MUTE_OPTIONS = [
     { key: 0, labelKey: "mut_ilgha" },
@@ -2421,20 +2439,20 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
         onSetMute === null || onSetMute === void 0 ? void 0 : onSetMute(val);
     }
     function exportChat() {
-        const header = "محادثة سوا — " + conversation.name + "\n" +
-            "صُدِّرت في " + new Date().toLocaleString(loc()) + "\n" +
-            "عدد الرسائل: " + messages.length + "\n" + "=".repeat(40) + "\n\n";
+        const header = tl("محادثة سوا — ", "Sawa chat — ") + conversation.name + "\n" +
+            tl("صُدِّرت في ", "Exported on ") + new Date().toLocaleString(loc()) + "\n" +
+            tl("عدد الرسائل: ", "Messages: ") + messages.length + "\n" + "=".repeat(40) + "\n\n";
         const body = messages.map((m) => {
             const ts = new Date(m.createdAt).toLocaleString(loc(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-            const who = m.senderUserId === "me" ? "أنا" : conversation.name;
+            const who = m.senderUserId === "me" ? tl("أنا", "Me") : conversation.name;
             const txt = m.type === "text" ? m.text
-                : m.type === "voice" ? "[رسالة صوتية]"
-                : m.type === "location" ? "[موقع]"
-                    : m.type === "image" ? "[صورة]"
-                        : m.type === "video" ? "[فيديو]"
-                            : m.type === "file" ? ("[ملف] " + (m.text || ""))
-                                : m.type === "sticker" ? "[ملصق]"
-                                    : (m.text || "[مرفق]");
+                : m.type === "voice" ? tl("[رسالة صوتية]", "[Voice message]")
+                : m.type === "location" ? tl("[موقع]", "[Location]")
+                    : m.type === "image" ? tl("[صورة]", "[Photo]")
+                        : m.type === "video" ? tl("[فيديو]", "[Video]")
+                            : m.type === "file" ? (tl("[ملف] ", "[File] ") + (m.text || ""))
+                                : m.type === "sticker" ? tl("[ملصق]", "[Sticker]")
+                                    : (m.text || tl("[مرفق]", "[Attachment]"));
             return "[" + ts + "] " + who + ": " + txt;
         }).join("\n");
         saveTextFile("sawa-" + conversation.name.replace(/\s+/g, "-") + ".txt", header + body);
@@ -2490,7 +2508,7 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                                 React.createElement("span", { className: "text-sm font-bold block", style: { color: colors.accent } }, t("mn_sla_alrhm")),
                                 React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } },
                                     personKinLabel(fp),
-                                    " \u00B7 \u0627\u0636\u063A\u0637 \u0644\u0639\u0631\u0636 \u0645\u0644\u0641\u0647 \u0641\u064A \u0635\u0644\u0629 \u0627\u0644\u0631\u062D\u0645")),
+                                    tl(" \u00B7 \u0627\u0636\u063A\u0637 \u0644\u0639\u0631\u0636 \u0645\u0644\u0641\u0647 \u0641\u064A \u0635\u0644\u0629 \u0627\u0644\u0631\u062D\u0645", " · Tap to view their profile in Silat Rehim"))),
                             React.createElement(ChevronLeft, { size: 15, color: colors.accent, style: { transform: "scaleX(-1)" } }))));
                 })(),
                 window.SawaChat && window.SawaChat.e2eStartDm && conversation.peerUid && !conversation.isSavedMessages && React.createElement("button", { onClick: () => conversation.secret ? window.SawaChat.e2eSafety(conversation.id) : window.SawaChat.e2eStartDm(conversation.peerUid), className: "w-full mb-4" },
@@ -2505,12 +2523,12 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                         React.createElement("div", { className: `flex-1 ${textStart()}` },
                             React.createElement("span", { className: "text-sm font-bold block", style: { color: colors.text } }, t("tsdyr_almhadtha")),
                             React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } },
-                                "\u062D\u0641\u0638 \u0646\u0633\u062E\u0629 \u0646\u0635\u064A\u0629 (",
+                                tl("\u062D\u0641\u0638 \u0646\u0633\u062E\u0629 \u0646\u0635\u064A\u0629 (", "Save a text copy ("),
                                 messages.length,
-                                " \u0631\u0633\u0627\u0644\u0629)")))),
+                                tl(" \u0631\u0633\u0627\u0644\u0629)", " messages)"))))),
                 React.createElement("h4", { className: `text-xs font-extrabold mb-2 flex ${rowStart()} items-center gap-1.5`, style: { color: colors.text } },
                     React.createElement(Images, { size: 13, color: colors.primary }),
-                    " \u0627\u0644\u0648\u0633\u0627\u0626\u0637 \u0627\u0644\u0645\u0634\u062A\u0631\u0643\u0629 (",
+                    tl(" \u0627\u0644\u0648\u0633\u0627\u0626\u0637 \u0627\u0644\u0645\u0634\u062A\u0631\u0643\u0629 (", " Shared media ("),
                     totalMediaCount,
                     ")"),
                 totalMediaCount === 0 ? (React.createElement(Card, { className: "mb-3" },
@@ -2531,7 +2549,7 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                             React.createElement("div", { className: "text-xs font-bold", style: { color: colors.text } }, m.text),
                             React.createElement("div", { className: "text-[10px]", style: { color: colors.textMuted } },
                                 (m.fileSize / 1024).toFixed(0),
-                                " \u0643\u064A\u0644\u0648\u0628\u0627\u064A\u062A")))))))))),
+                                tl(" \u0643\u064A\u0644\u0648\u0628\u0627\u064A\u062A", " KB"))))))))))),
                 SHOW_E2E_UI && React.createElement("h4", { className: `text-xs font-extrabold mb-2 flex ${rowStart()} items-center gap-1.5`, style: { color: colors.text } },
                     React.createElement(ShieldCheck, { size: 13, color: colors.primary }),
                     t("altshfyr")),
@@ -2541,7 +2559,7 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                     verifyStatus === "idle" && (React.createElement(Button, { icon: QrCode, label: t("msh_rmz_llthqq_almtbadl", { name: conversation.name }), onPress: handleVerify, variant: "outline" })),
                     verifyStatus === "scanning" && React.createElement("p", { className: "text-xs text-center", style: { color: colors.accent } }, t("jar_almsh_abr_alkamyra")),
                     verifyStatus === "matched" && (React.createElement("p", { className: "text-xs text-center font-bold", style: { color: colors.success } },
-                        "\u0645\u062A\u0637\u0627\u0628\u0642\u0629 \u2713 \u2014 \u062A\u0645 \u0627\u0644\u062A\u062D\u0642\u0642 \u0645\u0646 \u0647\u0648\u064A\u0629 ",
+                        tl("\u0645\u062A\u0637\u0627\u0628\u0642\u0629 \u2713 \u2014 \u062A\u0645 \u0627\u0644\u062A\u062D\u0642\u0642 \u0645\u0646 \u0647\u0648\u064A\u0629 ", "Verified ✓ — identity confirmed for "),
                         conversation.name)),
                     verifyStatus === "error" && React.createElement("p", { className: "text-xs text-center", style: { color: colors.danger } }, t("tadhr_alwswl_llkamyra"))),
                 React.createElement(Card, { className: "mb-3" },
@@ -2593,9 +2611,9 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                     React.createElement("button", { onClick: onUnblock, className: "text-xs font-bold underline", style: { color: colors.primary } }, t("ilgha_alhzr")))),
                 confirmingBlock && (React.createElement("div", { className: "rounded-xl border p-3 mt-2", style: { borderColor: colors.danger } },
                     React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.danger } },
-                        "\u0645\u062A\u0623\u0643\u062F \u0645\u0646 \u062D\u0638\u0631 ",
+                        tl("\u0645\u062A\u0623\u0643\u062F \u0645\u0646 \u062D\u0638\u0631 ", "Block "),
                         conversation.name,
-                        "\u061F \u0644\u0646 \u064A\u0642\u062F\u0631 \u064A\u0631\u0633\u0644 \u0644\u0643 \u0631\u0633\u0627\u0626\u0644 \u0628\u0639\u062F\u0647\u0627"),
+                        tl("\u061F \u0644\u0646 \u064A\u0642\u062F\u0631 \u064A\u0631\u0633\u0644 \u0644\u0643 \u0631\u0633\u0627\u0626\u0644 \u0628\u0639\u062F\u0647\u0627", "? They won't be able to message you after this")),
                     React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                         React.createElement("button", { onClick: () => { onBlock(); setConfirmingBlock(false); }, className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.danger } },
                             React.createElement("span", { className: "text-xs font-bold text-white" }, t("nam_ahzr"))),

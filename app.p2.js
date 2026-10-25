@@ -82,19 +82,22 @@ function shareText(payload) {
     return false;
 }
 function saveTextFile(filename, content) {
+    try { return saveFileOut(new Blob([content], { type: "text/plain;charset=utf-8" }), filename, "text/plain"); }
+    catch (_a) { return false; }
+}
+// C129: حفظ ملفٍّ من الواجهة — WebView (أندرويد) وWKWebView (آيفون) لا ينزّلان روابط blob: فكان «تصدير الشجرة» لا يفعل شيئاً.
+//       أندرويد ⇒ «التنزيلات» عبر الجسر · آيفون ⇒ ورقة المشاركة (منها «حفظ في الملفّات») · المتصفّح ⇒ رابط تنزيل.
+function saveFileOut(blob, filename, mime) {
     try {
-        const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
-        return true;
-    }
-    catch (_a) {
-        return false;
-    }
+        const SC = window.SawaChat;
+        if (SC && SC.saveBlob && (window.SawaNativeBridge || window.SawaIOS)) { SC.saveBlob(blob, filename, window.SawaIOS ? "share" : "save", mime || blob.type); return true; }
+    } catch (e) { }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.style.display = "none";
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { try { a.remove(); URL.revokeObjectURL(url); } catch (e) { } }, 4000);
+    return true;
 }
 // ============================================================
 // التخزين الدائم — طبقة واحدة تُستبدل بـ AsyncStorage في React Native

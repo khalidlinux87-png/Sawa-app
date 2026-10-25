@@ -1883,18 +1883,18 @@ function WalletLockScreen({ onUnlock, onBack, walletPasskeyId, onPasskeyRegister
     const [setupPin, setSetupPin] = useState("");
     const [webauthnSupported] = useState(() => !!window.PublicKeyCredential);
     async function handleRegisterPasskey() {
-        setWebauthnStatus("جاري التسجيل...");
+        setWebauthnStatus(tl("جاري التسجيل...", "Registering..."));
         const result = await registerWalletPasskey();
         if (result.ok) {
             onPasskeyRegistered(result.credentialId);
-            setWebauthnStatus("تم التسجيل! اضغط 'افتح ببصمة الجهاز' الآن");
+            setWebauthnStatus(tl("تم التسجيل! اضغط 'افتح ببصمة الجهاز' الآن", "Registered! Now tap 'Unlock with device biometrics'"));
         }
         else {
             setWebauthnStatus(t("tadhr_altsjyl", { error: result.error }));
         }
     }
     async function handleAuthenticate() {
-        setWebauthnStatus("جاري التحقق...");
+        setWebauthnStatus(tl("جاري التحقق...", "Verifying..."));
         const result = await authenticateWalletPasskey(walletPasskeyId);
         if (result.ok)
             onUnlock();

@@ -708,25 +708,25 @@ function FirstRunScreen({ onStartFresh, onViewDemo }) {
         React.createElement("div", { className: "flex flex-col items-center pt-12 pb-6 px-6", style: { background: "linear-gradient(160deg, " + (colors.primary) + "18, transparent)" } },
             React.createElement("div", { className: "w-20 h-20 rounded-3xl flex items-center justify-center mb-4", style: { background: "linear-gradient(135deg, " + (colors.primary) + ", " + (colors.primaryDark) + ")" } },
                 React.createElement("span", { className: "text-4xl font-extrabold text-white" }, "\u0633\u0648\u0627")),
-            React.createElement("h1", { className: "text-xl font-extrabold text-center mb-1", style: { color: colors.text } }, "\u0645\u0631\u062D\u0628\u0627\u064B \u0628\u0643 \u0641\u064A \u0633\u0648\u0627 \uD83E\uDD0D"),
-            React.createElement("p", { className: "text-xs text-center", style: { color: colors.textMuted } }, "\u0627\u0628\u062F\u0623 \u0628\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0644 \u0642\u0631\u064A\u0628 \u0644\u0643 \u2014 \u0648\u0633\u0648\u0627 \u064A\u062A\u0648\u0644\u0649 \u0627\u0644\u0628\u0627\u0642\u064A")),
+            React.createElement("h1", { className: "text-xl font-extrabold text-center mb-1", style: { color: colors.text } }, tl("\u0645\u0631\u062D\u0628\u0627\u064B \u0628\u0643 \u0641\u064A \u0633\u0648\u0627 \uD83E\uDD0D", "Welcome to Sawa 🤍")),
+            React.createElement("p", { className: "text-xs text-center", style: { color: colors.textMuted } }, tl("\u0627\u0628\u062F\u0623 \u0628\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0644 \u0642\u0631\u064A\u0628 \u0644\u0643 \u2014 \u0648\u0633\u0648\u0627 \u064A\u062A\u0648\u0644\u0649 \u0627\u0644\u0628\u0627\u0642\u064A", "Start by adding your first relative — Sawa takes care of the rest"))),
         React.createElement("div", { className: "flex-1 px-6 pb-6" },
             React.createElement("div", { className: "rounded-2xl p-5 mb-4", style: { backgroundColor: colors.card, border: "1px solid " + (colors.primary) + "33" } },
-                React.createElement("p", { className: "text-sm font-extrabold mb-3", style: { color: colors.text } }, "\u0627\u0628\u062F\u0623 \u0628\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0644 \u0642\u0631\u064A\u0628 \u0644\u0643"),
+                React.createElement("p", { className: "text-sm font-extrabold mb-3", style: { color: colors.text } }, tl("\u0627\u0628\u062F\u0623 \u0628\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0644 \u0642\u0631\u064A\u0628 \u0644\u0643", "Add your first relative")),
                 React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: firstName, onChange: (e) => setFirstName(e.target.value), placeholder: t("misc_aktb_asm"), className: "w-full border rounded-xl px-4 py-3 text-sm mb-4 outline-none", style: { borderColor: firstName ? colors.primary : colors.border, color: colors.text, backgroundColor: colors.bg }, autoFocus: true }),
                 React.createElement("button", { onClick: () => firstName.trim() && onStartFresh(firstName.trim()), className: "w-full py-3 rounded-xl text-sm font-extrabold", style: {
                         backgroundColor: firstName.trim() ? colors.primary : colors.border,
                         color: "#fff",
                         opacity: firstName.trim() ? 1 : 0.5,
                     } },
-                    "\u0627\u0628\u062F\u0623 \u0645\u0639 ",
+                    tl("\u0627\u0628\u062F\u0623 \u0645\u0639 ", "Start with "),
                     firstName.trim() || "...")),
             React.createElement("div", { className: "flex items-center gap-3 my-4" },
                 React.createElement("div", { className: "flex-1 h-px", style: { backgroundColor: colors.border } }),
-                React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } }, "\u0623\u0648"),
+                React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } }, tl("\u0623\u0648", "or")),
                 React.createElement("div", { className: "flex-1 h-px", style: { backgroundColor: colors.border } })),
-            React.createElement("button", { onClick: onViewDemo, className: "w-full py-3 rounded-xl text-sm font-bold border", style: { borderColor: colors.border, color: colors.textMuted, backgroundColor: colors.card } }, "\u0627\u0633\u062A\u0639\u0631\u0636 \u0645\u062B\u0627\u0644 \u062A\u0648\u0636\u064A\u062D\u064A \u0623\u0648\u0644\u0627\u064B"),
-            React.createElement("p", { className: "text-[10px] text-center mt-2", style: { color: colors.textMuted } }, "\u0628\u064A\u0627\u0646\u0627\u062A \u0648\u0647\u0645\u064A\u0629 \u0641\u0642\u0637 \u2014 \u0644\u0646 \u062A\u064F\u062D\u0641\u0638"))));
+            React.createElement("button", { onClick: onViewDemo, className: "w-full py-3 rounded-xl text-sm font-bold border", style: { borderColor: colors.border, color: colors.textMuted, backgroundColor: colors.card } }, tl("\u0627\u0633\u062A\u0639\u0631\u0636 \u0645\u062B\u0627\u0644 \u062A\u0648\u0636\u064A\u062D\u064A \u0623\u0648\u0644\u0627\u064B", "View a demo example first")),
+            React.createElement("p", { className: "text-[10px] text-center mt-2", style: { color: colors.textMuted } }, tl("\u0628\u064A\u0627\u0646\u0627\u062A \u0648\u0647\u0645\u064A\u0629 \u0641\u0642\u0637 \u2014 \u0644\u0646 \u062A\u064F\u062D\u0641\u0638", "Demo data only — won't be saved")))));
 }
 
 // === SawaTooltip ===
@@ -754,7 +754,7 @@ function MatchCandidatesCard({ matchCandidates, matchDecisions, setMatchDecision
             React.createElement("p", { className: "text-xs font-bold " + textStart() + " mb-0.5", style: { color: colors.text } }, m.typed),
             React.createElement("p", { className: "text-[10px] " + textStart() + " mb-2 leading-relaxed", style: { color: colors.textMuted } }, m.allMatches.length > 1
                 ? t("ashkhas_bhdha_alasm", { length: m.allMatches.length, label: m.label })
-                : "الموجود: " + m.label + (m.existing?.alive === false ? " (متوفّى)" : "")),
+                : tl("الموجود: ", "Existing: ") + m.label + (m.existing?.alive === false ? tl(" (متوفّى)", " (deceased)") : "")),
             m.allMatches.length > 1 && (React.createElement("p", { className: "text-[10px] " + textStart() + " mb-1.5", style: { color: colors.danger } }, t("tshabh_fy_alasm_takd"))),
             React.createElement("div", { className: "flex " + rowStart() + " gap-2" },
                 React.createElement("button", { onClick: () => setMatchDecisions((d) => ({ ...d, [m.low]: "same" })), className: "flex-1 py-1.5 rounded-lg text-[10px] font-extrabold", style: {
@@ -2116,7 +2116,7 @@ function AppInner() {
         // C7: موعدٌ حقيقيّ في الخادم (يظهر عند المدعوّين ويصلهم تذكير) — والقائمة يعيد نشرها SawaRTC
         const R = window.SawaRTC;
         if (R && R.enabled && R.enabled() && (entry.peerUid || entry.cid)) {
-            R.schedSave(entry).catch(() => showToast("تعذّر حفظ الموعد — تحقّق من الاتّصال", "error"));
+            R.schedSave(entry).catch(() => showToast(tl("تعذّر حفظ الموعد — تحقّق من الاتّصال", "Couldn't save the appointment — check your connection"), "error"));
             showToast(t("tm_hfz_mwad_almkalma", { contactName: entry.contactName }), "success");
             return;
         }
@@ -2136,7 +2136,7 @@ function AppInner() {
             id: `n-callreminder-${entry.id}`,
             type: "schedule",
             title: t("ai_tdhkyr_mkalma"),
-            body: `مكالمة ${entry.callType === "video" ? t("ai_fydyw_2") : t("ai_swtya")} مع ${entry.contactName} الساعة ${entry.startTime}`,
+            body: tl(`مكالمة ${entry.callType === "video" ? t("ai_fydyw_2") : t("ai_swtya")} مع ${entry.contactName} الساعة ${entry.startTime}`, `${entry.callType === "video" ? "Video" : "Voice"} call with ${entry.contactName} at ${entry.startTime}`),
             read: false,
         };
         setNotifications((prev) => [newNotif, ...prev]);
@@ -3305,14 +3305,7 @@ function AppInner() {
         }
         const payload = buildTreeExport(familyGroups, groupPersons, kinshipRelations, SAWA_APP);
         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "sila-" + new Date().toISOString().slice(0, 10) + ".json"; // ⛔ اسم ملف
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        saveFileOut(blob, "sila-" + new Date().toISOString().slice(0, 10) + ".json", "application/json");   // C129 · ⛔ اسم ملف
         showToast(t("ex_tm_altsdyr", { n: total.toLocaleString(loc()) }), "success");
     }
     function importFamilyTree() {
@@ -3624,7 +3617,7 @@ function AppInner() {
                 setKinshipRelations((prev) => prev.filter((r) => !(r.groupId === gid && (ids.includes(r.source) || ids.includes(r.target)))));
                 setSchedules((prev) => prev.filter((s) => !(s.groupId === gid && ids.includes(s.personId))));
                 setEvents((prev) => prev.filter((e) => !(e.groupId === gid && ids.includes(e.personId))));
-                logActivity(gid, `حذفت ${ids.length} قريب (${names.slice(0, 3).join("، ")}${names.length > 3 ? "…" : ""})`);
+                logActivity(gid, tl(`حذفت ${ids.length} قريب (${names.slice(0, 3).join("، ")}${names.length > 3 ? "…" : ""})`, `Deleted ${ids.length} relative(s) (${names.slice(0, 3).join(", ")}${names.length > 3 ? "…" : ""})`));
                 showToast(t("hdhf_qryb_walaqathm", { length: ids.length }), "success");
             }, groupAllowsMemberEvents: (_b = (_a = groupSettings[group.id]) === null || _a === void 0 ? void 0 : _a.allowMemberEvents) !== null && _b !== void 0 ? _b : false, onInferSpouses: () => inferSpousesAndParents(group.id), onRecalcProximity: () => {
                 const gid = group.id;
@@ -3639,7 +3632,7 @@ function AppInner() {
                         return { ...p, proximity: correct };
                     }),
                 }));
-                logActivity(gid, "واءمت درجات القرب مع صلات القرابة");
+                logActivity(gid, tl("واءمت درجات القرب مع صلات القرابة", "Closeness levels aligned with kinship"));
                 showToast(t("wwymt_drjat_alqrb_ma"), "success");
             }, onMarkContactBulk: (ids) => {
                 const now = Date.now();
@@ -3664,7 +3657,7 @@ function AppInner() {
                             ? t("ai_akhr_twasl") + (days === Infinity ? t("ai_la_ywjd") : days + t("ai_ywm"))
                             : t("ai_mtwfa"));
                 }).join("\n\n");
-                saveTextFile("أقارب-" + group.name + ".txt", header + body);
+                saveTextFile(tl("أقارب-", "relatives-") + group.name + ".txt", header + body);
                 showToast(t("sdr", { count: list.length }), "success");
             }, onPrioritizeSelected: (ids) => {
                 setGroupPersons((prev) => ({
@@ -3843,7 +3836,7 @@ function AppInner() {
                             return cv.name && ((_a = m.local_name) === null || _a === void 0 ? void 0 : _a.split(" ")[0]) &&
                                 cv.name.toLowerCase().includes(m.local_name.split(" ")[0].toLowerCase());
                         });
-                        return hit ? { ...cv, lastMessage: "🎥 دعوة لغرفة سوا: " + link, updatedAt: now } : cv;
+                        return hit ? { ...cv, lastMessage: tl("🎥 دعوة لغرفة سوا: ", "🎥 Invite to a Sawa room: ") + link, updatedAt: now } : cv;
                     }));
                     const ids = members.map((m) => m.id);
                     setGroupPersons((prev) => {
@@ -3862,15 +3855,15 @@ function AppInner() {
             onFamily: () => { closeDailyCard(); setTab("discover"); setDiscoverStack([{ type: "groups" }]); } }),
         flow === "app" && !activeRoom && !showLinkedDevices && !showWrapped && (React.createElement("div", { className: "flex-1 flex flex-col overflow-hidden" },
         showHelp && React.createElement("div", { className: "absolute inset-0 z-50 flex flex-col", style: { backgroundColor: "white" } }, React.createElement(HelpScreen, { onBack: function(){setShowHelp(false);}, onRestartTour: function(){resetTooltips();setShowHelp(false);} })),
-        isDemoMode && React.createElement("div", { className: "flex items-center justify-between px-3 py-1.5", style: { backgroundColor: "#F59E0B", flexShrink: 0 } }, React.createElement("span", { className: "text-[10px] font-bold text-white" }, "⚠️ عرض توضيحي — البيانات وهمية"), React.createElement("button", { onClick: function(){ setFamilyGroups([{id:"g-main",name:"عائلتي",description:"",role:"owner",ownerPersonId:null}]); setGroupPersons({"g-main":[]}); setIsDemoMode(false); }, className: "text-[10px] font-extrabold text-white underline" }, "ابدأ من صفر")),
+        isDemoMode && React.createElement("div", { className: "flex items-center justify-between px-3 py-1.5", style: { backgroundColor: "#F59E0B", flexShrink: 0 } }, React.createElement("span", { className: "text-[10px] font-bold text-white" }, tl("⚠️ عرض توضيحي — البيانات وهمية", "⚠️ Demo — data is not real")), React.createElement("button", { onClick: function(){ setFamilyGroups([{id:"g-main",name:"عائلتي",description:"",role:"owner",ownerPersonId:null}]); setGroupPersons({"g-main":[]}); setIsDemoMode(false); }, className: "text-[10px] font-extrabold text-white underline" }, tl("ابدأ من صفر", "Start from scratch"))),
             React.createElement("div", { className: "flex-1 overflow-hidden flex flex-col" }, stack[stack.length - 1] === "security" ? (React.createElement(ProfileSettingsScreen, { onBack: () => setStack([]), onChangePin: () => setFlow("setup"), biometricEnabled: biometricEnabled, setBiometricEnabled: setBiometricEnabled, autoLockDelay: autoLockDelay, setAutoLockDelay: setAutoLockDelay, remainingCodes: recoveryCodes.length, onLockNow: () => setFlow("locked"), onOpenSessions: () => setStack(["security", "sessions"]), profilePhoto: profilePhoto, setProfilePhoto: setProfilePhoto, interfaceLanguage: interfaceLanguage, setInterfaceLanguage: setInterfaceLanguage, pinLockEnabled: pinLockEnabled, setPinLockEnabled: setPinLockEnabled, browserNotifEnabled: browserNotifEnabled, onToggleBrowserNotif: toggleBrowserNotif, statusOption: statusOption, setStatusOption: setStatusOption, customStatusMessage: customStatusMessage, setCustomStatusMessage: setCustomStatusMessage, redeemedReferralCode: redeemedReferralCode, onRedeemReferral: redeemReferral, blockUnsolicited: blockUnsolicited, setBlockUnsolicited: setBlockUnsolicited, identityVerified: identityVerified, chatBackupEnabled: chatBackupEnabled, setChatBackupEnabled: setChatBackupEnabled, onDeleteKeys: deleteEncryptionKeys, backendLinked: backendLinked, onUnlink: () => setBackendLinked(false) })) : stack[stack.length - 1] === "sessions" ? (React.createElement(SessionsScreen, { sessions: sessions, onRevoke: revokeSession, onRevokeAll: revokeAllSessions, onBack: () => setStack(["security"]) })) : stack[0] === "wallet" && !walletUnlocked ? (React.createElement(WalletLockScreen, { onUnlock: () => setWalletUnlocked(true), onBack: () => setStack([]), walletPasskeyId: walletPasskeyId, onPasskeyRegistered: setWalletPasskeyId, walletPin: walletPin, onSetWalletPin: setWalletPin })) : stack[0] === "wallet" && walletUnlocked ? (React.createElement(WalletScreen, { balance: walletBalance, transactions: walletTransactions, cardNumber: walletCardNumber, walletPinForConfirm: walletPin, kycStatus: kycStatus, kycDismissed: kycDismissed, onDismissKyc: () => setKycDismissed(true), onSubmitKyc: submitKyc, onTopUp: topUpWallet, onTransfer: transferWallet, onScanPay: scanPay, onBack: () => { setStack([]); setWalletUnlocked(false); }, linkedMethods: linkedPaymentMethods, onAddPaymentMethod: addPaymentMethod, onRemovePaymentMethod: removePaymentMethod, spendingLimit: spendingLimit, onSetSpendingLimit: setSpendingLimit, jamiyaList: jamiyaList, onPayJamiya: payJamiya, onCreateJamiya: createJamiya, CURRENT_USER_ID: CURRENT_USER_ID })) : stack[0] === "stats" ? (React.createElement(StatsScreen, { transactions: walletTransactions, onBack: () => setStack([]) })) : stack[0] === "notifications" ? (React.createElement(NotificationCenterScreen, { notifications: notifications, onMarkRead: markNotificationRead, onBack: () => setStack([]) })) : stack[stack.length - 1] === "demo" ? (React.createElement(EncryptedNotesDemoScreen, { onBack: () => setStack([]), notes: notes, onAdd: (text) => setNotes((prev) => [{ id: Date.now(), text }, ...prev]), onDelete: (id) => setNotes((prev) => prev.filter((n) => n.id !== id)) })) : (React.createElement(React.Fragment, null,
                 tab === "chats" && (() => {
                     const chatsTop = chatsStack[chatsStack.length - 1];
                     if (!backendLinked) {
-                        return React.createElement(PlaceholderTab, { icon: CloudOff, title: t("almhadthat"), note: "\u0627\u0631\u0628\u0637 \u062D\u0633\u0627\u0628\u0643 \u0628\u0627\u0644\u0633\u064A\u0631\u0641\u0631 \u0645\u0646 \u0634\u0627\u0634\u0629 \u062D\u0633\u0627\u0628\u064A \u0644\u062A\u062A\u0645\u0643\u0651\u0646 \u0645\u0646 \u0627\u0633\u062A\u062E\u062F\u0627\u0645 \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0627\u062A" });
+                        return React.createElement(PlaceholderTab, { icon: CloudOff, title: t("almhadthat"), note: tl("\u0627\u0631\u0628\u0637 \u062D\u0633\u0627\u0628\u0643 \u0628\u0627\u0644\u0633\u064A\u0631\u0641\u0631 \u0645\u0646 \u0634\u0627\u0634\u0629 \u062D\u0633\u0627\u0628\u064A \u0644\u062A\u062A\u0645\u0643\u0651\u0646 \u0645\u0646 \u0627\u0633\u062A\u062E\u062F\u0627\u0645 \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0627\u062A", "Link your account to the server from the Account screen to use chats") });
                     }
                     if (!chatsTop) {
-                        return (React.createElement(ConversationsListScreen, { onOpenFamilyPerson: (p) => { const gid = Object.keys(groupPersons).find((k) => (groupPersons[k] || []).some((x) => x.id === p.id)); const g = familyGroups.find((x) => x.id === gid); if (!g) return; setTab("discover"); setDiscoverStack([{ type: "groups" }, { type: "groupDetail", data: g }, { type: "personDetail", data: p, groupId: gid }]); }, chatDrafts: chatDrafts, conversations: conversations, groups: groups, broadcastLists: broadcastLists, lockedConversationIds: lockedConversationIds, connectionState: "connected", onOpenChat: (c) => { setChatsStack([{ type: "chat", data: Object.assign({}, c, { unreadOnOpen: c.unread || 0 }) }]); markConversationRead(c.id); }, onOpenGroup: (g) => { setChatsStack([{ type: "group", data: Object.assign({}, g, { unreadOnOpen: g.unread || 0 }) }]); markGroupRead(g.id); }, onOpenBroadcastList: (b) => setChatsStack([{ type: "broadcast", data: b }]), onNewConversation: () => setChatsStack([{ type: "new" }]), onNewGroup: () => setChatsStack([{ type: "newGroup" }]), onNewBroadcastList: () => setChatsStack([{ type: "newBroadcast" }]), onOpenLockedChats: () => setChatsStack([{ type: "lockedChats" }]), onOpenStarredMessages: () => setChatsStack([{ type: "starredMessages" }]), onlineContacts: onlineContacts, onScanQr: scanQrContact, onOpenSearch: () => setChatsStack([{ type: "search" }]), chatFolders: chatFolders, folderAssignments: folderAssignments, onOpenChatSettings: () => setChatsStack([{ type: "chatSettings" }]), typingConversations: typingConversations, momentsPosts: momentsPosts, familyPersons: Object.values(famPersons).flat(), onOpenMoments: () => { setMomentsReturnTab("chats"); setTab("discover"); setDiscoverStack([{ type: "moments" }]); }, onOpenRoom: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomCreate())) setActiveRoom(generateRoomCode()); }, onJoinRoomCode: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoinPrompt())) showToast("سجّل الدخول أوّلاً للانضمام إلى غرفة", "info"); }, onScheduleRoom: () => setSchedulingRoom(true), onOpenScheduledRooms: () => setRoomsListOpen(true), scheduledRooms: scheduledRooms, onJoinScheduled: (code) => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoin(code))) setActiveRoom(code); }, onCancelScheduled: (id) => { const sr = scheduledRooms.find((r) => r.id === id); if (sr && sr.cloud && window.SawaRTC) window.SawaRTC.schedRemove(id); else setScheduledRooms((p) => p.filter((r) => r.id !== id)); showToast(t("alghy_almwad"), "info"); }, myName: t("ai_ana"), groupPersons: famPersons, groupSchedules: groupSchedules, showStoriesRow: showStoriesRow, showFamilyReminders: showFamilyReminders, onOpenArchived: () => setChatsStack([{ type: "archived" }]), pinnedConversations: pinnedConversations, onPinConv: (id) => {
+                        return (React.createElement(ConversationsListScreen, { onOpenFamilyPerson: (p) => { const gid = Object.keys(groupPersons).find((k) => (groupPersons[k] || []).some((x) => x.id === p.id)); const g = familyGroups.find((x) => x.id === gid); if (!g) return; setTab("discover"); setDiscoverStack([{ type: "groups" }, { type: "groupDetail", data: g }, { type: "personDetail", data: p, groupId: gid }]); }, chatDrafts: chatDrafts, conversations: conversations, groups: groups, broadcastLists: broadcastLists, lockedConversationIds: lockedConversationIds, connectionState: "connected", onOpenChat: (c) => { setChatsStack([{ type: "chat", data: Object.assign({}, c, { unreadOnOpen: c.unread || 0 }) }]); markConversationRead(c.id); }, onOpenGroup: (g) => { setChatsStack([{ type: "group", data: Object.assign({}, g, { unreadOnOpen: g.unread || 0 }) }]); markGroupRead(g.id); }, onOpenBroadcastList: (b) => setChatsStack([{ type: "broadcast", data: b }]), onNewConversation: () => setChatsStack([{ type: "new" }]), onNewGroup: () => setChatsStack([{ type: "newGroup" }]), onNewBroadcastList: () => setChatsStack([{ type: "newBroadcast" }]), onOpenLockedChats: () => setChatsStack([{ type: "lockedChats" }]), onOpenStarredMessages: () => setChatsStack([{ type: "starredMessages" }]), onlineContacts: onlineContacts, onScanQr: scanQrContact, onOpenSearch: () => setChatsStack([{ type: "search" }]), chatFolders: chatFolders, folderAssignments: folderAssignments, onOpenChatSettings: () => setChatsStack([{ type: "chatSettings" }]), typingConversations: typingConversations, momentsPosts: momentsPosts, familyPersons: Object.values(famPersons).flat(), onOpenMoments: () => { setMomentsReturnTab("chats"); setTab("discover"); setDiscoverStack([{ type: "moments" }]); }, onOpenRoom: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomCreate())) setActiveRoom(generateRoomCode()); }, onJoinRoomCode: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoinPrompt())) showToast(tl("سجّل الدخول أوّلاً للانضمام إلى غرفة", "Sign in first to join a room"), "info"); }, onScheduleRoom: () => setSchedulingRoom(true), onOpenScheduledRooms: () => setRoomsListOpen(true), scheduledRooms: scheduledRooms, onJoinScheduled: (code) => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoin(code))) setActiveRoom(code); }, onCancelScheduled: (id) => { const sr = scheduledRooms.find((r) => r.id === id); if (sr && sr.cloud && window.SawaRTC) window.SawaRTC.schedRemove(id); else setScheduledRooms((p) => p.filter((r) => r.id !== id)); showToast(t("alghy_almwad"), "info"); }, myName: t("ai_ana"), groupPersons: famPersons, groupSchedules: groupSchedules, showStoriesRow: showStoriesRow, showFamilyReminders: showFamilyReminders, onOpenArchived: () => setChatsStack([{ type: "archived" }]), pinnedConversations: pinnedConversations, onPinConv: (id) => {
                                 setPinnedConversations((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
                                 showToast(pinnedConversations.includes(id) ? t("ai_ilgha_altthbyt") : t("ai_tm_altthbyt"), "success");
                             }, onToggleReadConv: (id) => {
@@ -4015,7 +4008,7 @@ function AppInner() {
         gapAddPreset && (React.createElement(FamilyPersonFormSheet, { persons: groupPersons[gapAddPreset.groupId] || [], relations: kinshipRelations.filter((r) => r.groupId === gapAddPreset.groupId), presetRelatedToId: gapAddPreset.relatedToId, presetRelationType: gapAddPreset.relationType, presetKinship: gapAddPreset.presetKinship, presetGender: gapAddPreset.presetGender || null, onSave: (data) => addPerson(gapAddPreset.groupId, data), onClose: () => setGapAddPreset(null) })),
         schedulingRoom && (React.createElement(ScheduleRoomModal, { onSave: (r) => {
                 // C8: غرفة مجدولة حقيقيّة — تظهر على أجهزتي ويصلني تذكير، وبطاقتها جاهزة وأنا مضيفها
-                if ((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled())) { window.SawaRTC.schedSave({ room: r.code, description: r.title, contactName: r.title, timestamp: r.at, endTime: "", callType: "audio", reminderMinutes: 15 }).then(() => { setRoomsListOpen(true); try { if (window.SawaRTC.schedPublish) setTimeout(() => window.SawaRTC.schedPublish({ code: r.code, title: r.title, at: r.at }), 350); } catch (e) { } }).catch(() => showToast("تعذّر حفظ الموعد — تحقّق من الاتّصال", "error")); return; }
+                if ((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled())) { window.SawaRTC.schedSave({ room: r.code, description: r.title, contactName: r.title, timestamp: r.at, endTime: "", callType: "audio", reminderMinutes: 15 }).then(() => { setRoomsListOpen(true); try { if (window.SawaRTC.schedPublish) setTimeout(() => window.SawaRTC.schedPublish({ code: r.code, title: r.title, at: r.at }), 350); } catch (e) { } }).catch(() => showToast(tl("تعذّر حفظ الموعد — تحقّق من الاتّصال", "Couldn't save the appointment — check your connection"), "error")); return; }
                 setScheduledRooms((p) => [...p, r].sort((a, b) => a.at - b.at));
                 setRoomsListOpen(true); showToast(tl("جُدولت الغرفة ✓ — تجدها هنا وفي «المكالمات» ← ⋮ ← «الغرف المجدولة»", "Room scheduled ✓"), "success");   // C17
             }, onClose: () => setSchedulingRoom(false) })),

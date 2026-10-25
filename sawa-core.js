@@ -185,7 +185,14 @@ window.SAWA_INVITE_URL = "https://sawasilat.netlify.app";
 // تُطبَّق قبل تحميل التطبيق حتى لا ترتجف الواجهة من العربية للإنجليزية.
 (function() {
   try {
-    var lang = localStorage.getItem("sawaLang") || "ar";
+    // C129: أوّل تشغيل ⇒ لغة الهاتف (عربيّة ⇒ ar، غيرها ⇒ en) — كانت العربيّة دائماً فيرى المراجع ومستخدمو الإنجليزيّة شاشات الدخول بالعربيّة.
+    //       يمكن التبديل من زرّ اللغة في شاشة الترحيب، ومن «حسابي» لاحقاً.
+    var lang = localStorage.getItem("sawaLang");
+    if (lang !== "ar" && lang !== "en") {
+      var nl = (navigator.languages && navigator.languages[0]) || navigator.language || "ar";
+      lang = /^ar\b|^ar-/i.test(nl) || /^ar$/i.test(nl) ? "ar" : "en";
+      try { localStorage.setItem("sawaLang", lang); } catch (e2) {}
+    }
     window.__SAWA_LANG = lang;
     document.documentElement.lang = lang;
     document.documentElement.dir = (lang === "en") ? "ltr" : "rtl";
