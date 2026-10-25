@@ -748,6 +748,21 @@ function momentRemaining(expiresAt) {
     if (hours >= 1) return t("ytbqa_s", { n: hours });
     return t("ytbqa_d", { n: Math.max(1, Math.floor(left / 60000)) });
 }
+// C133: لحظات الأصدقاء الحقيقيّة — الشاشة يرسمها sawa-chat (moments.mount) بألوان التطبيق، وقوائم البثّ تُحوَّل إلى معرّفات الأشخاص
+function MomentsHost({ broadcastLists = [], conversations = [], legacy, onBack }) {
+    const { colors } = useTheme();
+    const ref = useRef(null);
+    const listsRef = useRef(null);
+    listsRef.current = () => (broadcastLists || []).map((b) => ({ id: b.id, name: b.name, uids: (b.recipientIds || []).map((cid) => { const c = (conversations || []).find((x) => x.id === cid); return c && c.peerUid; }).filter(Boolean) }));
+    const SC = window.SawaChat;
+    useEffect(() => {
+        if (!ref.current || !SC || !SC.moments) return;
+        const h = SC.moments.mount(ref.current, { colors, onBack, lists: () => listsRef.current() });
+        return () => { try { h.unmount(); } catch (e) { } };
+    }, [colors]);
+    if (!SC || !SC.moments) return React.createElement(MomentsScreen, Object.assign({}, legacy, { onBack }));
+    return React.createElement("div", { ref, className: "flex-1 min-h-0 flex flex-col" });
+}
 function MomentsScreen({ posts, myUserId, onAddPost, onToggleLike, onAddComment, onDeletePost, onViewPost, onReplyPrivately, onVotePoll, onBack }) {
     const { colors } = useTheme();
     const [text, setText] = useState("");

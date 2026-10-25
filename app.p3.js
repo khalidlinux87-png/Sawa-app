@@ -110,6 +110,10 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
     const { showToast } = useToast();
     // الخدمات غير الجاهزة: «قريباً» بدل شاشاتٍ تجريبيّة توهم بأنها تعمل — صلة الرحم وحدها مفعّلة
     const soon = () => showToast(tl("قريباً في سوا ✨", "Coming soon to Sawa ✨"));
+    // C133: عدد اللحظات الجديدة من الأصدقاء منذ آخر زيارة
+    const [, momBump] = useState(0);
+    useEffect(() => { const f = () => momBump((x) => x + 1); window.addEventListener("sawa-moments", f); return () => window.removeEventListener("sawa-moments", f); }, []);
+    const momNew = (() => { try { const SCm = window.SawaChat && window.SawaChat.moments; if (!SCm) return 0; const seen = Number(localStorage.getItem("sawa_mom_seen") || 0), me = window.SawaChat.profile && window.SawaChat.profile().uid; return SCm.list().filter((x) => x.by !== me && (x.ts || 0) > seen).length; } catch (e) { return 0; } })();
     const soonBadge = () => React.createElement("span", { className: "absolute top-2 text-[9px] font-extrabold px-2 py-0.5 rounded-full", style: { insetInlineEnd: 8, backgroundColor: colors.border, color: colors.textMuted } }, tl("قريباً", "Soon"));
     const [loading, setLoading] = useState(true);
     // معلومة حيّة تُغني عن عدّاد ساكن: الأقرب استحقاقاً للتواصل أو أقرب مناسبة
@@ -174,6 +178,16 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
                         ? React.createElement(AlertCircle, { size: 13, color: "#fca5a5", className: "shrink-0" })
                         : React.createElement(Sparkles, { size: 13, color: "rgba(255,255,255,0.8)", className: "shrink-0" }),
                     React.createElement("span", { className: "text-[11px] font-bold", style: { color: familyHint.urgent ? "#fca5a5" : "rgba(255,255,255,0.9)" } }, familyHint.text)))),
+            // C133: لحظات الأصدقاء (حقيقيّة الآن)
+            onOpenMoments && React.createElement("button", { onClick: onOpenMoments, className: `w-full ${textStart()} rounded-2xl p-4 relative overflow-hidden mb-3`, style: { background: "linear-gradient(135deg,#DB2777,#7C3AED)", boxShadow: "0 10px 24px rgba(124,58,237,0.28)" } },
+                React.createElement("div", { className: `relative z-10 flex ${rowStart()} items-center gap-3` },
+                    React.createElement("div", { className: "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "rgba(255,255,255,0.18)" } },
+                        React.createElement(Images, { size: 24, color: "#fff" })),
+                    React.createElement("div", { className: "flex-1", style: { minWidth: 0 } },
+                        React.createElement("span", { className: "block text-lg font-extrabold text-white" }, tl("لحظات الأصدقاء", "Friends' moments")),
+                        React.createElement("span", { className: "block text-[11px] mt-0.5", style: { color: "rgba(255,255,255,0.75)" } }, momNew > 0 ? tl(momNew + " لحظة جديدة من أصدقائك", momNew + " new from your friends") : tl("شارك صورك وأفكارك مع أصدقائك وأهلك", "Share photos and thoughts with friends and family"))),
+                    momNew > 0 && React.createElement("span", { className: "rounded-full px-2 py-0.5 text-[11px] font-extrabold shrink-0", style: { backgroundColor: "#fff", color: "#7C3AED" } }, momNew > 9 ? "9+" : momNew),
+                    React.createElement(ChevronLeft, { size: 18, color: "rgba(255,255,255,0.6)", className: "shrink-0", style: { transform: isRTL() ? "none" : "scaleX(-1)" } }))),
             SHOW_SOON_SERVICES && React.createElement("div", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("alkhdmat")),
             SHOW_SOON_SERVICES && React.createElement("div", { className: "grid grid-cols-2 gap-3" },
                 React.createElement("button", { onClick: soon, "aria-disabled": true, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { position: "relative", opacity: 0.55, backgroundColor: colors.card, borderColor: colors.border, minHeight: 138, justifyContent: "center" } },

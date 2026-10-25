@@ -1960,6 +1960,569 @@
   }
   function stGrad(i) { var c = ST_BG[(i || 0) % ST_BG.length]; return "linear-gradient(160deg," + c[0] + "," + c[1] + ")"; }
 
+  // ==================================================================
+  // C133: لحظات الأصدقاء — منشوراتٌ دائمة لجمهورٍ يختاره الناشر (جهات اتّصالي · المقرّبون · عائلة/مجموعة · قائمة بثّ · أشخاص محدّدون)
+  //   نصّ · حتّى ٤ صور أو فيديو ≤ ٣٠ ث · موقع · استطلاع · إعجاب وتعليقات (يكتبها الخادم) · إبلاغ وإخفاء
+  //   الخلاصة: moments where aud array-contains me (المعرّف مرتّبٌ زمنيّاً عكسيّاً ⇒ بلا فهرسٍ مركّب)
+  // ==================================================================
+  var mo = { list: [], unsub: null, limit: 30, more: false, loaded: false, err: null, urls: {}, prefs: null, view: null };
+  var MO_MUTE_KEY = "sawa_mom_mute";
+  function moEmit() { try { global.dispatchEvent(new CustomEvent("sawa-moments")); } catch (e) {} if (mo.view) mo.view.paint(); }
+  function newPid() { var n = (9e12 - Date.now()).toString(36); while (n.length < 9) n = "0" + n; return "m" + n.slice(-9) + Math.random().toString(36).slice(2, 6).padEnd(4, "0"); }
+  function startMoments(uid) {
+    stopMoments();
+    var d = fsdb(); if (!d || !uid) return;
+    try {
+      mo.unsub = d.collection("moments").where("aud", "array-contains", uid).limit(mo.limit).onSnapshot(function (snap) {
+        var arr = []; snap.forEach(function (doc) { var v = doc.data() || {}; v.id = doc.id; arr.push(v); });
+        arr.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+        mo.list = arr; mo.more = snap.size >= mo.limit; mo.loaded = true; mo.err = null; moEmit();
+      }, function (e) { mo.err = (e && e.message) || String(e); mo.loaded = true; log("moments:", mo.err); moEmit(); });
+    } catch (e) { log("moments", e && e.message); }
+  }
+  function stopMoments() { if (mo.unsub) { try { mo.unsub(); } catch (e) {} } mo.unsub = null; }
+  function moLoadMore() { mo.limit += 30; if (state.uid) startMoments(state.uid); }
+  function moMuted() { return lsGet(MO_MUTE_KEY, {}) || {}; }
+  function moUpload(pid, blob) {
+    var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
+    var mid = newMediaId().replace(/[^a-z0-9]/g, ""), meta = d.collection("moments").doc(pid).collection("media").doc(mid);
+    return call("moment.begin", { pid: pid, mid: mid, size: blob.size }).catch(function (e) {
+      var m = (e && e.message) || String(e);
+      if (/quota/.test(m)) throw new Error(L("تجاوزت حدّ الرفع اليوميّ — جرّب غداً", "Daily upload limit reached"));
+      throw e;
+    }).then(function () { return blobToB64(blob); }).then(function (b64) {
+      var n = Math.max(1, Math.ceil(b64.length / CHUNK));
+      if (n > 33) throw new Error(L("الملفّ كبير — الحدّ ١٦ ميجابايت", "File too large (16 MB)"));
+      return meta.set({ by: state.uid, mime: blob.type || "application/octet-stream", size: blob.size, n: n, ts: Date.now(), done: false }).then(function () {
+        var i = 0, worker = function () { if (i >= n) return Promise.resolve(); var k = i++; return meta.collection("c").doc(String(k)).set({ d: b64.slice(k * CHUNK, (k + 1) * CHUNK) }).then(worker); };
+        return Promise.all([worker(), worker(), worker()]);
+      }).then(function () { return meta.update({ done: true }); }).then(function () { mo.urls[mid] = URL.createObjectURL(blob); return mid; });
+    });
+  }
+  function moMedia(pid, it) {
+    if (mo.urls[it.mid]) return Promise.resolve(mo.urls[it.mid]);
+    return idbGet("mm:" + it.mid).then(function (b) {
+      if (b) return b;
+      var meta = fsdb().collection("moments").doc(pid).collection("media").doc(it.mid);
+      return meta.collection("c").get().then(function (snap) {
+        var parts = []; snap.forEach(function (doc) { parts.push({ i: Number(doc.id), d: (doc.data() || {}).d || "" }); });
+        parts.sort(function (a, b) { return a.i - b.i; });
+        if (!parts.length || (it.n && parts.length < it.n)) throw new Error("incomplete");
+        var blob = b64ToBlob(parts.map(function (p) { return p.d; }).join(""), it.mime);
+        idbPut("mm:" + it.mid, blob); return blob;
+      });
+    }).then(function (blob) { return (mo.urls[it.mid] = URL.createObjectURL(blob)); });
+  }
+  function moPrefs() { if (mo.prefs) return Promise.resolve(mo.prefs); return call("moment.prefs", {}).then(function (r) { mo.prefs = { close: r.close || [], hide: r.hide || [] }; return mo.prefs; }); }
+  function moAudLabel(mode) {
+    mode = String(mode || "contacts");
+    if (mode === "contacts") return L("جهات اتّصالي", "My contacts");
+    if (mode === "close") return L("المقرّبون", "Close friends");
+    if (mode.indexOf("chat:") === 0) return mode.slice(5) || L("مجموعة", "Group");
+    if (mode === "custom") return L("أشخاص محدّدون", "Specific people");
+    return mode;
+  }
+  // ---------- الألوان (من التطبيق) ----------
+  function moTheme(c) {
+    c = c || {};
+    return { bg: c.bg || "#F5F7FA", card: c.card || "#fff", text: c.text || "#1A1A2E", muted: c.textMuted || "#6B7280", border: c.border || "#E5E7EB",
+      primary: c.primary || "#2F80C8", pl: c.primaryLight || "#E3F0FB", danger: c.danger || "#DC2626", accent: c.accent || "#F59E0B" };
+  }
+  function moAv(uid, name, size, T) {
+    var ph = uid ? photoOf(uid) : null, a = mk("div", "width:" + size + "px;height:" + size + "px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font:800 " + Math.round(size * 0.42) + "px system-ui;background:" + T.pl + " center/cover no-repeat;color:" + T.primary);
+    if (ph) a.style.backgroundImage = "url(" + ph + ")"; else a.textContent = String(name || "؟").trim().charAt(0) || "؟";
+    return a;
+  }
+  function moName(uid, fallback) { if (uid === state.uid) return (state.me && state.me.name) || L("أنا", "Me"); return stName(uid, fallback); }
+  function moIcon(path, size, color) {
+    var s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("width", size || 20); s.setAttribute("height", size || 20);
+    s.setAttribute("fill", "none"); s.setAttribute("stroke", color || "currentColor"); s.setAttribute("stroke-width", "2"); s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round");
+    s.innerHTML = path; return s;
+  }
+  var MI = {
+    heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/>',
+    chat: '<path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5z"/>',
+    share: '<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/>',
+    more: '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
+    img: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>',
+    vid: '<rect x="2" y="6" width="14" height="12" rx="2"/><path d="M22 8l-6 4 6 4V8z"/>',
+    pin: '<path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
+    poll: '<path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>',
+    users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/>',
+    back: '<path d="M15 18l-6-6 6-6"/>', plus: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M18 6L6 18M6 6l12 12"/>', send: '<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/>',
+    play: '<polygon points="6 4 20 12 6 20 6 4" fill="#fff" stroke="none"/>'
+  };
+  // ---------- الشاشة ----------
+  function momentsMount(host, opts) {
+    opts = opts || {};
+    var T = moTheme(opts.colors);
+    host.innerHTML = ""; host.dir = isAr() ? "rtl" : "ltr";
+    host.style.cssText = "flex:1;min-height:0;display:flex;flex-direction:column;background:" + T.bg + ";color:" + T.text + ";font-family:system-ui";
+    var head = mk("div", "display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;background:" + T.card + ";border-bottom:1px solid " + T.border + ";flex-shrink:0");
+    var bk = mk("button", "width:38px;height:38px;border-radius:50%;border:0;background:" + T.bg + ";display:flex;align-items:center;justify-content:center;color:" + T.text);
+    var bi = moIcon(MI.back, 20); if (!isAr()) {} else bi.style.transform = "scaleX(-1)"; bk.appendChild(bi); bk.setAttribute("aria-label", L("رجوع", "Back"));
+    bk.onclick = function () { if (opts.onBack) opts.onBack(); };
+    var tt = mk("div", "flex:1;min-width:0"); tt.appendChild(mk("div", "font:800 18px system-ui", L("لحظات الأصدقاء", "Friends' moments")));
+    var sub = mk("div", "font:600 12px system-ui;color:" + T.muted); tt.appendChild(sub);
+    var nb = mk("button", "height:38px;border-radius:19px;border:0;padding:0 14px;display:flex;align-items:center;gap:6px;background:" + T.primary + ";color:#fff;font:800 13.5px system-ui");
+    nb.appendChild(moIcon(MI.plus, 18, "#fff")); nb.appendChild(document.createTextNode(L("لحظة", "Moment"))); nb.onclick = function () { momentComposer(opts); };
+    var gear = mk("button", "width:38px;height:38px;border-radius:50%;border:0;background:" + T.bg + ";color:" + T.text + ";font-size:17px", "⚙︎");
+    gear.setAttribute("aria-label", L("إعدادات اللحظات", "Moments settings")); gear.onclick = function () { moSettings(); };
+    head.appendChild(bk); head.appendChild(tt); head.appendChild(gear); head.appendChild(nb); host.appendChild(head);
+    var scroll = mk("div", "flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 0 calc(env(safe-area-inset-bottom,0px) + 80px)");
+    host.appendChild(scroll);
+    var view = { T: T, opts: opts, paint: paint, host: host };
+    mo.view = view;
+    function prompt() {
+      var c = mk("button", "display:flex;align-items:center;gap:10px;width:calc(100% - 24px);margin:0 12px 10px;padding:12px;border-radius:18px;border:1px solid " + T.border + ";background:" + T.card + ";color:" + T.muted + ";font:600 14.5px system-ui;text-align:start;box-sizing:border-box");
+      c.appendChild(moAv(state.uid, moName(state.uid), 40, T));
+      c.appendChild(mk("span", "flex:1", L("ماذا يحدث معك؟ شارك لحظة…", "What's new? Share a moment…")));
+      var ic = mk("span", "display:flex;gap:8px;color:" + T.primary); ic.appendChild(moIcon(MI.img, 20, T.primary)); c.appendChild(ic);
+      c.onclick = function () { momentComposer(opts); };
+      return c;
+    }
+    function paint() {
+      if (!host.isConnected) { if (mo.view === view) mo.view = null; return; }
+      var y = scroll.scrollTop; scroll.innerHTML = "";
+      if (!state.uid) { scroll.appendChild(moEmpty(T, "⏳", L("جارٍ الاتّصال بالخادم…", "Connecting…"), "")); return; }
+      scroll.appendChild(prompt());
+      var mute = moMuted();
+      var items = mo.list.filter(function (p) { return !mute[p.by] || p.by === state.uid; });
+      sub.textContent = mo.loaded ? (items.length ? items.length + " " + L("لحظة", "moments") : "") : L("جارٍ التحميل…", "Loading…");
+      if (mo.err && !items.length) scroll.appendChild(moEmpty(T, "⚠️", L("تعذّر تحميل اللحظات", "Couldn't load moments"), L("تحقّق من الاتّصال ثمّ عُد إلى هذه الصفحة.", "Check your connection and come back.")));
+      else if (mo.loaded && !items.length) scroll.appendChild(moEmpty(T, "🌿", L("لا لحظات بعد", "No moments yet"), L("كن أوّل من يشارك لحظةً مع أصدقائه وأهله — صورة، أو فكرة، أو سؤال.", "Be the first to share — a photo, a thought or a question.")));
+      items.forEach(function (p) { scroll.appendChild(moCard(p, view)); });
+      if (mo.more) { var m = mk("button", "display:block;margin:6px auto 0;border:0;border-radius:14px;padding:10px 18px;background:" + T.card + ";color:" + T.primary + ";font:800 13px system-ui;border:1px solid " + T.border, L("عرض المزيد", "Load more")); m.onclick = moLoadMore; scroll.appendChild(m); }
+      scroll.scrollTop = y;
+    }
+    paint();
+    if (state.uid && !mo.unsub) startMoments(state.uid);
+    try { localStorage.setItem("sawa_mom_seen", String(Date.now())); } catch (e) {}
+    return { unmount: function () { if (mo.view === view) mo.view = null; host.innerHTML = ""; }, paint: paint };
+  }
+  function moEmpty(T, ic, title, sub) {
+    var e = mk("div", "text-align:center;padding:48px 28px;color:" + T.muted);
+    e.appendChild(mk("div", "font-size:46px;margin-bottom:10px", ic)); e.appendChild(mk("div", "font:800 16px system-ui;color:" + T.text + ";margin-bottom:6px", title));
+    if (sub) e.appendChild(mk("div", "font:500 13.5px/1.8 system-ui", sub)); return e;
+  }
+  function moCard(p, view) {
+    var T = view.T, mine = p.by === state.uid, likes = p.likes || [], liked = likes.indexOf(state.uid) >= 0;
+    var c = mk("article", "margin:0 12px 12px;border-radius:20px;background:" + T.card + ";border:1px solid " + T.border + ";overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04)");
+    var hd = mk("div", "display:flex;align-items:center;gap:10px;padding:12px 12px 8px");
+    hd.appendChild(moAv(p.by, moName(p.by, p.name), 42, T));
+    var who = mk("div", "flex:1;min-width:0");
+    who.appendChild(mk("div", "font:800 15px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis", moName(p.by, p.name)));
+    var meta = timeAgo(p.ts); if (mine) meta += " · 👥 " + moAudLabel(p.mode) + " (" + Math.max(0, (p.aud || []).length - 1) + ")";
+    who.appendChild(mk("div", "font:600 12px system-ui;color:" + T.muted + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis", meta));
+    hd.appendChild(who);
+    var mb = mk("button", "width:34px;height:34px;border-radius:50%;border:0;background:transparent;color:" + T.muted + ";display:flex;align-items:center;justify-content:center");
+    mb.setAttribute("aria-label", L("خيارات", "Options")); mb.appendChild(moIcon(MI.more, 20)); mb.onclick = function () { moMenu(p); };
+    hd.appendChild(mb); c.appendChild(hd);
+    if (p.text) {
+      var tx = mk("div", "padding:0 14px 10px;font:500 15px/1.75 system-ui;white-space:pre-wrap;word-break:break-word" + (p.text.length > 320 ? ";max-height:" + (1.75 * 15 * 7) + "px;overflow:hidden" : ""), p.text);
+      tx.className = "sawa-selectable"; c.appendChild(tx);
+      if (p.text.length > 320) { var more = mk("button", "border:0;background:transparent;color:" + T.primary + ";font:800 13px system-ui;padding:0 14px 10px", L("عرض المزيد", "See more")); more.onclick = function () { tx.style.maxHeight = "none"; more.remove(); }; c.appendChild(more); }
+    }
+    if (p.media && p.media.length) c.appendChild(moGrid(p, T));
+    if (p.loc) {
+      var lc = mk("a", "display:flex;align-items:center;gap:6px;margin:10px 12px 0;padding:9px 12px;border-radius:12px;background:" + T.bg + ";color:" + T.text + ";font:700 13px system-ui;text-decoration:none");
+      lc.href = "https://maps.google.com/?q=" + p.loc.lat + "," + p.loc.lng; lc.target = "_blank"; lc.rel = "noopener";
+      lc.appendChild(moIcon(MI.pin, 16, T.danger)); lc.appendChild(mk("span", "flex:1", p.loc.label || L("موقع مُشارَك", "Shared location"))); lc.appendChild(mk("span", "color:" + T.muted + ";font-weight:600", L("فتح ↗", "Open ↗")));
+      c.appendChild(lc);
+    }
+    if (p.poll && p.poll.opts) c.appendChild(moPoll(p, T));
+    var stats = mk("div", "display:flex;justify-content:space-between;padding:10px 14px 6px;font:600 12.5px system-ui;color:" + T.muted);
+    var ls = mk("button", "border:0;background:transparent;color:inherit;font:inherit;padding:0", likes.length ? "❤️ " + likes.length : "");
+    ls.onclick = function () { if (likes.length) moLikers(p); };
+    stats.appendChild(ls); stats.appendChild(mk("span", "", p.cc ? p.cc + " " + L("تعليق", "comments") : ""));
+    if (likes.length || p.cc) c.appendChild(stats);
+    var act = mk("div", "display:flex;border-top:1px solid " + T.border + ";margin-top:" + (likes.length || p.cc ? "0" : "10px"));
+    var btn = function (icon, label, color, fn, fill) {
+      var b = mk("button", "flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:11px 0;border:0;background:transparent;color:" + color + ";font:700 13.5px system-ui");
+      var ic = moIcon(icon, 19, color); if (fill) ic.setAttribute("fill", color); b.appendChild(ic); b.appendChild(document.createTextNode(label)); b.onclick = fn; act.appendChild(b); return b;
+    };
+    btn(MI.heart, L("إعجاب", "Like"), liked ? "#E11D48" : T.muted, function () {
+      var on = !liked; liked = on;
+      if (on) p.likes = likes.concat([state.uid]); else p.likes = likes.filter(function (u) { return u !== state.uid; });
+      if (view.paint) view.paint();
+      call("moment.like", { pid: p.id, on: on }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+      try { if (on && navigator.vibrate) navigator.vibrate(10); } catch (e) {}
+    }, liked);
+    btn(MI.chat, L("تعليق", "Comment"), T.muted, function () { moComments(p, view); });
+    btn(MI.share, L("مشاركة", "Share"), T.muted, function () { moShare(p); });
+    c.appendChild(act);
+    return c;
+  }
+  function moGrid(p, T) {
+    var m = p.media, n = m.length, g = mk("div", "display:grid;gap:3px;background:" + T.border);
+    if (n === 1) g.style.gridTemplateColumns = "1fr";
+    else if (n === 2) g.style.gridTemplateColumns = "1fr 1fr";
+    else if (n === 3) { g.style.gridTemplateColumns = "2fr 1fr"; g.style.gridTemplateRows = "1fr 1fr"; }
+    else g.style.gridTemplateColumns = "1fr 1fr";
+    m.forEach(function (it, i) {
+      var ratio = n === 1 && it.w && it.h ? Math.max(0.6, Math.min(1.6, it.w / it.h)) : 1;
+      var cell = mk("button", "position:relative;border:0;padding:0;overflow:hidden;background:#111 center/cover no-repeat;" + (n === 1 ? "aspect-ratio:" + ratio + ";max-height:520px" : "aspect-ratio:1") + (n === 3 && i === 0 ? ";grid-row:span 2;aspect-ratio:auto" : ""));
+      if (it.thumb) cell.style.backgroundImage = "url(" + it.thumb + ")";
+      var shown = false;
+      var load = function () {
+        moMedia(p.id, it).then(function (u) {
+          if (it.t === "video") { var v = mk("video", "position:absolute;inset:0;width:100%;height:100%;object-fit:cover"); v.src = u; v.muted = true; v.playsInline = true; v.preload = "metadata"; if (it.thumb) v.poster = it.thumb; cell.insertBefore(v, cell.firstChild); }
+          else { cell.style.backgroundImage = "url(" + u + ")"; }
+          shown = true;
+        }).catch(function () { cell.appendChild(mk("div", "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font:700 12px system-ui;background:rgba(0,0,0,.35)", L("تعذّر التحميل — اضغط", "Failed — tap"))); });
+      };
+      if (it.t === "video") { var pl = mk("div", "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none"); var pc = mk("div", "width:56px;height:56px;border-radius:50%;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center"); pc.appendChild(moIcon(MI.play, 26)); pl.appendChild(pc); cell.appendChild(pl);
+        if (it.dur) cell.appendChild(mk("div", "position:absolute;bottom:8px;" + (isAr() ? "left" : "right") + ":8px;background:rgba(0,0,0,.55);color:#fff;border-radius:8px;padding:2px 7px;font:700 11px system-ui", "0:" + String(it.dur).padStart(2, "0"))); }
+      var io = global.IntersectionObserver ? new IntersectionObserver(function (es) { if (es[0].isIntersecting) { io.disconnect(); load(); } }, { rootMargin: "300px" }) : null;
+      if (io) io.observe(cell); else load();
+      cell.onclick = function () { moViewer(p, i); };
+      g.appendChild(cell);
+    });
+    return g;
+  }
+  function moPoll(p, T) {
+    var votes = p.votes || {}, mine = votes[state.uid], total = 0, cnt = p.poll.opts.map(function () { return 0; });
+    Object.keys(votes).forEach(function (u) { var i = votes[u]; if (cnt[i] != null) { cnt[i]++; total++; } });
+    var box = mk("div", "margin:10px 12px 0;padding:12px;border-radius:16px;background:" + T.bg);
+    box.appendChild(mk("div", "display:flex;align-items:center;gap:6px;font:800 14px system-ui;margin-bottom:8px", "📊 " + (p.poll.q || L("استطلاع", "Poll"))));
+    p.poll.opts.forEach(function (o, i) {
+      var pct = total ? Math.round(cnt[i] * 100 / total) : 0, sel = mine === i;
+      var b = mk("button", "position:relative;display:flex;align-items:center;width:100%;margin-top:6px;padding:10px 12px;border-radius:12px;border:1.5px solid " + (sel ? T.primary : T.border) + ";background:" + T.card + ";color:" + T.text + ";font:700 13.5px system-ui;overflow:hidden;text-align:start");
+      var bar = mk("div", "position:absolute;top:0;bottom:0;" + (isAr() ? "right" : "left") + ":0;width:" + (mine != null ? pct : 0) + "%;background:" + T.pl + ";transition:width .3s");
+      b.appendChild(bar); var lb = mk("span", "position:relative;flex:1", (sel ? "✓ " : "") + o); b.appendChild(lb);
+      if (mine != null) b.appendChild(mk("span", "position:relative;color:" + T.muted, pct + "%"));
+      b.onclick = function () {
+        var nx = sel ? -1 : i; p.votes = Object.assign({}, votes); if (nx === -1) delete p.votes[state.uid]; else p.votes[state.uid] = nx;
+        if (mo.view) mo.view.paint();
+        call("moment.vote", { pid: p.id, idx: nx }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+      };
+      box.appendChild(b);
+    });
+    box.appendChild(mk("div", "font:600 12px system-ui;color:" + T.muted + ";margin-top:8px", total + " " + L("صوت", "votes") + (mine == null ? " · " + L("اختر لتصوّت", "Tap to vote") : "")));
+    return box;
+  }
+  function moMenu(p) {
+    var mine = p.by === state.uid, s = sheet(null);
+    var add = function (tx, kind, fn) { var b = mkBtn(tx, kind); b.style.marginTop = "8px"; b.onclick = function () { s.close(); fn(); }; s.box.appendChild(b); };
+    if (p.text) add(L("📋 نسخ النصّ", "📋 Copy text"), "", function () { copyText(p.text); toast(L("نُسخ ✓", "Copied ✓")); });
+    if (mine) {
+      add(L("👥 من يراها", "👥 Who can see it"), "", function () { moAudInfo(p); });
+      add(L("🗑 حذف اللحظة", "🗑 Delete moment"), "danger", function () {
+        if (!global.confirm(L("حذف هذه اللحظة نهائيّاً؟", "Delete this moment permanently?"))) return;
+        mo.list = mo.list.filter(function (x) { return x.id !== p.id; }); moEmit();
+        call("moment.delete", { pid: p.id }).then(function () { toast(L("حُذفت ✓", "Deleted ✓")); }, function (e) { toast(L("تعذّر الحذف: ", "Couldn't delete: ") + ((e && e.message) || e)); });
+      });
+    } else {
+      add(L("💬 مراسلة ", "💬 Message ") + moName(p.by, p.name), "", function () { try { openDm(p.by); } catch (e) { openDmWith(p.by); } });
+      add(L("🙈 إخفاء لحظات ", "🙈 Hide moments from ") + moName(p.by, p.name), "", function () { var m = moMuted(); m[p.by] = 1; lsSet(MO_MUTE_KEY, m); moEmit(); toast(L("لن تظهر لك لحظاته — تُعيدها من ⚙︎ في أعلى اللحظات", "Hidden — undo from ⚙︎ at the top")); });
+      add(L("🚩 إبلاغ عن اللحظة", "🚩 Report moment"), "danger", function () {
+        call("report.create", { target: p.by, reason: "other", note: ("moment " + p.id + ": " + (p.text || "")).slice(0, 480) }).then(function () { toast(L("وصلنا بلاغك ✓ — سنراجعه", "Report sent ✓")); }, function (e) { toast(L("تعذّر الإرسال: ", "Couldn't send: ") + ((e && e.message) || e)); });
+      });
+    }
+    add(L("إلغاء", "Cancel"), "ghost", function () {});
+  }
+  // إعدادات اللحظات: المقرّبون · المُخفى عنهم دائماً · من أخفيتُ لحظاتهم عندي
+  function moSettings() {
+    var s = sheet(L("إعدادات اللحظات", "Moments settings"));
+    var row = function (ic, title, desc, fn) {
+      var r = mk("button", "display:flex;align-items:center;gap:12px;width:100%;padding:12px 4px;border:0;border-top:1px solid #eef1f4;background:transparent;text-align:start;font-family:system-ui;color:#1A1A2E");
+      r.appendChild(mk("div", "width:40px;height:40px;border-radius:12px;background:#eef5fc;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0", ic));
+      var t = mk("div", "flex:1"); t.appendChild(mk("div", "font:800 14.5px system-ui", title)); t.appendChild(mk("div", "font:500 12px system-ui;color:#6b7280;margin-top:2px", desc)); r.appendChild(t);
+      r.onclick = fn; s.box.appendChild(r);
+    };
+    moPrefs().then(function (pr) {
+      row("⭐", L("المقرّبون", "Close friends") + " (" + pr.close.length + ")", L("تختارهم جمهوراً عند النشر", "Choose them as the audience when posting"), function () {
+        moPickPeople(L("المقرّبون", "Close friends"), pr.close, function (u) { call("moment.prefs", { close: u }).then(function (r) { mo.prefs = { close: r.close || [], hide: r.hide || [] }; toast(L("حُفظ ✓", "Saved ✓")); }); });
+      });
+      row("🙈", L("لا تُظهر لحظاتي لـ", "Never show my moments to") + " (" + pr.hide.length + ")", L("يُستثنون من كلّ لحظةٍ جديدة", "Excluded from every new moment"), function () {
+        moPickPeople(L("لا تُظهر لحظاتي لـ", "Never show my moments to"), pr.hide, function (u) { call("moment.prefs", { hide: u }).then(function (r) { mo.prefs = { close: r.close || [], hide: r.hide || [] }; toast(L("حُفظ ✓", "Saved ✓")); }); });
+      });
+      var m = moMuted(), ids = Object.keys(m);
+      row("👁", L("أخفيتُ لحظاتهم عندي", "People whose moments I hid") + " (" + ids.length + ")", ids.length ? L("اضغط لإظهارهم من جديد", "Tap to show them again") : L("لا أحد", "Nobody"), function () {
+        if (!ids.length) return;
+        moPickPeople(L("أبقِ مخفيّاً", "Keep hidden"), ids, function (keep) { var n = {}; keep.forEach(function (u) { n[u] = 1; }); lsSet(MO_MUTE_KEY, n); moEmit(); s.close(); toast(L("حُفظ ✓", "Saved ✓")); });
+      });
+    }, function (e) { s.box.appendChild(note(L("تعذّر التحميل: ", "Couldn't load: ") + ((e && e.message) || e), "#b42318")); });
+  }
+  function openDmWith(u) { try { global.location.href = "./?chat=" + encodeURIComponent("dm_" + [state.uid, u].sort().join("_")); } catch (e) {} }
+  function moAudInfo(p) {
+    var s = sheet(L("من يرى هذه اللحظة", "Who can see this"));
+    s.box.appendChild(note("👥 " + moAudLabel(p.mode) + " — " + Math.max(0, (p.aud || []).length - 1) + L(" شخصاً", " people")));
+    (p.aud || []).filter(function (u) { return u !== state.uid; }).slice(0, 200).forEach(function (u) {
+      var r = mk("div", "display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid #eef1f4");
+      r.appendChild(moAv(u, moName(u), 34, moTheme())); r.appendChild(mk("div", "font:700 14px system-ui", moName(u))); s.box.appendChild(r);
+    });
+  }
+  function moLikers(p) {
+    var s = sheet("❤️ " + (p.likes || []).length);
+    (p.likes || []).slice(0, 300).forEach(function (u) {
+      var r = mk("div", "display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid #eef1f4");
+      r.appendChild(moAv(u, moName(u), 34, moTheme())); r.appendChild(mk("div", "font:700 14px system-ui", moName(u))); s.box.appendChild(r);
+    });
+  }
+  function moShare(p) {
+    var tx = (p.text ? p.text + "\n\n" : "") + L("— لحظة من ", "— A moment by ") + moName(p.by, p.name) + L(" على سوا 🤍 sawaaap.com", " on Sawa 🤍 sawaaap.com");
+    try { var nb = NB(); if (nb && nb.share) { nb.share("سوا", tx); return; } } catch (e) {}
+    if (IOSB()) { IOSB().call("share", { text: tx }); return; }
+    if (navigator.share) navigator.share({ text: tx }).catch(function () {}); else { copyText(tx); toast(L("نُسخ — الصقه حيث تريد", "Copied")); }
+  }
+  // ---------- العارض ----------
+  function moViewer(p, start) {
+    var i = start || 0, m = p.media;
+    var ov = stOverlay("#000");
+    var top = mk("div", "display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 8px");
+    var x = mk("button", "border:0;background:rgba(255,255,255,.15);color:#fff;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center"); x.appendChild(moIcon(MI.x, 20, "#fff"));
+    x.onclick = function () { ov.remove(); }; top.appendChild(x);
+    var cnt = mk("div", "flex:1;text-align:center;font:700 14px system-ui"); top.appendChild(cnt);
+    var sv = mk("button", "border:0;background:rgba(255,255,255,.15);color:#fff;height:40px;border-radius:20px;padding:0 14px;font:800 13px system-ui", L("حفظ", "Save"));
+    top.appendChild(sv); ov.appendChild(top);
+    var stage = mk("div", "flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;touch-action:pan-y"); ov.appendChild(stage);
+    var sx = null;
+    stage.addEventListener("touchstart", function (e) { sx = e.touches[0].clientX; }, { passive: true });
+    stage.addEventListener("touchend", function (e) { if (sx == null) return; var dx = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) > 50) go((dx < 0) !== isAr() ? 1 : -1); });
+    function go(d) { var j = i + d; if (j < 0 || j >= m.length) return; i = j; show(); }
+    function show() {
+      stage.innerHTML = ""; cnt.textContent = m.length > 1 ? (i + 1) + " / " + m.length : "";
+      var it = m[i], sp = mk("div", "color:#fff;font:600 13px system-ui", L("جارٍ التحميل…", "Loading…")); stage.appendChild(sp);
+      moMedia(p.id, it).then(function (u) {
+        stage.innerHTML = "";
+        var el = it.t === "video" ? mk("video", "max-width:100%;max-height:100%") : mk("img", "max-width:100%;max-height:100%;object-fit:contain");
+        el.src = u; if (it.t === "video") { el.controls = true; el.playsInline = true; el.autoplay = true; }
+        stage.appendChild(el);
+        if (m.length > 1) [[-1, "‹"], [1, "›"]].forEach(function (z) {
+          var b = mk("button", "position:absolute;top:50%;transform:translateY(-50%);" + ((z[0] < 0) !== isAr() ? "left" : "right") + ":8px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;font:800 22px system-ui", z[1]);
+          b.onclick = function () { go(z[0]); }; stage.appendChild(b);
+        });
+        sv.onclick = function () { saveMediaUrl(u, "sawa-moment-" + (i + 1) + (it.t === "video" ? ".mp4" : ".jpg"), IOSB() ? "share" : "save", it.mime); };
+      }).catch(function () { sp.textContent = L("تعذّر التحميل", "Couldn't load"); });
+    }
+    if (p.text) ov.appendChild(mk("div", "padding:10px 16px calc(env(safe-area-inset-bottom,0px) + 14px);font:500 14px/1.7 system-ui;max-height:22vh;overflow:auto;background:linear-gradient(transparent,rgba(0,0,0,.6))", p.text));
+    show();
+  }
+  // ---------- التعليقات ----------
+  function moComments(p, view) {
+    var T = view ? view.T : moTheme(), unsub = null, list = [];
+    var ov = mk("div", "position:fixed;inset:0;z-index:2147483003;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;font-family:system-ui");
+    ov.dir = isAr() ? "rtl" : "ltr";
+    var box = mk("div", "background:" + T.card + ";color:" + T.text + ";border-radius:22px 22px 0 0;width:100%;max-width:520px;height:78vh;display:flex;flex-direction:column;overflow:hidden");
+    box.appendChild(mk("div", "width:40px;height:4px;border-radius:2px;background:" + T.border + ";margin:10px auto 6px;flex-shrink:0"));
+    box.appendChild(mk("div", "font:800 16px system-ui;text-align:center;padding-bottom:8px;border-bottom:1px solid " + T.border + ";flex-shrink:0", L("التعليقات", "Comments")));
+    var body = mk("div", "flex:1;min-height:0;overflow-y:auto;padding:8px 12px"); box.appendChild(body);
+    var bar = mk("div", "display:flex;gap:8px;align-items:flex-end;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 10px);border-top:1px solid " + T.border + ";flex-shrink:0");
+    var ta = mk("textarea", "flex:1;min-height:40px;max-height:120px;resize:none;border-radius:20px;border:1px solid " + T.border + ";background:" + T.bg + ";color:" + T.text + ";padding:10px 14px;font:500 14.5px system-ui;outline:none;box-sizing:border-box");
+    ta.rows = 1; ta.maxLength = 500; ta.placeholder = L("اكتب تعليقاً…", "Write a comment…");
+    var sb = mk("button", "width:42px;height:42px;border-radius:50%;border:0;background:" + T.primary + ";display:flex;align-items:center;justify-content:center;flex-shrink:0");
+    var si = moIcon(MI.send, 18, "#fff"); if (isAr()) si.style.transform = "scaleX(-1)"; sb.appendChild(si); sb.setAttribute("aria-label", L("إرسال", "Send"));
+    bar.appendChild(ta); bar.appendChild(sb); box.appendChild(bar);
+    ov.appendChild(box); document.body.appendChild(ov);
+    var close = function () { if (unsub) try { unsub(); } catch (e) {} ov.remove(); };
+    ov.onclick = function (e) { if (e.target === ov) close(); };
+    function paint() {
+      body.innerHTML = "";
+      if (!list.length) body.appendChild(moEmpty(T, "💬", L("لا تعليقات بعد", "No comments yet"), L("ابدأ الحديث.", "Start the conversation.")));
+      list.forEach(function (c) {
+        var r = mk("div", "display:flex;gap:9px;padding:7px 0;align-items:flex-start");
+        r.appendChild(moAv(c.by, moName(c.by, c.name), 34, T));
+        var bub = mk("div", "flex:1;min-width:0");
+        var b2 = mk("div", "display:inline-block;max-width:100%;background:" + T.bg + ";border-radius:16px;padding:8px 12px");
+        b2.appendChild(mk("div", "font:800 13px system-ui", moName(c.by, c.name)));
+        var t2 = mk("div", "font:500 14px/1.65 system-ui;white-space:pre-wrap;word-break:break-word", c.text); t2.className = "sawa-selectable"; b2.appendChild(t2);
+        bub.appendChild(b2);
+        var mt = mk("div", "font:600 11.5px system-ui;color:" + T.muted + ";padding:3px 8px;display:flex;gap:12px", timeAgo(c.ts));
+        if (c.by === state.uid || p.by === state.uid) { var del = mk("button", "border:0;background:transparent;color:" + T.muted + ";font:700 11.5px system-ui;padding:0", L("حذف", "Delete"));
+          del.onclick = function () { list = list.filter(function (x) { return x.id !== c.id; }); paint(); call("moment.uncomment", { pid: p.id, cmid: c.id }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); }); }; mt.appendChild(del); }
+        bub.appendChild(mt); r.appendChild(bub); body.appendChild(r);
+      });
+      body.scrollTop = body.scrollHeight;
+    }
+    paint();
+    try {
+      unsub = fsdb().collection("moments").doc(p.id).collection("cm").limit(300).onSnapshot(function (snap) {
+        var a = []; snap.forEach(function (d) { var v = d.data() || {}; v.id = d.id; a.push(v); });
+        a.sort(function (x, y) { return (x.ts || 0) - (y.ts || 0); }); list = a; paint();
+      }, function (e) { log("cm:", e && e.message); });
+    } catch (e) {}
+    sb.onclick = function () {
+      var tx = ta.value.trim(); if (!tx) return;
+      ta.value = ""; sb.disabled = true;
+      list = list.concat([{ id: "tmp" + Date.now(), by: state.uid, text: tx, ts: Date.now() }]); paint();
+      call("moment.comment", { pid: p.id, text: tx }).then(function () { sb.disabled = false; }, function (e) { sb.disabled = false; toast(L("تعذّر الإرسال: ", "Couldn't send: ") + ((e && e.message) || e)); });
+    };
+    setTimeout(function () { try { ta.focus(); } catch (e) {} }, 250);
+  }
+  // ---------- الجمهور ----------
+  function moPickPeople(title, selected, cb) {
+    var sel = {}; (selected || []).forEach(function (u) { sel[u] = 1; });
+    var s = sheet(title); s.ov.style.zIndex = "2147483006"; var q = mk("input", "width:100%;box-sizing:border-box;border:1px solid #dfe5ec;border-radius:12px;padding:10px 12px;font:600 14px system-ui;margin:4px 0 8px");
+    q.placeholder = L("بحث بالاسم…", "Search…"); s.box.appendChild(q);
+    var lst = mk("div", ""); s.box.appendChild(lst);
+    var people = contacts().filter(function (c) { return c.uid && c.uid !== state.uid; });
+    function paint() {
+      lst.innerHTML = ""; var v = q.value.trim().toLowerCase();
+      if (!people.length) lst.appendChild(note(L("لا جهات اتّصال بعد.", "No contacts yet.")));
+      people.filter(function (c) { return !v || String(c.name || "").toLowerCase().indexOf(v) >= 0; }).forEach(function (c) {
+        var r = mk("button", "display:flex;align-items:center;gap:10px;width:100%;padding:8px 2px;border:0;border-top:1px solid #eef1f4;background:transparent;text-align:start;font-family:system-ui;color:#1A1A2E");
+        r.appendChild(moAv(c.uid, c.name, 36, moTheme())); r.appendChild(mk("div", "flex:1;font:700 14px system-ui", c.name));
+        r.appendChild(mk("div", "font-size:20px", sel[c.uid] ? "☑️" : "⬜"));
+        r.onclick = function () { if (sel[c.uid]) delete sel[c.uid]; else sel[c.uid] = 1; paint(); }; lst.appendChild(r);
+      });
+    }
+    q.oninput = paint; paint();
+    var ok = mkBtn(L("تمّ", "Done"), "primary"); ok.style.cssText += ";position:sticky;bottom:0;margin-top:10px";
+    ok.onclick = function () { s.close(); cb(Object.keys(sel)); }; s.box.appendChild(ok);
+  }
+  function moAudSheet(cur, lists, cb) {
+    var s = sheet(L("من يرى لحظتك؟", "Who can see your moment?")); s.ov.style.zIndex = "2147483005";
+    var opt = function (ic, title, desc, val, extra) {
+      var on = cur.mode === val.mode && (val.mode !== "chat" || cur.cid === val.cid) && (val.mode !== "custom" || cur.label === val.label);
+      var r = mk("button", "display:flex;align-items:center;gap:12px;width:100%;padding:11px 4px;border:0;border-top:1px solid #eef1f4;background:transparent;text-align:start;font-family:system-ui;color:#1A1A2E");
+      r.appendChild(mk("div", "width:40px;height:40px;border-radius:12px;background:#eef5fc;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0", ic));
+      var t = mk("div", "flex:1;min-width:0"); t.appendChild(mk("div", "font:800 14.5px system-ui", title)); if (desc) t.appendChild(mk("div", "font:500 12px system-ui;color:#6b7280;margin-top:2px", desc)); r.appendChild(t);
+      r.appendChild(mk("div", "font-size:18px;color:#2F80C8", on ? "●" : "○"));
+      r.onclick = function () { if (extra) extra(); else { s.close(); cb(val); } }; s.box.appendChild(r);
+    };
+    opt("👥", L("جهات اتّصالي", "My contacts"), L("كلّ من في جهات اتّصالك في سوا", "Everyone in your Sawa contacts"), { mode: "contacts" });
+    opt("⭐", L("المقرّبون", "Close friends"), L("قائمتك الخاصّة — اضغط لتعديلها", "Your private list — tap to edit"), { mode: "close" }, function () {
+      moPrefs().then(function (pr) {
+        moPickPeople(L("المقرّبون", "Close friends"), pr.close, function (uids) {
+          call("moment.prefs", { close: uids }).then(function (r) { mo.prefs = { close: r.close || [], hide: r.hide || [] }; s.close(); cb({ mode: "close" }); toast(L("حُفظت قائمة المقرّبين ✓ (" + uids.length + ")", "Close friends saved ✓")); }, function (e) { toast((e && e.message) || String(e)); });
+        });
+      }, function (e) { toast((e && e.message) || String(e)); });
+    });
+    var groupsList = []; try { Object.keys(chats).forEach(function (k) { var c = chats[k] || {}; if ((c.type === "group" || c.type === "family") && !c.left && !c.e2e) groupsList.push({ id: k, name: c.name || L("مجموعة", "Group"), type: c.type }); }); } catch (e) {}
+    if (groupsList.length) {
+      s.box.appendChild(mk("div", "font:800 12px system-ui;color:#6b7280;margin:14px 4px 4px", L("عائلة أو مجموعة", "A family or group")));
+      groupsList.forEach(function (g) { opt(g.type === "family" ? "🌳" : "👥", g.name, L("أعضاء هذه ", "Members of this ") + (g.type === "family" ? L("العائلة", "family") : L("المجموعة", "group")), { mode: "chat", cid: g.id, name: g.name }); });
+    }
+    if (lists && lists.length) {
+      s.box.appendChild(mk("div", "font:800 12px system-ui;color:#6b7280;margin:14px 4px 4px", L("قوائم البثّ", "Broadcast lists")));
+      lists.forEach(function (b) { if (b.uids && b.uids.length) opt("📣", b.name, b.uids.length + L(" شخصاً", " people"), { mode: "custom", uids: b.uids, label: b.name }); });
+    }
+    s.box.appendChild(mk("div", "font:800 12px system-ui;color:#6b7280;margin:14px 4px 4px", L("مخصّص", "Custom")));
+    opt("🎯", L("أشخاص محدّدون", "Specific people"), L("اختر من جهات اتّصالك", "Pick from your contacts"), { mode: "custom", label: "custom" }, function () {
+      moPickPeople(L("أشخاص محدّدون", "Specific people"), cur.mode === "custom" ? cur.uids : [], function (uids) { if (!uids.length) return; s.close(); cb({ mode: "custom", uids: uids, label: "custom" }); });
+    });
+  }
+  // ---------- إنشاء لحظة ----------
+  function momentComposer(opts) {
+    if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return; }
+    opts = opts || {};
+    var T = moTheme(opts.colors), aud = { mode: "contacts" }, hide = [], media = [], loc = null, poll = null, busy = false;
+    var ov = mk("div", "position:fixed;inset:0;z-index:2147483003;background:" + T.card + ";color:" + T.text + ";display:flex;flex-direction:column;font-family:system-ui");
+    ov.dir = isAr() ? "rtl" : "ltr"; document.body.appendChild(ov);
+    var top = mk("div", "display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;border-bottom:1px solid " + T.border);
+    var x = mk("button", "width:38px;height:38px;border-radius:50%;border:0;background:" + T.bg + ";display:flex;align-items:center;justify-content:center;color:" + T.text); x.appendChild(moIcon(MI.x, 20));
+    x.onclick = function () { if (busy) return; if ((ta.value.trim() || media.length || poll || loc) && !global.confirm(L("تجاهل هذه اللحظة؟", "Discard this moment?"))) return; close(); };
+    top.appendChild(x); top.appendChild(mk("div", "flex:1;font:800 17px system-ui", L("لحظة جديدة", "New moment")));
+    var post = mk("button", "height:38px;border-radius:19px;border:0;padding:0 18px;background:" + T.primary + ";color:#fff;font:800 14px system-ui", L("نشر", "Post"));
+    top.appendChild(post); ov.appendChild(top);
+    var body = mk("div", "flex:1;min-height:0;overflow-y:auto;padding:14px"); ov.appendChild(body);
+    var who = mk("div", "display:flex;align-items:center;gap:10px;margin-bottom:10px"); who.appendChild(moAv(state.uid, moName(state.uid), 44, T));
+    var wcol = mk("div", ""); wcol.appendChild(mk("div", "font:800 15px system-ui", moName(state.uid)));
+    var audBtn = mk("button", "margin-top:4px;border:1px solid " + T.border + ";background:" + T.bg + ";color:" + T.text + ";border-radius:999px;padding:5px 12px;font:700 12.5px system-ui;display:flex;align-items:center;gap:6px");
+    wcol.appendChild(audBtn); who.appendChild(wcol); body.appendChild(who);
+    var hideBtn = mk("button", "border:0;background:transparent;color:" + T.muted + ";font:700 12px system-ui;padding:0 2px 8px");
+    body.appendChild(hideBtn);
+    var ta = mk("textarea", "width:100%;min-height:120px;border:0;outline:none;resize:none;background:transparent;color:" + T.text + ";font:500 18px/1.7 system-ui;box-sizing:border-box");
+    ta.placeholder = L("بماذا تفكّر؟", "What's on your mind?"); ta.maxLength = 2000; body.appendChild(ta);
+    var prev = mk("div", "display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:6px"); body.appendChild(prev);
+    var extras = mk("div", ""); body.appendChild(extras);
+    var tools = mk("div", "display:flex;gap:6px;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 10px);border-top:1px solid " + T.border + ";overflow-x:auto"); ov.appendChild(tools);
+    var tool = function (ic, color, label, fn) {
+      var b = mk("button", "display:flex;align-items:center;gap:7px;border:0;border-radius:14px;padding:10px 14px;background:" + T.bg + ";color:" + T.text + ";font:700 13px system-ui;white-space:nowrap");
+      b.appendChild(moIcon(ic, 19, color)); b.appendChild(document.createTextNode(label)); b.onclick = fn; tools.appendChild(b); return b;
+    };
+    var fiImg = mk("input"); fiImg.type = "file"; fiImg.accept = "image/*"; fiImg.multiple = true; fiImg.style.display = "none"; ov.appendChild(fiImg);
+    var fiVid = mk("input"); fiVid.type = "file"; fiVid.accept = "video/*"; fiVid.style.display = "none"; ov.appendChild(fiVid);
+    tool(MI.img, "#16A34A", L("صور", "Photos"), function () { if (media.some(function (m) { return m.video; })) { toast(L("لحظةٌ بالفيديو لا تجمع صوراً", "A video moment can't include photos")); return; } if (media.length >= 4) { toast(L("الحدّ ٤ صور", "Max 4 photos")); return; } fiImg.click(); });
+    tool(MI.vid, "#7C3AED", L("فيديو", "Video"), function () { if (media.length) { toast(L("أزل الصور أوّلاً — فيديو واحد في اللحظة", "Remove photos first — one video per moment")); return; } fiVid.click(); });
+    tool(MI.pin, "#DC2626", L("موقع", "Location"), function () { addLoc(); });
+    tool(MI.poll, "#F59E0B", L("استطلاع", "Poll"), function () { if (!poll) { poll = { q: "", opts: ["", ""] }; paint(); } });
+    function close() { media.forEach(function (m) { try { URL.revokeObjectURL(m.url); } catch (e) {} }); ov.remove(); }
+    function paintAud() {
+      audBtn.innerHTML = ""; audBtn.appendChild(moIcon(MI.users, 14, T.primary));
+      var lab = aud.mode === "chat" ? aud.name : aud.mode === "custom" ? (aud.label && aud.label !== "custom" ? aud.label : L("أشخاص محدّدون", "Specific people") + " (" + (aud.uids || []).length + ")") : moAudLabel(aud.mode);
+      audBtn.appendChild(document.createTextNode(lab + " ▾"));
+      hideBtn.textContent = "🙈 " + (hide.length ? L("مخفيّة عن " + hide.length, "Hidden from " + hide.length) : L("إخفاء عن أشخاص…", "Hide from people…"));
+    }
+    audBtn.onclick = function () { moAudSheet(aud, opts.lists ? opts.lists() : [], function (v) { aud = v; paintAud(); }); };
+    hideBtn.onclick = function () { moPickPeople(L("إخفاء هذه اللحظة عن", "Hide this moment from"), hide, function (u) { hide = u; paintAud(); }); };
+    function paint() {
+      prev.innerHTML = ""; prev.style.gridTemplateColumns = media.length === 1 ? "1fr" : "repeat(2,1fr)";
+      media.forEach(function (m, i) {
+        var c = mk("div", "position:relative;border-radius:14px;overflow:hidden;background:#111;aspect-ratio:" + (media.length === 1 ? "4/3" : "1"));
+        var el = m.video ? mk("video", "width:100%;height:100%;object-fit:cover") : mk("img", "width:100%;height:100%;object-fit:cover");
+        el.src = m.url; if (m.video) { el.muted = true; el.playsInline = true; el.controls = true; } c.appendChild(el);
+        var rx = mk("button", "position:absolute;top:6px;" + (isAr() ? "left" : "right") + ":6px;width:30px;height:30px;border-radius:50%;border:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center");
+        rx.appendChild(moIcon(MI.x, 16, "#fff")); rx.onclick = function () { try { URL.revokeObjectURL(m.url); } catch (e) {} media.splice(i, 1); paint(); }; c.appendChild(rx);
+        prev.appendChild(c);
+      });
+      extras.innerHTML = "";
+      if (loc) {
+        var lc = mk("div", "display:flex;align-items:center;gap:8px;margin-top:10px;padding:10px 12px;border-radius:14px;background:" + T.bg);
+        lc.appendChild(moIcon(MI.pin, 18, T.danger));
+        var li = mk("input", "flex:1;border:0;background:transparent;outline:none;color:" + T.text + ";font:700 14px system-ui"); li.placeholder = L("اسم المكان (اختياريّ)", "Place name (optional)"); li.value = loc.label || ""; li.maxLength = 80;
+        li.oninput = function () { loc.label = li.value; }; lc.appendChild(li);
+        var lx = mk("button", "border:0;background:transparent;color:" + T.muted); lx.appendChild(moIcon(MI.x, 16)); lx.onclick = function () { loc = null; paint(); }; lc.appendChild(lx);
+        extras.appendChild(lc);
+      }
+      if (poll) {
+        var pb = mk("div", "margin-top:10px;padding:12px;border-radius:16px;border:1px solid " + T.border);
+        var ph = mk("div", "display:flex;align-items:center;gap:6px;margin-bottom:6px"); ph.appendChild(mk("div", "flex:1;font:800 14px system-ui", "📊 " + L("استطلاع", "Poll")));
+        var px = mk("button", "border:0;background:transparent;color:" + T.muted); px.appendChild(moIcon(MI.x, 16)); px.onclick = function () { poll = null; paint(); }; ph.appendChild(px); pb.appendChild(ph);
+        var inp = function (v, ph0, fn) { var i0 = mk("input", "width:100%;box-sizing:border-box;margin-top:6px;border:1px solid " + T.border + ";border-radius:12px;padding:10px 12px;background:" + T.bg + ";color:" + T.text + ";font:600 14px system-ui;outline:none"); i0.value = v; i0.placeholder = ph0; i0.maxLength = 200; i0.oninput = function () { fn(i0.value); }; return i0; };
+        pb.appendChild(inp(poll.q, L("السؤال", "Question"), function (v) { poll.q = v; }));
+        poll.opts.forEach(function (o, i) { pb.appendChild(inp(o, L("خيار ", "Option ") + (i + 1), function (v) { poll.opts[i] = v; })); });
+        if (poll.opts.length < 4) { var ad = mk("button", "margin-top:8px;border:0;background:transparent;color:" + T.primary + ";font:800 13px system-ui", L("+ خيار", "+ Option")); ad.onclick = function () { poll.opts.push(""); paint(); }; pb.appendChild(ad); }
+        extras.appendChild(pb);
+      }
+    }
+    function addFiles(files, video) {
+      Array.prototype.slice.call(files || [], 0, video ? 1 : 4 - media.length).forEach(function (f) {
+        if (f.size > MAX_MEDIA - 64 && video) { toast(L("الحدّ ١٦ ميجابايت", "Limit is 16 MB")); return; }
+        (video ? prepareVideo(f) : prepareImage(f)).then(function (r) {
+          if (video && r.duration && r.duration > 31) { toast(L("الفيديو أطول من ٣٠ ثانية — قصّه أوّلاً", "Video is longer than 30 s — trim it first")); return; }
+          if (!video && media.length >= 4) return;
+          var b = r.blob || f; media.push({ blob: b, video: video, url: URL.createObjectURL(b), thumb: r.thumb || null, w: r.w || null, h: r.h || null, dur: r.duration || null }); paint();
+        }).catch(function () { toast(L("تعذّر قراءة الملفّ", "Couldn't read the file")); });
+      });
+    }
+    fiImg.onchange = function () { var f = fiImg.files; addFiles(f, false); fiImg.value = ""; };
+    fiVid.onchange = function () { var f = fiVid.files; addFiles(f, true); fiVid.value = ""; };
+    function addLoc() {
+      if (!(navigator.geolocation)) { toast(L("هذا الجهاز لا يدعم تحديد الموقع", "Location isn't supported")); return; }
+      toast(L("📍 جارٍ تحديد موقعك…", "📍 Getting your location…"));
+      navigator.geolocation.getCurrentPosition(function (pos) { loc = { lat: pos.coords.latitude, lng: pos.coords.longitude, label: "" }; paint(); },
+        function (e) { toast(e && e.code === 1 ? L("لم يُسمح بالوصول إلى الموقع", "Location permission denied") : L("تعذّر تحديد الموقع", "Couldn't get location")); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+    }
+    post.onclick = function () {
+      if (busy) return;
+      var text = ta.value.trim(), pl = null;
+      if (poll) { var opts2 = poll.opts.map(function (o) { return o.trim(); }).filter(Boolean); if (opts2.length < 2) { toast(L("الاستطلاع يحتاج خيارين على الأقلّ", "A poll needs at least 2 options")); return; } pl = { q: poll.q.trim(), opts: opts2 }; }
+      if (!text && !media.length && !pl && !loc) { toast(L("اكتب شيئاً أو أضف صورة", "Write something or add a photo")); return; }
+      busy = true; post.disabled = true; post.style.opacity = ".6";
+      var pid = newPid(), out = [], k = 0;
+      var step = function () {
+        if (k >= media.length) return Promise.resolve();
+        var m = media[k++]; post.textContent = L("رفع ", "Uploading ") + k + "/" + media.length + "…";
+        return moUpload(pid, m.blob).then(function (mid) { out.push({ mid: mid, t: m.video ? "video" : "image", thumb: m.thumb, w: m.w, h: m.h, dur: m.dur }); return step(); });
+      };
+      step().then(function () {
+        post.textContent = L("نشر…", "Posting…");
+        return call("moment.post", { pid: pid, text: text, media: out, loc: loc, poll: pl, aud: aud, hide: hide });
+      }).then(function (r) {
+        toast(L("نُشرت لحظتك ✓ — يراها " + (r.aud || 0), "Moment posted ✓ — visible to " + (r.aud || 0)));
+        close();
+      }).catch(function (e) {
+        busy = false; post.disabled = false; post.style.opacity = "1"; post.textContent = L("نشر", "Post");
+        var m = (e && e.message) || String(e);
+        toast(L("تعذّر النشر: ", "Couldn't post: ") + (/rate_limited/.test(m) ? L("نشرت كثيراً — انتظر قليلاً", "too many posts — wait a bit") : m));
+      });
+    };
+    paintAud(); paint();
+    setTimeout(function () { try { ta.focus(); } catch (e) {} }, 200);
+  }
+
   // ---------- إنشاء قصّة ----------
   function storyComposer(start) {
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return; }
@@ -4228,6 +4791,7 @@
     e2e.load().then(function () { publishChats(); Object.keys(days).forEach(publishMessages); }, function () { publishChats(); });
     restorePending(); startChats(uid); drainOutbox();
     startStories(uid);   // C90
+    startMoments(uid);   // C133
     setTimeout(function () { if (state.uid === uid) loadFamReqs(false); }, 4000);   // C107: طلبات ربطٍ تنتظرني
     setTimeout(refreshPush, 3000);
     setTimeout(maybeVerifyBanner, 6000);
@@ -4745,7 +5309,7 @@
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
     _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,
     // C10
-    stories: stories, storyComposer: storyComposer, storyViewer: storyViewer, storyOpenMine: storyOpenMine, storyAudienceSheet: storyAudienceSheet,   // C90
+    stories: stories, storyComposer: storyComposer, moments: { mount: momentsMount, compose: momentComposer, list: function () { return mo.list; }, start: function () { if (state.uid) startMoments(state.uid); } }, storyViewer: storyViewer, storyOpenMine: storyOpenMine, storyAudienceSheet: storyAudienceSheet,   // C90
     saveBlob: saveBlob, saveMediaUrl: saveMediaUrl, shareInSheet: shareInSheet, nativeFiles: nativeFiles,   // C89
     codeSheet: codeSheet, findSheet: findSheet, phoneContactsSheet: phoneContactsSheet, smsText: smsText, openSms: openSms, setNick: setNick, peerCode: peerCode, fetchPeerCodes: fetchPeerCodes, verifySheet: verifySheet, requestsSheet: requestsSheet, emailSheet: emailSheet, linkSheet: linkSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, reportSheet: reportSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },
     requestCount: function () { return reqs.incoming.length; }, fmtCode: fmtCode, codeValid: codeValid,
