@@ -2154,7 +2154,8 @@
     if (p.text) {
       var tx = mk("div", "padding:0 14px 10px;font:500 15px/1.75 system-ui;white-space:pre-wrap;word-break:break-word" + (p.text.length > 320 ? ";max-height:" + (1.75 * 15 * 7) + "px;overflow:hidden" : ""));
       moRich(tx, p.text, p.menN, T);
-      tx.className = "sawa-selectable"; c.appendChild(tx);
+      tx.style.webkitUserSelect = "none"; tx.style.userSelect = "none"; tx.style.webkitTouchCallout = "none";   // C136: لا يتحوّل إلى تحديد نصّ — النسخ بالضغط المطوّل
+      moLong(tx, function () { moCopySheet(p.text); }); c.appendChild(tx);
       if (p.text.length > 320) { var more = mk("button", "border:0;background:transparent;color:" + T.primary + ";font:800 13px system-ui;padding:0 14px 10px", L("عرض المزيد", "See more")); more.onclick = function () { tx.style.maxHeight = "none"; more.remove(); }; c.appendChild(more); }
     }
     if (p.media && p.media.length) c.appendChild(moGrid(p, T, function (cell) { moBurst(cell); if (!liked) moReact(p, "❤️", view); }));
@@ -2181,11 +2182,8 @@
     if (myRx && myRx !== "❤️") lb.appendChild(mk("span", "font-size:18px;line-height:1", myRx));
     else { var hi = moIcon(MI.heart, 19, lcol); if (liked) hi.setAttribute("fill", lcol); lb.appendChild(hi); }
     lb.appendChild(document.createTextNode(liked ? moRxName(myRx) : L("إعجاب", "Like")));
-    var lpT = null, lpFired = false;
-    lb.addEventListener("pointerdown", function () { lpFired = false; clearTimeout(lpT); lpT = setTimeout(function () { lpFired = true; try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) {} moRxPicker(lb, myRx, function (e) { moReact(p, e, view); }); }, 430); });
-    ["pointerup", "pointerleave", "pointercancel"].forEach(function (ev) { lb.addEventListener(ev, function () { clearTimeout(lpT); }); });
-    lb.addEventListener("contextmenu", function (e) { e.preventDefault(); });
-    lb.onclick = function () { if (lpFired) { lpFired = false; return; } moReact(p, liked ? null : "❤️", view); };
+    moLong(lb, function () { moRxPicker(lb, myRx, function (e) { moReact(p, e, view); }); });
+    lb.onclick = function () { moReact(p, liked ? null : "❤️", view); };
     act.appendChild(lb);
     btn(MI.chat, L("تعليق", "Comment"), T.muted, function () { moComments(p, view); });
     btn(MI.share, L("مشاركة", "Share"), T.muted, function () { moShare(p); });
@@ -2380,7 +2378,7 @@
   function moRepliesWord(n) { return n <= 10 ? L(n + " ردود", n + " replies") : L(n + " ردّاً", n + " replies"); }
   function moComments(p, view, o) {
     o = o || {}; moCss();
-    var T = view ? view.T : moTheme(), unsub = null, list = [], replyTo = null, men = {}, open = {}, first = true, stick = !o.focus;
+    var T = view ? view.T : moTheme(), unsub = null, list = [], replyTo = null, editing = null, men = {}, open = {}, first = true, stick = !o.focus;
     var ov = mk("div", "position:fixed;inset:0;z-index:2147483003;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;font-family:system-ui");
     ov.dir = isAr() ? "rtl" : "ltr"; ov.setAttribute("data-mo-ov", "1");
     var box = mk("div", "background:" + T.card + ";color:" + T.text + ";border-radius:22px 22px 0 0;width:100%;max-width:520px;height:80vh;display:flex;flex-direction:column;overflow:hidden");
@@ -2409,7 +2407,16 @@
     };
     var mm = moMention(ta, cands, men, T, rbar);
     atb.onclick = function () { mm.insertAt(); };
+    // C136: تعديل تعليقي أو ردّي في شريط الكتابة نفسه
+    function setEdit(c) {
+      editing = c || null; replyTo = null; moMenClear(men);
+      rbar.style.display = editing ? "flex" : "none";
+      rtx.textContent = editing ? "✏️ " + L("تعديل التعليق", "Editing comment") : "";
+      if (editing) { Object.keys(c.menN || {}).forEach(function (u) { men[u] = c.menN[u]; }); ta.value = c.text || ""; try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }
+      else ta.value = "";
+    }
     function setReply(c) {
+      if (editing) { editing = null; ta.value = ""; }
       replyTo = c ? { id: c.re || c.id, by: c.by, name: moName(c.by, c.name) } : null;
       rbar.style.display = replyTo ? "flex" : "none";
       rtx.textContent = replyTo ? L("الردّ على ", "Replying to ") + replyTo.name : "";
@@ -2419,34 +2426,64 @@
         try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {}
       }
     }
-    rx0.onclick = function () { setReply(null); };
+    rx0.onclick = function () { if (editing) setEdit(null); else setReply(null); };
+    function cReact(c, e) {   // e: إيموجي ⇒ تفاعل · null ⇒ سحبه
+      var me = state.uid, lk = (c.likes || []).filter(function (u) { return u !== me; }), rx = Object.assign({}, c.rx || {});
+      if (e) { lk.push(me); rx[me] = e; } else delete rx[me];
+      c.likes = lk; c.rx = rx; paint();
+      call("moment.creact", e ? { pid: p.id, cmid: c.id, on: true, e: e } : { pid: p.id, cmid: c.id, on: false }).catch(function (er) { toast(L("تعذّر: ", "Failed: ") + ((er && er.message) || er)); });
+    }
+    function cDelete(c) {
+      var kids = list.filter(function (x) { return x.re === c.id; }).length;
+      if (!global.confirm(kids ? L("حذف التعليق وردوده؟", "Delete this comment and its replies?") : L("حذف هذا التعليق؟", "Delete this comment?"))) return;
+      if (editing && editing.id === c.id) setEdit(null);
+      list = list.filter(function (x) { return x.id !== c.id && x.re !== c.id; }); paint();
+      call("moment.uncomment", { pid: p.id, cmid: c.id }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+    }
+    // C136: ضغطةٌ مطوّلة على التعليق ⇒ تفاعلات سريعة + ردّ · نسخ · تعديل · حذف (بدل تحديد النصّ)
+    function cMenu(c) {
+      var me = state.uid, my = (c.likes || []).indexOf(me) >= 0 ? ((c.rx || {})[me] || "❤️") : null, sh = sheet(null);
+      sh.ov.style.zIndex = "2147483006";
+      var q = mk("div", "display:grid;grid-template-columns:repeat(10,1fr);gap:0;direction:" + (isAr() ? "rtl" : "ltr") + ";padding:2px 0 8px");
+      MO_RX.forEach(function (e) {
+        var b = mk("button", "min-width:0;height:40px;border:0;border-radius:12px;background:" + (my === e ? "#E3F0FB" : "transparent") + ";font-size:22px;padding:0", e);
+        b.setAttribute("aria-label", moRxName(e)); b.onclick = function () { sh.close(); cReact(c, my === e ? null : e); }; q.appendChild(b);
+      });
+      sh.box.appendChild(q);
+      var add = function (tx, kind, fn) { var b = mkBtn(tx, kind); b.style.marginTop = "8px"; b.onclick = function () { sh.close(); fn(); }; sh.box.appendChild(b); };
+      add(L("↩️ ردّ", "↩️ Reply"), "", function () { setReply(c); });
+      add(L("📋 نسخ النصّ", "📋 Copy text"), "", function () { copyText(c.text || ""); toast(L("نُسخ ✓", "Copied ✓")); });
+      if (c.by === me) add(L("✏️ تعديل", "✏️ Edit"), "", function () { setEdit(c); });
+      if (c.by === me || p.by === me) add(L("🗑 حذف", "🗑 Delete"), "danger", function () { cDelete(c); });
+      add(L("إلغاء", "Cancel"), "ghost", function () {});
+    }
     function row(c, isReply) {
-      var me = state.uid, lk = c.likes || [], ml = lk.indexOf(me) >= 0, nm = moName(c.by, c.name);
+      var me = state.uid, lk = c.likes || [], my = lk.indexOf(me) >= 0 ? ((c.rx || {})[me] || "❤️") : null, nm = moName(c.by, c.name);
+      var tmp = String(c.id).indexOf("tmp") === 0;
       var r = mk("div", "display:flex;gap:9px;padding:6px 4px;align-items:flex-start;border-radius:12px" + (isReply ? ";margin-inline-start:42px" : ""));
       r.setAttribute("data-cm", c.id);
       var av = moAv(c.by, nm, isReply ? 26 : 34, T); av.style.cursor = "pointer"; av.onclick = function () { moPerson(c.by, c.name); }; r.appendChild(av);
       var bub = mk("div", "flex:1;min-width:0");
-      var b2 = mk("div", "position:relative;display:inline-block;max-width:100%;background:" + T.bg + ";border-radius:16px;padding:8px 12px;box-sizing:border-box");
+      var b2 = mk("div", "position:relative;display:inline-block;max-width:100%;background:" + T.bg + ";border-radius:16px;padding:8px 12px;box-sizing:border-box;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none");
       b2.appendChild(mk("div", "font:800 13px system-ui", nm));
-      var t2 = mk("div", "font:500 14px/1.65 system-ui;white-space:pre-wrap;word-break:break-word"); moRich(t2, c.text, c.menN, T); t2.className = "sawa-selectable"; b2.appendChild(t2);
-      if (lk.length) b2.appendChild(mk("span", "position:absolute;bottom:-9px;" + (isAr() ? "left" : "right") + ":-4px;background:" + T.card + ";border-radius:10px;padding:1px 6px;font:700 11px system-ui;color:" + T.text + ";box-shadow:0 1px 3px rgba(0,0,0,.18)", "❤️ " + lk.length));
-      bub.appendChild(b2);
-      var mt = mk("div", "font:600 11.5px system-ui;color:" + T.muted + ";padding:4px 8px 0;display:flex;gap:14px;align-items:center", timeAgo(c.ts));
-      var a = function (label, color, fn) { var b = mk("button", "border:0;background:transparent;color:" + color + ";font:800 11.5px system-ui;padding:0", label); b.onclick = fn; mt.appendChild(b); return b; };
-      var tmp = String(c.id).indexOf("tmp") === 0;
-      if (!tmp) {
-        a(ml ? L("أعجبني", "Liked") : L("إعجاب", "Like"), ml ? "#E11D48" : T.muted, function () {
-          c.likes = ml ? lk.filter(function (u) { return u !== me; }) : lk.concat([me]); paint();
-          call("moment.creact", { pid: p.id, cmid: c.id, on: !ml }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
-        });
-        a(L("ردّ", "Reply"), T.muted, function () { setReply(c); });
+      var t2 = mk("div", "font:500 14px/1.65 system-ui;white-space:pre-wrap;word-break:break-word"); moRich(t2, c.text, c.menN, T); b2.appendChild(t2);
+      if (lk.length) {
+        var sm = moRxSum(c);
+        b2.appendChild(mk("span", "position:absolute;bottom:-10px;" + (isAr() ? "left" : "right") + ":-4px;background:" + T.card + ";border-radius:10px;padding:1px 6px;font:700 11px system-ui;color:" + T.text + ";box-shadow:0 1px 3px rgba(0,0,0,.18);white-space:nowrap",
+          sm.slice(0, 3).map(function (x) { return x[0]; }).join("") + " " + lk.length));
       }
-      if (!tmp && (c.by === me || p.by === me)) a(L("حذف", "Delete"), T.muted, function () {
-        var kids = list.filter(function (x) { return x.re === c.id; }).length;
-        if (kids && !global.confirm(L("حذف التعليق وردوده؟", "Delete this comment and its replies?"))) return;
-        list = list.filter(function (x) { return x.id !== c.id && x.re !== c.id; }); paint();
-        call("moment.uncomment", { pid: p.id, cmid: c.id }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
-      });
+      if (!tmp) { moLong(b2, function () { cMenu(c); }); b2.setAttribute("data-cmb", "1"); }
+      bub.appendChild(b2);
+      var mt = mk("div", "font:600 11.5px system-ui;color:" + T.muted + ";padding:" + (lk.length ? "11px" : "4px") + " 8px 0;display:flex;gap:14px;align-items:center;flex-wrap:wrap", timeAgo(c.ts) + (c.edited ? " · " + L("معدّل", "edited") : ""));
+      var a = function (label, color, fn) { var b = mk("button", "border:0;background:transparent;color:" + color + ";font:800 11.5px system-ui;padding:0;-webkit-user-select:none;user-select:none", label); b.onclick = fn; mt.appendChild(b); return b; };
+      if (!tmp) {
+        var lb = a(my ? (my === "❤️" ? "" : my + " ") + moRxName(my) : L("إعجاب", "Like"), !my ? T.muted : my === "❤️" ? "#E11D48" : "#D97706", function () { cReact(c, my ? null : "❤️"); });
+        lb.setAttribute("data-crx", "1");
+        moLong(lb, function () { moRxPicker(lb, my, function (e) { cReact(c, e); }); });
+        a(L("ردّ", "Reply"), T.muted, function () { setReply(c); });
+        if (c.by === me) a(L("تعديل", "Edit"), T.muted, function () { setEdit(c); });
+        if (c.by === me || p.by === me) a(L("حذف", "Delete"), T.muted, function () { cDelete(c); });
+      }
       bub.appendChild(mt); r.appendChild(bub);
       return r;
     }
@@ -2484,6 +2521,12 @@
     sb.onclick = function () {
       var tx = ta.value.trim(); if (!tx) return;
       var out = moMenOut(tx, men), menN = {}; out.forEach(function (m) { menN[m.u] = m.n; });
+      if (editing) {   // C136
+        var ec = editing; if (tx === ec.text) { setEdit(null); return; }
+        ec.text = tx; ec.menN = menN; ec.edited = Date.now(); setEdit(null); mm.hide(); paint();
+        call("moment.cedit", { pid: p.id, cmid: ec.id, text: tx, men: out }).catch(function (e) { toast(L("تعذّر التعديل: ", "Couldn't edit: ") + ((e && e.message) || e)); });
+        return;
+      }
       var pl = { pid: p.id, text: tx, men: out }; if (replyTo) pl.re = replyTo.id;
       ta.value = ""; sb.disabled = true; mm.hide();
       list = list.concat([{ id: "tmp" + Date.now(), by: state.uid, name: moName(state.uid), text: tx, ts: Date.now(), re: replyTo ? replyTo.id : null, menN: menN }]);
@@ -2549,10 +2592,11 @@
   // ==================================================================
   // C135: الردود · الإعجاب بالتعليقات · التفاعلات · الإشارة بـ@ · إشعارات اللحظات · فتح لحظةٍ من إشعار · التعديل · لحظات شخصٍ واحد
   // ==================================================================
-  var MO_RX = ["❤️", "😂", "😮", "😢", "👏", "🤲"];
+  var MO_RX = ["❤️", "😍", "😂", "😊", "😮", "😢", "😭", "😡", "👏", "🤲"];   // C136: عشرة تفاعلات
   var MO_SEEN_KEY = "sawa_mnote_seen";
   function moRxName(e) {
-    var m = { "❤️": L("أعجبني", "Liked"), "😂": L("مضحك", "Haha"), "😮": L("مدهش", "Wow"), "😢": L("محزن", "Sad"), "👏": L("رائع", "Bravo"), "🤲": L("دعاء", "Prayer") };
+    var m = { "❤️": L("أعجبني", "Like"), "😍": L("أحببته", "Love"), "😂": L("أضحكني", "Haha"), "😊": L("أسعدني", "Happy"), "😮": L("أدهشني", "Wow"),
+      "😢": L("أحزنني", "Sad"), "😭": L("أبكاني", "Crying"), "😡": L("أغضبني", "Angry"), "👏": L("رائع", "Bravo"), "🤲": L("دعاء", "Prayer") };
     return m[e] || L("إعجاب", "Like");
   }
   function moCss() {
@@ -2665,20 +2709,33 @@
     var c = {}, rx = p.rx || {}; (p.likes || []).forEach(function (u) { var e = rx[u] || "❤️"; c[e] = (c[e] || 0) + 1; });
     return Object.keys(c).map(function (e) { return [e, c[e]]; }).sort(function (a, b) { return b[1] - a[1]; });
   }
+  // C136: لوحة التفاعلات — ١٠ تفاعلات بأسمائها (صفّان × ٥) فوق الزرّ (أو تحته إن لم تتّسع)
   function moRxPicker(anchor, cur, cb) {
     moCss();
-    var r = anchor.getBoundingClientRect(), W = 6 * 46 + 16;
-    var ov = mk("div", "position:fixed;inset:0;z-index:2147483004");
-    var bar = mk("div", "position:fixed;display:flex;gap:2px;padding:6px 8px;border-radius:999px;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.22);direction:ltr;left:" +
-      Math.max(8, Math.min(global.innerWidth - 8 - W, r.left + r.width / 2 - W / 2)) + "px;top:" + Math.max(8, r.top - 64) + "px");
+    var r = anchor.getBoundingClientRect(), W = 5 * 58 + 16, H = 2 * 62 + 16;
+    var ov = mk("div", "position:fixed;inset:0;z-index:2147483007");
+    var top = r.top - H - 8; if (top < 8) top = Math.min(global.innerHeight - H - 8, r.bottom + 8);
+    var bar = mk("div", "position:fixed;display:grid;grid-template-columns:repeat(5,58px);gap:0;padding:8px;border-radius:22px;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.22);direction:" + (isAr() ? "rtl" : "ltr") + ";left:" +
+      Math.max(8, Math.min(global.innerWidth - 8 - W, r.left + r.width / 2 - W / 2)) + "px;top:" + Math.max(8, top) + "px");
     MO_RX.forEach(function (e, i) {
-      var b = mk("button", "width:44px;height:44px;border:0;border-radius:50%;background:" + (cur === e ? "#E3F0FB" : "transparent") + ";font-size:28px;line-height:1;padding:0;animation:moPop .22s " + (i * 0.03) + "s both", e);
+      var b = mk("button", "display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:58px;height:62px;border:0;border-radius:16px;background:" + (cur === e ? "#E3F0FB" : "transparent") + ";padding:0;animation:moPop .22s " + (i * 0.025) + "s both;font-family:system-ui");
+      b.appendChild(mk("span", "font-size:28px;line-height:1", e)); b.appendChild(mk("span", "font:700 10px system-ui;color:#4b5563;white-space:nowrap", moRxName(e)));
       b.setAttribute("aria-label", moRxName(e));
-      b.onclick = function (ev) { ev.stopPropagation(); ov.remove(); cb(e); }; bar.appendChild(b);
+      b.onclick = function (ev) { ev.stopPropagation(); ov.remove(); cb(cur === e ? null : e); }; bar.appendChild(b);
     });
     ov.onclick = function () { ov.remove(); }; ov.appendChild(bar); document.body.appendChild(ov);
     return ov;
   }
+  // ضغطةٌ مطوّلة (لمس أو فأرة) — تمنع تحديد النصّ وقائمة النظام
+  function moLong(el, fn, ms) {
+    var t = null, fired = false, x0 = 0, y0 = 0;
+    el.addEventListener("pointerdown", function (e) { fired = false; x0 = e.clientX; y0 = e.clientY; clearTimeout(t); t = setTimeout(function () { fired = true; try { if (navigator.vibrate) navigator.vibrate(8); } catch (x) {} fn(); }, ms || 430); });
+    el.addEventListener("pointermove", function (e) { if (Math.abs(e.clientX - x0) > 10 || Math.abs(e.clientY - y0) > 10) clearTimeout(t); });
+    ["pointerup", "pointerleave", "pointercancel"].forEach(function (ev) { el.addEventListener(ev, function () { clearTimeout(t); }); });
+    el.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+    el.addEventListener("click", function (e) { if (fired) { fired = false; e.stopPropagation(); e.preventDefault(); } }, true);
+  }
+  function moCopySheet(text) { copyText(String(text || "")); toast(L("نُسخ النصّ ✓", "Text copied ✓")); }
   function moBurst(el) {
     moCss(); var h = mk("div", "position:absolute;left:50%;top:50%;font-size:92px;pointer-events:none;animation:moHeart .9s ease-out both;filter:drop-shadow(0 4px 12px rgba(0,0,0,.35));z-index:2", "❤️");
     el.appendChild(h); setTimeout(function () { h.remove(); }, 950);
