@@ -4,14 +4,17 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v337';
+const VERSION = 'sawa-v338';
 // C83: «ما الجديد» — يظهر لكلّ مستخدم في «حسابي ← تحديث التطبيق». سطرٌ واحد بلا علامة ' (‎\n‎ لسطرٍ جديد). يُحدَّث مع كلّ نسخة.
-const NOTES = '• «تحديث التطبيق» يوضّح السبب إن تعذّر الفحص بدل «جارٍ الفحص…»';
+const NOTES = '• اللحظات: ردود وتعديل وعشرة تفاعلات وإشارة @ وإشعارات\n• غلاف فيديو واضح\n• «تحديث التطبيق» يُظهر إن كان ملفٌّ على الخادم مقطوعاً أو قديماً';
 // P2: على العناوين القديمة/البديلة (Netlify · sawaap.pages.dev · sawaaap.com بلا www) يصير عامل الخدمة «مُخلياً»:
 //     يمسح المخزون، يحوّل الصفحات المفتوحة إلى العنوان الرسميّ، ثمّ يلغي نفسه. على www.sawaaap.com يعمل كالمعتاد.
 //     (لا يُحذف هذا قبل أن ينتقل كلّ المستخدمين.)
 const MOVED_TO = 'https://www.sawaaap.com';
 const MOVED = /\.netlify\.app$/i.test(self.location.hostname) || /^sawaap\.pages\.dev$/i.test(self.location.hostname) || /^sawaaap\.com$/i.test(self.location.hostname);
+// C139: الحجم المتوقَّع (بالبايت) للملفّات المرفوعة مع هذه النسخة — إن اختلف على الخادم (لم يُرفع، أو رُفع ناقصاً) يُسجَّل ويُنبَّه المستخدم
+const EXPECT = { './sawa-chat.js': 505904 };
+const REPORT = [];
 const ASSETS = [
   './',
   './manifest.json',
@@ -54,13 +57,30 @@ self.addEventListener('install', (e) => {
       .then((res) => verifyAsset(u, res))
       .then((res) => (res && res.ok ? c.put(u, res) : null))
       .catch((err) => { if (err && err.sawaBroken) throw err; console.warn('precache miss', u, err && err.message); }))))
+    .then(() => updStatus(true, null))
     .then(() => self.skipWaiting())
-    .catch((err) => caches.delete(VERSION).then(() => { console.error('update refused:', err && err.message); throw err; })));
+    .catch((err) => caches.delete(VERSION).then(() => updStatus(false, err)).then(() => { console.error('update refused:', err && err.message); throw err; })));
 });
+// C139: نتيجة آخر تحديث ⇒ flags-sawa/upd-status (يقرؤها «تحديث التطبيق» و‎/sw-status‎) + إشعارٌ واحد لكلّ نسخة إن رُفض أو اختلف ملفّ
+function updStatus(ok, err) {
+  const st = { v: VERSION, ok, why: err ? String(err.message || err).replace('./', '') : null, mism: REPORT.slice(), ts: Date.now() };
+  return caches.open('flags-sawa').then((c) => c.match('/upd-status').then((r) => (r ? r.json() : null)).catch(() => null).then((prev) => {
+    const tell = (!ok || st.mism.length) && !(prev && prev.v === VERSION && prev.told);
+    st.told = !!(tell || (prev && prev.v === VERSION && prev.told));
+    return c.put('/upd-status', new Response(JSON.stringify(st), { headers: { 'Content-Type': 'application/json' } })).then(() => {
+      if (!tell || !self.registration || !self.registration.showNotification) return null;
+      const f = st.mism[0], file = f ? f.u.replace('./', '') : ((st.why || '').split(' ').pop() || '');
+      const body = !ok ? 'الملفّ ' + file + ' على الخادم مقطوعٌ أو تالف، فبقي التطبيق على نسخته السابقة. أعد رفعه ثمّ sw.js برقمٍ جديد.'
+        : 'الملفّ ' + file + ' على الخادم ليس النسخة المطلوبة (' + Math.round(f.got / 1024) + ' ك.ب بدل ' + Math.round(f.want / 1024) + '). أعد رفعه.';
+      return self.registration.showNotification('سوا: لم يكتمل التحديث ' + VERSION.replace('sawa-', ''), { body, tag: 'sawa-upd', data: { t: 'upd' }, icon: './icons/icon-192.png', dir: 'rtl', lang: 'ar' }).catch(() => null);
+    });
+  })).catch(() => null);
+}
 function verifyAsset(u, res) {
   if (!res || !res.ok || !/\.js$/.test(u)) return Promise.resolve(res);
   return res.clone().text().then((t) => {
     const bad = (why) => { const e = new Error(why + ' ' + u); e.sawaBroken = true; throw e; };
+    try { const n = new TextEncoder().encode(t).length; if (EXPECT[u] && n !== EXPECT[u]) REPORT.push({ u, got: n, want: EXPECT[u] }); } catch (x) {}
     const m = u.match(/app\.p(\d+)\.js$/);
     if (m) { if (!new RegExp('//@@sawa-part:' + m[1] + '\\s*$').test(t)) bad('truncated'); return res; }   // الأجزاء ليست JS كاملاً وحدها — علامة النهاية تكفي
     try { new Function(t); } catch (x) { if (x instanceof SyntaxError) bad('broken (' + x.message + ')'); }   // تحليلٌ فقط بلا تنفيذ
@@ -137,6 +157,8 @@ self.addEventListener('fetch', (e) => {
   if (!sameOrigin && !cdn) return;            // الخادم وFirestore والدخول: لا نتدخّل
   if (sameOrigin && url.pathname.indexOf('/__/') === 0) return; // مسارات Firebase الخاصّة
   if (sameOrigin && url.pathname === '/sw.js') return;
+  // C139: ‎/sw-status‎ — حالة آخر تحديث (للتشخيص من المتصفّح)
+  if (sameOrigin && url.pathname === '/sw-status') { e.respondWith(caches.open('flags-sawa').then((c) => c.match('/upd-status')).then((r) => r || new Response(JSON.stringify({ v: VERSION, none: true }), { headers: { 'Content-Type': 'application/json' } }))); return; }
   if (sameOrigin && NETWORK_FIRST.indexOf(url.pathname) >= 0) { e.respondWith(networkFirst(req)); return; }
   // فتح التطبيق (بأيّ ‎?chat=/‎?room=…) ⇒ الصفحة الرئيسيّة المخزّنة (مفتاحها «./»)
   if (sameOrigin && req.mode === 'navigate' && (url.pathname === '/' || url.pathname === '/index.html')) { e.respondWith(cacheFirst(req, './')); return; }
