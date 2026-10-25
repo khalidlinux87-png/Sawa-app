@@ -836,7 +836,7 @@ function ForgotPinScreen({ onBack, onRecovered, validCodes }) {
         return (React.createElement("div", { className: "flex-1 flex flex-col overflow-y-auto", style: { backgroundColor: colors.bg } },
             React.createElement("div", { className: "flex flex-col items-center justify-center py-4" },
                 React.createElement(Lock, { size: 28, color: colors.primary }),
-                React.createElement("h2", { className: "text-base font-extrabold mt-3", style: { color: colors.text } }, newPinStep === "enter" ? "عيّن رمز جديد" : "أكّد الرمز الجديد"),
+                React.createElement("h2", { className: "text-base font-extrabold mt-3", style: { color: colors.text } }, newPinStep === "enter" ? "عيّن رمزاً جديداً" : "أكّد الرمز الجديد"),
                 React.createElement(PinDots, { filled: pin.length, error: mismatch })),
             React.createElement(PinKeypad, { onDigit: handleNewPinDigit, onBackspace: () => setPin((p) => p.slice(0, -1)), showBiometric: false })));
     }

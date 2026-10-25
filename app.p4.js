@@ -2251,18 +2251,18 @@ function formatChatTime(ts) {
     return new Date(ts).toLocaleDateString(loc(), { day: "numeric", month: "numeric" });
 }
 const DEMO_REPLIES = [
-    "تمام، وصلتني رسالتك 😊",
-    "حاضر، بتواصل معك بعدين.",
-    "يعطيك العافية!",
-    "أكيد، خلّني أشوف وأرد عليك.",
+    "حسناً، وصلتني رسالتك 😊",
+    "حسناً، سأتواصل معك لاحقاً.",
+    "بارك الله فيك!",
+    "بالتأكيد، دعني أنظر في الأمر وأردّ عليك.",
 ];
 // ردود سائق التاكسي — مجموعة منفصلة تماماً عن DEMO_REPLIES، تُستخدم حصراً
 // بمحادثة الرحلة المؤقتة
 const TAXI_DRIVER_REPLIES = [
-    "تمام، أنا بالطريق ليك الحين.",
-    "وصلت قريب، شوف السيارة البيضا.",
-    "ماشي، خمس دقايق وأوصل.",
-    "تمام كده، شكراً ليك.",
+    "حسناً، أنا في الطريق إليك الآن.",
+    "اقتربت، انظر إلى السيارة البيضاء.",
+    "حسناً، أصل خلال خمس دقائق.",
+    "حسناً، شكراً لك.",
 ];
 // صورة المرسل في المجموعات — تمييز المتحدّثين بالاسم وحده متعب
 // حين يكونون عشرة. اللون مشتق من الاسم فيثبت لكل شخص عبر الجلسات.
@@ -2613,7 +2613,7 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                     React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.danger } },
                         tl("\u0645\u062A\u0623\u0643\u062F \u0645\u0646 \u062D\u0638\u0631 ", "Block "),
                         conversation.name,
-                        tl("\u061F \u0644\u0646 \u064A\u0642\u062F\u0631 \u064A\u0631\u0633\u0644 \u0644\u0643 \u0631\u0633\u0627\u0626\u0644 \u0628\u0639\u062F\u0647\u0627", "? They won't be able to message you after this")),
+                        tl("؟ لن يستطيع إرسال رسائل إليك بعد ذلك", "? They won't be able to message you after this")),
                     React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                         React.createElement("button", { onClick: () => { onBlock(); setConfirmingBlock(false); }, className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.danger } },
                             React.createElement("span", { className: "text-xs font-bold text-white" }, t("nam_ahzr"))),

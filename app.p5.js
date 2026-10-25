@@ -13,7 +13,7 @@ function CallOverlay({ contactName, callType, onEnd, requireApproval = false, av
     const [showAddPeople, setShowAddPeople] = useState(false);
     function addPerson(name) {
         if (extras.some((e) => e.name === name) || name === contactName) {
-            showToast(name + " موجود بالمكالمة أصلاً", "info");
+            showToast(name + " موجود في المكالمة أصلاً", "info");
             return;
         }
         setExtras((p) => [...p, { name, state: "ringing" }]);

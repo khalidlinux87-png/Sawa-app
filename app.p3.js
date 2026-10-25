@@ -836,9 +836,9 @@ function FamilyMergeSheet({ persons, relations = [], onMerge, onClose }) {
                     React.createElement("b", null, keepPerson.local_name),
                     " \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B. \u0623\u064A \u0628\u064A\u0627\u0646\u0627\u062A \u0646\u0627\u0642\u0635\u0629 \u0639\u0646\u062F ",
                     keepPerson.local_name,
-                    " (\u0647\u0627\u062A\u0641\u060C \u0645\u064A\u0644\u0627\u062F\u060C \u0635\u0648\u0631\u0629) \u0647\u062A\u062A\u0643\u0645\u0651\u0644 \u0645\u0646 ",
+                    " (هاتف، ميلاد، صورة) ستُستكمل من ",
                     removePerson.local_name,
-                    " \u0644\u0648 \u0645\u0648\u062C\u0648\u062F\u0629."))),
+                    " إن وُجدت."))),
             !confirming ? (React.createElement(FamButton, { label: t("dmj_alqrybyn"), disabled: !keepId || !removeId || keepId === removeId, onPress: () => setConfirming(true) })) : (React.createElement("div", { className: "rounded-xl border p-3", style: { borderColor: colors.danger } },
                 React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.danger } },
                     "\u062A\u0623\u0643\u064A\u062F\u061F \u0647\u0630\u0627 \u0627\u0644\u0625\u062C\u0631\u0627\u0621 \u0644\u0627 \u064A\u0645\u0643\u0646 \u0627\u0644\u062A\u0631\u0627\u062C\u0639 \u0639\u0646\u0647 \u2014 ", removePerson === null || removePerson === void 0 ? void 0 :
@@ -1587,9 +1587,9 @@ function FamilyStatsScreen({ persons, relations, onBack }) {
                     React.createElement(AlertTriangle, { size: 16, color: colors.danger }),
                     React.createElement("span", { className: "text-sm", style: { color: colors.text } },
                         React.createElement("b", null, longestNoContact.local_name),
-                        tl(" \u2014 \u0645\u0627 \u062A\u0648\u0627\u0635\u0644\u062A \u0645\u0639\u0647 \u0645\u0646 ", " — haven't been in touch for "),
+                        tl(" — لم تتواصل معه منذ ", " — haven't been in touch for "),
                         daysSinceLongest,
-                        tl(" \u064A\u0648\u0645\u060C \u0623\u0637\u0648\u0644 \u0645\u062F\u0629 \u0628\u0627\u0644\u0639\u0627\u0626\u0644\u0629", " days, the longest in the family"))))))));
+                        tl(" يوم، أطول مدّة في العائلة", " days, the longest in the family"))))))));
 }
 // C79: «تغيير الأب/الأم» — اختيار والدٍ آخر لشخصٍ واحد (لا يمسّ إخوته)، أو إزالة الربط الخاطئ.
 //      المرشّحون من الجنس المناسب، ولا أحد من نسل الشخص (دورة)، وزوجات الأب / أزواج الأم أوّلاً.

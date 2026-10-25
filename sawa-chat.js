@@ -231,6 +231,131 @@
       URL.revokeObjectURL(r.url); throw new Error("too big");
     });
   }
+  // ==================================================================
+  // C130: صورة الحساب — اختيار المصدر + محرّر قصّ دائريّ (سحب · تكبير بإصبعين أو بالشريط · تدوير)
+  // ==================================================================
+  var AV_PRESETS = [["🌙", "#1E3A63", "#2F80C8"], ["🌿", "#065f46", "#16a34a"], ["🌸", "#9d174d", "#f472b6"], ["☀️", "#b45309", "#fbbf24"], ["🕊️", "#334155", "#94a3b8"], ["🌊", "#0f766e", "#22d3ee"],
+    ["⭐", "#4c1d95", "#8b5cf6"], ["🌹", "#7f1d1d", "#ef4444"], ["🌴", "#14532d", "#84cc16"], ["☕", "#451a03", "#a16207"], ["📚", "#1e293b", "#3b82f6"], ["⚽", "#064e3b", "#10b981"],
+    ["🐪", "#78350f", "#f59e0b"], ["🦅", "#1c1917", "#78716c"], ["🌾", "#713f12", "#eab308"], ["💙", "#1e3a8a", "#60a5fa"]];
+  function presetAvatar(x) {
+    var c = document.createElement("canvas"); c.width = c.height = 160; var g = c.getContext("2d");
+    var gr = g.createLinearGradient(0, 0, 160, 160); gr.addColorStop(0, x[2]); gr.addColorStop(1, x[1]); g.fillStyle = gr; g.fillRect(0, 0, 160, 160);
+    g.font = "84px 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(x[0], 80, 88);
+    return c.toDataURL("image/jpeg", 0.85);
+  }
+  function pickFile(accept, capture) {
+    return new Promise(function (res) {
+      var inp = document.createElement("input"); inp.type = "file"; inp.accept = accept; if (capture) inp.setAttribute("capture", capture);
+      inp.onchange = function () { var f = inp.files && inp.files[0]; res(f || null); };
+      inp.click();
+    });
+  }
+  function choosePhoto() {
+    return new Promise(function (res) {
+      var ov = document.createElement("div"); ov.dir = isAr() ? "rtl" : "ltr";
+      ov.style.cssText = "position:fixed;inset:0;z-index:2147483005;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;font-family:system-ui";
+      var box = document.createElement("div");
+      box.style.cssText = "background:#fff;color:#1A1A2E;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:14px 14px calc(env(safe-area-inset-bottom,0px) + 14px);box-sizing:border-box;max-height:88vh;overflow:auto";
+      var done = false, close = function (v) { if (done) return; done = true; ov.remove(); res(v || null); };
+      ov.onclick = function (e) { if (e.target === ov) close(null); };
+      var h = document.createElement("div"); h.textContent = L("صورة حسابك", "Your profile photo"); h.style.cssText = "font:800 15px system-ui;text-align:center;margin-bottom:10px"; box.appendChild(h);
+      var row = document.createElement("div"); row.style.cssText = "display:grid;grid-template-columns:repeat(" + (NB() && NB().albumsOk ? 4 : 3) + ",1fr);gap:8px";
+      var src = function (ic, label, fn) {
+        var b = document.createElement("button"); b.type = "button";
+        b.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;color:#1A1A2E;font:700 12.5px system-ui";
+        var i = document.createElement("span"); i.textContent = ic; i.style.cssText = "font-size:24px"; b.appendChild(i); b.appendChild(document.createTextNode(label));
+        b.onclick = fn; row.appendChild(b);
+      };
+      var fromFile = function (f) { if (!f) return; ov.style.visibility = "hidden"; cropPhoto(f).then(function (du) { if (du) close(du); else ov.style.visibility = ""; }, function () { ov.style.visibility = ""; toast(L("تعذّر قراءة الصورة", "Couldn't read the image")); }); };
+      src("📷", L("الكاميرا", "Camera"), function () { pickFile("image/*", "user").then(fromFile); });
+      src("🖼️", L("المعرض", "Gallery"), function () { pickFile("image/*").then(fromFile); });
+      // C130b: الألبومات (تطبيق معرض الهاتف) — في تطبيق أندرويد c130+ · الآيفون: «المعرض» فيه الألبومات أصلاً
+      if (NB() && NB().albumsOk) src("🗂️", L("الألبومات", "Albums"), function () { pickFile("image/x-sawa-albums").then(fromFile); });
+      src("📁", L("الملفّات", "Files"), function () { pickFile("image/jpeg,image/png,image/webp,image/heic,image/gif").then(fromFile); });
+      box.appendChild(row);
+      var sub = document.createElement("div"); sub.textContent = L("أو اختر صورةً جاهزة", "Or pick a ready-made picture"); sub.style.cssText = "font:700 12px system-ui;color:#6b7280;margin:14px 2px 8px"; box.appendChild(sub);
+      var grid = document.createElement("div"); grid.style.cssText = "display:grid;grid-template-columns:repeat(4,1fr);gap:10px;justify-items:center";
+      AV_PRESETS.forEach(function (x) {
+        var b = document.createElement("button"); b.type = "button"; b.setAttribute("aria-label", x[0]);
+        b.style.cssText = "width:58px;height:58px;border-radius:50%;border:0;font-size:28px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg," + x[2] + "," + x[1] + ")";
+        b.textContent = x[0]; b.onclick = function () { close(presetAvatar(x)); }; grid.appendChild(b);
+      });
+      box.appendChild(grid);
+      var cn = document.createElement("button"); cn.type = "button"; cn.textContent = L("إلغاء", "Cancel");
+      cn.style.cssText = "width:100%;margin-top:14px;padding:12px;border:0;border-radius:12px;background:#eee;color:#333;font:700 14px system-ui"; cn.onclick = function () { close(null); };
+      box.appendChild(cn); ov.appendChild(box); document.body.appendChild(ov);
+    });
+  }
+  // محرّر القصّ: الصورة تُسحب وتُكبَّر داخل دائرة؛ «حفظ» يرسم الجزء الظاهر إلى ١٦٠ بكسل (≤ ٢٠ ألف حرف)
+  function cropPhoto(file) {
+    return loadImg(file).then(function (r) {
+      return new Promise(function (res) {
+        var img = r.img, W = img.naturalWidth, H = img.naturalHeight, rot = 0;
+        var ov = document.createElement("div"); ov.dir = isAr() ? "rtl" : "ltr";
+        ov.style.cssText = "position:fixed;inset:0;z-index:2147483006;background:#0b1220;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui;color:#fff;touch-action:none;user-select:none";
+        var tip = document.createElement("div"); tip.textContent = L("اسحب الصورة لتحريكها · كبّرها بإصبعين أو بالشريط", "Drag to move · pinch or use the slider to zoom");
+        tip.style.cssText = "font:600 13px system-ui;color:#cbd5e1;margin-bottom:14px;text-align:center;padding:0 16px";
+        var S = Math.min(300, Math.round(Math.min(innerWidth, innerHeight) * 0.78));
+        var stage = document.createElement("div"); stage.style.cssText = "position:relative;width:" + S + "px;height:" + S + "px;overflow:hidden;border-radius:50%;box-shadow:0 0 0 3px rgba(255,255,255,.85);background:#111;cursor:grab";
+        var cv = document.createElement("canvas"); cv.width = cv.height = S * 2; cv.style.cssText = "width:100%;height:100%;display:block";
+        stage.appendChild(cv);
+        var g = cv.getContext("2d");
+        var dims = function () { return rot % 180 ? [H, W] : [W, H]; };
+        var minZ = function () { var d = dims(); return S / Math.min(d[0], d[1]); };
+        var z = minZ(), x = 0, y = 0;   // x,y: إزاحة مركز الصورة عن مركز الدائرة (بكسل الشاشة)
+        var clamp = function () {
+          z = Math.max(minZ(), Math.min(minZ() * 6, z));
+          var d = dims(), mx = Math.max(0, (d[0] * z - S) / 2), my = Math.max(0, (d[1] * z - S) / 2);
+          x = Math.max(-mx, Math.min(mx, x)); y = Math.max(-my, Math.min(my, y));
+        };
+        var draw = function (ctx, size) {
+          var k = size / S; ctx.save(); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, size, size);
+          ctx.translate(size / 2 + x * k, size / 2 + y * k); ctx.rotate(rot * Math.PI / 180); ctx.scale(z * k, z * k);
+          ctx.drawImage(img, -W / 2, -H / 2); ctx.restore();
+        };
+        var paint = function () { clamp(); draw(g, cv.width); sl.value = String(Math.round((z / minZ() - 1) * 100)); };
+        var pts = {}, last = null;
+        stage.addEventListener("pointerdown", function (e) { stage.setPointerCapture(e.pointerId); pts[e.pointerId] = { x: e.clientX, y: e.clientY }; last = null; });
+        stage.addEventListener("pointermove", function (e) {
+          if (!pts[e.pointerId]) return;
+          var ids = Object.keys(pts), prev = pts[e.pointerId]; pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+          if (ids.length === 1) { x += e.clientX - prev.x; y += e.clientY - prev.y; }
+          else { var a = pts[ids[0]], b = pts[ids[1]], dd = Math.hypot(a.x - b.x, a.y - b.y); if (last) { var f = dd / last; z *= f; x *= f; y *= f; } last = dd; }
+          paint();
+        });
+        var up = function (e) { delete pts[e.pointerId]; last = null; };
+        stage.addEventListener("pointerup", up); stage.addEventListener("pointercancel", up);
+        stage.addEventListener("wheel", function (e) { e.preventDefault(); var f = e.deltaY < 0 ? 1.08 : 1 / 1.08; z *= f; x *= f; y *= f; paint(); }, { passive: false });
+        var ctr = document.createElement("div"); ctr.style.cssText = "display:flex;align-items:center;gap:10px;margin-top:22px;width:" + S + "px";
+        var zm = document.createElement("span"); zm.textContent = "🔍"; zm.style.cssText = "font-size:16px";
+        var sl = document.createElement("input"); sl.type = "range"; sl.min = "0"; sl.max = "500"; sl.value = "0"; sl.style.cssText = "flex:1;accent-color:#60a5fa";
+        sl.setAttribute("aria-label", L("تكبير", "Zoom"));
+        sl.oninput = function () { var nz = minZ() * (1 + Number(sl.value) / 100), f = nz / z; z = nz; x *= f; y *= f; paint(); };
+        var rb = document.createElement("button"); rb.type = "button"; rb.textContent = "⟳"; rb.setAttribute("aria-label", L("تدوير", "Rotate"));
+        rb.style.cssText = "width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;font:700 20px system-ui";
+        rb.onclick = function () { rot = (rot + 90) % 360; z = minZ(); x = y = 0; paint(); };
+        ctr.appendChild(zm); ctr.appendChild(sl); ctr.appendChild(rb);
+        var row = document.createElement("div"); row.style.cssText = "display:flex;gap:10px;margin-top:22px;width:" + S + "px";
+        var ok = document.createElement("button"); ok.type = "button"; ok.textContent = L("استخدام الصورة", "Use photo");
+        ok.style.cssText = "flex:1;padding:13px;border:0;border-radius:14px;background:#2F80C8;color:#fff;font:800 14px system-ui";
+        var no = document.createElement("button"); no.type = "button"; no.textContent = L("رجوع", "Back");
+        no.style.cssText = "flex:1;padding:13px;border:0;border-radius:14px;background:rgba(255,255,255,.12);color:#fff;font:700 14px system-ui";
+        var fin = function (v) { ov.remove(); try { URL.revokeObjectURL(r.url); } catch (e) {} res(v); };
+        no.onclick = function () { fin(null); };
+        ok.onclick = function () {
+          var sizes = [160, 128, 96, 72], qs = [0.82, 0.72, 0.62, 0.5];
+          for (var i = 0; i < sizes.length; i++) {
+            var c = document.createElement("canvas"); c.width = c.height = sizes[i]; draw(c.getContext("2d"), sizes[i]);
+            var du = c.toDataURL("image/jpeg", qs[i]); if (du.length <= 20000) return fin(du);
+          }
+          toast(L("الصورة كبيرة جدّاً", "Image too large"));
+        };
+        row.appendChild(ok); row.appendChild(no);
+        ov.appendChild(tip); ov.appendChild(stage); ov.appendChild(ctr); ov.appendChild(row);
+        document.body.appendChild(ov); paint();
+      });
+    });
+  }
   function pickPhoto() {
     return new Promise(function (res) {
       var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
@@ -318,7 +443,8 @@
     var pb = document.createElement("div"); pb.style.cssText = "display:flex;flex-direction:column;gap:6px;flex:1";
     var chg = document.createElement("button"); chg.textContent = L("📷 تغيير الصورة", "📷 Change photo"); chg.style.cssText = "padding:9px 12px;border:1.5px solid #2F80C8;border-radius:10px;background:#fff;color:#2F80C8;font:800 13px system-ui";
     var rmv = document.createElement("button"); rmv.textContent = L("إزالة الصورة", "Remove photo"); rmv.style.cssText = "padding:7px 12px;border:0;border-radius:10px;background:transparent;color:#b42318;font:700 12px system-ui";
-    chg.onclick = function () { pickPhoto().then(function (f) { if (!f) return; return squareThumb(f).then(function (du) { newPhoto = du; paintPv(); }); }).catch(function () { toast(L("تعذّر قراءة الصورة", "Couldn't read the image")); }); };
+    // C130: مصدر الصورة (كاميرا · معرض · ملفّات · صور جاهزة) ثمّ قصٌّ بالتحريك والتكبير قبل الحفظ
+    chg.onclick = function () { choosePhoto().then(function (du) { if (du) { newPhoto = du; paintPv(); } }).catch(function () { toast(L("تعذّر قراءة الصورة", "Couldn't read the image")); }); };
     rmv.onclick = function () { newPhoto = null; paintPv(); };
     pb.appendChild(chg); pb.appendChild(rmv); pr.appendChild(pv); pr.appendChild(pb); box.appendChild(pr);
     box.appendChild(lab(L("اسمك في سوا — يراه من تتواصل معهم", "Your name in Sawa — shown to people you connect with")));
@@ -1709,13 +1835,39 @@
   }
   function blobOfUrl(u) { return fetch(u).then(function (r) { return r.blob(); }); }
   // ملفٌّ عامّ: يُنزَّل ثمّ «فتح · حفظ · مشاركة»
+  // C130: نوع الملفّ من امتداده (كان يصل فارغاً أحياناً فلا يجد الهاتف تطبيقاً يفتح PDF)
+  var EXT_MIME = { pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation", txt: "text/plain", csv: "text/csv", json: "application/json",
+    zip: "application/zip", rar: "application/vnd.rar", apk: "application/vnd.android.package-archive", mp3: "audio/mpeg", m4a: "audio/mp4", ogg: "audio/ogg",
+    mp4: "video/mp4", mov: "video/quicktime", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", heic: "image/heic" };
+  function mimeOf(name, mime) {
+    if (mime && mime !== "application/octet-stream") return mime;
+    var ext = (String(name || "").match(/\.([a-z0-9]{1,5})$/i) || [])[1];
+    return (ext && EXT_MIME[ext.toLowerCase()]) || mime || "application/octet-stream";
+  }
+  // آيفون: Quick Look (بناء C130+) · بناءٌ أقدم ⇒ ورقة المشاركة · المتصفّح: يُفتح في لسانٍ جديد ما يعرضه المتصفّح (PDF/صور/نصّ)
+  function viewBlob(blob, name, mime) {
+    if (IOSB() && blob.size < 40 * 1024 * 1024) {
+      return blobPartB64(blob, 0, blob.size).then(function (b64) { return IOSB().call("openFile", { fileName: name, fileB64: b64, mime: mime }); })
+        .then(function (r) { if (r && r.ok) return true; return saveBlob(blob, name, "share", mime); });
+    }
+    if (!NB() && /^(application\/pdf|image\/|text\/|video\/|audio\/)/.test(mime)) {
+      var u = URL.createObjectURL(new Blob([blob], { type: mime }));
+      var w = null; try { w = global.open(u, "_blank"); } catch (e) {}
+      setTimeout(function () { try { URL.revokeObjectURL(u); } catch (e) {} }, 120000);
+      if (w) return Promise.resolve(true);
+    }
+    return saveBlob(blob, name, "open", mime);
+  }
   function openFile(m, action) {
     if (!m || !m.cloudMid) return;
     var url = mediaUrls[m.cloudMid] || localUrls[m.cloudMid];
-    var name = m.text || m.fileName || "file", mime = m.mime || null;
+    var name = m.text || m.fileName || "file", mime = mimeOf(name, m.mime || null);
     var go = function (u, act) {
       if (!u) { toast(L("تعذّر تنزيل الملفّ", "Couldn't download the file")); return; }
-      blobOfUrl(u).then(function (b) { return saveBlob(b, name, act, mime); });
+      blobOfUrl(u).then(function (b) { var mm = mimeOf(name, mime !== "application/octet-stream" ? mime : b.type); return act === "open" ? viewBlob(b, name, mm) : saveBlob(b, name, act, mm); })
+        .catch(function (e) { toast(L("تعذّر فتح الملفّ: ", "Couldn't open the file: ") + ((e && e.message) || e)); });
     };
     var run = function (act) {
       if (url) return go(url, act);
@@ -1724,10 +1876,13 @@
       ensureMedia(m.cloudCid, m.cloudMid).then(function (u) { go(u, act); });
     };
     if (action) return run(action);
-    if (!nativeFiles()) return run("save");
     var s = sheet(name);
     s.box.appendChild(note((m.fileSize ? Math.max(1, Math.round(m.fileSize / 1024)) + " KB · " : "") + (mime || ""), "#8796a5"));
-    [["open", L("📂 فتح", "📂 Open")], ["save", L("⬇️ حفظ في التنزيلات", "⬇️ Save to Downloads")], ["share", L("📤 مشاركة", "📤 Share")]].forEach(function (x, i) {
+    // C130: «فتح» على كلّ الأجهزة (كان المتصفّح والآيفون يحفظان فقط) · الآيفون: «حفظ» = ورقة المشاركة ومنها «حفظ في الملفّات»
+    var opts = [["open", L("📂 فتح", "📂 Open")]];
+    if (IOSB()) opts.push(["share", L("📤 حفظ أو مشاركة", "📤 Save or share")]);
+    else { opts.push(["save", nativeFiles() ? L("⬇️ حفظ في التنزيلات", "⬇️ Save to Downloads") : L("⬇️ تنزيل", "⬇️ Download")]); opts.push(["share", L("📤 مشاركة", "📤 Share")]); }
+    opts.forEach(function (x, i) {
       var b = mkBtn(x[1], i === 0 ? "primary" : ""); b.style.marginTop = "8px"; b.onclick = function () { s.close(); run(x[0]); }; s.box.appendChild(b);
     });
   }
@@ -3058,7 +3213,7 @@
         snd.disabled = true; snd.textContent = "…";
         call("vouch.request", { to: Object.keys(chosen) }).then(function (r) {
           if (r.already) { toast(L("رقمك موثَّق أصلاً ✓", "Already verified ✓")); s2.close(); done(); return; }
-          toast(r.sent ? L("أُرسل الطلب إلى " + r.sent + " — سنبلغك حين يؤكّدوا", "Sent to " + r.sent + " — we'll tell you when they confirm") : L("لم يُرسَل — اختر جهات اتّصال متبادلة", "Not sent — pick mutual contacts"));
+          toast(r.sent ? L("أُرسل الطلب إلى " + r.sent + " — سنُبلغك حين يؤكّدون", "Sent to " + r.sent + " — we'll tell you when they confirm") : L("لم يُرسَل — اختر جهات اتّصال متبادلة", "Not sent — pick mutual contacts"));
           s2.close(); done();
         }).catch(function (e) { snd.disabled = false; snd.textContent = L("إرسال الطلب", "Send request"); toast(codeErr(e)); });
       };
@@ -4575,7 +4730,7 @@
     send: send, edit: edit, clearChat: clearChat,
     // C4
     enablePush: enablePush, disablePush: disablePush, pushEnabled: pushEnabled, pushSupported: pushSupported, pushState: pushState, pushHelp: helpSheet, pushCheckSheet: pushCheckSheet, updateSheet: updateSheet, checkUpdate: checkUpdate, forceUpdate: forceUpdate, updateAvailable: function () { return upd.available; },
-    sendMedia: sendMedia, forwardMessage: forwardMessage, openFile: openFile, markViewedOnce: markViewedOnce, ensureMedia: ensureMedia,
+    sendMedia: sendMedia, forwardMessage: forwardMessage, openFile: openFile, choosePhoto: choosePhoto, markViewedOnce: markViewedOnce, ensureMedia: ensureMedia,
     // C3
     createGroup: createGroup, updateGroup: updateGroup, addMembers: addMembers, removeMember: removeMember, setAdmin: setAdmin,
     leaveGroup: leaveGroup, shareGroupInvite: shareGroupInvite, joinGroup: joinGroup,
