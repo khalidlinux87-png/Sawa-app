@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c128";
+  var VERSION = "c131";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -193,10 +193,9 @@
     try {
       var nb = NB();
       if (type === "video" || !nb || !nb.rtcNew || !nb.rtcMicOk || !nb.rtcMicOk()) return false;
-      // C128: عاد الأصليّ ⚡ افتراضيّاً للصوتيّة (خالد: «بعد C124 ازدادت الصوتيّة رداءةً وتنقطع كثيراً» على WebView).
-      //       يبقى بتحسينات C124 (تكبير 1.4 · مخزن 50). المدير يبدّل إلى WebView بلمس سطر الشبكة ⇒ sawa-eng = "web".
-      //       مفتاحٌ جديد (بدل sawa-nrtc) حتّى يعود الجميع إلى الافتراضيّ الجديد.
-      if (lsGet("sawa-eng") === "web") return false;
+      // C131: العودة إلى الأساس — الصوتيّة الثنائيّة على محرّك WebView (محرّك الجماعيّة والفيديو، ومحرّك النسخ الأولى الممتازة C6–C94).
+      //       الأصليّ ⚡ للمدير وحده للمقارنة: لمس سطر الشبكة ⇒ sawa-eng = "nat". القرار بعد الآن بتقييمات المكالمات (qa) لا بالانطباع.
+      if (lsGet("sawa-eng") !== "nat") return false;
       return !(Date.now() - Number(lsGet("sawa-nrtc-fail") || 0) < 86400000);
     } catch (e) { return false; }
   }
@@ -585,7 +584,7 @@
     sub.addEventListener("click", function () {
       try {
         var nb = NB(); if (!isAdm() || !nb || !nb.rtcNew) return;
-        var on = lsGet("sawa-eng") !== "web"; lsSet("sawa-eng", on ? "web" : "nat"); try { localStorage.removeItem("sawa-nrtc-fail"); } catch (e) {}
+        var on = lsGet("sawa-eng") === "nat"; lsSet("sawa-eng", on ? "web" : "nat"); try { localStorage.removeItem("sawa-nrtc-fail"); } catch (e) {}
         toast(on ? L("محرّك الصوت: WebView (كالفيديو) — من المكالمة القادمة", "Audio engine: WebView — from the next call")
                  : L("محرّك الصوت: الأصليّ ⚡ — من المكالمة القادمة", "Audio engine: native ⚡ — from the next call"));
       } catch (e) {}
@@ -781,6 +780,7 @@
       var dD = jbD - (c.sJbD || 0), dN = jbN - (c.sJbN || 0); c.sJbD = jbD; c.sJbN = jbN;
       if (dN > 0) c.jb = Math.round(dD / dN * 1000);
       c.lagHist = (c.lagHist || []).concat([Math.round((rtt || 0) / 2 + (c.jb || 0))]).slice(-40);
+      qaSample(c, rtt, c.jb, loss, pair);   // C131
       if (c === cur && ui.sub && c.type !== "video") ui.sub.textContent = netLine(c);
       c.qHist = (c.qHist || []).concat([q]).slice(-6);
       var h = c.qHist, bad = h.length >= 2 && h.slice(-2).every(function (x) { return x <= 1; }), good = h.length >= 4 && h.slice(-4).every(function (x) { return x >= 2; });
@@ -1175,6 +1175,118 @@
       .catch(function (e) { log("switch", e && e.message); toast(L("تعذّر تبديل الكاميرا", "Couldn't switch camera")); })
       .then(function () { c.switching = false; });
   }
+  // ============================================================
+  //  C131: تقييم المكالمات — بدل الانطباع: بعد كلّ مكالمة (≥ ١٥ ث) يسأل المدير ومن فعّل «المختبِر» (رابط ?qa=1) عن الجودة
+  //  ويُحفظ مع القياس: المحرّك · النسخة · الوسيط · التأخير (وسيط/أقصى) · المخزن · الفقد · المكبّر/السمّاعة · الجهاز ⇒ qa/{id} في الخادم
+  //  المدير يرى النتائج مجمّعةً: SawaRTC.qaReport() (من «حسابي ← تقييمات المكالمات»).
+  // ============================================================
+  try { var qs0 = global.location && global.location.search || ""; if (/[?&]qa=1\b/.test(qs0)) { lsSet("sawa-qa", "1"); setTimeout(function () { toast(L("✓ وضع المختبِر: سيُطلب تقييم كلّ مكالمة", "✓ Tester mode: you'll rate each call")); }, 2500); } else if (/[?&]qa=0\b/.test(qs0)) { try { global.localStorage.removeItem("sawa-qa"); } catch (e) {} } } catch (e) {}
+  function qaOn() { return lsGet("sawa-qa") === "1" || isAdm(); }
+  function qaSample(c, rtt, jb, loss, pair) {
+    var s = c.qaS || (c.qaS = { rtt: [], jb: [], loss: [] });
+    if (rtt != null) s.rtt.push(Math.round(rtt)); if (jb != null) s.jb.push(Math.round(jb)); if (loss != null) s.loss.push(Math.round(loss * 1000) / 10);
+    ["rtt", "jb", "loss"].forEach(function (k) { if (s[k].length > 400) s[k] = s[k].slice(-400); });
+  }
+  function qaStat(a) {
+    if (!a || !a.length) return null;
+    var b = a.slice().sort(function (x, y) { return x - y; });
+    return { med: b[Math.floor(b.length / 2)], p90: b[Math.min(b.length - 1, Math.floor(b.length * 0.9))], max: b[b.length - 1], n: b.length };
+  }
+  function qaPlat() {
+    try { var nb = NB(); if (nb && nb.platform) return String(nb.platform()); } catch (e) {}
+    if (IOSB()) return "ios"; return "web";
+  }
+  function qaModel() { var ua = (global.navigator && navigator.userAgent) || ""; var m = /Android [\d.]+; ([^;)]+)/.exec(ua); return m ? m[1].trim().slice(0, 40) : /iPhone/.test(ua) ? "iPhone" : ""; }
+  var QA_TAGS = [["echo", "صدى", "Echo"], ["noise", "تشويش", "Noise"], ["cut", "تقطّع", "Cutting"], ["delay", "تأخير", "Delay"], ["low", "صوت منخفض", "Too quiet"], ["drop", "انقطعت", "Dropped"]];
+  function qaAfter(secs, meta) {
+    if (!secs || secs < 15 || !qaOn()) return;
+    setTimeout(function () { try { qaAsk(secs, meta); } catch (e) { log("qa", e && e.message); } }, 2200);
+  }
+  function qaAsk(secs, meta) {
+    var stars = 0, tags = {}, sent = false;
+    var closeFn = sheet(L("كيف كانت جودة المكالمة؟", "How was the call quality?"), function (body, close) {
+      body.parentNode.parentNode.style.direction = isAr() ? "rtl" : "ltr";
+      var info = el("div", "padding:0 18px 8px;text-align:center;font:600 12px system-ui;color:" + MUTED,
+        (meta.kind.indexOf("group") === 0 ? L("جماعيّة", "Group") : meta.kind === "video" ? L("فيديو", "Video") : L("صوتيّة", "Voice")) + " · " + fmt(secs) +
+        (meta.engine === "native" ? " · ⚡" : "") + (meta.out === "spk" ? " · 🔊" : meta.out === "ear" ? " · 👂" : ""));
+      body.appendChild(info);
+      var row = el("div", "display:flex;justify-content:center;gap:6px;padding:4px 0 12px;direction:ltr");
+      var sb = [];
+      for (var i = 1; i <= 5; i++) (function (k) {
+        var b = el("button", "font-size:34px;background:transparent;border:0;padding:2px 4px;filter:grayscale(1);opacity:.45", "⭐");
+        b.setAttribute("aria-label", String(k));
+        b.onclick = function () { stars = k; sb.forEach(function (x, j) { x.style.filter = j < k ? "none" : "grayscale(1)"; x.style.opacity = j < k ? "1" : ".45"; }); go.disabled = false; go.style.opacity = "1"; };
+        sb.push(b); row.appendChild(b);
+      })(i);
+      body.appendChild(row);
+      body.appendChild(el("div", "padding:0 18px 6px;font:700 12px system-ui;color:" + MUTED, L("ماذا لاحظت؟ (اختياريّ)", "What did you notice? (optional)")));
+      var tg = el("div", "display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 10px");
+      QA_TAGS.forEach(function (t) {
+        var b = el("button", "padding:8px 12px;border-radius:999px;border:1px solid " + LINE + ";background:transparent;color:#e2e8f0;font:700 13px system-ui", L(t[1], t[2]));
+        b.onclick = function () { tags[t[0]] = !tags[t[0]]; b.style.background = tags[t[0]] ? "rgba(96,165,250,.25)" : "transparent"; b.style.borderColor = tags[t[0]] ? "#60a5fa" : LINE; };
+        tg.appendChild(b);
+      });
+      body.appendChild(tg);
+      var note = el("input", "margin:0 16px 10px;width:calc(100% - 32px);box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1px solid " + LINE + ";background:rgba(255,255,255,.06);color:#fff;font:600 13px system-ui");
+      note.placeholder = L("ملاحظة قصيرة (اختياريّ)", "Short note (optional)"); body.appendChild(note);
+      var go = el("button", "margin:4px 16px 6px;width:calc(100% - 32px);padding:12px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 14px system-ui;opacity:.5", L("إرسال التقييم", "Send rating"));
+      go.disabled = true;
+      go.onclick = function () {
+        if (!stars || sent) return; sent = true;
+        var S = meta.s || {};
+        var p = { stars: stars, tags: Object.keys(tags).filter(function (k) { return tags[k]; }), note: note.value.trim().slice(0, 200),
+          kind: meta.kind, engine: meta.engine, secs: secs, out: meta.out || "", route: meta.route || "", relay: String(meta.relay || "").slice(0, 40), proto: meta.proto || "",
+          colo: cfColo || "", n: meta.n || 2, reason: meta.reason || "", ver: VERSION, plat: qaPlat(), model: qaModel(),
+          rtt: qaStat(S.rtt), jb: qaStat(S.jb), loss: qaStat(S.loss), lang: isAr() ? "ar" : "en" };
+        wcall("qa.rate", p).then(function () { toast(L("شكراً — حُفظ التقييم ✓", "Thanks — rating saved ✓")); }, function (e) { toast(L("تعذّر حفظ التقييم: ", "Couldn't save: ") + ((e && e.message) || e)); });
+        close();
+      };
+      body.appendChild(go);
+      var sk = el("button", "margin:0 16px 4px;width:calc(100% - 32px);padding:10px;border:0;background:transparent;color:" + MUTED + ";font:700 13px system-ui", L("تخطٍّ", "Skip"));
+      sk.onclick = function () { close(); }; body.appendChild(sk);
+    });
+    return closeFn;
+  }
+  // تقرير المدير: المتوسّطات لكلّ (نوع × محرّك) + آخر التقييمات
+  function qaReport() {
+    return wcall("admin.qa", { limit: 300 }).then(function (r) {
+      if (!r || !r.admin) { toast(L("للمدير فقط", "Admin only")); return; }
+      var items = r.items || [];
+      sheet(L("تقييمات المكالمات", "Call ratings") + " (" + items.length + ")", function (body) {
+        body.parentNode.parentNode.style.direction = isAr() ? "rtl" : "ltr";
+        if (!items.length) { body.appendChild(el("div", "padding:24px;text-align:center;color:" + MUTED + ";font:600 13px system-ui", L("لا تقييمات بعد — أرسل لمختبِريك الرابط sawaaap.com/?qa=1", "No ratings yet — send testers sawaaap.com/?qa=1"))); return; }
+        var groups = {};
+        items.forEach(function (x) { var k = (x.kind || "?") + " · " + (x.engine === "native" ? "⚡" : "WebView") + (x.out === "spk" ? " · 🔊" : x.out === "ear" ? " · 👂" : "") + " · " + (x.ver || "?"); (groups[k] = groups[k] || []).push(x); });
+        var med = function (a) { a = a.filter(function (v) { return typeof v === "number"; }).sort(function (x, y) { return x - y; }); return a.length ? a[Math.floor(a.length / 2)] : "–"; };
+        Object.keys(groups).sort().forEach(function (k) {
+          var g = groups[k], avg = g.reduce(function (t, x) { return t + (x.stars || 0); }, 0) / g.length;
+          var tc = {}; g.forEach(function (x) { (x.tags || []).forEach(function (t) { tc[t] = (tc[t] || 0) + 1; }); });
+          var tagTx = QA_TAGS.filter(function (t) { return tc[t[0]]; }).map(function (t) { return L(t[1], t[2]) + " " + Math.round(tc[t[0]] * 100 / g.length) + "%"; }).join(" · ");
+          var card = el("div", "margin:0 14px 10px;padding:12px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid " + LINE);
+          card.appendChild(el("div", "font:800 14px system-ui;direction:ltr;text-align:start", k));
+          var sr = el("div", "display:flex;align-items:baseline;gap:10px;margin-top:4px");
+          sr.appendChild(el("span", "font:800 22px system-ui;direction:ltr", "⭐ " + avg.toFixed(1) + " / 5"));
+          sr.appendChild(el("span", "font:700 12px system-ui;color:" + MUTED, g.length + " " + L("مكالمة", "calls")));
+          card.appendChild(sr);
+          card.appendChild(el("div", "font:600 12px system-ui;color:" + MUTED + ";margin-top:4px;direction:ltr;text-align:start",
+            "RTT " + med(g.map(function (x) { return x.rtt && x.rtt.med; })) + "ms · buffer " + med(g.map(function (x) { return x.jb && x.jb.med; })) + "ms · loss " + med(g.map(function (x) { return x.loss && x.loss.med; })) + "%"));
+          if (tagTx) card.appendChild(el("div", "font:700 12px system-ui;color:#fbbf24;margin-top:4px", tagTx));
+          body.appendChild(card);
+        });
+        body.appendChild(el("div", "padding:6px 18px;font:800 13px system-ui", L("آخر التقييمات", "Latest ratings")));
+        items.slice(0, 60).forEach(function (x) {
+          var d = new Date(x.ts || 0), when = d.getDate() + "/" + (d.getMonth() + 1) + " " + d.getHours() + ":" + pad2(d.getMinutes());
+          var line = "⭐".repeat(x.stars || 0) + "  " + (x.engine === "native" ? "⚡ " : "") + (x.kind || "") + " · " + fmt(x.secs || 0) + (x.out === "spk" ? " · 🔊" : x.out === "ear" ? " · 👂" : "") +
+            " · " + (x.route === "relay" ? "relay " + (x.relay || "") : x.route || "") + (x.rtt ? " · RTT " + x.rtt.med : "") + (x.jb ? " · buf " + x.jb.med : "") + (x.loss ? " · loss " + x.loss.med + "%" : "");
+          var r0 = el("div", "padding:8px 16px;border-top:1px solid " + LINE + ";font:600 12px system-ui;color:#e2e8f0");
+          r0.appendChild(el("div", "direction:ltr;text-align:start", line));
+          r0.appendChild(el("div", "color:" + MUTED + ";margin-top:2px", when + " · " + (x.byName || "") + " · " + (x.model || x.plat || "") + " · " + (x.ver || "") +
+            ((x.tags || []).length ? " · " + x.tags.map(function (t) { var q = QA_TAGS.filter(function (z) { return z[0] === t; })[0]; return q ? L(q[1], q[2]) : t; }).join("، ") : "") + (x.note ? " · «" + x.note + "»" : "")));
+          body.appendChild(r0);
+        });
+      });
+    }, function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+  }
   function hangup() {
     var c = cur; if (!c) return;
     finish(c, c.role === "caller" && !c.accepted ? "cancel" : "hangup");
@@ -1209,6 +1321,8 @@
     stopStream(c.local);
     try { if (c.pc) c.pc.close(); } catch (e) {}
     logCall(c);
+    qaAfter(c.connectedAt ? Math.round((Date.now() - c.connectedAt) / 1000) : 0, { kind: c.type === "video" ? "video" : "audio", engine: c.native ? "native" : "web",
+      out: c.out || "", route: c.route || "", relay: c.relayLbl || c.relayId || "", proto: c.proto || "", s: c.qaS || null, reason: reason });
     if (cur === c) cur = null;
     var tx = opts.text || (END_TEXT[reason] && L(END_TEXT[reason][0], END_TEXT[reason][1])) || (c.connectedAt ? L("انتهت المكالمة", "Call ended") + " · " + fmt(Math.max(1, Math.round((Date.now() - c.connectedAt) / 1000))) : L("انتهت المكالمة", "Call ended"));
     log("end", c.id, reason);
@@ -1613,6 +1727,8 @@
     }
     if (gc === g) gc = null;
     log("gend", g.gid, reason);
+    if (g.live && g.joinedAt) qaAfter(Math.round((Date.now() - g.joinedAt) / 1000), { kind: g.type === "video" ? "group-video" : "group-audio", engine: "web",
+      n: Object.keys(g.met || {}).length + 1, reason: reason });
     if (reason === "declined") { gHide(); return; }
     if (g.live) endTone();
     var tx = opts.text || (G_END[reason] && L(G_END[reason][0], G_END[reason][1])) || L("غادرت المكالمة", "You left the call");
@@ -3885,7 +4001,7 @@
     _rm: function () { return rm; }, _r: { prejoin: roomPrejoin, pin: function (u) { if (rm) { rm.pin = u; rm.focusU = null; rLayout(rm); } }, viewToggle: function () { rViewToggle(rm); }, tileMenu: function (u) { if (rm) rTileMenu(rm, u); }, layout: function () { if (rm) rLayout(rm); }, sendFile: function (f) { rSendFile(rm, f); }, fileGet: function (f) { return rFileGet(rm, f); }, toggleMic: rToggleMic, toggleCam: rToggleCam, hand: rToggleHand, low: rToggleLow, chat: rSendChat, react: rReact, admit: rAdmit, remove: rRemove,
       makeHost: rMakeHost, ctl: rCtl, muteAll: rMuteAll, lowerAll: rLowerAll, meta: rSetMeta, endAll: rEndAll, summary: rSummaryText, panel: rOpenPanel, settings: rSettings, max: rMax, rejoin: function () { if (rm) rRejoin(rm); }, bigToggle: rBigToggle, sfuRestart: function () { if (rm) sfuRestart(rm, 100); }, adapt: function (q) { if (rm) rAdapt(rm, q); }, stats: function () { if (rm) rStatsTick(rm); } },
     _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming,
-    _native: { ok: nativeAudioOk, PC: NativePC },
+    _native: { ok: nativeAudioOk, PC: NativePC }, qaReport: qaReport, _qaAsk: qaAsk,
     _relay: { probe: probeRelays, rank: relayRank, ice: relayIce, ms: function () { return relayMs; }, list: function () { return iceRelays; }, ofUrl: relayOfUrl, text: callNetText }
   };
   try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") schedRefresh(false); }); } catch (e) {}
