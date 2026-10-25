@@ -1627,3 +1627,12 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - sawa-rtc: RB() جسر توجيه موحّد (SawaNativeBridge أو SawaIOS) لـsetSpeaker/setProximity · bgAudio يستدعي setInCall في iOS · الصوتيّة تبدأ على السمّاعة، والفيديو على المكبّر (كما في أندرويد).
 - NativeBridge.swift: setSpeaker ⇒ CallAudio (playAndRecord + voiceChat بلا defaultToSpeaker + overrideOutputAudioPort، وإعادة التطبيق عند تغيّر المسار أو إن أعاد WebKit الضبط؛ البلوتوث والسمّاعات الخارجيّة تُحترم) · setProximity ⇒ حسّاس القرب · setInCall ⇒ منع قفل الشاشة.
 - **الرفع:** Sawa-app: sawa-rtc.js + BUILD.md + sw.js (v325) أخيراً · Sawa-ios: Sawa/NativeBridge.swift ثمّ تشغيل TestFlight.
+- C127b: ar.lproj/InfoPlist.strings بترميز \Uxxxx (ASCII) — النسخ واللصق من الهاتف أفسد النصّ العربيّ فلم يُقرأ الملفّ.
+
+## 🔁 C128 — الصوتيّة: عودة المحرّك الأصليّ ⚡ افتراضيّاً · sw v326 · sawa-rtc c128
+- خالد: «بعد C124 ازدادت المكالمات الصوتيّة رداءةً وتنقطع كثيراً» — على المحرّك الافتراضيّ (WebView، بلا ⚡).
+- sawa-rtc: nativeAudioOk ⇒ الأصليّ ⚡ افتراضيّاً للصوتيّة على أندرويد (بتحسينات C124: تكبير 1.4 · مخزن 50 · بلا تسريع) · الفيديو يبقى على WebView · مفتاحٌ جديد `sawa-eng` (= "web" ⇒ WebView) بدل `sawa-nrtc` حتّى يعود الجميع إلى الافتراضيّ · المدير يبدّل بلمس سطر الشبكة كما في C124 · الرجوع التلقائيّ عند فشل الأصليّ (sawa-nrtc-fail، ٢٤ ساعة) باقٍ.
+- iOS: خطأ «Invalid APNs credential» من FCM نفسه (الكود سليم) ⇒ فحص المفتاح في Apple (فريق QD9SY2YYKY · APNs · Sandbox & Production · Team Scoped) وفي Firebase (تطبيق com.sawaaap.app · Key ID · Team ID).
+- App Store: إجابات App Privacy (Name/Email/Phone · Photos/Audio/Other User Content · Precise Location · User ID/Device ID — App Functionality · Linked · بلا تتبّع) وAge Rating (UGC + Messaging = Yes، والباقي None).
+- اختبار: t/rtc/run111 ALL PASS · فحص nativeAudioOk مع جسرٍ وهميّ: الصوتيّة ⇒ أصليّ، الفيديو ⇒ WebView.
+- **الرفع:** Sawa-app: sawa-rtc.js + BUILD.md + sw.js (v326) أخيراً.
