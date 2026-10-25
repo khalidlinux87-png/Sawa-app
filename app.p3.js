@@ -114,6 +114,7 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
     const [, momBump] = useState(0);
     useEffect(() => { const f = () => momBump((x) => x + 1); window.addEventListener("sawa-moments", f); return () => window.removeEventListener("sawa-moments", f); }, []);
     const momNew = (() => { try { const SCm = window.SawaChat && window.SawaChat.moments; if (!SCm) return 0; const seen = Number(localStorage.getItem("sawa_mom_seen") || 0), me = window.SawaChat.profile && window.SawaChat.profile().uid; return SCm.list().filter((x) => x.by !== me && (x.ts || 0) > seen).length; } catch (e) { return 0; } })();
+    const momNotes = (() => { try { const SCm = window.SawaChat && window.SawaChat.moments; return SCm && SCm.unread ? SCm.unread() : 0; } catch (e) { return 0; } })();   // C135
     const soonBadge = () => React.createElement("span", { className: "absolute top-2 text-[9px] font-extrabold px-2 py-0.5 rounded-full", style: { insetInlineEnd: 8, backgroundColor: colors.border, color: colors.textMuted } }, tl("قريباً", "Soon"));
     const [loading, setLoading] = useState(true);
     // معلومة حيّة تُغني عن عدّاد ساكن: الأقرب استحقاقاً للتواصل أو أقرب مناسبة
@@ -185,8 +186,8 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
                         React.createElement(Images, { size: 24, color: "#fff" })),
                     React.createElement("div", { className: "flex-1", style: { minWidth: 0 } },
                         React.createElement("span", { className: "block text-lg font-extrabold text-white" }, tl("لحظات الأصدقاء", "Friends' moments")),
-                        React.createElement("span", { className: "block text-[11px] mt-0.5", style: { color: "rgba(255,255,255,0.75)" } }, momNew > 0 ? tl(momNew + " لحظة جديدة من أصدقائك", momNew + " new from your friends") : tl("شارك صورك وأفكارك مع أصدقائك وأهلك", "Share photos and thoughts with friends and family"))),
-                    momNew > 0 && React.createElement("span", { className: "rounded-full px-2 py-0.5 text-[11px] font-extrabold shrink-0", style: { backgroundColor: "#fff", color: "#7C3AED" } }, momNew > 9 ? "9+" : momNew),
+                        React.createElement("span", { className: "block text-[11px] mt-0.5", style: { color: "rgba(255,255,255,0.75)" } }, momNotes > 0 ? tl("🔔 إشعارات جديدة على لحظاتك: " + momNotes, "🔔 New activity on your moments: " + momNotes) : momNew > 0 ? tl(momNew + " لحظة جديدة من أصدقائك", momNew + " new from your friends") : tl("شارك صورك وأفكارك مع أصدقائك وأهلك", "Share photos and thoughts with friends and family"))),
+                    (momNew + momNotes) > 0 && React.createElement("span", { className: "rounded-full px-2 py-0.5 text-[11px] font-extrabold shrink-0", style: { backgroundColor: "#fff", color: "#7C3AED" } }, (momNew + momNotes) > 9 ? "9+" : (momNew + momNotes)),
                     React.createElement(ChevronLeft, { size: 18, color: "rgba(255,255,255,0.6)", className: "shrink-0", style: { transform: isRTL() ? "none" : "scaleX(-1)" } }))),
             SHOW_SOON_SERVICES && React.createElement("div", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("alkhdmat")),
             SHOW_SOON_SERVICES && React.createElement("div", { className: "grid grid-cols-2 gap-3" },
