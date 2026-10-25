@@ -14,7 +14,7 @@
    ============================================================ */
 (function (global) {
   "use strict";
-  var VERSION = "c127";
+  var VERSION = "c128";
   var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
@@ -193,9 +193,10 @@
     try {
       var nb = NB();
       if (type === "video" || !nb || !nb.rtcNew || !nb.rtcMicOk || !nb.rtcMicOk()) return false;
-      // C124: المحرّك الافتراضيّ صار محرّك WebView نفسه الذي تعمل به مكالمات الفيديو (صوتٌ أنعم وصدى أقلّ عند خالد).
-      //       الأصليّ (⚡) لمن فعّله المدير من سطر الشبكة في شاشة المكالمة — للمقارنة.
-      if (lsGet("sawa-nrtc") !== "1") return false;
+      // C128: عاد الأصليّ ⚡ افتراضيّاً للصوتيّة (خالد: «بعد C124 ازدادت الصوتيّة رداءةً وتنقطع كثيراً» على WebView).
+      //       يبقى بتحسينات C124 (تكبير 1.4 · مخزن 50). المدير يبدّل إلى WebView بلمس سطر الشبكة ⇒ sawa-eng = "web".
+      //       مفتاحٌ جديد (بدل sawa-nrtc) حتّى يعود الجميع إلى الافتراضيّ الجديد.
+      if (lsGet("sawa-eng") === "web") return false;
       return !(Date.now() - Number(lsGet("sawa-nrtc-fail") || 0) < 86400000);
     } catch (e) { return false; }
   }
@@ -584,7 +585,7 @@
     sub.addEventListener("click", function () {
       try {
         var nb = NB(); if (!isAdm() || !nb || !nb.rtcNew) return;
-        var on = lsGet("sawa-nrtc") === "1"; lsSet("sawa-nrtc", on ? "0" : "1"); try { localStorage.removeItem("sawa-nrtc-fail"); } catch (e) {}
+        var on = lsGet("sawa-eng") !== "web"; lsSet("sawa-eng", on ? "web" : "nat"); try { localStorage.removeItem("sawa-nrtc-fail"); } catch (e) {}
         toast(on ? L("محرّك الصوت: WebView (كالفيديو) — من المكالمة القادمة", "Audio engine: WebView — from the next call")
                  : L("محرّك الصوت: الأصليّ ⚡ — من المكالمة القادمة", "Audio engine: native ⚡ — from the next call"));
       } catch (e) {}
