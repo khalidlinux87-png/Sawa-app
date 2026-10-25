@@ -3749,9 +3749,17 @@
         : upd.err === "net" ? L("⚠️ تعذّر الاتّصال بالخادم — تحقّق من الإنترنت ثمّ أعد الفحص.", "⚠️ Couldn't reach the server.")
         : upd.err ? L("⚠️ تعذّرت قراءة رقم النسخة من الخادم.", "⚠️ Couldn't read the server version.")
         : upd.local ? L("✓ لديك أحدث نسخة.", "✓ You're up to date.") : upd.checkedAt ? L("نسخة الخادم " + String(upd.server || "").replace("sawa-", "") + " — اضغط «تحديث الآن» لتثبيتها.", "Tap Update now to install.") : L("جارٍ الفحص…", "Checking…"), upd.available ? "#8a5a00" : upd.err ? "#b42318" : "#2e7d5b", upd.available ? "#fff6e5" : upd.err ? "#fdecec" : "#eaf7f0"));
+      // C139: ما سجّله عامل الخدمة عن آخر محاولة تحديث — ملفٌّ مقطوع أو ليس النسخة المطلوبة على الخادم
+      var us = upd.swStatus;
+      if (us && (us.ok === false || (us.mism && us.mism.length))) {
+        var why = us.ok === false ? L("⛔ رُفض تحديث " + String(us.v || "").replace("sawa-", "") + ": " + (us.why || ""), "⛔ Update " + (us.v || "") + " refused: " + (us.why || ""))
+          : L("⚠️ ملفّاتٌ على الخادم ليست النسخة المطلوبة: ", "⚠️ Server files don't match: ") + us.mism.map(function (m) { return String(m.u).replace("./", "") + " (" + Math.round(m.got / 1024) + L(" ك.ب بدل ", " KB instead of ") + Math.round(m.want / 1024) + ")"; }).join(" · ");
+        body.appendChild(note(why + L(" — أعد رفع الملفّ ثمّ sw.js برقمٍ جديد.", " — re-upload the file, then sw.js with a new number."), "#b42318", "#fdecec"));
+      }
       if (upd.notes) { var nn = note(L("ما الجديد: ", "What's new: ") + upd.notes); nn.style.whiteSpace = "pre-line"; nn.style.marginTop = "8px"; body.appendChild(nn); }
     };
     draw();
+    try { if (global.caches) caches.open("flags-sawa").then(function (c) { return c.match("/upd-status"); }).then(function (r) { return r ? r.json() : null; }).then(function (j) { if (j) { upd.swStatus = j; draw(); } }).catch(function () {}); } catch (e) {}
     var go = mkBtn(L("تحديث الآن", "Update now"), "primary"); go.style.marginTop = "12px";
     go.onclick = function () { go.disabled = true; go.textContent = "…"; forceUpdate(); };
     var chk = mkBtn(L("التحقّق من وجود تحديث", "Check for updates")); chk.style.marginTop = "8px";
