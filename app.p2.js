@@ -1001,6 +1001,8 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         // الجسر (B5): لوحة السحابة والمشاركة (رفع، Google، روابط، استعادة) — sawa-sync.js
         // فحص الاتّصال (diag.html): يعمل داخل التطبيق المثبّت أيضاً — زرّ «رجوع إلى سوا» في أسفله
         ...(isAdm ? [{ key: "diag", label: tl("فحص الاتّصال (للمدير)", "Connection check (admin)"), icon: Wifi, onPress: () => { location.href = "./diag.html"; }, color: "#64748B" }] : []),
+        // C132: تنزيل تطبيق أندرويد (APK) — لمن يفتح سوا من المتصفّح على غير آيفون
+        ...(!window.SawaNativeBridge && !window.SawaIOS && !/iPhone|iPad|iPod/.test(navigator.userAgent || "") ? [{ key: "apk", label: tl("تنزيل تطبيق أندرويد (APK)", "Download the Android app (APK)"), icon: Download, onPress: () => { location.href = "/download"; }, color: "#16A34A" }] : []),
         // C131: نتائج تقييم المكالمات (المحرّك · النسخة · التأخير · الصدى…) — للمدير
         ...(isAdm ? [{ key: "qa", label: tl("تقييمات المكالمات (للمدير)", "Call ratings (admin)"), icon: Star, onPress: () => { if (window.SawaRTC && window.SawaRTC.qaReport) window.SawaRTC.qaReport(); }, color: "#F59E0B" }] : []),
         // C83: تحديث التطبيق لكلّ مستخدم — النسخة، ما الجديد، وتحديثٌ قسريّ آمن

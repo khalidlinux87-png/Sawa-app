@@ -3886,6 +3886,11 @@
       b.appendChild(feats);
       var st = bigBtn(L("ابدأ", "Get started"), "white"); st.appendChild(oc("span", "ob-fwd", "")).appendChild(oi("arrow"));
       st.onclick = function () { onbGo("login"); }; ft.appendChild(st);
+      // C132: رابط تنزيل تطبيق أندرويد (APK) في الصفحة الأولى للنطاق — للمتصفّح فقط (لا داخل التطبيق ولا على آيفون)
+      if (!NB() && !IOSB() && !isIOS()) {
+        var apk = bigBtn(L("📥 تنزيل تطبيق أندرويد (APK)", "📥 Download the Android app (APK)"), "link");
+        apk.onclick = function () { global.location.href = "/download"; }; ft.appendChild(apk);
+      }
       return;
     }
     if (step === "login") {
