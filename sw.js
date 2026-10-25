@@ -4,7 +4,7 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v333';
+const VERSION = 'sawa-v334';
 // C83: «ما الجديد» — يظهر لكلّ مستخدم في «حسابي ← تحديث التطبيق». سطرٌ واحد بلا علامة ' (‎\n‎ لسطرٍ جديد). يُحدَّث مع كلّ نسخة.
 const NOTES = '• «تحديث التطبيق» يوضّح السبب إن تعذّر الفحص بدل «جارٍ الفحص…»';
 // P2: على العناوين القديمة/البديلة (Netlify · sawaap.pages.dev · sawaaap.com بلا www) يصير عامل الخدمة «مُخلياً»:
@@ -161,7 +161,7 @@ self.addEventListener('push', (e) => {
     if (vis && d.t !== 'test') { vis.postMessage({ type: 'sawa-push', data: d }); return; }
     if (vis) vis.postMessage({ type: 'sawa-push', data: d });
     return self.registration.showNotification(d.title || 'سوا', {
-      body: d.body || '', tag: d.cid || (d.call ? 'call-' + d.call : d.sid ? 'sched-' + d.sid : d.t === 'req' ? 'req-' + (d.uf || d.from || '') : 'sawa'), renotify: true, dir: 'auto', lang: 'ar',
+      body: d.body || '', tag: d.cid || (d.call ? 'call-' + d.call : d.sid ? 'sched-' + d.sid : d.t === 'req' ? 'req-' + (d.uf || d.from || '') : d.t === 'moment' && d.pid ? 'mom-' + d.pid : 'sawa'), renotify: true, dir: 'auto', lang: 'ar',
       icon: './icons/icon-192.png', badge: './icons/icon-192.png', data: d,
       requireInteraction: d.t === 'call', silent: false, vibrate: d.t === 'call' ? [300, 150, 300, 150, 300] : [120],
     });
@@ -176,7 +176,7 @@ self.addEventListener('notificationclick', (e) => {
     return;
   }
   e.notification.close();
-  const url = d.t === 'req' ? './?requests=1' : d.room ? './?room=' + encodeURIComponent(d.room) : './?' + (d.cid ? 'chat=' + encodeURIComponent(d.cid) : '') + (d.call ? '&call=' + encodeURIComponent(d.call) : '');
+  const url = d.t === 'req' ? './?requests=1' : d.t === 'moment' && d.pid ? './?moment=' + encodeURIComponent(d.pid) + (d.cm ? '&cm=' + encodeURIComponent(d.cm) : '') : d.room ? './?room=' + encodeURIComponent(d.room) : './?' + (d.cid ? 'chat=' + encodeURIComponent(d.cid) : '') + (d.call ? '&call=' + encodeURIComponent(d.call) : '');
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
     for (const c of cs) { if ('focus' in c) { c.postMessage({ type: 'sawa-open', data: d }); return c.focus(); } }
     return self.clients.openWindow(url);
