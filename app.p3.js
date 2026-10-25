@@ -1942,6 +1942,31 @@ function splitNasab(str) {
     const parts = String(str || "").split(NASAB_RE).map((x) => x.trim()).filter(Boolean);
     return { name: parts[0] || String(str || "").trim(), chain: parts.slice(1) };
 }
+// C134: الكتابة التوجيهيّة في «إضافة أقارب» تتبع النوع المختار — ما يُكتب هنا تحديداً، ومثالٌ من الجنس نفسه، وأين يُضاف الجنس الآخر
+//       (كان المثال «محمد، فاطمة، عمر» تحت «أبناء» فيُفهم أنّ الذكور والإناث يُضافون معاً)
+function relGuide(sel, person) {
+    const n = (person && person.local_name ? person.local_name.split(" ")[0] : "") || tl("هذا الشخص", "this person");
+    const G = {
+        "child:male": [tl("أبناء " + n + " الذكور فقط — والبنات من «بنات».", n + "'s sons only — add daughters under “Daughters”."), tl("مثال: محمد، أحمد، عمر", "e.g. Mohammed, Ahmed, Omar"), "child:female"],
+        "child:female": [tl("بنات " + n + " فقط — والأبناء الذكور من «أبناء».", n + "'s daughters only — add sons under “Sons”."), tl("مثال: فاطمة، مريم، آمنة", "e.g. Fatima, Maryam, Amna"), "child:male"],
+        "sibling:male": [tl("إخوة " + n + " الذكور فقط — والأخوات من «أخوات».", n + "'s brothers only — add sisters under “Sisters”."), tl("مثال: خالد، عمر، يوسف", "e.g. Khalid, Omar, Yusuf"), "sibling:female"],
+        "sibling:female": [tl("أخوات " + n + " فقط — والإخوة الذكور من «إخوة».", n + "'s sisters only — add brothers under “Brothers”."), tl("مثال: زينب، هدى، آمنة", "e.g. Zainab, Huda, Amna"), "sibling:male"],
+        "spouse:female": [tl("زوجات " + n + " الحاليّات (حتّى أربع) — والمطلّقة أو المتوفّاة من «زوجات سابقات».", n + "'s current wives (up to four) — add divorced or deceased under “Former wives”."), tl("مثال: فاطمة، عائشة", "e.g. Fatima, Aisha"), "child:male"],
+        "spouse:male": [tl("زوج " + n + " الحاليّ — اسمٌ واحد. والسابق من «أزواج سابقون».", n + "'s current husband — one name. Add a former husband under “Former husbands”."), tl("مثال: عثمان", "e.g. Osman"), "child:male"],
+        "ex_spouse:female": [tl("زوجات " + n + " السابقات (طلاق أو وفاة) — يبقى الأبناء على نسبهم.", n + "'s former wives (divorce or death) — children keep their lineage."), tl("مثال: خديجة، سعاد", "e.g. Khadija, Suad"), "spouse:female"],
+        "ex_spouse:male": [tl("أزواج " + n + " السابقون (طلاق أو وفاة) — يبقى الأبناء على نسبهم.", n + "'s former husbands (divorce or death) — children keep their lineage."), tl("مثال: عثمان", "e.g. Osman"), "spouse:male"],
+        "parent:male": [tl("والد " + n + " — اسمٌ واحد فقط. والوالدة من «أم».", n + "'s father — one name only. Add the mother under “Mother”."), tl("مثال: إبراهيم", "e.g. Ibrahim"), "parent:female"],
+        "parent:female": [tl("والدة " + n + " — اسمٌ واحد فقط. والوالد من «أب».", n + "'s mother — one name only. Add the father under “Father”."), tl("مثال: آمنة", "e.g. Amna"), "parent:male"],
+    };
+    return G[sel.key + ":" + sel.gender] || ["", tl("مثال: محمد", "e.g. Mohammed"), null];
+}
+// أسماءٌ مؤنّثة بوضوح تحت نوعٍ للذكور (والعكس لأشهر الأسماء) — تنبيهٌ لطيف لا منع
+const MALE_TA_NAMES = ["حمزة", "أسامة", "اسامة", "عبيدة", "طلحة", "معاوية", "عروة", "عكرمة", "قتادة", "ثعلبة", "حذيفة", "عطية", "عطيّة", "خليفة", "جبلة", "مسلمة", "سلمة", "أمية", "زكريا", "يحيى", "عيسى", "موسى", "مصطفى", "مرتضى", "مجتبى", "هدى الله", "علاء", "زكرياء", "بهاء", "ضياء", "رجاء", "وفاء الدين"];
+const FEMALE_PLAIN_NAMES = ["مريم", "زينب", "هند", "سعاد", "نور", "سارة", "سارا", "ريم", "رحاب", "إيمان", "ايمان", "إخلاص", "سهام", "وداد", "ابتسام", "أحلام", "احلام", "إسراء", "اسراء", "آمال", "سناء", "هيام", "عبير", "سماح", "نهى", "منى", "ليلى", "سلمى", "هدى", "رقية", "دعاء", "شيماء", "أسماء", "اسماء", "حواء", "علياء", "لمياء", "نجلاء", "هيفاء", "رشا", "رنا", "دينا", "رانيا", "ست النفر"];
+function looksFemaleName(nm) { const w = String(nm || "").trim().split(/\s+/)[0] || ""; if (!w) return false; if (MALE_TA_NAMES.indexOf(w) >= 0) return false; if (FEMALE_PLAIN_NAMES.indexOf(w) >= 0 || FEMALE_PLAIN_NAMES.indexOf(String(nm).trim()) >= 0) return true; return /ة$/.test(w) && w.length > 2 && !/^عبد/.test(w) && !/الله$/.test(w); }
+const MALE_COMMON = ["محمد", "أحمد", "احمد", "محمود", "علي", "عمر", "عثمان", "خالد", "إبراهيم", "ابراهيم", "يوسف", "عبدالله", "عبد الله", "حسن", "حسين", "مصطفى", "صالح", "سليمان", "إسماعيل", "اسماعيل", "يعقوب", "إسحاق", "طه", "ياسر", "بكري", "الطيب", "الأمين", "الامين", "حامد", "صديق", "بابكر", "آدم", "ادم", "موسى", "عيسى", "يحيى", "زكريا", "سعد", "سعيد", "فيصل", "ماجد", "طارق", "هشام", "وليد", "مجدي", "كمال", "جمال", "عادل", "عصام"];
+function looksMaleName(nm) { const w = String(nm || "").trim().split(/\s+/)[0] || ""; return MALE_COMMON.indexOf(w) >= 0 || /^عبد/.test(w); }
+function relCountLabel(n) { return n === 1 ? tl("إضافة قريبٍ واحد إلى الشجرة", "Add 1 relative to the tree") : n === 2 ? tl("إضافة قريبَين إلى الشجرة", "Add 2 relatives to the tree") : tl("إضافة " + n + (n <= 10 ? " أقارب" : " قريباً") + " إلى الشجرة", "Add " + n + " relatives to the tree"); }
 function QuickRelativesSheet({ person, existingPersons = [], relations = [], startRel, onSave, onClose }) {
     const { colors } = useTheme();
     // نُخفي ما لا يناسب جنس الشخص: لا زوجات لامرأة ولا زوج لرجل
@@ -1978,6 +2003,8 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
         return lab && lab !== p.local_name ? lab : distinctLabel(p);
     };
     const sel = REL_OPTIONS[relIdx];
+    const guide = relGuide(sel, person);
+    const nextOpt = guide[2] ? REL_OPTIONS.find((r) => r.key + ":" + r.gender === guide[2]) : null;
     // ⛔ بعد sel لا قبله: الكتلة تقرأ sel.key وsel.gender، ووضعها
     // فوقه يرمي "Cannot access 'sel' before initialization" عند أول رسم.
     // ── ترشيح المطابقة بالنسب ───────────────────────────────────────
@@ -2048,13 +2075,13 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
         React.createElement("div", { className: "pt-1" },
             React.createElement("label", { className: `text-xs font-bold mb-2 block ${textStart()}`, style: { color: colors.text } }, t("nwa_alqraba")),
             React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mb-1` }, REL_OPTIONS.map((r, i) => (React.createElement(Chip, { key: i, label: t(r.labelKey), active: relIdx === i, onPress: () => setRelIdx(i) })))),
-            React.createElement("p", { className: `text-[10px] ${textStart()} mb-1`, style: { color: colors.textMuted } }, (() => {
+            React.createElement("p", { className: `text-[12px] font-bold ${textStart()} mb-1`, style: { color: colors.text } }, guide[0]),
+            React.createElement("p", { className: `text-[10.5px] ${textStart()} mb-4`, style: { color: colors.textMuted } }, (() => {
                 const d = kinPreview(existingPersons, relations, person, sel.key, sel.gender) || deriveKinship(person.kinship, sel.key, sel.gender);
-                return d !== sel.kinship // ⛔ مقارنة مُعرِّفين لا عرضاً
-                    ? t("ysjlwn_andk_k", { d: kinshipLabel(d), hint: t(sel.hintKey) })
-                    : t(sel.hintKey);
+                const rec = d !== sel.kinship ? tl("يُسجَّلون عندك «" + kinshipLabel(d) + "»", "Recorded for you as “" + kinshipLabel(d) + "”") : "";   // ⛔ مقارنة مُعرِّفين لا عرضاً
+                const nxt = nextOpt ? tl("بعد الإضافة تبقى النافذة مفتوحة لتضيف «" + t(nextOpt.labelKey) + "».", "After adding, this stays open so you can add “" + t(nextOpt.labelKey) + "”.") : "";
+                return [rec, nxt].filter(Boolean).join(" · ");
             })()),
-            React.createElement("p", { className: `text-[10px] ${textStart()} mb-4`, style: { color: colors.primary } }, t("bad_alhfz_tqdr_trja")),
             sel.key === "child" && spouseOpts.length > 0 && React.createElement("div", { className: "mb-4" },
                 React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, person.gender === "female" ? tl("أبوهم", "Their father") : tl("أمّهم", "Their mother")),
                 React.createElement(FamSeg, { value: coParent, onChange: setCoParentSel, options: spouseOpts.map((o) => ({ k: o.id, l: o.p.local_name.split(" ")[0] + (o.ex ? tl(" (سابقاً)", " (former)") : "") })).concat([{ k: "none", l: tl("زواج آخر / غير معروف", "Other / unknown") }]) })),
@@ -2064,12 +2091,19 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
                         { k: "", l: sel.gender === "female" ? tl("شقيقات", "Full") : tl("أشقّاء", "Full") },
                         { k: "father", l: tl("من الأب", "Same father") },
                         { k: "mother", l: tl("من الأم", "Same mother") }] })),
-            React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, t("alasma_afsl_bynha_bfasla")),
-            React.createElement("textarea", { dir: isRTL() ? "rtl" : "ltr", value: namesText, onChange: (e) => setNamesText(e.target.value), placeholder: t("mthal_mhmd_fatma_amr"), rows: 3, className: "w-full rounded-xl px-3 py-2.5 text-sm mb-2", style: { backgroundColor: colors.card, color: colors.text, border: `1px solid ${colors.border}`, minWidth: 0, resize: "none" } }),
+            React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, sel.max === 1 ? tl("الاسم", "Name") : tl("الأسماء — افصل بينها بفاصلة (،)", "Names — separate them with commas")),
+            React.createElement("textarea", { dir: isRTL() ? "rtl" : "ltr", value: namesText, onChange: (e) => setNamesText(e.target.value), placeholder: guide[1], rows: sel.max === 1 ? 1 : 3, className: "w-full rounded-xl px-3 py-2.5 text-sm mb-2", style: { backgroundColor: colors.card, color: colors.text, border: `1px solid ${colors.border}`, minWidth: 0, resize: "none" } }),
             names.length > 0 && (React.createElement("p", { className: `text-[11px] ${textStart()} mb-3`, style: { color: colors.primary } },
-                names.length,
-                tl(" \u0627\u0633\u0645: ", " names: "),
+                (() => { const n = names.length; return tl(n === 1 ? "اسمٌ واحد: " : n === 2 ? "اسمان: " : n + (n <= 10 ? " أسماء: " : " اسماً: "), n + (n === 1 ? " name: " : " names: ")); })(),
                 parsedNames.map((x) => x.chain.length ? x.name + " ← " + x.chain.join(" ← ") : x.name).join(" · "))),
+            (() => {
+                const odd = names.filter((nm) => sel.gender === "male" ? looksFemaleName(nm) : sel.gender === "female" ? looksMaleName(nm) : false);
+                if (!odd.length) return null;
+                const other = REL_OPTIONS.find((r) => r.key === sel.key && r.gender !== sel.gender);
+                return React.createElement("p", { className: `text-[11px] font-bold ${textStart()} mb-3 rounded-lg px-2.5 py-2`, style: { color: "#92400E", backgroundColor: "#FEF3C7" } },
+                    tl("⚠️ «" + odd.join("، ") + "» " + (odd.length > 1 ? "تبدو أسماءً" : "يبدو اسماً") + (sel.gender === "male" ? " لأنثى" : " لذكر") + " — هذه الخانة لـ«" + t(sel.labelKey) + "» فقط" + (other ? "، واختر «" + t(other.labelKey) + "» لإضافتها." : "."),
+                       "⚠️ “" + odd.join(", ") + "” look" + (odd.length > 1 ? "" : "s") + (sel.gender === "male" ? " female" : " male") + " — this is for “" + t(sel.labelKey) + "” only" + (other ? "; choose “" + t(other.labelKey) + "” for them." : ".")));
+            })(),
             parsedNames.some((x) => x.chain.length) && React.createElement("p", { className: `text-[10px] ${textStart()} mb-3`, style: { color: colors.textMuted } }, tl("🌳 النسب المكتوب (بن/بنت فلان) يُضاف أصولاً ويُربط تلقائيّاً", "🌳 Written lineage (bin/bint) will be added as ancestors and linked")),
             parentLimit && (React.createElement(FamCard, { className: `mb-3 flex ${rowStart()} items-start gap-2`, style: { borderColor: colors.danger } },
                 React.createElement(AlertTriangle, { size: 14, color: colors.danger, className: "mt-0.5 shrink-0" }),
@@ -2099,7 +2133,7 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
                 }))),
             React.createElement(FamButton, { label: undecided.length > 0 ? t("hdd_asma_mkrra_awla", { length: undecided.length })
                     : overLimit ? (maxAllowed === 1 ? tl("اسم واحد فقط", "Only one name") : t("akthr_mn", { maxAllowed }))
-                        : t("idafa_qryb_wrbthm_balshjra", { length: names.length }), disabled: names.length === 0 || undecided.length > 0 || parentLimit, onPress: () => {
+                        : names.length === 0 ? (sel.max === 1 ? tl("اكتب الاسم أوّلاً", "Type the name first") : tl("اكتب الأسماء أوّلاً", "Type the names first")) : relCountLabel(names.length), disabled: names.length === 0 || undecided.length > 0 || parentLimit, onPress: () => {
                     onSave(person, sel.key === "sibling" && sibHalf ? { ...sel, half: sibHalf } : sel.key === "child" ? { ...sel, coParent } : sel, rawNames, decisions);
                     // نُفرغ الحقل ونُبقي الشيت مفتوحاً — الغالب أن يتبع الأبناءَ بناتٌ
                     setNamesText("");

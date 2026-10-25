@@ -1046,7 +1046,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                 photo && React.createElement("button", { type: "button", onClick: () => { setPhoto(null); if (photoInputRef.current) photoInputRef.current.value = ""; }, className: "mt-1 text-[11px] font-bold rounded-full px-3 py-1", style: { color: colors.danger, backgroundColor: colors.danger + "12" } }, t("pf_izalat_alswra"))),
             React.createElement("label", { className: `text-[11.5px] font-bold mb-1.5 block ${textStart()}`, style: { color: colors.textMuted } }, t("alasm")),
             React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-1` },
-                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: localName, onChange: (e) => setLocalName(e.target.value), placeholder: t("asama_aw_asama_bn"), className: "fam-in outline-none flex-1 rounded-2xl px-3.5 py-3 text-sm", style: { backgroundColor: colors.bg, color: colors.text, border: "1.5px solid transparent", minWidth: 0 }, autoFocus: true }),
+                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: localName, onChange: (e) => setLocalName(e.target.value), placeholder: gender === "female" ? tl("آمنة — أو: آمنة بنت إبراهيم بن محمد", "Amna — or: Amna bint Ibrahim bin Mohammed") : t("asama_aw_asama_bn"), className: "fam-in outline-none flex-1 rounded-2xl px-3.5 py-3 text-sm", style: { backgroundColor: colors.bg, color: colors.text, border: "1.5px solid transparent", minWidth: 0 }, autoFocus: true }),
                 React.createElement("button", { onClick: async () => {
                         var _a, _b;
                         if (!(navigator.contacts && window.ContactsManager)) {
