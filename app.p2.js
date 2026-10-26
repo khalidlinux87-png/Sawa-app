@@ -418,7 +418,8 @@ function TopBar({ title, subtitle, onBack, actions, avatar, photo, onTitlePress 
         // avatar: true = الحرف الأول من العنوان، أو نص مخصّص.
         // justify-end يجمع النص والأفاتار معاً عند طرف واحد بدل تباعدهما عبر
         // المنتصف. لا يعتمد على اتجاه الصف، فيصحّ في الحالتين.
-        React.createElement("div", { className: `flex-1 min-w-0 flex items-center justify-end gap-2 ${me("3")}`, onClick: onTitlePress || undefined, style: onTitlePress ? { cursor: "pointer" } : undefined },
+        // C145: الإنجليزيّة — الصورة ثمّ الاسم بجانب «رجوع» (كانا يُدفعان إلى اليمين والصورة بعد الاسم)
+        React.createElement("div", { className: `flex-1 min-w-0 flex items-center gap-2 ${isRTL() ? "justify-end" : "flex-row-reverse justify-end"} ${me("3")}`, onClick: onTitlePress || undefined, style: onTitlePress ? { cursor: "pointer" } : undefined },
             React.createElement("div", { className: `min-w-0 ${textStart()}` },
                 React.createElement("h1", { className: "text-white text-sm font-bold truncate" }, title),
                 subtitle && React.createElement("p", { className: "text-[10px] truncate", style: { color: "#ffffffcc" } }, subtitle)),
