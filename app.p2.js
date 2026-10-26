@@ -1006,6 +1006,7 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         // C132: تنزيل تطبيق أندرويد (APK) — لمن يفتح سوا من المتصفّح على غير آيفون
         ...(!window.SawaNativeBridge && !window.SawaIOS && !/iPhone|iPad|iPod/.test(navigator.userAgent || "") ? [{ key: "apk", label: tl("تنزيل تطبيق أندرويد (APK)", "Download the Android app (APK)"), icon: Download, onPress: () => { location.href = "/download"; }, color: "#16A34A" }] : []),
         // C131: نتائج تقييم المكالمات (المحرّك · النسخة · التأخير · الصدى…) — للمدير
+        ...(isAdm ? [{ key: "reports", label: tl("البلاغات (للمدير)", "Reports (admin)"), icon: Flag, onPress: () => { if (window.SawaChat && window.SawaChat.adminReports) window.SawaChat.adminReports(); }, color: "#DC2626" }] : []),   // C150
         ...(isAdm ? [{ key: "qa", label: tl("تقييمات المكالمات (للمدير)", "Call ratings (admin)"), icon: Star, onPress: () => { if (window.SawaRTC && window.SawaRTC.qaReport) window.SawaRTC.qaReport(); }, color: "#F59E0B" }] : []),
         // C83: تحديث التطبيق لكلّ مستخدم — النسخة، ما الجديد، وتحديثٌ قسريّ آمن
         ...(SCm && SCm.updateSheet ? [{ key: "update", label: updAvail ? tl("تحديث التطبيق • نسخةٌ جديدة ✨", "App update • new ✨") : tl("تحديث التطبيق", "App update"), icon: RotateCcw, onPress: () => SCm.updateSheet(), color: updAvail ? "#D97706" : "#2F80C8" }] : []),

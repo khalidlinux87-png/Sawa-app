@@ -1990,6 +1990,22 @@
   // ==================================================================
   var mo = { list: [], unsub: null, limit: 30, more: false, loaded: false, err: null, urls: {}, prefs: null, view: null, notes: [], nUnsub: null, filter: null };
   var MO_MUTE_KEY = "sawa_mom_mute";
+  var MO_HID_KEY = "sawa_mom_hidden";   // C150: ما أبلغتُ عنه يختفي عندي فوراً (pid أو pid/cmid)
+  function moHidden() { return lsGet(MO_HID_KEY, {}) || {}; }
+  function moHide(k) { var h = moHidden(); h[k] = Date.now(); var ks = Object.keys(h); if (ks.length > 500) ks.sort(function (a, b) { return h[a] - h[b]; }).slice(0, ks.length - 500).forEach(function (x) { delete h[x]; }); lsSet(MO_HID_KEY, h); }
+  function moReport(p, c) {
+    var mine = c ? c.by === state.uid : p.by === state.uid; if (mine) return;
+    var who = c ? moName(c.by, c.name) : moName(p.by, p.name), uid = c ? c.by : p.by;
+    reportSheet({ title: c ? L("الإبلاغ عن تعليق ", "Report comment by ") + who : L("الإبلاغ عن لحظة ", "Report moment by ") + who, target: uid, name: who, kind: "dm",
+      moment: c ? { pid: p.id, cmid: c.id } : { pid: p.id },
+      onBlock: function () { try { setBlocked(uid, true); } catch (e) {} },
+      z: 2147483007,
+      onDone: function () {
+        moHide(c ? p.id + "/" + c.id : p.id);
+        if (c) { try { global.dispatchEvent(new CustomEvent("sawa-mom-hide")); } catch (e) {} } else moCloseOverlays();
+        moEmit();
+      } });
+  }
   function moEmit() { try { global.dispatchEvent(new CustomEvent("sawa-moments")); } catch (e) {} if (mo.view) mo.view.paint(); }
   function newPid() { var n = (9e12 - Date.now()).toString(36); while (n.length < 9) n = "0" + n; return "m" + n.slice(-9) + Math.random().toString(36).slice(2, 6).padEnd(4, "0"); }
   function startMoments(uid) {
@@ -2139,7 +2155,8 @@
       }
       if (!fl || fl.uid === state.uid) scroll.appendChild(prompt());
       var mute = moMuted();
-      var items = mo.list.filter(function (p) { return (!mute[p.by] || p.by === state.uid) && (!fl || p.by === fl.uid); });
+      var hid = moHidden();
+      var items = mo.list.filter(function (p) { return (!mute[p.by] || p.by === state.uid) && (!fl || p.by === fl.uid) && !hid[p.id] && (!p.held || p.by === state.uid); });
       sub.textContent = mo.loaded ? (items.length ? items.length + " " + L("لحظة", "moments") : "") : L("جارٍ التحميل…", "Loading…");
       if (mo.err && !items.length) scroll.appendChild(moEmpty(T, "⚠️", L("تعذّر تحميل اللحظات", "Couldn't load moments"), L("تحقّق من الاتّصال ثمّ عُد إلى هذه الصفحة.", "Check your connection and come back.")));
       else if (mo.loaded && !items.length) scroll.appendChild(moEmpty(T, "🌿", L("لا لحظات بعد", "No moments yet"), L("كن أوّل من يشارك لحظةً مع أصدقائه وأهله — صورة، أو فكرة، أو سؤال.", "Be the first to share — a photo, a thought or a question.")));
@@ -2319,9 +2336,7 @@
     } else {
       add(L("💬 مراسلة ", "💬 Message ") + moName(p.by, p.name), "", function () { try { openDm(p.by); } catch (e) { openDmWith(p.by); } });
       add(L("🙈 إخفاء لحظات ", "🙈 Hide moments from ") + moName(p.by, p.name), "", function () { var m = lsGet(MO_MUTE_KEY, {}) || {}; m[p.by] = 1; (mo.prefs && mo.prefs.mute || []).forEach(function (u) { m[u] = 1; }); moSetMute(m); moEmit(); toast(L("لن تظهر لك لحظاته — تُعيدها من ⚙︎ في أعلى اللحظات", "Hidden — undo from ⚙︎ at the top")); });
-      add(L("🚩 إبلاغ عن اللحظة", "🚩 Report moment"), "danger", function () {
-        call("report.create", { target: p.by, reason: "other", note: ("moment " + p.id + ": " + (p.text || "")).slice(0, 480) }).then(function () { toast(L("وصلنا بلاغك ✓ — سنراجعه", "Report sent ✓")); }, function (e) { toast(L("تعذّر الإرسال: ", "Couldn't send: ") + ((e && e.message) || e)); });
-      });
+      add(L("🚩 إبلاغ عن اللحظة", "🚩 Report moment"), "danger", function () { moReport(p); });   // C150: بأسبابٍ وحظرٍ اختياريّ
     }
     add(L("إلغاء", "Cancel"), "ghost", function () {});
   }
@@ -2426,7 +2441,9 @@
     var si = moIcon(MI.send, 18, "#fff"); if (isAr()) si.style.transform = "scaleX(-1)"; sb.appendChild(si); sb.setAttribute("aria-label", L("إرسال", "Send"));
     bar.appendChild(atb); bar.appendChild(ta); bar.appendChild(sb); box.appendChild(bar);
     ov.appendChild(box); document.body.appendChild(ov);
-    var close = function () { if (unsub) try { unsub(); } catch (e) {} unsub = null; ov.remove(); };
+    var onHide = function () { var hid = moHidden(); list = list.filter(function (x) { return !hid[p.id + "/" + x.id]; }); paint(); };   // C150
+    global.addEventListener("sawa-mom-hide", onHide);
+    var close = function () { if (unsub) try { unsub(); } catch (e) {} unsub = null; global.removeEventListener("sawa-mom-hide", onHide); ov.remove(); };
     ov._close = close;
     ov.onclick = function (e) { if (e.target === ov) close(); };
     // المرشّحون للإشارة: من يرون اللحظة (بأسمائهم المعروفة لي أو كما ظهرت في التعليقات)
@@ -2484,6 +2501,7 @@
       add(L("📋 نسخ النصّ", "📋 Copy text"), "", function () { copyText(c.text || ""); toast(L("نُسخ ✓", "Copied ✓")); });
       if (c.by === me) add(L("✏️ تعديل", "✏️ Edit"), "", function () { setEdit(c); });
       if (c.by === me || p.by === me) add(L("🗑 حذف", "🗑 Delete"), "danger", function () { cDelete(c); });
+      if (c.by !== me) add(L("🚩 إبلاغ عن التعليق", "🚩 Report comment"), "danger", function () { moReport(p, c); });   // C150
       add(L("إلغاء", "Cancel"), "ghost", function () {});
     }
     function row(c, isReply) {
@@ -2542,6 +2560,8 @@
     try {
       unsub = fsdb().collection("moments").doc(p.id).collection("cm").limit(400).onSnapshot(function (snap) {
         var a = []; snap.forEach(function (d) { var v = d.data() || {}; v.id = d.id; a.push(v); });
+        var hid = moHidden();   // C150: المُبلَّغ عنه عندي، والمحجوب بعد ٣ بلاغات (إلّا لصاحبه)
+        a = a.filter(function (x) { return !hid[p.id + "/" + x.id] && (!x.held || x.by === state.uid); });
         a.sort(function (x, y) { return (x.ts || 0) - (y.ts || 0); }); list = a;
         if (first) { first = false; if (o.focus) { stick = false; paint(); focusTo(o.focus); return; } stick = true; }
         paint();
@@ -2877,7 +2897,9 @@
     try {
       unsub = d.collection("moments").doc(pid).onSnapshot(function (doc) {
         if (!doc.exists) { gone(); return; }
-        var v = doc.data() || {}; v.id = pid; p = v; view.paint(); openCm();
+        var v = doc.data() || {}; v.id = pid;
+        if ((v.held && v.by !== state.uid) || moHidden()[pid]) { gone(); return; }   // C150
+        p = v; view.paint(); openCm();
       }, function (e) { log("moment:", e && e.message); if (!p) gone(); });
     } catch (e) { if (!p) gone(); }
     return { close: close };
@@ -4581,10 +4603,11 @@
   function reportSheet(opts) {
     opts = opts || {};
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
-    var s = sheet(opts.kind === "group" ? L("الإبلاغ عن المجموعة", "Report group") : L("الإبلاغ عن ", "Report ") + (opts.name || L("هذه المحادثة", "this chat")));
+    var s = sheet(opts.title || (opts.kind === "group" ? L("الإبلاغ عن المجموعة", "Report group") : L("الإبلاغ عن ", "Report ") + (opts.name || L("هذه المحادثة", "this chat"))));
     var reasons = [["spam", L("رسائل مزعجة أو إعلانات", "Spam")], ["harassment", L("مضايقة أو تهديد", "Harassment or threats")], ["hate", L("كراهية أو إساءة", "Hate or abuse")],
       ["scam", L("احتيال أو طلب مال", "Scam or fraud")], ["sexual", L("محتوى جنسيّ أو غير لائق", "Sexual or inappropriate content")], ["violence", L("عنف", "Violence")],
       ["impersonation", L("انتحال شخصيّة", "Impersonation")], ["other", L("سببٌ آخر", "Something else")]];
+    if (opts.z) s.ov.style.zIndex = String(opts.z);
     var pick = null, list = mk("div", "margin:6px 0");
     reasons.forEach(function (r) {
       var row = mk("label", "display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid #eef1f4;font:600 14px system-ui;cursor:pointer");
@@ -4601,13 +4624,15 @@
       blk = mk("input"); blk.type = "checkbox"; blk.checked = true; blk.style.cssText = "width:18px;height:18px";
       bl.appendChild(blk); bl.appendChild(mk("span", "", L("احظره أيضاً", "Also block"))); s.box.appendChild(bl);
     }
-    s.box.appendChild(note(L("يصل البلاغ إلى فريق سوا مع آخر ٢٠ رسالة من هذه المحادثة لمراجعتها. لا يُبلَّغ الطرف الآخر.", "Your report and the last 20 messages of this chat are sent to the Sawa team for review. The other person isn't notified.")));
+    s.box.appendChild(note(opts.moment ? L("يصل البلاغ إلى فريق سوا مع نصّ المحتوى لمراجعته، ويختفي عندك فوراً. لا يُبلَّغ صاحبه. إن أبلغ عنه ثلاثة أشخاص يُحجب عن الجميع حتّى المراجعة.", "Your report and the content go to the Sawa team; it's hidden for you right away. The author isn't notified. After 3 reports it's hidden for everyone until reviewed.")
+      : L("يصل البلاغ إلى فريق سوا مع آخر ٢٠ رسالة من هذه المحادثة لمراجعتها. لا يُبلَّغ الطرف الآخر.", "Your report and the last 20 messages of this chat are sent to the Sawa team for review. The other person isn't notified.")));
     var go = mkBtn(L("إرسال البلاغ", "Send report"), "danger"); go.disabled = true; go.style.opacity = ".5"; go.style.marginTop = "8px";
     s.box.appendChild(go);
     go.onclick = function () {
       if (!pick) return;
       go.disabled = true; go.textContent = "…";
       var rp = { cid: opts.cid || null, target: opts.target || null, reason: pick, note: ta.value };
+      if (opts.moment) rp.moment = opts.moment;   // C150
       if (opts.cid && e2eOn(chats[opts.cid])) { try { rp.e2eSample = e2eSampleOf(opts.cid); } catch (e) {} }   // C23: السرّيّة لا يقرؤها الخادم — نرفق ما على جهازك
       call("report.create", rp).then(function () {
         if (blk && blk.checked && opts.onBlock) { try { opts.onBlock(); } catch (e) {} }
@@ -4617,6 +4642,49 @@
       }).catch(function (e) { go.disabled = false; go.textContent = L("إرسال البلاغ", "Send report"); toast(L("تعذّر الإرسال: ", "Couldn't send: ") + codeErr(e)); });
     };
     return true;
+  }
+
+  // C150: البلاغات للمدير — مراجعة المحادثات واللحظات والتعليقات المُبلَّغ عنها والتصرّف بها (شرط المتاجر للمحتوى الذي ينشره المستخدمون)
+  function adminReports() {
+    if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return; }
+    var s = sheet(L("🚩 البلاغات", "🚩 Reports")), body = mk("div", ""); s.box.appendChild(body);
+    var RS = { spam: L("مزعج أو إعلانات", "Spam"), harassment: L("مضايقة أو تهديد", "Harassment"), hate: L("كراهية أو إساءة", "Hate"), violence: L("عنف", "Violence"),
+      sexual: L("محتوى جنسيّ أو غير لائق", "Sexual content"), scam: L("احتيال", "Scam"), impersonation: L("انتحال شخصيّة", "Impersonation"), other: L("سببٌ آخر", "Other") };
+    function card(it) {
+      var c = mk("div", "border:1px solid #e5e7eb;border-radius:14px;padding:10px 12px;margin-top:8px");
+      var kind = it.type === "moment" ? "🌿 " + L("لحظة", "Moment") : it.type === "moment-comment" ? "💬 " + L("تعليق في لحظة", "Moment comment")
+        : (it.type === "group" || it.type === "family") ? "👥 " + L("مجموعة", "Group") : "👤 " + L("محادثة أو شخص", "Chat or person");
+      c.appendChild(mk("div", "font:800 13.5px system-ui", kind + " · " + (RS[it.reason] || it.reason || "")));
+      c.appendChild(mk("div", "font:600 12px system-ui;color:#6b7280;margin-top:2px", L("المُبلِّغ: ", "By: ") + (it.byName || moName(it.by)) + " · " + L("عن: ", "About: ") + (it.target ? moName(it.target) : "—") + " · " + timeAgo(it.ts)));
+      if (it.note) c.appendChild(mk("div", "font:500 13px/1.6 system-ui;margin-top:6px;background:#fff7ed;border-radius:10px;padding:6px 8px", "📝 " + it.note));
+      var smp = (it.sample || []).slice(-8);
+      if (smp.length) {
+        var sb = mk("div", "margin-top:6px;background:#f3f4f6;border-radius:10px;padding:6px 8px;max-height:160px;overflow:auto");
+        smp.forEach(function (m) { sb.appendChild(mk("div", "font:500 12.5px/1.6 system-ui;white-space:pre-wrap;word-break:break-word", (m.by ? moName(m.by) + ": " : "") + (m.text || (m.type ? "[" + m.type + "]" : "")) + (m.media ? "  📷×" + m.media : ""))); });
+        c.appendChild(sb);
+      }
+      var row = mk("div", "display:flex;flex-wrap:wrap;gap:6px;margin-top:8px");
+      var btn = function (tx, bg, fn) { var x = mk("button", "border:0;border-radius:10px;padding:8px 12px;font:800 12.5px system-ui;color:#fff;background:" + bg, tx); x.onclick = fn; row.appendChild(x); return x; };
+      var closeR = function (release) { return call("admin.reportClose", { id: it.id, release: !!release }).then(function () { c.remove(); toast(L("أُغلق البلاغ ✓", "Report closed ✓")); }); };
+      var err = function (e) { toast(L("تعذّر: ", "Failed: ") + codeErr(e)); };
+      if (it.pid) {
+        btn(L("🗑 حذف المحتوى", "🗑 Delete content"), "#dc2626", function () {
+          if (!global.confirm(L("حذف هذا المحتوى نهائيّاً وإغلاق البلاغ؟", "Delete this content permanently and close the report?"))) return;
+          (it.cmid ? call("moment.uncomment", { pid: it.pid, cmid: it.cmid }) : call("moment.delete", { pid: it.pid })).then(function () { return closeR(false); }).catch(err);
+        });
+        btn(L("✓ لا مخالفة", "✓ No violation"), "#16a34a", function () { closeR(true).catch(err); });
+      } else btn(L("إغلاق البلاغ", "Close report"), "#6b7280", function () { closeR(false).catch(err); });
+      c.appendChild(row);
+      return c;
+    }
+    body.appendChild(note(L("جارٍ التحميل…", "Loading…")));
+    call("admin.reports", {}).then(function (r) {
+      body.innerHTML = "";
+      if (!r || !r.admin) { body.appendChild(note(L("هذه الصفحة للمدير فقط.", "Admins only."), "#b42318")); return; }
+      var items = r.items || [];
+      body.appendChild(note(items.length ? L("بلاغاتٌ مفتوحة: ", "Open reports: ") + items.length + L(" — راجعها خلال ٢٤ ساعة.", " — review within 24 h.") : L("لا بلاغات مفتوحة ✓", "No open reports ✓")));
+      items.forEach(function (it) { body.appendChild(card(it)); });
+    }, function (e) { body.innerHTML = ""; body.appendChild(note(L("تعذّر التحميل: ", "Couldn't load: ") + codeErr(e), "#b42318")); });
   }
 
   // ---------- حذف الحساب (شرط Google Play) ----------
@@ -5844,7 +5912,7 @@
     retryMedia: retryMedia,   // C18
     scanAny: scanAny, routeScanned: routeScanned, signOutSheet: signOutSheet,   // C20
     e2eSupported: function () { return e2e.ok(); }, e2eStartDm: e2eStartDm, e2eNewSheet: e2eNewSheet, e2eAct: e2eAct, e2eSafety: e2eSafety,   // C23
-    adminCached: adminCached, checkAdmin: checkAdmin,   // C24
+    adminCached: adminCached, checkAdmin: checkAdmin, adminReports: adminReports,   // C24
     setBlocked: setBlocked,
     sendLocation: sendLocation, mapsUrl: mapsUrl,   // C32
     photoOf: photoOf, setMyPhoto: setMyPhoto,   // C25

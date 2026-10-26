@@ -1499,7 +1499,7 @@
       if (g.done) return;
       g.live = true;
       try { g.ref.child("members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
-      g.joinedAt = Date.now(); g.state = "live"; wakeOn(); gPaint(g); bgAudio(true, g.title || L("مكالمة جماعيّة", "Group call"), function () { groupLeave(); });
+      g.joinedAt = Date.now(); g.state = "live"; wakeOn(); gPaint(g); bgAudio(true, g.title || L("مكالمة جماعيّة", "Group call"), function () { groupLeave(); }); if (IOSB()) iosRoute.setSpeaker(true);   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
       if (!g.tick) g.tick = setInterval(function () { gPaintHead(g); }, 1000);
       if (g.role === "starter" && !g.vc) playTone("back");   // نغمة «يرنّ» حتّى ينضمّ أوّل شخص (لا رنين في الدردشة الصوتيّة)
       var first = true;
@@ -2183,7 +2183,7 @@
       if (r.done) return;
       r.live = true; r.joinedAt = Date.now();
       try { rRef(r, "members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
-      r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); });
+      r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }); if (IOSB()) iosRoute.setSpeaker(true);   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
       log("room live in", Date.now() - (r.t0 || Date.now()), "ms");
       // C66: المضيف ينشر جلسته في meta (مقروءة قبل العضويّة) ⇒ الوافد يعرض عليه فور دخوله بلا انتظار أوّل لقطةٍ من قائمة الأعضاء (رحلةٌ كاملة أقلّ حتى يُسمع الصوت)
       if (amHost(r)) rRef(r, "meta/hsess").set(r.sess).catch(function () {});
