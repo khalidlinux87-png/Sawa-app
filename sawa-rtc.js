@@ -458,7 +458,7 @@
       var hidden = document.visibilityState === "hidden";
       var r = rm;
       if (r && r.live && !r.done) {
-        if (hidden) { if (r.camOn) { r.camAuto = true; rToggleCam(r); } }
+        if (hidden) { if (r.camOn && !(r.scr && r.scrViaCam)) { r.camAuto = true; rToggleCam(r); } }   // C141: الشاشة (مكان الكاميرا في الغرفة الكبيرة) تستمرّ في الخلفيّة — هذا هدف مشاركتها
         else {
           if (r.camAuto) { r.camAuto = false; setTimeout(function () { if (!r.done && r.live && !r.camOn) rToggleCam(r); }, 400); }
           // عضويّتي ما زالت قائمة؟ (قد يكون الخادم حذفها أثناء الخلفيّة) ⇒ عودةٌ فوريّة بدل انتظار المستمع
@@ -2737,15 +2737,54 @@
   // ---------- C115: مشاركة الشاشة في الغرفة ----------
   // خطوتان حتّى لا تُضغط خطأً: «المزيد ← مشاركة الشاشة» ثمّ نافذة تأكيد تشرح أنّ الشاشة كلّها ستظهر. أثناء المشاركة شريطٌ أحمر ثابت «إيقاف».
   // الشاشة تحلّ محلّ الكاميرا في الإرسال نفسه (شبكة مباشرة أو SFU) فلا تفاوض جديد. members/{me}.scr ⇒ الآخرون يعرضونها كاملةً (contain).
-  function scrSupported() { try { return !NB() && !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia); } catch (e) { return false; } }
+  // C141: تطبيق أندرويد — WebView بلا getDisplayMedia ⇒ الالتقاط أصليّ (ScreenService) والإطارات تصل إلى __sawaScrFrame
+  //       فنصنع منها مساراً (MediaStreamTrackGenerator، أو canvas.captureStream احتياطاً) يُرسَل كأيّ مشاركة شاشة.
+  function scrNative() { try { return !!(NB() && NB().screenOk && NB().screenOk()); } catch (e) { return false; } }
+  function scrSupported() { if (scrNative()) return true; try { return !NB() && !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia); } catch (e) { return false; } }
+  var nscr = null;
+  function nscrEnd() { var st = nscr; nscr = null; if (!st) return; try { st.track.stop(); } catch (e) {} try { if (st.writer) st.writer.close().catch(function () {}); } catch (e) {} }
+  function nativeScreen() {
+    return new Promise(function (res, rej) {
+      nscrEnd();
+      var t0 = (global.performance && performance.now()) || Date.now(), st = { busy: false, started: false, n: 0 };
+      try {
+        if (global.MediaStreamTrackGenerator && global.VideoFrame && global.createImageBitmap) { var g = new global.MediaStreamTrackGenerator({ kind: "video" }); st.track = g; st.writer = g.writable.getWriter(); }
+        else { st.canvas = document.createElement("canvas"); st.canvas.width = 2; st.canvas.height = 2; st.ctx = st.canvas.getContext("2d"); st.track = st.canvas.captureStream(10).getVideoTracks()[0]; }
+      } catch (e) { rej(e); return; }
+      st.track.__native = true; nscr = st;
+      var to = setTimeout(function () { if (nscr === st && !st.started) { nscrEnd(); rej({ name: "Timeout" }); } }, 120000);
+      global.__sawaScr = function (ev) {
+        if (nscr !== st && ev !== "stopped") return;
+        if (ev === "started") { if (!st.started) { st.started = true; clearTimeout(to); res(new global.MediaStream([st.track])); } }
+        else if (ev === "denied" || ev === "error") { clearTimeout(to); if (!st.started) { nscrEnd(); rej({ name: ev === "denied" ? "NotAllowedError" : "Error" }); } }
+        else if (ev === "stopped") { clearTimeout(to); var r = rm; if (r && r.scr && r.scrTrack === st.track) rScreenStop(r); else if (nscr === st && !st.started) { nscrEnd(); rej({ name: "AbortError" }); } }
+      };
+      global.__sawaScrFrame = function (b64) {
+        if (nscr !== st || st.busy) return;
+        st.busy = true;
+        global.fetch("data:image/jpeg;base64," + b64).then(function (x) { return x.blob(); }).then(function (b) { return global.createImageBitmap(b); }).then(function (bmp) {
+          if (nscr !== st) { bmp.close(); return; }
+          if (st.writer) {
+            var vf = new global.VideoFrame(bmp, { timestamp: Math.round((((global.performance && performance.now()) || Date.now()) - t0) * 1000) });
+            bmp.close();
+            return st.writer.write(vf).catch(function () { try { vf.close(); } catch (e) {} });
+          }
+          if (st.canvas.width !== bmp.width || st.canvas.height !== bmp.height) { st.canvas.width = bmp.width; st.canvas.height = bmp.height; }
+          st.ctx.drawImage(bmp, 0, 0); bmp.close();
+        }).catch(function (e) { log("scr frame", e && e.message); }).then(function () { st.busy = false; st.n++; });
+      };
+      try { NB().screenStart(); } catch (e) { clearTimeout(to); nscrEnd(); rej(e); }
+    });
+  }
   function rScreenAsk(r) {
     r = r || rm; if (!r || !r.live) return;
     if (r.scr) { rScreenStop(r); return; }
-    if (!scrSupported()) { toast(NB() ? L("مشاركة الشاشة غير متاحة في تطبيق أندرويد بعد — متاحة من المتصفّح على الحاسوب", "Screen sharing isn't available in the Android app yet — use a computer browser") : L("هذا المتصفّح لا يدعم مشاركة الشاشة", "This browser can't share the screen")); return; }
+    if (!scrSupported()) { toast(NB() ? L("حدّث تطبيق أندرويد لمشاركة الشاشة (حسابي ← تنزيل تطبيق أندرويد)", "Update the Android app to share your screen") : IOSB() ? L("مشاركة الشاشة غير متاحة على الآيفون بعد — متاحة من أندرويد والحاسوب", "Screen sharing isn't available on iPhone yet") : L("هذا المتصفّح لا يدعم مشاركة الشاشة", "This browser can't share the screen")); return; }
     if (r.low) { toast(L("أوقف «بيانات قليلة» أوّلاً", "Turn off low-data mode first")); return; }
     if (r.meta.audioOnly && !amHost(r)) { toast(L("الغرفة صوتيّة فقط بقرار المضيف", "Audio-only room (host setting)")); return; }
     sheet(L("مشاركة الشاشة؟", "Share your screen?"), function (body, close) {
       body.appendChild(el("div", "padding:4px 18px 12px;font:500 13px/1.8 system-ui;color:#cbd5e1;text-align:center", L("سيرى كلُّ من في الغرفة ما على شاشتك — ومنه الإشعارات والرسائل التي تظهر أثناءها. أغلق ما لا تريد عرضه قبل البدء.", "Everyone in the room will see your screen — including notifications. Close anything private first.")));
+      if (scrNative()) body.appendChild(el("div", "padding:0 18px 12px;font:500 12.5px/1.8 system-ui;color:#94a3b8;text-align:center", L("سيطلب الهاتف إذن «البدء» — بعدها انتقل إلى أيّ تطبيقٍ تريد عرضه، والغرفة والصوت يستمرّان. للإيقاف: إشعار «تعرض شاشتك» ← «إيقاف»، أو الشريط الأحمر هنا.", "Your phone will ask to start — then switch to any app; the room keeps going. To stop: the notification’s Stop button, or the red bar here.")));
       item(body, "🖥", L("ابدأ مشاركة الشاشة", "Start sharing"), function () { close(); rScreenStart(r); });
       item(body, "✕", L("إلغاء", "Cancel"), function () { close(); });
     });
@@ -2758,7 +2797,7 @@
     var me = myUid(), cams = Object.keys(r.members).filter(function (u) { return u !== me && r.members[u].cam; }).length, camCap = rBig(r) ? SFU_CAMS : ROOM_CAMS;
     if (viaCam && !r.camOn && cams >= camCap) { toast(L("الحدّ " + camCap + " صور في الغرفة — اطلب من المضيف إيقاف كاميرا أحدهم", "Max " + camCap + " videos in the room")); return; }
     if (Object.keys(r.members).some(function (u) { return u !== me && r.members[u].scr; })) { toast(L("شخصٌ آخر يعرض شاشته الآن", "Someone else is presenting")); return; }
-    navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 10, max: 15 }, width: { max: 1920 }, height: { max: 1080 } }, audio: false }).then(function (s) {
+    (scrNative() ? nativeScreen() : navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 10, max: 15 }, width: { max: 1920 }, height: { max: 1080 } }, audio: false })).then(function (s) {
       if (r.done || rm !== r) { stopStream(s); return; }
       var t = s.getVideoTracks()[0]; try { t.contentHint = "detail"; } catch (e) {} t.__scr = true;
       r.scr = true; r.scrViaCam = viaCam; r.scrTrack = t;
@@ -2780,7 +2819,9 @@
   function rScreenStop(r) {
     r = r || rm; if (!r || !r.scr) return;
     var viaCam = r.scrViaCam;
+    var wasNative = !!(r.scrTrack && r.scrTrack.__native);
     r.scr = false; r.scrViaCam = false; try { if (r.scrTrack) r.scrTrack.stop(); } catch (e) {}
+    if (wasNative) { nscrEnd(); try { NB().screenStop(); } catch (e) {} }   // C141
     r.scrTrack = null;
     if (viaCam) { r.camTrack = null; r.camOn = false; }
     Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); });
@@ -2923,7 +2964,7 @@
     r = r || rm; if (!r) return;
     if (r.done) { if (rm === r) rm = null; return; }
     opts = opts || {}; r.done = true; bgAudio(false);
-    if (r.scr) { r.scr = false; try { if (r.scrTrack) r.scrTrack.stop(); } catch (e) {} } rScrBar(null);   // C115/C120
+    if (r.scr) { r.scr = false; var wasN = !!(r.scrTrack && r.scrTrack.__native); try { if (r.scrTrack) r.scrTrack.stop(); } catch (e) {} if (wasN) { nscrEnd(); try { NB().screenStop(); } catch (e) {} } } rScrBar(null);   // C115/C120 · C141: وإيقاف الالتقاط الأصليّ عند مغادرة الغرفة
     if (reason === "retry") r.silentRetry = true;
     var me = myUid(), ref = r.ref, wasHost = amHost(r), members = r.members, meta = r.meta;
     for (var k in r.timers) { clearTimeout(r.timers[k]); clearInterval(r.timers[k]); } r.timers = {};
