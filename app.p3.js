@@ -149,7 +149,7 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
     }, []);
     if (loading) {
         return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 overflow-y-auto", style: { backgroundColor: colors.bg } },
-            React.createElement("div", { className: `flex ${rowStart()} items-center px-4 pt-5 pb-2 gap-2` },
+            React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex flex-row items-center justify-start px-4 pt-5 pb-2 gap-2.5" },
                 React.createElement("img", { src: IS_RAHIM ? APP_LOGO_RAHIM : SAWA_LOGO_SM, alt: appName(), decoding: "async", style: { width: 42, height: 42, objectFit: "contain", imageRendering: "auto" } }),
                 React.createElement("div", null,
                     React.createElement(SkeletonBox, { height: 18, width: 80 }),
@@ -160,9 +160,10 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
                 React.createElement("div", { className: "grid grid-cols-2 gap-3" }, [1, 2, 3, 4].map(i => React.createElement(SkeletonBox, { key: i, height: 120, rounded: "rounded-2xl" }))))));
     }
     return (React.createElement("div", { className: "flex-1 overflow-y-auto", style: { backgroundColor: colors.bg } },
-        React.createElement("div", { className: `flex ${rowStart()} items-center px-4 pt-5 pb-2 gap-2` },
-            React.createElement("img", { src: IS_RAHIM ? APP_LOGO_RAHIM : SAWA_LOGO_SM, alt: appName(), decoding: "async", style: { width: 42, height: 42, objectFit: "contain", imageRendering: "auto" } }),
-            React.createElement("div", null,
+        // C143: الشعار ثمّ العنوان من جهة البداية — يمين الشاشة في العربيّة ويسارها في الإنجليزيّة (كان flex-row-reverse مع اتّجاهٍ عربيّ يقلبهما إلى اليسار)
+        React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex flex-row items-center justify-start px-4 pt-5 pb-2 gap-2.5" },
+            React.createElement("img", { src: IS_RAHIM ? APP_LOGO_RAHIM : SAWA_LOGO_SM, alt: appName(), decoding: "async", style: { width: 42, height: 42, objectFit: "contain", imageRendering: "auto", flexShrink: 0 } }),
+            React.createElement("div", { className: textStart(), style: { minWidth: 0 } },
                 React.createElement("h2", { className: "text-xl font-extrabold", style: { color: colors.text } }, t("astkshf")),
                 React.createElement("p", { className: "text-[10px]", style: { color: colors.textMuted } }, t("kl_khdmat_swa_bmkan")))),
         React.createElement("div", { className: "px-4 pb-4" },
