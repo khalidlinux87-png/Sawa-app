@@ -150,7 +150,7 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
     if (loading) {
         return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 overflow-y-auto", style: { backgroundColor: colors.bg } },
             React.createElement("div", { className: `flex ${rowStart()} items-center px-4 pt-5 pb-2 gap-2` },
-                React.createElement("img", { src: IS_RAHIM ? APP_LOGO_RAHIM : SAWA_LOGO, alt: appName(), style: { width: 38, height: 38, objectFit: "contain" } }),
+                React.createElement("img", { src: IS_RAHIM ? APP_LOGO_RAHIM : SAWA_LOGO_SM, alt: appName(), decoding: "async", style: { width: 42, height: 42, objectFit: "contain", imageRendering: "auto" } }),
                 React.createElement("div", null,
                     React.createElement(SkeletonBox, { height: 18, width: 80 }),
                     React.createElement("div", { className: "mt-1" },
@@ -161,7 +161,7 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
     }
     return (React.createElement("div", { className: "flex-1 overflow-y-auto", style: { backgroundColor: colors.bg } },
         React.createElement("div", { className: `flex ${rowStart()} items-center px-4 pt-5 pb-2 gap-2` },
-            React.createElement("img", { src: IS_RAHIM ? APP_LOGO_RAHIM : SAWA_LOGO, alt: appName(), style: { width: 38, height: 38, objectFit: "contain" } }),
+            React.createElement("img", { src: IS_RAHIM ? APP_LOGO_RAHIM : SAWA_LOGO_SM, alt: appName(), decoding: "async", style: { width: 42, height: 42, objectFit: "contain", imageRendering: "auto" } }),
             React.createElement("div", null,
                 React.createElement("h2", { className: "text-xl font-extrabold", style: { color: colors.text } }, t("astkshf")),
                 React.createElement("p", { className: "text-[10px]", style: { color: colors.textMuted } }, t("kl_khdmat_swa_bmkan")))),
