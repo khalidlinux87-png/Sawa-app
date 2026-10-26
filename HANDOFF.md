@@ -10,7 +10,7 @@
 - **اللغة والأسلوب:** الردّ بالعربيّة، وباختصار. **نصوص التطبيق بالفصحى فقط** — لا عاميّة (C130). خالد يعمل من الهاتف في السودان.
 - **بعد كلّ تسليم:** تعليمات الرفع مع **حجم كلّ ملفّ**.
 - **ترتيب الرفع:** الـWorker أوّلاً، ثمّ قواعد Firestore، ثمّ ملفّات التطبيق، و`sw.js` **أخيراً** برقمٍ جديد.
-- **التوثيق:** كلّ تغيير يُوثَّق في `BUILD.md` (قسم بالرقم التالي: **C151**).
+- **التوثيق:** كلّ تغيير يُوثَّق في `BUILD.md` (قسم بالرقم التالي: **C152**).
 - **الملفّات للهاتف:** ملفّات منفردة لا zip، لأنّ فكّ الضغط على هاتفه يفشل أحياناً. محرّر GitHub على الهاتف يفسد النصّ العربيّ في الملفّات غير JS (مثل ‎`.strings`)، فتُرسَل بترميز `\Uxxxx`.
 - **صور المتجر:** بصيغة JPG خفيفة.
 - **الأسرار — لا تُطلب ولا تُرسَل في المحادثة أبداً:**
@@ -37,7 +37,7 @@
 
 | المكان | الأسماء |
 |---|---|
-| Worker | `SA_JSON` · `ADMIN_EMAIL` · `METERED_*` · `CF_TURN_KEY_ID` / `CF_TURN_API_TOKEN` · `TURN_PROVIDER` / `TURN_EXTRA` · `CF_SFU_APP_ID` / `CF_SFU_APP_TOKEN` · `WA_*` · `POLL_SECRET` |
+| Worker | `SA_JSON` · `ADMIN_EMAIL` · `METERED_*` · `CF_TURN_KEY_ID` / `CF_TURN_API_TOKEN` · `TURN_PROVIDER` / `TURN_EXTRA` · `CF_SFU_APP_ID` / `CF_SFU_APP_TOKEN` · `WA_*` · `POLL_SECRET` · `APNS_P8` (C151، اختياريّاً `APNS_KEY_ID`/`APNS_TEAM_ID`) |
 | GitHub Sawa-android | `KEYSTORE_B64` · `KEYSTORE_PASSWORD` · `GOOGLE_SERVICES_JSON` |
 | GitHub Sawa-iOS | `ASC_KEY_ID` (مفتاح API ‏«Github Sawa 3» = S2LNKJ8732) · `ASC_ISSUER_ID` · `ASC_KEY_P8` · `APPLE_TEAM_ID` · `GOOGLE_SERVICE_INFO_PLIST` (نصّ XML كما هو) |
 | Firebase Cloud Messaging | مفتاح APNs **جديد** (Sandbox & Production) في خانتَي production وdevelopment. القديم SUDDM5WJ4Q كان للإنتاج فقط ⇒ «Invalid APNs credential» |
@@ -46,9 +46,9 @@
 
 | المكوّن | النسخة |
 |---|---|
-| sw.js | **sawa-v347** |
+| sw.js | **sawa-v348** |
 | sawa-rtc | **c131** |
-| Worker | **v76-reports** |
+| Worker | **v77-callkit** |
 | أندرويد الأصليّ (`native/SAWA_BUILD`) | **c150** (versionCode = 1000 + رقم التشغيل، والاسم 2.0.N) |
 | iOS | 1.0.0 · رقم البناء = 100 + رقم تشغيل TestFlight (آخر ما رُفع **106**) |
 
@@ -102,6 +102,7 @@
 ## ٦) المعلّق — ابدأ من هنا
 
 **بانتظار الرفع أو التجربة من خالد:**
+000000. **C151 CallKit:** سرّ APNS_P8 · Worker v77 · sawa-chat/sawa-rtc/app.p2 · sw v348 · ملفّات iOS ثمّ TestFlight ⇒ «اختبار مكالمة الآيفون» ثمّ مكالمة حقيقيّة والهاتف مقفل.
 00000. **C136:** Worker v73 · sawa-chat · sw v335 ⇒ تجربة تعديل التعليق، والتفاعلات العشرة على اللحظة والتعليق، والضغطة المطوّلة على التعليق.
 0000. **C135 اللحظات (ردود · تفاعلات · @ · إشعارات):** Worker v72 · نشر firestore.rules (mnote) · sawa-chat + app.p3 · sw v334 · sawa-native.zip c135 · AppDelegate.swift ⇒ تجربة بين هاتفين: ردّ، إشارة، تفاعل مطوّل، فتح اللحظة من الإشعار.
 000. **C133 لحظات الأصدقاء:** Worker v70 · نشر firestore.rules · sawa-chat + app.p3/p6/p8 · sw v331 ⇒ تجربة النشر بصور وفيديو والجمهور والتعليقات بين هاتفين.

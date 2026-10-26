@@ -434,6 +434,12 @@
   global.__sawaNativeHangup = function () { if (ongoingEnd) { try { ongoingEnd(); } catch (e) {} } };
   global.__sawaNativeDecline = function (id) { if (cur && cur.id === id && cur.state === "incoming") decline(); };
   function nativeCallDone(id) { try { if (NB() && id) NB().callDone(String(id)); } catch (e) {} }
+  // C151: الآيفون — شاشة المكالمة في النظام (CallKit): نغلقها حين يُردّ داخل التطبيق أو تُرفض أو تنتهي، ولا نرنّ مرّتين
+  var ckRing = {};
+  function ckOn() { try { return !!(IOSB() && IOSB().callkit && IOSB().voip); } catch (e) { return false; } }
+  function ckEnd(id, reason) { try { if (IOSB() && IOSB().callkit && id) IOSB().call("callkitEnd", { call: String(id), reason: reason }); } catch (e) {} }
+  global.__sawaCallKitRinging = function (id) { ckRing[id] = 1; if (cur && cur.id === id && cur.state === "incoming") stopTone(); };
+  global.__sawaNativeMute = function (m) { if (cur && cur.local && !!cur.muted !== !!m) toggleMute(); };
   function bgAudio(on, title, onEnd) {
     ongoingEnd = on ? onEnd : null;
     if (IOSB()) iosRoute.setInCall(!!on);   // C127: منع قفل الشاشة + وضع المكالمة في iOS
@@ -1077,7 +1083,10 @@
       if (!v.rung) ref.update({ rung: TS() }).catch(function () {});   // C111: المتّصل يرى «يرنّ…» الآن
       show(c);
       // C72: التطبيق الأصليّ في الخلفيّة يرنّ بنغمة الهاتف — لا نرنّ مرّتين
-      if (!wantAnswer[id] && !(NB() && document.visibilityState === "hidden")) playTone("ring");
+      if (!wantAnswer[id] && !(NB() && document.visibilityState === "hidden")) {
+        if (ckOn()) setTimeout(function () { if (cur === c && c.state === "incoming" && !ckRing[id] && !wantAnswer[id]) playTone("ring"); }, 1500);   // C151: النظام يرنّ (CallKit)
+        else playTone("ring");
+      }
       if (wantAnswer[id]) { delete wantAnswer[id]; setTimeout(function () { if (cur === c && c.state === "incoming") accept(false); }, 250); }
       listen(c, ref, "value", function (s) { onCalleeValue(c, s.val()); }, function () { finish(c, "remote", { remote: true }); });
       c.timers.ring = setTimeout(function () { if (c.state === "incoming") finish(c, "missed", { remote: true }); }, RING_MS + 5000);
@@ -1104,6 +1113,7 @@
   function accept(audioOnly) {
     var c = cur; if (!c || c.role !== "callee" || c.state !== "incoming") return;
     nativeCallDone(c.id);   // C72: أوقف رنين الهاتف
+    ckEnd(c.id, "answered");   // C151
     stopTone(); clearTimeout(c.timers.ring);
     setState(c, "connecting");
     var mediaType = audioOnly ? "audio" : c.type;
@@ -1300,6 +1310,7 @@
   function finish(c, reason, opts) {
     if (!c || c.done) return;
     if (c.role === "callee") nativeCallDone(c.id);   // C72
+    if (c.role === "callee") ckEnd(c.id, c.connectedAt ? "ended" : reason === "declinedByMe" ? "declined" : "remote");   // C151
     opts = opts || {}; c.done = true; clearCallNotifications(); earOff(); bgAudio(false); vPromptClose(c);
     clearTimers(c); stopTone(); wakeOff();
     c.offs.forEach(function (f) { f(); }); c.offs = [];
@@ -1425,7 +1436,10 @@
       var g = gc = gcNew({ gid: gid, type: n.type === "video" ? "video" : "audio", title: title, cid: n.cid || null, by: n.by, approval: !!n.approval,
                            state: "incoming", role: "incoming", from: from, fromName: nameOf(from) || v.fromName || "", inbox: inbox, ref: ref });
       g.members = n.members || {};
-      gShow(g); playTone("ring");
+      gShow(g);
+      if (wantAnswer[gid]) { delete wantAnswer[gid]; setTimeout(function () { if (gc === g && g.state === "incoming") groupAccept(); }, 300); }   // C151: «ردّ» من شاشة النظام
+      else if (ckOn()) setTimeout(function () { if (gc === g && g.state === "incoming" && !ckRing[gid]) playTone("ring"); }, 1500);
+      else playTone("ring");
       var saw = !empty;
       gListen(g, ref.child("members"), "value", function (s) {
         if (g.done || g.state !== "incoming") return;
@@ -1440,7 +1454,7 @@
   }
   function groupAccept() {
     var g = gc; if (!g || g.state !== "incoming") return;
-    stopTone(); clearTimeout(g.timers.ring);
+    stopTone(); clearTimeout(g.timers.ring); ckEnd(g.gid, "answered");   // C151
     if (g.inbox) g.inbox.remove().catch(function () {});
     g.offs.forEach(function (f) { f(); }); g.offs = [];
     g.role = "joiner"; g.state = "starting"; gPaint(g);
@@ -1692,6 +1706,7 @@
   };
   function gFinish(g, reason, opts) {
     if (!g || g.done) return;
+    if (g.role === "incoming" || g.joinedAt) ckEnd(g.gid, g.joinedAt ? "ended" : reason === "declined" ? "declined" : "remote");   // C151
     opts = opts || {}; g.done = true; clearCallNotifications(); bgAudio(false);
     var me = myUid();
     for (var k in g.timers) clearTimeout(g.timers[k]); g.timers = {};

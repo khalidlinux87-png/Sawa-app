@@ -3427,10 +3427,18 @@
     // C84: نجدّد التسجيل كلّ ٣ أيّام ولو لم يتغيّر الرمز — الخادم يحذف الأجهزة القديمة (٦٠ يوماً/أكثر من ٥)، وكان الهاتف يظنّ نفسه مسجّلاً للأبد
     // C129: لغة الإشعارات = لغة التطبيق — تُرسل مع التسجيل، وتغيير اللغة يعيد التسجيل
     var lang = isAr() ? "ar" : "en";
-    if (prev.token === tok && prev.uid === state.uid && (prev.lang || "ar") === lang && Date.now() - (prev.ts || 0) < 3 * 86400000) return Promise.resolve(true);
-    return call("push.register", { token: tok, ua: (navigator.userAgent || "").slice(0, 150), lang: lang, prevUid: prev.uid && prev.uid !== state.uid ? prev.uid : null })
-      .then(function () { lsSet("sawa_push", { token: tok, uid: state.uid, ts: Date.now(), lang: lang }); return true; });
+    // C151: الآيفون — رمز VoIP (PushKit) مع الجهاز ⇒ الخادم يرسل الرنين إلى شاشة المكالمة في النظام (CallKit)
+    var vo = ""; try { vo = (IOSB() && IOSB().voip) || ""; } catch (e) {}
+    if (prev.token === tok && prev.uid === state.uid && (prev.lang || "ar") === lang && (prev.voip || "") === vo && Date.now() - (prev.ts || 0) < 3 * 86400000) return Promise.resolve(true);
+    var pl = { token: tok, ua: (navigator.userAgent || "").slice(0, 150), lang: lang, prevUid: prev.uid && prev.uid !== state.uid ? prev.uid : null };
+    if (vo) { pl.voip = vo; pl.voipEnv = (IOSB() && IOSB().voipEnv) || "production"; }
+    return call("push.register", pl)
+      .then(function () { lsSet("sawa_push", { token: tok, uid: state.uid, ts: Date.now(), lang: lang, voip: vo }); return true; });
   }
+  // C151: وصل رمز VoIP من الآيفون (أو تغيّر) ⇒ نعيد تسجيل الجهاز به
+  global.__sawaNativeVoip = function () {
+    setTimeout(function () { try { if (!state.uid || pushState() !== "granted") return; pushToken().then(registerToken).catch(function () {}); } catch (e) {} }, 800);
+  };
   try {
     global.addEventListener("sawa-lang", function () {
       setTimeout(function () {
@@ -4644,6 +4652,27 @@
     return true;
   }
 
+  // C151: اختبار شاشة المكالمة في الآيفون (VoIP/CallKit) — للمدير: يرسل الخادم إشعار VoIP إلى أجهزتي ويُظهر ردّ Apple كما هو
+  function voipTest() {
+    var s = sheet(L("📞 اختبار مكالمة الآيفون", "📞 iPhone call test")), body = mk("div", ""); s.box.appendChild(body);
+    var v = ""; try { v = (IOSB() && IOSB().voip) || ""; } catch (e) {}
+    body.appendChild(note(v ? L("رمز VoIP لهذا الجهاز: موجود ✓ — أغلق سوا (أو اقفل الشاشة) خلال ثوانٍ لترى شاشة المكالمة.", "This device has a VoIP token ✓ — lock the screen to see the call screen.")
+      : L("لا رمز VoIP على هذا الجهاز — يلزم تطبيق الآيفون بعد C151 وتفعيل الإشعارات.", "No VoIP token on this device — needs the iPhone app after C151."), v ? "#2e7d5b" : "#b45309"));
+    var go = mkBtn(L("أرسل مكالمة اختبار بعد ٥ ثوانٍ", "Send a test call in 5 s"), "primary"); go.style.marginTop = "8px"; s.box.appendChild(go);
+    var out = mk("div", ""); s.box.appendChild(out);
+    go.onclick = function () {
+      go.disabled = true; go.textContent = "…";
+      setTimeout(function () {
+        call("voip.test", {}).then(function (r) {
+          out.innerHTML = ""; go.disabled = false; go.textContent = L("أعد الاختبار", "Test again");
+          if (!r || !r.admin) { out.appendChild(note(L("للمدير فقط.", "Admins only."), "#b42318")); return; }
+          if (!r.key) { out.appendChild(note(L("⚠️ سرّ APNS_P8 غير موجود في الـWorker.", "⚠️ APNS_P8 secret is missing in the Worker."), "#b42318", "#fdecec")); return; }
+          if (!(r.devices || []).length) { out.appendChild(note(L("لا جهاز آيفون مسجّلٌ برمز VoIP لحسابك بعد — افتح سوا على الآيفون مرّةً بعد التحديث.", "No iPhone with a VoIP token yet."), "#b45309")); return; }
+          r.devices.forEach(function (d) { out.appendChild(note((d.result === "ok" ? "✓ " : "✗ ") + d.env + " — " + d.result, d.result === "ok" ? "#2e7d5b" : "#b42318", d.result === "ok" ? "#eaf7f0" : "#fdecec")); });
+        }, function (e) { go.disabled = false; go.textContent = L("أعد الاختبار", "Test again"); out.appendChild(note(codeErr(e), "#b42318")); });
+      }, 5000);
+    };
+  }
   // C150: البلاغات للمدير — مراجعة المحادثات واللحظات والتعليقات المُبلَّغ عنها والتصرّف بها (شرط المتاجر للمحتوى الذي ينشره المستخدمون)
   function adminReports() {
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return; }
@@ -5912,7 +5941,7 @@
     retryMedia: retryMedia,   // C18
     scanAny: scanAny, routeScanned: routeScanned, signOutSheet: signOutSheet,   // C20
     e2eSupported: function () { return e2e.ok(); }, e2eStartDm: e2eStartDm, e2eNewSheet: e2eNewSheet, e2eAct: e2eAct, e2eSafety: e2eSafety,   // C23
-    adminCached: adminCached, checkAdmin: checkAdmin, adminReports: adminReports,   // C24
+    adminCached: adminCached, checkAdmin: checkAdmin, adminReports: adminReports, voipTest: voipTest,   // C24
     setBlocked: setBlocked,
     sendLocation: sendLocation, mapsUrl: mapsUrl,   // C32
     photoOf: photoOf, setMyPhoto: setMyPhoto,   // C25
