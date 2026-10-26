@@ -411,19 +411,17 @@ function Pic({ photo, letter, size, bg, color, className, style, children }) {
 }
 function TopBar({ title, subtitle, onBack, actions, avatar, photo, onTitlePress }) {
     const { colors } = useTheme();
-    return (React.createElement("div", { className: `flex items-center px-3 pb-2.5 ${rowStart()}`, style: { backgroundColor: colors.primary, paddingTop: "calc(env(safe-area-inset-top,0px) + 12px)", minHeight: 60 } },   // C117: كان pt-10 ثابتاً ⇒ شريطٌ أزرق فارغ فوق الرأس (أوضح مع Android 16)
-        onBack && React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack, className: `w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${ms("1")}` },
-            React.createElement(ChevronLeft, { color: "#fff", size: 22 })),
-        // الأفاتار داخل كتلة الاسم لا شقيقاً لها، وإلا انفصل عنه في الصف المعكوس.
-        // avatar: true = الحرف الأول من العنوان، أو نص مخصّص.
-        // justify-end يجمع النص والأفاتار معاً عند طرف واحد بدل تباعدهما عبر
-        // المنتصف. لا يعتمد على اتجاه الصف، فيصحّ في الحالتين.
-        // C145: الإنجليزيّة — الصورة ثمّ الاسم بجانب «رجوع» (كانا يُدفعان إلى اليمين والصورة بعد الاسم)
-        React.createElement("div", { className: `flex-1 min-w-0 flex items-center gap-2 ${isRTL() ? "justify-end" : "flex-row-reverse justify-end"} ${me("3")}`, onClick: onTitlePress || undefined, style: onTitlePress ? { cursor: "pointer" } : undefined },
-            React.createElement("div", { className: `min-w-0 ${textStart()}` },
+    // C146: اتّجاهٌ صريح + ترتيبٌ طبيعيّ — «رجوع» ثمّ الصورة ثمّ الاسم من جهة البداية، والأزرار في الطرف الآخر:
+    //       العربيّة: رجوع يميناً والأزرار يساراً · الإنجليزيّة: العكس. (كان flex-row-reverse داخل صفحةٍ عربيّة يقلبه فيصير الرجوع يساراً)
+    const rtl = isRTL();
+    return (React.createElement("div", { dir: rtl ? "rtl" : "ltr", className: "flex flex-row items-center px-3 pb-2.5", style: { backgroundColor: colors.primary, paddingTop: "calc(env(safe-area-inset-top,0px) + 12px)", minHeight: 60 } },   // C117: كان pt-10 ثابتاً
+        onBack && React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { marginInlineEnd: 4 } },
+            React.createElement(rtl ? ChevronRight : ChevronLeft, { color: "#fff", size: 22 })),
+        React.createElement("div", { className: "flex-1 min-w-0 flex flex-row items-center justify-start gap-2", onClick: onTitlePress || undefined, style: Object.assign({ marginInlineEnd: 12 }, onTitlePress ? { cursor: "pointer" } : {}) },
+            avatar && React.createElement(Pic, { photo: photo || null, letter: ((avatar === true ? title : avatar) || "?").charAt(0), size: 36, bg: "rgba(255,255,255,0.22)", color: "#fff" }),
+            React.createElement("div", { className: "min-w-0", style: { textAlign: "start" } },
                 React.createElement("h1", { className: "text-white text-sm font-bold truncate" }, title),
-                subtitle && React.createElement("p", { className: "text-[10px] truncate", style: { color: "#ffffffcc" } }, subtitle)),
-            avatar && React.createElement(Pic, { photo: photo || null, letter: ((avatar === true ? title : avatar) || "?").charAt(0), size: 36, bg: "rgba(255,255,255,0.22)", color: "#fff" })),
+                subtitle && React.createElement("p", { className: "text-[10px] truncate", style: { color: "#ffffffcc" } }, subtitle))),
         React.createElement("div", { className: "shrink-0" }, actions)));
 }
 // ============================================================================
@@ -455,13 +453,14 @@ function FamAvatar({ name, photo, size = 46, radius, gray, ring, className, styl
 function FamHeader({ title, subtitle, onBack, actions, children, compact }) {
     const { colors } = useTheme();
     return (React.createElement("div", { className: "shrink-0 relative", style: { background: famGrad(colors), borderBottomLeftRadius: 26, borderBottomRightRadius: 26, padding: `${compact ? 40 : 44}px 18px ${children ? 16 : 18}px` } },
-        React.createElement("div", { className: `flex ${rowStart()} items-center gap-2.5` },
+        // C146: «رجوع» في جهة البداية (يمين العربيّة) والأزرار في الطرف الآخر
+        React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex flex-row items-center gap-2.5" },
             onBack && React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: "rgba(255,255,255,0.18)" } },
-                React.createElement(ChevronLeft, { color: "#fff", size: 20 })),
+                React.createElement(isRTL() ? ChevronRight : ChevronLeft, { color: "#fff", size: 20 })),
             React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
                 React.createElement("h1", { className: "text-white font-extrabold truncate", style: { fontSize: compact ? 17 : 21, lineHeight: 1.25 } }, title),
                 subtitle && React.createElement("p", { className: "text-[12px] mt-0.5 truncate", style: { color: "rgba(255,255,255,0.85)" } }, subtitle)),
-            actions && React.createElement("div", { className: `shrink-0 flex ${rowStart()} items-center gap-1.5` }, actions)),
+            actions && React.createElement("div", { className: "shrink-0 flex flex-row items-center gap-1.5" }, actions)),
         children && React.createElement("div", { className: "mt-4" }, children)));
 }
 // زرّ صغير فاتح فوق الرأس المتدرّج

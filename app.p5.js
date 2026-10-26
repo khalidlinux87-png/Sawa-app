@@ -1913,9 +1913,9 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 onDeleteMessage ? { icon: Trash2, label: t("hdhf"), act: () => setGDel({ ids: picked.map((x) => x.id), canAll }) } : null,
             ] }));
         })(),
-        React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-3 border-b`, style: { borderColor: colors.border, backgroundColor: colors.card } },
+        React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex flex-row items-center gap-2 p-3 border-b", style: { borderColor: colors.border, backgroundColor: colors.card } },   // C146
             React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack },
-                React.createElement(ChevronLeft, { size: 20, color: colors.text })),
+                React.createElement(isRTL() ? ChevronRight : ChevronLeft, { size: 20, color: colors.text })),
             React.createElement("div", { onClick: () => setShowGroupInfo(true), className: `flex-1 ${textStart()} ${me("2")}`, style: { minWidth: 0, cursor: "pointer" } },
                 React.createElement("div", { className: "font-bold text-sm truncate", style: { color: colors.text } }, group.name),
                 React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowMembers(!showMembers); }, className: "text-[11px]", style: { color: colors.textMuted } },
