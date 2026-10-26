@@ -2134,6 +2134,11 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                     React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } },
                         m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" }) : ""),
                     m.uploadPct != null && React.createElement("span", { className: "text-[10px] font-bold", style: { color: colors.textMuted } }, "⏫ " + m.uploadPct + "%"),
+                    // C149: علامات الوصول في المجموعات كالخاصّ — ✓ أُرسلت · ✓✓ وصلت للجميع · ✓✓ زرقاء قرأها الجميع (كانت لا تظهر)
+                    mine && m.status && m.status !== "failed" && m.uploadPct == null && React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : m.status === "pending" ? t("c2_pending") : t("ch_tm_alirsal"), className: "inline-flex items-center" },
+                        m.status === "pending" ? React.createElement(Clock, { size: 11, color: colors.textMuted })
+                            : m.status === "sent" ? React.createElement(Check, { size: 12, color: colors.textMuted })
+                            : React.createElement(CheckCheck, { size: 12, color: m.status === "read" ? colors.primary : colors.textMuted })),
                     m.status === "failed" && React.createElement("button", { onClick: (e) => { e.stopPropagation(); if (window.SawaChat && window.SawaChat.failedSheet) window.SawaChat.failedSheet(m.id); }, className: "text-[10px] font-bold", style: { color: colors.danger } }, "⚠ " + t("c2_failed") + " · " + tl("اضغط", "tap")),
                     m.reaction && React.createElement("span", { className: "text-xs" }, Object.keys(m.reactions || {}).length > 1 ? m.reaction + " " + Object.keys(m.reactions).length : m.reaction))));
         });
