@@ -1538,39 +1538,58 @@ function SwipeableConvCard({ children, onArchive, onMute, onPin, onDelete, isMut
     const [swipeX, setSwipeX] = useState(0);
     const [startX, setStartX] = useState(null);
     const startYRef = useRef(0);
+    const baseRef = useRef(0);       // C140: موضع البطاقة عند بدء اللمسة (مفتوحة أو مغلقة)
+    const armedRef = useRef(0);      // للاهتزاز مرّةً عند الوصول لحدّ التنفيذ
     // null = لم يُحسم الاتجاه بعد · "x" = سحب أفقي · "y" = تمرير رأسي
     const axisRef = useRef(null);
-    const THRESHOLD = 72;      // كان 48 — كان يفتح مع أي لمسة عابرة
-    const LONG_SWIPE = 160;    // سحب مطوّل = تنفيذ مباشر بلا أزرار
+    // C140: كانت حسّاسةً جدّاً — تنحسم أفقيّةً بعد ١٠ بكسل وبأيّ ميل، وتقفز البطاقة بمقدار ذلك فوراً.
+    //       الآن: منطقةٌ ميّتة ٢٤ بكسل لا تتحرّك فيها البطاقة · أفقيّة فقط إن كان الأفقيّ ضعف الرأسيّ · مقاومة بعد حدّ الفتح ·
+    //       الفتح بعد ٩٠ بكسل · التنفيذ المباشر (أرشفة/حذف) بعد ٢٦٠ بكسل أو ٦٥٪ من عرض البطاقة.
+    const DEAD = 24;
+    const THRESHOLD = 90;
+    const W = (typeof window !== "undefined" && window.innerWidth) || 380;
+    const LONG_SWIPE = Math.max(260, Math.round(W * 0.65));
     const REST_ARCHIVE = 72;   // زر واحد
     const REST_OPTIONS = 132;  // ثلاثة أزرار
     function onTouchStart(e) {
         setStartX(e.touches[0].clientX);
         startYRef.current = e.touches[0].clientY;
+        baseRef.current = swipeX;
+        armedRef.current = 0;
         axisRef.current = null;
     }
     function onTouchMove(e) {
         if (startX === null) return;
         const dx = e.touches[0].clientX - startX;
         const dy = e.touches[0].clientY - startYRef.current;
-        // قفل الاتجاه بعد أول 10px: إمّا سحب أفقي وإمّا تمرير رأسي، لا الاثنان.
-        // بدونه كان التمرير في القائمة يفتح أزرار البطاقات بالخطأ.
         if (axisRef.current === null) {
-            if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-            axisRef.current = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+            if (Math.abs(dy) > 12 && Math.abs(dy) >= Math.abs(dx) / 2) { axisRef.current = "y"; return; }
+            if (Math.abs(dx) < DEAD) return;
+            axisRef.current = Math.abs(dx) > Math.abs(dy) * 2 ? "x" : "y";
         }
         if (axisRef.current === "y") return;
-        setSwipeX(Math.max(-LONG_SWIPE - 40, Math.min(LONG_SWIPE + 40, dx)));
+        // بلا قفزة: تبدأ الحركة من نهاية المنطقة الميّتة
+        let x = baseRef.current + (dx > 0 ? dx - DEAD : dx + DEAD);
+        // مقاومة بعد حدّ الفتح: كلّ بكسلٍ من الإصبع يحرّك البطاقة ٦٠٪
+        const lim = THRESHOLD + 30, ax = Math.abs(x);
+        if (ax > lim) x = Math.sign(x) * (lim + (ax - lim) * 0.6);
+        x = Math.max(-LONG_SWIPE - 30, Math.min(LONG_SWIPE + 30, x));
+        const armed = x >= LONG_SWIPE ? 1 : x <= -LONG_SWIPE ? -1 : 0;
+        if (armed && armedRef.current !== armed) { try { navigator.vibrate && navigator.vibrate(12); } catch (er) { } }
+        armedRef.current = armed;
+        setSwipeX(x);
     }
     function onTouchEnd() {
+        const wasX = axisRef.current === "x";
+        setStartX(null);
+        axisRef.current = null;
+        if (!wasX) { if (baseRef.current !== 0) setSwipeX(0); return; }   // لمسةٌ أو تمرير ⇒ المغلقة تبقى، والمفتوحة تُغلق
         // السحب يميناً يكشف ما تحت يسار البطاقة، والعكس صحيح
-        if (swipeX >= LONG_SWIPE) { setSwipeX(0); setStartX(null); axisRef.current = null; if (onArchive) onArchive(); return; }
-        if (swipeX <= -LONG_SWIPE) { setSwipeX(0); setStartX(null); axisRef.current = null; if (onDelete) onDelete(); return; }
+        if (swipeX >= LONG_SWIPE) { setSwipeX(0); if (onArchive) onArchive(); return; }
+        if (swipeX <= -LONG_SWIPE) { setSwipeX(0); if (onDelete) onDelete(); return; }
         if (swipeX > THRESHOLD) setSwipeX(REST_ARCHIVE);
         else if (swipeX < -THRESHOLD) setSwipeX(-REST_OPTIONS);
         else setSwipeX(0);
-        setStartX(null);
-        axisRef.current = null;
     }
     // لون خلفية الحذف عند السحب المطوّل — إشارة بصرية قبل رفع الإصبع
     const deleteArmed = swipeX <= -LONG_SWIPE;

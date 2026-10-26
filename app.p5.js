@@ -538,7 +538,13 @@ function MediaBubble({ m, onView }) {
     const box = { position: "relative", minWidth: isVid ? 200 : 160, minHeight: 120, borderRadius: 12, overflow: "hidden", backgroundColor: colors.border + "55" };
     if (ready) {
         return isVid
-            ? React.createElement("video", { src: m.fileUrl, poster: m.thumb || undefined, controls: true, playsInline: true, preload: "metadata", className: "rounded-xl max-h-56 w-full", style: { minWidth: 200, backgroundColor: "#000" }, onError: () => setBad(true) })
+            // C140: الفيديو يُفتح في العارض بملء الشاشة (ومنه ⛶ للشاشة كاملةً أفقيّاً) — كان يُشغَّل داخل الفقاعة الصغيرة
+            ? React.createElement("button", { onClick: () => onView(m.fileUrl), "aria-label": tl("تشغيل الفيديو", "Play video"), className: "block -m-1", style: { position: "relative", minWidth: 200, borderRadius: 12, overflow: "hidden", backgroundColor: "#000" } },
+                React.createElement("video", { src: /^(blob:|https?:|\.\/|\/)/.test(m.fileUrl) ? m.fileUrl + "#t=0.1" : m.fileUrl, muted: true, playsInline: true, preload: "metadata", className: "max-h-56 w-full", style: { display: "block", minHeight: 120, objectFit: "cover", pointerEvents: "none", backgroundColor: "#000" }, onError: () => setBad(true) }),
+                React.createElement("span", { style: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" } },
+                    React.createElement("span", { style: { width: 54, height: 54, borderRadius: "50%", backgroundColor: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center" } },
+                        React.createElement("span", { style: { width: 0, height: 0, borderTop: "11px solid transparent", borderBottom: "11px solid transparent", borderLeft: "18px solid #fff", marginLeft: 4 } }))),
+                m.durationSec ? React.createElement("span", { dir: "ltr", style: { position: "absolute", bottom: 6, right: 8, backgroundColor: "rgba(0,0,0,0.6)", color: "#fff", borderRadius: 8, padding: "1px 7px", fontSize: 11, fontWeight: 700 } }, Math.floor(m.durationSec / 60) + ":" + String(Math.round(m.durationSec % 60)).padStart(2, "0")) : null)
             : React.createElement("button", { onClick: () => onView(m.fileUrl), className: "block -m-1" },
                 React.createElement("img", { src: m.fileUrl, alt: m.text, className: "rounded-xl max-h-56 w-full object-cover", style: { minWidth: 160 }, onError: () => setBad(true) }));
     }
@@ -925,6 +931,25 @@ function ImageLightbox({ src, onClose }) {
         React.createElement("img", { src: src, alt: t("swra_mkbra"), className: "max-w-full max-h-full rounded-lg object-contain" })));
 }
 
+// C140: «دفعة» الوسائط = صورٌ/فيديوهاتٌ متتالية من المرسل نفسه، بين كلٍّ منها والتي قبلها دقيقتان على الأكثر ولا رسالة أخرى بينها.
+//       العارض يتنقّل داخل الدفعة ويعدّ «٢ / ٤» منها — كان يعدّ كلّ صور المحادثة («٢٣ / ٨٧»).
+function mediaWithBatches(messages) {
+    const out = []; let g = 0, prev = null;
+    (messages || []).forEach((m) => {
+        const isMedia = (m.type === "image" || m.type === "video") && !m.deleted;
+        if (!isMedia) { prev = null; return; }
+        const who = m.senderId || m.senderUserId || (m.isMe ? "me" : "") || "";
+        const ts = Number(m.createdAt || m.timestamp || 0);
+        if (!prev || prev.who !== who || Math.abs(ts - prev.ts) > 120000) g++;
+        prev = { who, ts };
+        if (m.fileUrl && !m.viewOnce && !(m.thumb && m.fileUrl === m.thumb)) out.push({ id: m.id, url: m.fileUrl, type: m.type, name: m.fileName || m.text || "", g });
+    });
+    return out;
+}
+function mediaBatchOf(items, url) {
+    const it = (items || []).find((x) => x.url === url);
+    return it ? items.filter((x) => x.g === it.g) : (items || []);
+}
 // ============================================================
 // MediaLightbox — معاينة الوسائط بملء الشاشة
 // items: [{ url, type: "image"|"video", name }]  ·  startIndex: موضع البداية
@@ -1012,6 +1037,8 @@ function MediaLightbox({ items: itemsIn, startIndex = 0, onClose, onForward }) {
         }, 190);
     }
     function onTouchStart(e) {
+        // C140: لمسةٌ على شريط التحكّم أسفل الفيديو (التقديم/الصوت/ملء الشاشة) ليست سحباً للتنقّل
+        if (cur.type === "video") { const bx = boxRef.current && boxRef.current.getBoundingClientRect(); if (bx && e.touches[0] && e.touches[0].clientY > bx.bottom - 96) { startXRef.current = null; return; } }
         if (e.touches.length === 2) {
             pinchRef.current = { dist: dist(e.touches), zoom: zoom };
             startXRef.current = null;
@@ -1107,9 +1134,10 @@ function MediaLightbox({ items: itemsIn, startIndex = 0, onClose, onForward }) {
             list.length > 1 && React.createElement("span", { dir: "ltr", className: "text-[12px] font-bold", style: { color: "#fff" } }, (idx + 1) + " / " + list.length),
             React.createElement("div", { style: { width: 36 } })),
         // الوسط: الصورة أو الفيديو
-        React.createElement("div", { onTouchStart: onTouchStart, onTouchMove: onTouchMove, onTouchEnd: onTouchEnd, ref: boxRef, className: "flex-1 min-h-0 flex items-center justify-center p-4 relative overflow-hidden", style: { touchAction: "none" } },
-            React.createElement("div", { style: { transform: "translateX(" + dx + "px)", transition: animOn ? "transform .19s ease" : "none", maxWidth: "100%", maxHeight: "100%", display: "flex", alignItems: "center", justifyContent: "center" } }, cur.type === "video"
-                ? React.createElement("video", { src: cur.url, controls: true, className: "max-w-full max-h-full rounded-lg" })
+        React.createElement("div", { onTouchStart: onTouchStart, onTouchMove: onTouchMove, onTouchEnd: onTouchEnd, ref: boxRef, className: "flex-1 min-h-0 flex items-center justify-center relative overflow-hidden " + (cur.type === "video" ? "p-0" : "p-4"), style: { touchAction: "none" } },
+            // C140: الفيديو يملأ المساحة كلّها (كان max-h-full بلا ارتفاعٍ محدَّد للأب فيبقى بحجمه الصغير) · ⛶ للشاشة كاملةً والهاتف أفقيّاً
+            React.createElement("div", { style: Object.assign({ transform: "translateX(" + dx + "px)", transition: animOn ? "transform .19s ease" : "none", display: "flex", alignItems: "center", justifyContent: "center" }, cur.type === "video" ? { width: "100%", height: "100%" } : { maxWidth: "100%", maxHeight: "100%" }) }, cur.type === "video"
+                ? React.createElement("video", { key: cur.url, src: cur.url, controls: true, autoPlay: true, playsInline: true, preload: "auto", style: { width: "100%", height: "100%", objectFit: "contain", backgroundColor: "#000" } })
                 : React.createElement("img", { ref: imgRef, src: cur.url, alt: t("swra_mkbra"), draggable: false, className: "max-w-full rounded-lg object-contain", style: { maxHeight: "100%", transform: `translate(${tx}px, ${ty}px) scale(${zoom})`, transition: (pinchRef.current || panRef.current) ? "none" : "transform .18s ease", transformOrigin: "center center" } })),
             // أسهم التنقّل — تظهر فقط حين يوجد ما ينتقل إليه
             zoom === 1 && list.length > 1 && idx > 0 && React.createElement("button", { "aria-label": tl("السابق", "Previous"), onClick: () => go(-1), className: "absolute right-2 w-9 h-9 rounded-full flex items-center justify-center", style: btn },
@@ -1250,9 +1278,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
     const [searchQueryW, setSearchQueryW] = useState("");
     const win = useMessageWindow(messages, unreadCount, !!searchQueryW.trim(), scrollContainerRef);
     // كل صور وفيديوهات المحادثة بالترتيب — تُمرَّر للمعاينة لتمكين التنقّل
-    const mediaItems = useMemo(() => (messages || [])
-        .filter((m) => (m.type === "image" || m.type === "video") && m.fileUrl && !m.deleted && !m.viewOnce && !(m.thumb && m.fileUrl === m.thumb))
-        .map((m) => ({ id: m.id, url: m.fileUrl, type: m.type, name: m.fileName || m.text || "" })), [messages]);
+    const mediaItems = useMemo(() => mediaWithBatches(messages), [messages]);   // C140: كلّ وسيطٍ معه رقم دفعته
     const mediaInputRef = useRef(null);
     const searchQuery = searchQueryW, setSearchQuery = setSearchQueryW;
     const [searchMatchIndex, setSearchMatchIndex] = useState(0);
@@ -1615,7 +1641,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                 ? React.createElement("video", { src: viewOnce.url, autoPlay: true, playsInline: true, controls: false, controlsList: "nodownload", onEnded: () => setViewOnce(null), onClick: (e) => e.stopPropagation(), style: { maxWidth: "100%", maxHeight: "100%" } })
                 : React.createElement("img", { src: viewOnce.url, alt: "", draggable: false, style: { maxWidth: "100%", maxHeight: "100%", pointerEvents: "none" } }),
             React.createElement("span", { style: { position: "absolute", top: 18, left: 0, right: 0, textAlign: "center", color: "#fff", fontSize: 12, fontWeight: 700, opacity: 0.85 } }, "🔥 " + tl("لمرّة واحدة — اضغط للإغلاق", "View once — tap to close"))),
-        viewingImage && (React.createElement(MediaLightbox, { items: mediaItems, startIndex: Math.max(0, mediaItems.findIndex((it) => it.url === viewingImage)), onClose: () => setViewingImage(null), onForward: (it) => { setViewingImage(null); setForwardingText({ id: it.id, text: it.name, cid: conversation.id }); } })),
+        viewingImage && (() => { const bItems = mediaBatchOf(mediaItems, viewingImage); return React.createElement(MediaLightbox, { items: bItems, startIndex: Math.max(0, bItems.findIndex((it) => it.url === viewingImage)), onClose: () => setViewingImage(null), onForward: (it) => { setViewingImage(null); setForwardingText({ id: it.id, text: it.name, cid: conversation.id }); } }); })(),
         forwardingText && (React.createElement(ForwardPickerScreen, { conversations: allConversations, groups: allGroups, contacts: contactsForForward, currentConversationId: conversation.id, onForward: (destinationIds) => { (forwardingText.multi || [forwardingText]).forEach((x) => onForward(x, destinationIds)); if (forwardingText.multi) setSel(null); setForwardingText(null); }, onClose: () => setForwardingText(null) }))));
 }
 const GROUP_ADMIN_ACTIONS = ["تسمية المجموعة", "إدارة الأعضاء"];
@@ -1709,9 +1735,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
     const [showAttachMenu, setShowAttachMenu] = useState(false);
     const [viewingImage, setViewingImage] = useState(null);
     // كل صور وفيديوهات المحادثة بالترتيب — تُمرَّر للمعاينة لتمكين التنقّل
-    const mediaItems = useMemo(() => (messages || [])
-        .filter((m) => (m.type === "image" || m.type === "video") && m.fileUrl && !m.deleted && !m.viewOnce && !(m.thumb && m.fileUrl === m.thumb))
-        .map((m) => ({ id: m.id, url: m.fileUrl, type: m.type, name: m.fileName || m.text || "" })), [messages]);
+    const mediaItems = useMemo(() => mediaWithBatches(messages), [messages]);   // C140: كلّ وسيطٍ معه رقم دفعته
     const [editingMessageId, setEditingMessageId] = useState(null);
     const [editingText, setEditingText] = useState("");
     const recorder = useVoiceRecorder({
@@ -2322,7 +2346,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 React.createElement(Square, { size: 14, color: "#fff", fill: "#fff" }))) : (React.createElement("button", { "aria-label": t("gc_tsjyl"), onClick: recorder.start, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.accent } },
                 React.createElement(Mic, { size: 16, color: "#fff" })))),
         React.createElement(RecordingBar, { isRecording: recorder.isRecording, seconds: recorder.seconds, micError: recorder.micError, onCancel: recorder.cancel, maxSeconds: recorder.maxSeconds }),
-        viewingImage && (React.createElement(MediaLightbox, { items: mediaItems, startIndex: Math.max(0, mediaItems.findIndex((it) => it.url === viewingImage)), onClose: () => setViewingImage(null), onForward: (it) => { setViewingImage(null); setForwardingText({ id: it.id, text: it.name, cid: group.id }); } })),
+        viewingImage && (() => { const bItems = mediaBatchOf(mediaItems, viewingImage); return React.createElement(MediaLightbox, { items: bItems, startIndex: Math.max(0, bItems.findIndex((it) => it.url === viewingImage)), onClose: () => setViewingImage(null), onForward: (it) => { setViewingImage(null); setForwardingText({ id: it.id, text: it.name, cid: group.id }); } }); })(),
         forwardingText && (React.createElement(ForwardPickerScreen, { conversations: allConversations, groups: allGroups, contacts: contactsForForward, currentConversationId: group.id, onForward: (destinationIds) => { (forwardingText.multi || [forwardingText]).forEach((x) => onForward(x, destinationIds)); if (forwardingText.multi) setSel(null); setForwardingText(null); }, onClose: () => setForwardingText(null) })),
         // C101: ورقةٌ مضغوطة كالخاصّة
         groupMsgMenu && React.createElement(MsgActionSheet, { colors, onClose: () => setGroupMsgMenu(null), preview: groupMsgMenu.text || "",
