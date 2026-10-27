@@ -2542,18 +2542,21 @@ function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, r
     // C75: التكبير يغيّر حجم التخطيط نفسه (CSS zoom) لا صورته (transform) — كان الجزء المكبَّر يخرج عن مدى التمرير
     //      فلا يُوصل إليه. والقرص بلمسين (touch) يُربط حين تظهر الشجرة الكاملة: كان يُربط مرّةً عند الفتح
     //      والشاشة تبدأ بوضع «تركيز» فلا يجد العنصر، فلم يعمل القرص قطّ.
+    // C158: النقطة تحت الإصبعين تبقى ثابتة — بنسبتها من الشجرة لا بالبكسل: كان الحساب يخلط بكسل الشاشة ببكسل التخطيط
+    //       المكبَّر (CSS zoom) ويهمل موضع الشجرة داخل الصفحة، فينزاح التكبير عن الإصبعين بعد أوّل تكبير.
     const applyZoom = (z, cx, cy) => {
-        const st = stageRef.current, el = pinchRef.current;
+        const st = stageRef.current, el = pinchRef.current, sc = treeScrollRef.current;
         if (!st) return;
-        const old = parseFloat(st.style.zoom || "1") || 1;
-        // نُبقي النقطة تحت الإصبعين (أو منتصف الشاشة) ثابتةً
-        let ax = null, ay = null, sc = treeScrollRef.current;
-        if (el) { const r = el.getBoundingClientRect(); const px = (cx != null ? cx : r.left + r.width / 2) - r.left; ax = { px, c: (el.scrollLeft + px) / old }; }
-        if (sc) { const r2 = sc.getBoundingClientRect(); const py = (cy != null ? cy : r2.top + r2.height / 2) - r2.top; ay = { py, c: (sc.scrollTop + py) / old }; }
+        const r0 = st.getBoundingClientRect();
+        const vx = el ? el.getBoundingClientRect() : r0, vy = sc ? sc.getBoundingClientRect() : r0;
+        const px = cx != null ? cx : Math.max(vx.left, r0.left) + Math.min(vx.width, r0.width) / 2;
+        const py = cy != null ? cy : vy.top + vy.height / 2;
+        const fx = r0.width ? (px - r0.left) / r0.width : 0.5, fy = r0.height ? (py - r0.top) / r0.height : 0.5;
         st.style.zoom = String(z);
         st.style.minWidth = `${100 / z}%`;
-        if (el && ax) el.scrollLeft = ax.c * z - ax.px;
-        if (sc && ay) sc.scrollTop = ay.c * z - ay.py;
+        const r1 = st.getBoundingClientRect();
+        if (el) el.scrollLeft += (r1.left + fx * r1.width) - px;
+        if (sc) sc.scrollTop += (r1.top + fy * r1.height) - py;
     };
     useEffect(() => {
         const el = pinchRef.current;
@@ -2570,7 +2573,7 @@ function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, r
             pinching.current = true;
             mid0 = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
             const st = stageRef.current;
-            if (st) { const r = st.getBoundingClientRect(); st.style.transformOrigin = `${mid0.x - r.left}px ${mid0.y - r.top}px`; st.style.willChange = "transform"; }
+            if (st) { const r = st.getBoundingClientRect(); st.style.transformOrigin = `${r.width ? ((mid0.x - r.left) / r.width) * 100 : 50}% ${r.height ? ((mid0.y - r.top) / r.height) * 100 : 50}%`; st.style.willChange = "transform"; }   // C158: بالنسبة لا بالبكسل
         };
         const move = (e) => {
             if (!pinching.current || e.touches.length !== 2 || !startDist) return;
