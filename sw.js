@@ -4,16 +4,16 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v356';
+const VERSION = 'sawa-v357';
 // C83: «ما الجديد» — يظهر لكلّ مستخدم في «حسابي ← تحديث التطبيق». سطرٌ واحد بلا علامة ' (‎\n‎ لسطرٍ جديد). يُحدَّث مع كلّ نسخة.
-const NOTES = '• الأسهم في القوائم تتّجه يساراً بالعربيّة\n• «تحديث التطبيق» يُظهر نسخة ملفّ المحادثات العاملة';
+const NOTES = '• إصلاح: ملفّ المحادثات القديم كان يبقى على بعض الأجهزة بعد التحديث (صورة المجموعة)';
 // P2: على العناوين القديمة/البديلة (Netlify · sawaap.pages.dev · sawaaap.com بلا www) يصير عامل الخدمة «مُخلياً»:
 //     يمسح المخزون، يحوّل الصفحات المفتوحة إلى العنوان الرسميّ، ثمّ يلغي نفسه. على www.sawaaap.com يعمل كالمعتاد.
 //     (لا يُحذف هذا قبل أن ينتقل كلّ المستخدمين.)
 const MOVED_TO = 'https://www.sawaaap.com';
 const MOVED = /\.netlify\.app$/i.test(self.location.hostname) || /^sawaap\.pages\.dev$/i.test(self.location.hostname) || /^sawaaap\.com$/i.test(self.location.hostname);
 // C139: الحجم المتوقَّع (بالبايت) للملفّات المرفوعة مع هذه النسخة — إن اختلف على الخادم (لم يُرفع، أو رُفع ناقصاً) يُسجَّل ويُنبَّه المستخدم
-const EXPECT = { './sawa-chat.js': 521341, './sawa-sync.js': 123213, './app.p1.js': 254964, './app.p2.js': 225904, './app.p3.js': 318904, './app.p4.js': 285086, './app.p5.js': 296847, './app.p6.js': 233202, './app.p7.js': 202316, './app.p8.js': 339944 };
+const EXPECT = { './sawa-chat.js': 522056, './sawa-sync.js': 123213, './app.p1.js': 254964, './app.p2.js': 225904, './app.p3.js': 318904, './app.p4.js': 285086, './app.p5.js': 296847, './app.p6.js': 233202, './app.p7.js': 202316, './app.p8.js': 339944 };
 const REPORT = [];
 const ASSETS = [
   './',
@@ -142,7 +142,9 @@ function networkFirst(req) {
 function cacheFirst(req, key) {
   return caches.open(VERSION).then((c) => c.match(key || req, { ignoreSearch: !!key }).then((hit) => {
     if (hit) return hit;
-    return fetch(req).then((res) => { if (!key) putCache(req, res); return res; })
+    // C161: ملفّات سوا من الشبكة بلا مخزون المتصفّح (كان يعيد sawa-chat.js قديماً لأسابيع رغم رفع الجديد)
+    const sameJs = new URL(req.url).origin === self.location.origin && /\.(js|css|json)$/.test(new URL(req.url).pathname);
+    return fetch(sameJs ? new Request(req, { cache: 'no-cache' }) : req).then((res) => { if (!key) putCache(req, res); return res; })
       .catch(() => (req.mode === 'navigate' ? c.match('./') : undefined));
   })).then(clean);
 }
@@ -164,6 +166,8 @@ self.addEventListener('fetch', (e) => {
   if (sameOrigin && req.mode === 'navigate' && (url.pathname === '/' || url.pathname === '/index.html')) { e.respondWith(cacheFirst(req, './')); return; }
   // صفحاتٌ أخرى (diag…) قد يحوّلها Pages: الشبكة مباشرةً
   if (sameOrigin && req.mode === 'navigate') { e.respondWith(networkFirst(req)); return; }
+  // C161: ملفٌّ من ملفّات التطبيق بأيّ ‎?v=…‎ ⇒ النسخة المخزّنة مع هذا الإصدار (كان ‎?v=‎ يفوّت المخزون فيأتي من مخزون المتصفّح القديم)
+  if (sameOrigin && url.search && ASSETS.indexOf('.' + url.pathname) >= 0) { e.respondWith(cacheFirst(req, '.' + url.pathname)); return; }
   e.respondWith(cacheFirst(req));
 });
 

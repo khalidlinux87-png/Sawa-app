@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c160";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c161";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -3814,6 +3814,12 @@
     try {
       if (global.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k.indexOf("sawa-") === 0; }).map(function (k) { return caches.delete(k); })); }));
       if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+      // C161: نسخة المتصفّح نفسه من كلّ سكربتٍ في الصفحة (بعنوانه كما هو، مع ‎?v=‎ إن وُجد) — كانت تبقى قديمة بعد مسح مخزون التطبيق
+      Array.prototype.forEach.call(document.querySelectorAll("script[src],link[rel=stylesheet][href]"), function (el) {
+        var u = el.src || el.href; if (!u || u.indexOf(global.location.origin) !== 0) return;
+        jobs.push(fetch(u, { cache: "reload" }).catch(function () {}));
+      });
+      ["./sawa-chat.js", "./sawa-sync.js", "./sawa-core.js", "./sawa-rtc.js", "./sawa-auth.js", "./"].forEach(function (u) { jobs.push(fetch(u, { cache: "reload" }).catch(function () {})); });
     } catch (e) {}
     Promise.all(jobs).catch(function () {}).then(function () { global.location.replace("/?fresh=" + Date.now()); });
   }
