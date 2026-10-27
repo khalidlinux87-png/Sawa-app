@@ -104,6 +104,7 @@
       wcall("rtc.ice", {}).then(function (b) {
         var l = b && Array.isArray(b.iceServers) && b.iceServers.length ? b.iceServers : STUN;
         iceRelays = b && Array.isArray(b.relays) && b.relays.length ? b.relays : null;
+        relayPrimary = b && (b.primary === "m" || b.primary === "cf") ? b.primary : null;   // C165
         iceCache = relayIce() || l; iceAt = Date.now(); log("ice", b && b.turn ? "TURN" : "STUN", iceRelays ? iceRelays.length + " relays" : ""); relayAuto(); return iceCache;
       }),
       new Promise(function (r) { setTimeout(function () { r(iceCache || STUN); }, wait); })
@@ -113,21 +114,26 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
-  var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null;
+  var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
   function netKey() { var n = global.navigator && global.navigator.connection; return (n ? (n.type || "") + "/" + (n.effectiveType || "") : "") + "/" + (cfColo || ""); }
   try { var m0 = JSON.parse(lsGet("sawa-relay-ms") || "null"); if (m0 && m0.ms && Date.now() - m0.at < 30 * 60000) { relayMs = m0.ms; relayAt = m0.at; relayNet = m0.net || ""; } } catch (e) {}
+  // C165: وسيطٌ أساسيّ يحدّده الخادم (Metered افتراضاً) — يُقدَّم ما لم يفشل قياسه، والآخر احتياطٌ فقط
+  function isPrim(r) { return relayPrimary === "cf" ? r.id === "cf" : relayPrimary === "m" ? /^m/.test(r.id) : false; }
   function relayRank() {
     if (!iceRelays) return null;
     var v = function (r) { var x = relayMs[r.id]; return typeof x === "number" ? x : x === false ? 2e9 : 1e9; };
-    var l = iceRelays.map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) { return v(a.r) - v(b.r) || a.i - b.i; }).map(function (x) { return x.r; });
+    var pOk = function (r) { return isPrim(r) && relayMs[r.id] !== false ? 0 : 1; };
+    var l = iceRelays.map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) { return pOk(a.r) - pOk(b.r) || v(a.r) - v(b.r) || a.i - b.i; }).map(function (x) { return x.r; });
     return l;
   }
   function relayIce() {
     var l = relayRank(); if (!l || !l.length) return null;
     var out = STUN.slice();
-    l.slice(0, 2).forEach(function (r) { (r.iceServers || []).forEach(function (x) { out.push(x); }); });
+    // الأساسيّ وحده إن لم يفشل (فلا يختار الهاتف الآخر لقربه)، وإلّا أسرع وسيطين كما كان
+    var prim = l.filter(function (r) { return isPrim(r) && relayMs[r.id] !== false; });
+    (prim.length ? prim.slice(0, 2) : l.slice(0, 2)).forEach(function (r) { (r.iceServers || []).forEach(function (x) { out.push(x); }); });
     return out;
   }
   function probeOne(rel) {
