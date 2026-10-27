@@ -540,8 +540,8 @@ function ReactionChip({ m, colors, nameOf, onSet }) {
         React.createElement("button", { onClick: (e) => { e.stopPropagation(); setOpen(true); }, "aria-label": tl("التفاعلات", "Reactions"), className: "text-xs mt-0.5 rounded-full px-1.5 py-0.5", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}`, lineHeight: 1.3 } },
             emos.slice(0, 3).join(""), uids.length > 1 ? React.createElement("span", { className: "text-[10px] font-bold", style: { color: colors.textMuted, marginInlineStart: 3 } }, uids.length) : null),
         open && React.createElement(React.Fragment, null,
-            React.createElement("div", { onClick: () => setOpen(false), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.22)" } }),
-            React.createElement("div", { className: "sawa-pop-in", dir: isRTL() ? "rtl" : "ltr", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 41, backgroundColor: colors.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 10px)", maxHeight: "60%", overflowY: "auto" } },
+            React.createElement("div", { onClick: () => setOpen(false), style: { position: "fixed", inset: 0, zIndex: 2147483600, backgroundColor: "rgba(0,0,0,0.22)" } }),
+            React.createElement("div", { className: "sawa-pop-in", dir: isRTL() ? "rtl" : "ltr", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 2147483601, backgroundColor: colors.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 10px)", maxHeight: "60%", overflowY: "auto" } },
                 React.createElement("div", { className: "w-9 h-1 rounded-full mx-auto mt-2 mb-2", style: { backgroundColor: colors.border } }),
                 React.createElement("div", { className: "flex items-center justify-around px-3 pb-2" }, QUICK_REACTIONS.map((e) => React.createElement("button", { key: e, "aria-label": e, onClick: () => { onSet(e === mine ? null : e); setOpen(false); }, className: "text-[22px] w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: e === mine ? colors.primary + "22" : "transparent" } }, e))),
                 uids.map((u) => React.createElement("div", { key: u, className: "flex flex-row items-center gap-3 px-4 py-2.5", style: { borderTop: `1px solid ${colors.border}` } },
@@ -550,12 +550,27 @@ function ReactionChip({ m, colors, nameOf, onSet }) {
                 mine && React.createElement("button", { onClick: () => { onSet(null); setOpen(false); }, className: "w-full py-3 text-sm font-bold", style: { color: colors.danger, borderTop: `1px solid ${colors.border}` } }, tl("إزالة تفاعلي", "Remove my reaction")))));
 }
 function MsgActionSheet({ colors, onClose, preview, onReact, items }) {
+    // C170: فوق كلّ الطبقات (كان zIndex ‎41‎ — طبقةٌ شفّافة من وحدةٍ أخرى قد تغطّي صفّ الإيموجي فلا يصل الضغط) + كشفُ ما يغطّيه
+    const rowRef = useRef(null);
+    const [blocked, setBlocked] = useState("");
+    useEffect(() => {
+        const t = setTimeout(() => {
+            try {
+                const row = rowRef.current; if (!row) return;
+                const b = row.querySelector("button"); if (!b) return;
+                const r = b.getBoundingClientRect(), el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+                if (el && !b.contains(el)) setBlocked((el.tagName || "").toLowerCase() + (el.id ? "#" + el.id : "") + (el.className && typeof el.className === "string" ? "." + el.className.split(" ").slice(0, 2).join(".") : ""));
+            } catch (e) { }
+        }, 450);
+        return () => clearTimeout(t);
+    }, []);
     return React.createElement(React.Fragment, null,
-        React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.22)" } }),
-        React.createElement("div", { className: "sawa-pop-in", dir: isRTL() ? "rtl" : "ltr", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 41, backgroundColor: colors.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 8px)", boxShadow: "0 -6px 24px rgba(0,0,0,0.18)" } },
+        React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, zIndex: 2147483600, backgroundColor: "rgba(0,0,0,0.22)" } }),
+        React.createElement("div", { className: "sawa-pop-in", dir: isRTL() ? "rtl" : "ltr", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 2147483601, backgroundColor: colors.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 8px)", boxShadow: "0 -6px 24px rgba(0,0,0,0.18)" } },
             React.createElement("div", { className: "w-9 h-1 rounded-full mx-auto mt-2 mb-1", style: { backgroundColor: colors.border } }),
             preview ? React.createElement("div", { className: "px-4 pb-1 text-[11.5px] truncate", style: { color: colors.textMuted } }, String(preview).slice(0, 120)) : null,
-            onReact && React.createElement("div", { className: "flex items-center justify-around px-3 py-1.5" }, QUICK_REACTIONS.map((e) => React.createElement("button", { key: e, "aria-label": e, onClick: (ev) => { try { ev.stopPropagation(); } catch (x) { } try { onReact(e); } catch (x) { alert(tl("تعذّر التفاعل: ", "Reaction failed: ") + ((x && x.message) || x)); } onClose(); }, className: "text-[22px] w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.bg } }, e))),
+            blocked && React.createElement("div", { className: "px-4 text-[10px] font-bold", style: { color: colors.danger } }, "⚠ " + tl("الإيموجي مغطّى بـ: ", "Covered by: ") + blocked),
+            onReact && React.createElement("div", { ref: rowRef, className: "flex items-center justify-around px-3 py-1.5" }, QUICK_REACTIONS.map((e) => React.createElement("button", { key: e, "aria-label": e, onClick: (ev) => { try { ev.stopPropagation(); } catch (x) { } try { onReact(e); } catch (x) { alert(tl("تعذّر التفاعل: ", "Reaction failed: ") + ((x && x.message) || x)); } onClose(); }, className: "text-[22px] w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.bg } }, e))),
             React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 2, padding: "4px 8px 2px", borderTop: `1px solid ${colors.border}` } },
                 items.map((it, k) => React.createElement("button", { key: k, onClick: () => { onClose(); it.act(); }, className: "flex flex-col items-center justify-center gap-1 rounded-xl", style: { padding: "9px 2px", minHeight: 62 } },
                     React.createElement(it.icon, { size: 20, color: it.danger ? colors.danger : colors.text }),
