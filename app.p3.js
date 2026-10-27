@@ -1298,7 +1298,7 @@ function FamilyGroupDetailScreen({ meId, onPickMe, group, persons, relations = [
                 React.createElement(GitBranch, { size: 14, color: colors.accent }),
                 React.createElement("span", { className: `flex-1 ${textStart()} text-[11px] font-bold`, style: { color: colors.accent } },
                     (isRTL() ? arCountFix : (x) => x)(unlinkedCount + t("fg_bla_alaqa"))),
-                React.createElement(ChevronLeft, { size: 13, color: colors.accent, style: { transform: "scaleX(-1)" } }))),
+                React.createElement(ChevronLeft, { size: 13, color: colors.accent, style: { transform: isRTL() ? "none" : "scaleX(-1)" } }))),
             !selectionMode && sortedPersons.length > 0 && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-2.5 px-0.5` },
                 React.createElement("p", { className: `text-[11px] font-bold flex-1 ${textStart()}`, style: { color: colors.textMuted } }, (filterProximity !== "all" || filterStatus !== "all" || searchQuery.trim())
                     ? t("mn_length_length", { shown: filteredPersons.length, total: persons.length })

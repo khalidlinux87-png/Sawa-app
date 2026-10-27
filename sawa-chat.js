@@ -215,6 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
+  var CHAT_BUILD = "c160";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -3827,6 +3828,7 @@
       body.appendChild(row(L("نسخة سوا على جهازك", "Version on this device"), (upd.local || "…").replace("sawa-", ""), upd.local ? !upd.available : null));
       body.appendChild(row(L("أحدث نسخة", "Latest version"), (upd.server || "…").replace("sawa-", "")));
       if (nbp) body.appendChild(row(L("تطبيق أندرويد", "Android app"), nbp.replace("android/", "v")));
+      body.appendChild(row(L("ملفّ المحادثات المحمَّل", "Chat module loaded"), CHAT_BUILD));   // C160: ما يعمل فعلاً في هذه الصفحة (لا ما خزّنه عامل الخدمة)
       body.appendChild(row(L("آخر فحص", "Last checked"), upd.checkedAt ? timeAgo(upd.checkedAt) : "…"));
       body.appendChild(note(upd.available ? L("✨ نسخةٌ جديدة متاحة — اضغط «تحديث الآن».", "✨ A new version is available — tap Update now.")
         : upd.err === "missing" ? L("⚠️ ملفّ sw.js غير موجود على الخادم باسمه الصحيح — تأكّد أنّه مرفوعٌ باسم sw.js تماماً في جذر Sawa-app.", "⚠️ sw.js isn't on the server under that exact name.")
@@ -5934,6 +5936,7 @@
   }
 
   global.SawaChat = {
+    build: CHAT_BUILD,   // C160
     version: VERSION,
     bindApp: bindApp, refresh: refresh, contacts: contacts,
     famReqs: loadFamReqs,   // C107

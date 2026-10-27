@@ -1910,7 +1910,7 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                 ].map((item) => (React.createElement("button", { "aria-label": t("altaly"), key: item.key, onClick: () => setAccountSubView(item.key), className: `w-full flex ${rowStart()} items-center justify-between rounded-xl p-3.5 border mb-3`, style: { backgroundColor: colors.card, borderColor: colors.border } },
                     React.createElement(item.icon, { size: 18, color: colors.primary }),
                     React.createElement("span", { className: `flex-1 text-sm font-bold ${textStart()} ${ms("2")}`, style: { color: colors.text } }, item.label),
-                    React.createElement(ChevronLeft, { size: 16, color: colors.textMuted, style: { transform: "scaleX(-1)" } }))))));
+                    React.createElement(ChevronLeft, { size: 16, color: colors.textMuted, style: { transform: isRTL() ? "none" : "scaleX(-1)" } }))))));
         }
         // home
         return (React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },

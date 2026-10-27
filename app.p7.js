@@ -131,13 +131,13 @@ function TaxiScreen({ ride, tripsHistory, scheduledRides, onRequestRide, onSched
                     React.createElement("div", { className: "w-7 h-7 rounded-full flex items-center justify-center", style: { backgroundColor: colors.success + "22" } },
                         React.createElement(MapPin, { size: 13, color: colors.success })),
                     React.createElement("span", { className: "text-sm font-bold", style: { color: colors.text } }, pickup ? t("tx_nqta_mhdda") : t("tx_hdd_nqta"))),
-                React.createElement(ChevronLeft, { size: 15, color: colors.textMuted, style: { transform: "scaleX(-1)" } })),
+                React.createElement(ChevronLeft, { size: 15, color: colors.textMuted, style: { transform: isRTL() ? "none" : "scaleX(-1)" } })),
             React.createElement("button", { onClick: () => setActiveMapPicker("destination"), className: `w-full flex ${rowStart()} items-center justify-between rounded-xl border p-3 mb-3`, style: { borderColor: destPoint ? colors.danger : colors.border, backgroundColor: colors.card } },
                 React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
                     React.createElement("div", { className: "w-7 h-7 rounded-full flex items-center justify-center", style: { backgroundColor: colors.danger + "22" } },
                         React.createElement(Navigation, { size: 13, color: colors.danger })),
                     React.createElement("span", { className: "text-sm font-bold", style: { color: colors.text } }, destPoint ? (destIdx >= 0 ? t(TAXI_DESTINATION_KEYS[destIdx]) : t("tx_alwjha_mhdda")) : t("tx_hdd_alwjha"))),
-                React.createElement(ChevronLeft, { size: 15, color: colors.textMuted, style: { transform: "scaleX(-1)" } })),
+                React.createElement(ChevronLeft, { size: 15, color: colors.textMuted, style: { transform: isRTL() ? "none" : "scaleX(-1)" } })),
             activeMapPicker === "pickup" && (React.createElement(MapPickerModal, { title: t("hdd_nqta_alastlam"), initialPoint: pickup || { x: 30, y: 75 }, showLocateMe: true, onConfirm: (p) => { setPickup(p); setActiveMapPicker(null); }, onClose: () => setActiveMapPicker(null) })),
             activeMapPicker === "destination" && (React.createElement(MapPickerModal, { title: t("hdd_alwjha"), initialPoint: destPoint || { x: 60, y: 30 }, onConfirm: (p) => { setDestPoint(p); setDestIdx(-1); setActiveMapPicker(null); }, onClose: () => setActiveMapPicker(null) })),
             pickup && !destPoint && (React.createElement(React.Fragment, null,
@@ -1599,7 +1599,7 @@ ${txn.note}
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
                     React.createElement("div", { className: "text-sm font-extrabold", style: { color: colors.text } }, svc.label),
                     React.createElement("div", { className: "text-xs mt-0.5", style: { color: colors.textMuted } }, svc.desc)),
-                React.createElement(ChevronLeft, { size: 16, color: colors.textMuted, style: { transform: "scaleX(-1)" } })))))));
+                React.createElement(ChevronLeft, { size: 16, color: colors.textMuted, style: { transform: isRTL() ? "none" : "scaleX(-1)" } })))))));
     }
     if (view === "internetBill") {
         return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
@@ -1686,7 +1686,7 @@ ${txn.note}
                     React.createElement("button", { onClick: () => setView("kyc"), className: `flex-1 flex ${rowStart()} items-center gap-2`, style: { minWidth: 0 } },
                         React.createElement(ShieldCheck, { size: 18, color: colors.accent, className: "shrink-0" }),
                         React.createElement("span", { className: `flex-1 text-xs font-bold ${textStart()}`, style: { color: colors.text } }, kycStatus === "pending" ? t("w_twthyq_qyd") : t("w_wthq_hwytk")),
-                        React.createElement(ChevronLeft, { size: 14, color: colors.textMuted, className: "shrink-0", style: { transform: "scaleX(-1)" } })),
+                        React.createElement(ChevronLeft, { size: 14, color: colors.textMuted, className: "shrink-0", style: { transform: isRTL() ? "none" : "scaleX(-1)" } })),
                     kycStatus !== "pending" && React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => onDismissKyc && onDismissKyc(), className: "w-7 h-7 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.bg } },
                         React.createElement(X, { size: 13, color: colors.textMuted })))),
                 React.createElement("h4", { className: "text-sm font-extrabold mt-4 mb-2", style: { color: colors.text } }, t("akhr_alhrkat")),
@@ -1853,7 +1853,7 @@ ${txn.note}
                     React.createElement("div", { className: "flex-1" },
                         React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, item.label),
                         React.createElement("div", { className: "text-xs mt-0.5", style: { color: colors.textMuted } }, item.desc)),
-                    React.createElement(ChevronLeft, { size: 14, color: colors.textMuted, style: { transform: "scaleX(-1)" } })))),
+                    React.createElement(ChevronLeft, { size: 14, color: colors.textMuted, style: { transform: isRTL() ? "none" : "scaleX(-1)" } })))),
                 React.createElement("div", { className: "mt-2 rounded-2xl p-4 border", style: { backgroundColor: walletFrozen ? "#FFF3E0" : colors.card, borderColor: walletFrozen ? colors.accent : colors.border } },
                     React.createElement("div", { className: `flex ${rowStart()} items-center gap-3` },
                         React.createElement("div", { className: "w-11 h-11 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: walletFrozen ? "#FFE0B2" : "#FEE2E2" } }, walletFrozen ? React.createElement(Lock, { size: 20, color: colors.accent }) : React.createElement(Snowflake, { size: 20, color: colors.danger })),

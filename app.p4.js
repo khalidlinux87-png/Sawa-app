@@ -1501,7 +1501,7 @@ function ChatSettingsScreen({ chatBackupEnabled, setChatBackupEnabled, chatFolde
                         React.createElement("span", { className: "text-sm font-bold", style: { color: colors.text } }, t("almhadthat_almwmna"))),
                     React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5` },
                         lockedCount > 0 && React.createElement(Badge, { size: "sm", variant: "neutral", label: String(lockedCount) }),
-                        React.createElement(ChevronLeft, { size: 15, color: colors.textMuted, style: { transform: "scaleX(-1)" } })))),
+                        React.createElement(ChevronLeft, { size: 15, color: colors.textMuted, style: { transform: isRTL() ? "none" : "scaleX(-1)" } })))),
             React.createElement("p", { className: "text-xs font-bold mb-2", style: { color: colors.textMuted } }, t("alishaarat")),
             React.createElement("label", { className: "text-[11px] font-bold mb-1.5 block", style: { color: colors.text } }, t("nghma_alishaar_alaftradya_llmhadthat")),
             React.createElement("select", { value: defaultNotificationTone, onChange: (e) => setDefaultNotificationTone(e.target.value), className: "w-full border rounded-xl px-3 py-2.5 text-sm mb-4", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }, NOTIFICATION_TONES.map((tone) => React.createElement("option", { key: tone.key, value: tone.key }, t(tone.labelKey)))),
@@ -2532,7 +2532,7 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                                 React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } },
                                     personKinLabel(fp),
                                     tl(" \u00B7 \u0627\u0636\u063A\u0637 \u0644\u0639\u0631\u0636 \u0645\u0644\u0641\u0647 \u0641\u064A \u0635\u0644\u0629 \u0627\u0644\u0631\u062D\u0645", " · Tap to view their profile in Silat Rehim"))),
-                            React.createElement(ChevronLeft, { size: 15, color: colors.accent, style: { transform: "scaleX(-1)" } }))));
+                            React.createElement(ChevronLeft, { size: 15, color: colors.accent, style: { transform: isRTL() ? "none" : "scaleX(-1)" } }))));
                 })(),
                 window.SawaChat && window.SawaChat.e2eStartDm && conversation.peerUid && !conversation.isSavedMessages && React.createElement("button", { onClick: () => conversation.secret ? window.SawaChat.e2eSafety(conversation.id) : window.SawaChat.e2eStartDm(conversation.peerUid), className: "w-full mb-4" },
                     React.createElement(Card, { className: `flex ${rowStart()} items-center gap-3` },

@@ -261,7 +261,7 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
                 (() => {
                     // C159: والعائلة أيضاً (لمالكها ومحرّريها — يتحقّق الخادم) · وسببٌ واضح بدل لا شيء
                     const canPhoto = group.cloud && window.SawaChat && window.SawaChat.setGroupPhoto && (isFamily || isAdmin || !group.infoAdminsOnly);
-                    const why = !group.cloud ? tl("هذه المجموعة على جهازك فقط — صورتها تحتاج مجموعةً في سوا", "This group is only on your device") : !(window.SawaChat && window.SawaChat.setGroupPhoto) ? tl("حدّث التطبيق («حسابي ← تحديث التطبيق») ثمّ جرّب", "Update the app and try again") : tl("المشرفون وحدهم يغيّرون صورة هذه المجموعة", "Only admins can change this group's photo");
+                    const why = !group.cloud ? tl("هذه المجموعة على جهازك فقط — صورتها تحتاج مجموعةً في سوا", "This group is only on your device") : !(window.SawaChat && window.SawaChat.setGroupPhoto) ? tl("ملفّ المحادثات على هذا الجهاز قديم (" + ((window.SawaChat && window.SawaChat.build) || "قبل c160") + "). افتح «حسابي ← تحديث التطبيق» واضغط «تحديث الآن» ثمّ جرّب", "The chat module on this device is old — open App update and tap Update now") : tl("المشرفون وحدهم يغيّرون صورة هذه المجموعة", "Only admins can change this group's photo");
                     return React.createElement("button", { "aria-label": tl("صورة المجموعة", "Group photo"), onClick: () => canPhoto ? window.SawaChat.setGroupPhoto(group.id, !!group.photo) : (group.photo ? setViewPhoto(group.photo) : alert(why)), className: "relative mb-3", style: { cursor: "pointer" } },
                         React.createElement(Pic, { photo: group.photo || null, letter: null, size: 96, bg: colors.primaryLight, color: colors.primary }, group.photo ? null : React.createElement(UsersRound, { size: 40, color: colors.primary })),
                         canPhoto && React.createElement("span", { className: "absolute bottom-0 rounded-full flex items-center justify-center", style: { insetInlineEnd: 0, width: 30, height: 30, backgroundColor: colors.primary, border: "2px solid " + colors.card } }, React.createElement(Camera, { size: 15, color: "#fff" })));
@@ -2750,6 +2750,6 @@ function CallSettingsScreen({ settings, onUpdate, onClearLog, onOpenSpeedDial, o
             React.createElement("div", { className: `flex-1 ${textStart()}` },
                 React.createElement("span", { className: "text-sm font-bold block", style: { color: colors.text } }, cat.label),
                 cat.desc && React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } }, cat.desc)),
-            React.createElement(ChevronLeft, { size: 16, color: colors.textMuted, style: { transform: "scaleX(-1)" } })))))));
+            React.createElement(ChevronLeft, { size: 16, color: colors.textMuted, style: { transform: isRTL() ? "none" : "scaleX(-1)" } })))))));
 }
 //@@sawa-part:5
