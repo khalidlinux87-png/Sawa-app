@@ -707,6 +707,27 @@ function lineageLink(childGender, parentGenderValue) {
         return she ? "ابنة" : "ابن";
     return she ? "بنت" : "بن";
 }
+// C157: الوالد الآخر الناقص (بعد حذف قريبٍ وإعادته مثلاً): للشخص والدٌ واحد، ولذلك الوالد زوجٌ واحد قائم، وكلّ أبنائه الآخرين
+//       (واحدٌ على الأقلّ) أبناء ذلك الزوج أيضاً ⇒ الزوج هو الوالد الآخر. (أمّا من له إخوةٌ من غيره فلا يُخمَّن له شيء.)
+function inferOtherParents(gid, rels) {
+    const R = rels.filter((r) => r.groupId === gid);
+    const parents = {}, kids = {}, spouses = {};
+    R.forEach((r) => {
+        if (r.type === "parent") { (parents[r.target] || (parents[r.target] = [])).push(r.source); (kids[r.source] || (kids[r.source] = [])).push(r.target); }
+        else if (r.type === "spouse") { (spouses[r.source] || (spouses[r.source] = [])).push(r.target); (spouses[r.target] || (spouses[r.target] = [])).push(r.source); }
+    });
+    const out = [];
+    Object.keys(parents).forEach((c) => {
+        const ps = [...new Set(parents[c])];
+        if (ps.length !== 1) return;
+        const P = ps[0], sp = [...new Set(spouses[P] || [])];
+        if (sp.length !== 1 || sp[0] === c) return;
+        const S = sp[0], others = (kids[P] || []).filter((k) => k !== c);
+        if (!others.length || !others.every((k) => (parents[k] || []).indexOf(S) >= 0)) return;
+        out.push({ id: `k-${Date.now()}-op${out.length}`, groupId: gid, source: S, target: c, type: "parent", inferred: "other-parent" });
+    });
+    return out;
+}
 function buildLineageHelpers(persons, relations) {
     // النسب أبوي: نُفضّل الأب على الأم حين يُسجَّل الوالدان معاً
     const parentOf = {};
@@ -1120,6 +1141,22 @@ function FamilyGroupDetailScreen({ meId, onPickMe, group, persons, relations = [
         return true;
     });
     const proximityOrder = { "A***": 0, "A**": 1, "A*": 2, "A": 3, B: 4, C: 5 };
+    const orderIdx = new Map(persons.map((p, i) => [p.id, i]));
+    const kinRank = (p) => {
+        const k = String(p.kinship || "");
+        if (p.kinship === SELF_KINSHIP) return 0;
+        if (/^(الوالد|الوالدة)$/.test(k)) return 1;
+        if (/^(الزوج|الزوجة)/.test(k)) return 2;
+        if (/^(الابن|البنت)$/.test(k)) return 3;
+        if (/^(الجد|الجدة)/.test(k) || /^زوج(ة)? الجد/.test(k)) return 4;
+        if (/^(الأخ|الأخت)/.test(k)) return 5;
+        if (/^(الحفيد|الحفيدة)/.test(k)) return 6;
+        if (/^(العم|العمة|الخال|الخالة)$/.test(k)) return 7;
+        if (/^(ابن|بنت) (الأخ|الأخت)/.test(k)) return 8;
+        if (/^(ابن|بنت) (العم|العمة|الخال|الخالة)/.test(k)) return 9;
+        if (/زوج|زوجة|حمو|حماة|صهر|نسيب/.test(k)) return 11;
+        return 10;
+    };
     // C51: نافذة عرض للقائمة — أوّل ٦٠ ثمّ ٦٠ أخرى كلّما اقترب التمرير من الأسفل؛ تعود للبداية عند تغيّر البحث/التصفية
     const [listN, setListN] = useState(60);
     useEffect(() => { setListN(60); }, [searchQuery, filteredPersons.length]);
@@ -1131,7 +1168,11 @@ function FamilyGroupDetailScreen({ meId, onPickMe, group, persons, relations = [
             return (a.lastContactDate || 0) - (b.lastContactDate || 0); // الأبعد (الأقدم تواصلاً) أولاً
         if (sortBy === "alphabetical")
             return a.local_name.localeCompare(b.local_name, "ar");
-        return 0; // default: ترتيب الإضافة الأصلي
+        // C157: الافتراضيّ بالقرابة (ثمّ ترتيب الإضافة) — كان ترتيب الإضافة وحده: قريبٌ حُذف وأُعيد يذهب إلى آخر القائمة
+        const ra = kinRank(a), rb = kinRank(b);
+        if (ra !== rb) return ra - rb;
+        if ((ra === 1 || ra === 4) && a.gender !== b.gender) return a.gender === "female" ? 1 : -1;   // الوالد قبل الوالدة، والجدّ قبل الجدّة
+        return (orderIdx.get(a.id) || 0) - (orderIdx.get(b.id) || 0);
     });
     const treeFixCount = missingSpouseLinks + mismatchedCount;
     const [showSort, setShowSort] = useState(false);   // C34: الترتيب في ورقةٍ بدل صفّ شرائح
@@ -1449,7 +1490,11 @@ function FamilyPersonDetailScreen({ onChangeParent, person, persons = [], relati
                 React.createElement(FamRow, { icon: LinkIcon, last: true, title: tl("ربط بحساب سوا", "Link to a Sawa account"), sub: tl("برمزه أو من جهات اتّصالك، أو دعوة إن لم يكن في سوا — ثمّ رسالة واتّصال من هنا", "By code, from contacts, or invite — then message & call from here"), onPress: () => setLinkOpen(true) })),
             linkOpen && React.createElement(FamLinkSheet, { person, onClose: () => setLinkOpen(false) }),
             // C106: لم يُربط بعد وأنا لم أربط نفسي ⇒ «هذا أنا»
-            !person.acctUid && person.alive !== false && person._gid && window.SawaSync && window.SawaSync.isCloud && window.SawaSync.isCloud(person._gid) && !(persons || []).some((x) => x.acctMe) && React.createElement(FamCard, { style: { paddingTop: 2, paddingBottom: 2 } },
+            // C156: المحرّر يغيّر الحساب المربوط (قريبٌ غيّر حسابه أو رقمه) أو يفكّه
+            person.acctUid && !person.acctMe && canEdit && person._gid && window.SawaSync && window.SawaSync.isCloud && window.SawaSync.isCloud(person._gid) && React.createElement(FamCard, { style: { paddingTop: 2, paddingBottom: 2 } },
+                React.createElement(FamRow, { icon: LinkIcon, title: tl("تغيير الحساب المربوط", "Change the linked account"), sub: tl("غيّر حسابه أو رقمه؟ يصل الحسابَ الجديد «هل هذا أنت؟» ويبقى القديم مربوطاً حتّى يوافق", "New account or number? The new account gets “Is this you?” — the old link stays until they accept"), onPress: () => setLinkOpen(true) }),
+                React.createElement(FamRow, { icon: X, last: true, title: tl("فكّ الربط", "Unlink"), sub: tl("لا يمثّل هذا الحسابُ " + person.local_name, "This account isn't " + person.local_name), onPress: () => { if (!window.confirm(tl("فكّ ربط «" + person.local_name + "» بحسابه في سوا؟", "Unlink «" + person.local_name + "» from their Sawa account?"))) return; const SS = window.SawaSync; Promise.resolve(SS.claim(person._gid, null, person.acctUid)).then(() => alert(tl("فُكّ الربط ✓", "Unlinked ✓"))).catch((e) => alert(famLinkErr((e && e.message) || String(e)))); } })),
+            !person.acctUid && person.alive !== false && canEdit && person._gid && window.SawaSync && window.SawaSync.isCloud && window.SawaSync.isCloud(person._gid) && !(persons || []).some((x) => x.acctMe) && React.createElement(FamCard, { style: { paddingTop: 2, paddingBottom: 2 } },
                 React.createElement(FamRow, { icon: UserCheck, last: true, title: tl("هذا أنا — اربط حسابي بهذا الشخص", "This is me — link my account"), sub: tl("تظهر القرابات منك، ويراسلك أقاربك ويتّصلون بك من الشجرة", "Relations show from you, and relatives can message or call you from the tree"), onPress: () => window.__sawaFamClaim && window.__sawaFamClaim(person._gid, person.id) })),
             (birthdayLabel || age !== null) && React.createElement("div", { className: `flex ${rowStart()} gap-2.5 mb-2.5` },
                 birthdayLabel && kv(tl("عيد الميلاد", "Birthday"), birthdayLabel, Cake),
@@ -2320,6 +2365,13 @@ function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, r
     useEffect(() => {
         if (inheritedOnceRef.current || !onInheritParents)
             return;
+        // C156: والدان لطفلٍ واحد بلا زواجٍ مسجَّل (بعد حذف قريبٍ وإعادته مثلاً) ⇒ يُسجَّل زواجهما (للمحرّر)
+        if (canEdit) {
+            const ps = {};
+            relations.forEach((r) => { if (r.type === "parent") (ps[r.target] || (ps[r.target] = [])).push(r.source); });
+            const married = (a, b) => relations.some((r) => (r.type === "spouse" || r.type === "ex_spouse") && ((r.source === a && r.target === b) || (r.source === b && r.target === a)));
+            if (Object.values(ps).some((l) => l.length === 2 && !married(l[0], l[1])) || inferOtherParents(groupId, relations.map((r) => ({ ...r, groupId }))).length) { inheritedOnceRef.current = true; onInheritParents(); return; }
+        }
         const sibE = relations.filter((r) => r.type === "sibling").map((r) => [r.source, r.target]);
         if (!sibE.length)
             return;
@@ -2349,7 +2401,7 @@ function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, r
             inheritedOnceRef.current = true;
             onInheritParents();
         }
-    }, [persons, relations, onInheritParents]);
+    }, [persons, relations, onInheritParents, canEdit]);
     const [nodeMenu, setNodeMenu] = useState(null); // الشخص المضغوط في الشجرة
     const [changingParent, setChangingParent] = useState(null);   // C79: { child, gender }
     const [endingRelId, setEndingRelId] = useState(null); // خطوة التأكيد قبل إنهاء الزواج
@@ -2400,6 +2452,22 @@ function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, r
         else if (r.type === "ex_spouse")
             exSpouseEdges.push([r.source, r.target]);
     });
+    // C156: والدا الطفل نفسه زوجان في الرسم وإن لم يُسجَّل بينهما زواج — حذفُ قريبٍ يحذف صلة زواجه، فإن أُعيد وأُضيف
+    //       والداً للأبناء بقيت الأمّ جذراً مستقلّاً تسحب الأبناء إلى أعلى الشجرة بدل أن يعودوا تحت أبيهم في مكانه.
+    {
+        const pairK = (a, b) => (a < b ? a + "|" + b : b + "|" + a);
+        const known = new Set([...spouseEdges, ...exSpouseEdges].map(([a, b]) => pairK(a, b)));
+        const ps = {};
+        parentEdges.forEach(({ parent, child }) => { (ps[child] || (ps[child] = [])).push(parent); });
+        Object.keys(ps).forEach((c) => {
+            const l = [...new Set(ps[c])];
+            for (let i = 0; i < l.length; i++) for (let j = i + 1; j < l.length; j++) {
+                const k = pairK(l[i], l[j]);
+                if (known.has(k)) continue;
+                known.add(k); spouseEdges.push([l[i], l[j]]);
+            }
+        });
+    }
     // الأخوّة وحدها تُجمِّع الصف؛ الزواج يُلحق الزوج بشريكه ولا يضمّه لإخوته.
     // (كان دمجهما يجعل زوجة الابن تظهر كأنها ابنة لوالده)
     const sameLevelEdges = [...siblingEdges];
@@ -2751,6 +2819,13 @@ function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, r
                             boxShadow: famShadow(isDark),
                             whiteSpace: "nowrap",
                         } }, isCollapsed ? t(spouseLabel ? "ft_mzyd_abna_zwja" : "ft_mzyd_abna", { n: children.length, name: shortName(parent.local_name), spouseLabel }) : t("abna_local_name_spouseLabel", { local_name: parent.local_name, spouseLabel, length: children.length })),
+                    // C156: «من زواجٍ آخر» وهم أبناء زوجها أيضاً (حُذف والدهم ثمّ أُعيد) — إصلاحٌ بنقرة كما في وضع التركيز
+                    isStep && canEdit && onClaimChildren && (() => {
+                        const u = units.find((x) => x.spouses.some((sp) => sp.person.id === parent.id));
+                        if (!u) return null;
+                        return React.createElement("button", { onClick: () => onClaimChildren(groupId, u.person.id, children), className: "text-[10px] font-extrabold rounded-full px-3 py-1 mb-1.5", style: { color: colors.primary, backgroundColor: colors.primary + "14" } },
+                            tl("هم أبناء " + shortName(u.person.local_name) + " أيضاً؟ اربطهم", "Also " + shortName(u.person.local_name) + "'s children? Link"));
+                    })(),
                     isCollapsed ? (markHidden(children), null) : (React.createElement("div", { className: "px-1.5 pt-1.5", style: { borderTop: `2px solid ${colors.primary}33`, borderRadius: 14, minWidth: 0 } }, renderGeneration(children, depth + 1)))));
             };
         const branchUnit = (b) => units.findIndex((u) => u.person.id === b.parent.id || u.spouses.some((s) => s.person.id === b.parent.id));
@@ -3169,16 +3244,18 @@ function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, r
             viewMode === "list" ? (React.createElement("div", null, (() => {
                 // تجميع بالأجيال: الجيل 0 هو الأعمق (الأقرب لصاحب الشجرة)
                 // من بلا والد مسجَّل يرث عمق أخيه — وإلا ظهر العم في جيل الأجداد
+                // C157: أطول سلسلة أسلاف عبر الوالدين كليهما — كان يتبع الوالد الأوّل المسجَّل وحده: بعد حذف الأب وإعادته
+                //       صارت الأمّ (بلا أصلٍ مسجَّل) أوّلاً فنقص عمق الأبناء جيلاً، وانزاح الأجداد إلى «جيل الوالدين» والأعمام إلى «جيلك».
+                const rdMemo = new Map();
                 const rawDepth = (id, seen = new Set()) => {
-                    var _a, _b;
-                    let d = 0, cur = (_a = parentsOfMap[id]) === null || _a === void 0 ? void 0 : _a[0];
-                    const s = new Set([id]);
-                    while (cur && !s.has(cur) && d < 20) {
-                        s.add(cur);
-                        d++;
-                        cur = (_b = parentsOfMap[cur]) === null || _b === void 0 ? void 0 : _b[0];
-                    }
-                    return d;
+                    if (rdMemo.has(id)) return rdMemo.get(id);
+                    if (seen.has(id)) return 0;
+                    seen.add(id);
+                    let d = 0;
+                    (parentsOfMap[id] || []).forEach((pid) => { d = Math.max(d, 1 + rawDepth(pid, seen)); });
+                    seen.delete(id);
+                    rdMemo.set(id, Math.min(d, 20));
+                    return Math.min(d, 20);
                 };
                 // C74: rawDepth يعدّ الأسلاف (0 = الأعلى) فكانت الأجيال مقلوبة: الأب في «الجيل الأقرب» والابن في «الأجداد».
                 //      الآن الجيل نسبةً لك: +1 الوالدان · +2 الأجداد · 0 جيلك · −1 الأبناء. ومن بلا والدين يرث جيل أخيه أو زوجه.

@@ -1189,12 +1189,9 @@ function AppInner() {
             const ownerSelf = list.find(isSelfPerson);
             // من انضمّ ولم يختر نفسه بعد: إن طابق اسمُ حسابه شخصاً واحداً في الشجرة فهو هو (يستطيع التغيير)
             const g = (familyGroups || []).find((x) => x.id === gid);
-            let guess = null;
-            if (g && g.role && g.role !== "owner" && !famMe[gid]) {
-                const nm = normalizeArabicName(myAccountName() || "");
-                const hits = nm ? list.filter((p) => normalizeArabicName(p.local_name) === nm || normalizeArabicName(String(p.local_name).split(" ")[0]) === nm) : [];
-                if (hits.length === 1 && !isSelfPerson(hits[0])) guess = hits[0].id;
-            }
+            // C156: لا تخمين بتشابه الاسم — كان من سجّل باسمٍ يشبه اسماً في الشجرة يُعامَل فوراً كأنّه صاحبه.
+            //       التعريف يأتي من العائلة (طلب «هل هذا أنت؟» أو دعوةٌ باسمه) أو من اختياره هو لطريقة العرض.
+            const guess = null;
             let meId = (famMe[gid] && list.some((p) => p.id === famMe[gid])) ? famMe[gid] : (guess || (ownerSelf && ownerSelf.id));
             // C105: شجرةٌ بلا «نفسي» (عائلة الزوجة مثلاً: «دعاء» = الزوجة) ⇒ «أنا» افتراضيّ يُربط بمن قرابتُه مباشرةٌ منّي
             //       (زوجة/زوج · والد/والدة · ابن/بنت · أخ/أخت) فتُحسب البقيّة منه: والد الزوجة، جدّ الزوجة، أخو الزوجة… بدل «أخرى».
@@ -2181,6 +2178,9 @@ function AppInner() {
     function famClaim(gid, pid) {
         const SS = window.SawaSync;
         if (!SS || !SS.claim || !SS.isCloud || !SS.isCloud(gid)) return;
+        // C156: المشاهد لا يربط حسابه بنفسه — اختياره «هذا أنا» يغيّر العرض على جهازه وحده
+        const role0 = ((familyGroups || []).find((x) => x.id === gid) || {}).role;
+        if (pid && role0 && role0 !== "owner" && role0 !== "editor") return;
         SS.claim(gid, pid).catch((e) => { const m = (e && e.message) || ""; if (/taken/.test(m)) showToast(tl("هذا الشخص مربوطٌ بحساب عضوٍ آخر", "This person is already linked to another member"), "error"); });
     }
     window.__sawaFamClaim = (gid, pid) => { setFamMe((prev) => { const o = { ...(prev || {}) }; if (pid) o[gid] = pid; else delete o[gid]; return o; }); famClaim(gid, pid); };
@@ -3135,6 +3135,9 @@ function AppInner() {
             });
             if (inherited.length)
                 out = [...out, ...inherited];
+            // C157: الوالد الآخر الناقص (الزوج الوحيد لوالده وأبو/أمّ كلّ إخوته)
+            const other = inferOtherParents(gid, out);
+            if (other.length) { out = [...out, ...other]; other.forEach((r) => inherited.push(r)); }
             // جولة ثانية: زواج الوالدين (قد تكتمل بعد الجولة الأولى)
             const spouses = [];
             const byChild = {};
@@ -3607,7 +3610,8 @@ function AppInner() {
     else if (discoverTop.type === "groupDetail") {
         const group = discoverTop.data;
         const otherGroups = familyGroups.filter((g) => g.id !== group.id).map((g) => ({ groupId: g.id, groupName: g.name, persons: famPersons[g.id] || [] }));
-        discoverContent = (React.createElement(FamilyGroupDetailScreen, { meId: famMe[group.id] || (((famPersons[group.id] || []).find((p) => p.kinship === SELF_KINSHIP && p.kinStored !== SELF_KINSHIP)) || {}).id || null, onPickMe: (pid) => { setFamMe((prev) => { const o = { ...(prev || {}) }; if (pid) o[group.id] = pid; else delete o[group.id]; return o; }); famClaim(group.id, pid || null); }, key: group.id + ":" + (discoverTop.filter || "all"), initialFilterStatus: discoverTop.filter || "all", group: group, persons: famPersons[group.id] || [], favorites: familyFavorites, otherGroups: otherGroups, onToggleFav: toggleFamilyFav, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: group.id }]), onOpenGroups: IS_RAHIM ? () => setDiscoverStack(groupsStackFrom(discoverStack)) : undefined,
+        discoverContent = (React.createElement(FamilyGroupDetailScreen, { meId: famMe[group.id] || (((famPersons[group.id] || []).find((p) => p.kinship === SELF_KINSHIP && p.kinStored !== SELF_KINSHIP)) || {}).id || null, onPickMe: (pid) => { setFamMe((prev) => { const o = { ...(prev || {}) }; if (pid) o[group.id] = pid; else delete o[group.id]; return o; }); famClaim(group.id, pid || null);
+                if (pid && group.role && group.role !== "owner" && group.role !== "editor") setTimeout(() => showToast(tl("تُعرض القرابات منك على جهازك. ليُربط حسابك بهذا الشخص يرسل لك أحد محرّري العائلة «هل هذا أنت؟»", "Relations now show from you on this device. To link your account, a family editor sends you “Is this you?”"), "info"), 300); }, key: group.id + ":" + (discoverTop.filter || "all"), initialFilterStatus: discoverTop.filter || "all", group: group, persons: famPersons[group.id] || [], favorites: familyFavorites, otherGroups: otherGroups, onToggleFav: toggleFamilyFav, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: group.id }]), onOpenGroups: IS_RAHIM ? () => setDiscoverStack(groupsStackFrom(discoverStack)) : undefined,
             // ⛔ الشاشة نفسها جذرٌ في أرحام ومحطّةٌ في سوا — السهم يتبع المكدّس
             onBack: discoverStack.length ? () => setDiscoverStack(discoverStack.slice(0, -1)) : undefined, onAddPerson: (data) => addPerson(group.id, data), onAddPersonChain: (chainNames, groupsOfRelatives, targetIndex, matchDecisions, firstGender, firstIsSelf) => addPersonChain(group.id, chainNames, groupsOfRelatives, targetIndex, matchDecisions, firstGender, firstIsSelf), onMergePersons: (keepId, removeId) => mergePersons(keepId, removeId), relations: kinshipRelations.filter((r) => r.groupId === group.id), onAddRelativesBulk: addRelativesBulk, onDeletePerson: (pid) => deletePerson(group.id, pid), onDeletePersonsBulk: (ids) => {
                 const gid = group.id;
