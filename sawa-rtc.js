@@ -759,7 +759,8 @@
     c.local.getTracks().forEach(function (t) { var st = ownStream(t); if (st) c.pc.addTrack(t, st); else c.pc.addTrack(t, c.local); });
   }
   // C97: ثلاث درجات للصورة بدل اثنتين (كانت تهبط مباشرةً إلى ٣٢٠×٢٤٠ · ١٥٠ ك/ث وتبقى هناك) — تنزل درجةً وتصعد درجة
-  var VTIERS = [{ w: 640, h: 480, fps: 24, br: 700000 }, { w: 480, h: 360, fps: 20, br: 350000 }, { w: 320, h: 240, fps: 15, br: 150000 }];
+  // C163: درجةٌ رابعة للشبكة السيّئة جدّاً (فقد ٥٤٪ وتأخير ثانيتين في صور خالد) — الصورة كانت تبقى ١٥٠ ك/ث فتزاحم الصوت على خطٍّ لا يحملها
+  var VTIERS = [{ w: 640, h: 480, fps: 24, br: 700000 }, { w: 480, h: 360, fps: 20, br: 350000 }, { w: 320, h: 240, fps: 15, br: 150000 }, { w: 240, h: 180, fps: 10, br: 80000 }];
   function capVideo(c) { try { tuneSenders(c.pc, VTIERS[c.vt || 0].br); } catch (e) {} }
   // C52: قياس الشبكة كلّ ٣ ثوانٍ في المكالمة الثنائيّة (كما في الغرف): ضعيفة مرّتين ⇒ صورة أخفّ (320×240 · 15 إطاراً · 150 كيلوبت)، تتحسّن ٤ مرّات ⇒ تعود
   function cStatsTick(c) {
@@ -792,13 +793,17 @@
       var h = c.qHist, bad = h.length >= 2 && h.slice(-2).every(function (x) { return x <= 1; }), good = h.length >= 4 && h.slice(-4).every(function (x) { return x >= 2; });
       var vt = c.local && c.local.getVideoTracks()[0];
       var vt0 = c.vt || 0, vt1 = vt0;
-      if (bad && vt0 < 2) vt1 = vt0 + 1; else if (good && vt0 > 0) vt1 = vt0 - 1;
+      if (bad && vt0 < VTIERS.length - 1) vt1 = vt0 + 1; else if (good && vt0 > 0) vt1 = vt0 - 1;
+      // C163: فقدٌ فادح (> ٣٠٪) ١٢ ثانية في مكالمة فيديو والكاميرا تعمل ⇒ اقتراحٌ واحد بإيقافها (الصوت أولى) — لا نوقفها نحن
+      var lossX = Math.max(loss, lostOut != null ? lostOut : 0);   // ما يضيع إليّ أو منّي
+      c.hlN = lossX > 0.3 ? (c.hlN || 0) + 1 : 0;
+      if (c.hlN >= 4 && c.type === "video" && !c.camOff && !c.camHint) { c.camHint = true; toast(L("الشبكة سيّئة جدّاً (فقد " + Math.round(lossX * 100) + "٪) — أوقف الكاميرا ليصل الصوت أسرع", "Very poor network — turn the camera off so audio arrives faster")); }
       if (vt1 !== vt0) {
-        c.vt = vt1; c.lowRes = vt1 === 2; c.qHist = [];   // سجلٌّ جديد: لا نقفز درجتين متتاليتين
+        c.vt = vt1; c.lowRes = vt1 >= 2; c.qHist = [];   // سجلٌّ جديد: لا نقفز درجتين متتاليتين
         capVideo(c);
         var T = VTIERS[vt1];
         try { if (vt) vt.applyConstraints({ width: { ideal: T.w }, height: { ideal: T.h }, frameRate: { ideal: T.fps, max: T.fps === 24 ? 30 : T.fps } }).catch(function () {}); } catch (e) {}
-        if (vt1 === 2 && c.type === "video" && !c.camOff && !c.lowToast) { c.lowToast = true; toast(L("الشبكة ضعيفة — خفّضتُ جودة الصورة ليبقى الصوت واضحاً", "Weak network — lowered video quality to keep audio clear")); }
+        if (vt1 >= 2 && c.type === "video" && !c.camOff && !c.lowToast) { c.lowToast = true; toast(L("الشبكة ضعيفة — خفّضتُ جودة الصورة ليبقى الصوت واضحاً", "Weak network — lowered video quality to keep audio clear")); }
       }
       if (c === cur) paintStatus(c);
     }).catch(function () {});
