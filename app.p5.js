@@ -527,6 +527,28 @@ function FamLinkSheet({ person, onClose }) {
                 React.createElement("p", { className: `text-[11px] mb-2 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, tl("أرسل له دعوةً باسمه في الشجرة (واتساب أو غيره): حين يسجّل ويفتحها يُسأل «هل أنت " + person.local_name + "؟» فيُربط.", "Send an invite for this person: when they sign up and open it, they're asked to confirm and get linked.")),
                 React.createElement("button", { onClick: () => { if (SS && SS.inviteFor) SS.inviteFor(person._gid, person.id, person.local_name); }, className: "w-full py-2.5 rounded-xl text-sm font-extrabold", style: { backgroundColor: colors.card, color: colors.primary, border: `1px solid ${colors.primary}55` } }, "📩 " + tl("إرسال دعوة", "Send invite")))));
 }
+// C168: التفاعل تحت الرسالة قابلٌ للضغط — من تفاعل وبماذا، وتغيير تفاعلي أو إزالته (كان نصّاً لا يستجيب)
+function ReactionChip({ m, colors, nameOf, onSet }) {
+    const [open, setOpen] = useState(false);
+    const SC = window.SawaChat, me = SC && SC.uid ? SC.uid() : null;
+    const map = m.reactions && Object.keys(m.reactions).length ? m.reactions : (m.reaction ? { [me || "me"]: m.reaction } : {});
+    const uids = Object.keys(map); if (!uids.length) return null;
+    const counts = {}; uids.forEach((u) => { counts[map[u]] = (counts[map[u]] || 0) + 1; });
+    const emos = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    const mine = map[me] || map.me || null;
+    return React.createElement(React.Fragment, null,
+        React.createElement("button", { onClick: (e) => { e.stopPropagation(); setOpen(true); }, "aria-label": tl("التفاعلات", "Reactions"), className: "text-xs mt-0.5 rounded-full px-1.5 py-0.5", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}`, lineHeight: 1.3 } },
+            emos.slice(0, 3).join(""), uids.length > 1 ? React.createElement("span", { className: "text-[10px] font-bold", style: { color: colors.textMuted, marginInlineStart: 3 } }, uids.length) : null),
+        open && React.createElement(React.Fragment, null,
+            React.createElement("div", { onClick: () => setOpen(false), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.22)" } }),
+            React.createElement("div", { className: "sawa-pop-in", dir: isRTL() ? "rtl" : "ltr", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 41, backgroundColor: colors.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 10px)", maxHeight: "60%", overflowY: "auto" } },
+                React.createElement("div", { className: "w-9 h-1 rounded-full mx-auto mt-2 mb-2", style: { backgroundColor: colors.border } }),
+                React.createElement("div", { className: "flex items-center justify-around px-3 pb-2" }, QUICK_REACTIONS.map((e) => React.createElement("button", { key: e, "aria-label": e, onClick: () => { onSet(e === mine ? null : e); setOpen(false); }, className: "text-[22px] w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: e === mine ? colors.primary + "22" : "transparent" } }, e))),
+                uids.map((u) => React.createElement("div", { key: u, className: "flex flex-row items-center gap-3 px-4 py-2.5", style: { borderTop: `1px solid ${colors.border}` } },
+                    React.createElement("span", { className: "text-[20px]" }, map[u]),
+                    React.createElement("span", { className: `flex-1 text-sm font-bold ${textStart()}`, style: { color: colors.text } }, u === me || u === "me" ? tl("أنت", "You") : (nameOf(u) || tl("عضو", "Member"))))),
+                mine && React.createElement("button", { onClick: () => { onSet(null); setOpen(false); }, className: "w-full py-3 text-sm font-bold", style: { color: colors.danger, borderTop: `1px solid ${colors.border}` } }, tl("إزالة تفاعلي", "Remove my reaction")))));
+}
 function MsgActionSheet({ colors, onClose, preview, onReact, items }) {
     return React.createElement(React.Fragment, null,
         React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.22)" } }),
@@ -1477,7 +1499,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                                 renderRichText(m.text, { mine, colors }),
                                 m.edited && React.createElement("span", { className: "text-[10px] opacity-70" }, t("ch_madla")),
                                 (!m.type || m.type === "text") && urlsIn(m.text).length ? React.createElement(LinkCard, { text: m.text, mine }) : null)), React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 justify-end`, style: { marginTop: 2, marginBottom: -2 } }, mine && m.status && (React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : m.status === "pending" ? t("c2_pending") : m.status === "failed" ? t("c2_failed") : t("ch_tm_alirsal") }, m.status === "pending" ? (m.uploadPct != null ? React.createElement("span", { className: "text-[10px] font-bold", style: { color: onTint ? "rgba(255,255,255,0.9)" : colors.textMuted } }, "⏫ " + m.uploadPct + "%") : React.createElement(Clock, { size: 11, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted })) : m.status === "failed" ? React.createElement("button", { onClick: (e) => { e.stopPropagation(); if (window.SawaChat && window.SawaChat.failedSheet) window.SawaChat.failedSheet(m.id); }, className: "inline-flex items-center gap-1", style: { color: colors.danger, fontSize: 10, fontWeight: 700 } }, React.createElement(AlertCircle, { size: 12, color: colors.danger }), tl("لم تُرسل · اضغط", "Not sent · tap")) : m.status === "sent" ? React.createElement(Check, { size: 12, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted }) : React.createElement(CheckCheck, { size: 12, color: m.status === "read" ? (onTint ? "#BFE3FF" : colors.primary) : (onTint ? "rgba(255,255,255,0.85)" : colors.textMuted) }))), React.createElement("span", { className: "text-[10px]", style: { color: onTint ? "rgba(255,255,255,0.75)" : colors.textMuted } }, m.time || (m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" }) : "")))),
-                        m.reaction && React.createElement("span", { className: "text-xs mt-0.5" }, m.reaction))));
+                        m.reaction && React.createElement(ReactionChip, { m, colors, nameOf: () => conversation.name, onSet: (e) => onReact(m.id, e) }))));
                 }),
                 // C147: «يكتب…» في جهة الطرف الآخر (حيث تظهر رسائله) في اللغتين — كانت items-end فتنقلب في الإنجليزيّة
                 isTyping && (React.createElement("div", { className: "flex flex-col mb-2", style: { alignItems: isRTL() ? "flex-end" : "flex-start" } },
@@ -2159,7 +2181,7 @@ function GroupChatScreen({ onEditTaskList, group, messages, myUserId, onSend, on
                             : m.status === "sent" ? React.createElement(Check, { size: 12, color: colors.textMuted })
                             : React.createElement(CheckCheck, { size: 12, color: m.status === "read" ? colors.primary : colors.textMuted })),
                     m.status === "failed" && React.createElement("button", { onClick: (e) => { e.stopPropagation(); if (window.SawaChat && window.SawaChat.failedSheet) window.SawaChat.failedSheet(m.id); }, className: "text-[10px] font-bold", style: { color: colors.danger } }, "⚠ " + t("c2_failed") + " · " + tl("اضغط", "tap")),
-                    m.reaction && React.createElement("span", { className: "text-xs" }, Object.keys(m.reactions || {}).length > 1 ? m.reaction + " " + Object.keys(m.reactions).length : m.reaction))));
+                    m.reaction && React.createElement(ReactionChip, { m, colors, nameOf: (u) => ((group.members || []).find((x) => x.uid === u) || {}).name, onSet: (e) => onReact && onReact(m.id, e) }))));
         });
             // C47: فواصل الأيّام + فاصل «غير مقروءة» الثابت على معرّف الرسالة
             const out = [];
