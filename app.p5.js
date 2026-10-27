@@ -1709,6 +1709,73 @@ function ToolSheet({ title, onClose, children }) {
                     React.createElement(X, { size: 17, color: colors.text }))),
             React.createElement("div", { className: "px-4 pt-3 pb-4 overflow-y-auto", style: { flex: 1, minHeight: 0 } }, children))));
 }
+// C172: شريط أدوات المجموعة — المهامّ/الاستطلاعات/التبرّعات/الفواتير النشطة فوق الرسائل للرجوع السريع
+function groupToolInfo(m, myUserId, now) {
+    if (!m || m.deleted) return null;
+    try {
+        if (m.type === "taskList") {
+            const ts = m.tasks || [], done = ts.filter((x) => x.status === "done").length;
+            return { m, ico: "✅", label: (m.title || tl("مهامّ", "Tasks")), stat: done + "/" + ts.length, active: ts.length > 0 && done < ts.length,
+                need: ts.some((x) => x.assigneeId === myUserId && x.status !== "done") };
+        }
+        if (m.type === "poll") {
+            const opts = m.options || [], votes = opts.reduce((s, o) => s + ((o.votes || []).length), 0);
+            const expired = !!(m.deadline && now > m.deadline);
+            return { m, ico: "📊", label: (m.question || tl("استطلاع", "Poll")), stat: tl(votes + " صوت", votes + " votes"), active: !expired,
+                need: !expired && opts.findIndex((o) => (o.votes || []).includes(myUserId)) < 0 };
+        }
+        if (m.type === "fundraiser") {
+            const goal = Number(m.goal) || 0, raised = Number(m.raised) || 0, pct = goal ? Math.min(100, Math.round(raised / goal * 100)) : 0;
+            const ended = (goal && raised >= goal) || !!(m.deadline && now > m.deadline);
+            return { m, ico: "💝", label: (m.cause || tl("تبرّع", "Fundraiser")), stat: pct + "%", active: !ended, need: false };
+        }
+        if (m.type === "billSplit") {
+            const ps = m.participants || [], paid = ps.filter((p) => p.paid).length, mine = ps.find((p) => p.userId === myUserId);
+            return { m, ico: "🧾", label: (m.description || tl("فاتورة", "Bill")), stat: tl(paid + "/" + ps.length + " دفعوا", paid + "/" + ps.length + " paid"), active: ps.length > 0 && paid < ps.length,
+                need: !!(mine && !mine.paid) };
+        }
+    } catch (e) { }
+    return null;
+}
+function GroupToolsBar({ groupId, messages, myUserId, win, toast }) {
+    const { colors } = useTheme();
+    const key = "sawa_tools_hidden_" + groupId;
+    const [hidden, setHidden] = useState(() => { try { return JSON.parse(localStorage.getItem(key) || "[]") || []; } catch (e) { return []; } });
+    const [showAll, setShowAll] = useState(false);
+    const saveHidden = (arr) => { setHidden(arr); try { localStorage.setItem(key, JSON.stringify(arr.slice(-200))); } catch (e) { } };
+    const now = Date.now();
+    const all = [];
+    (messages || []).forEach((m, i) => { const x = groupToolInfo(m, myUserId, now); if (x) { x.i = i; all.push(x); } });
+    if (!all.length) return null;
+    const isHid = (x) => hidden.indexOf(x.m.id) >= 0;
+    const sortFn = (a, b) => (b.need - a.need) || (b.i - a.i);
+    const active = all.filter((x) => x.active && !isHid(x)).sort(sortFn);
+    const other = all.filter((x) => !x.active || isHid(x)).sort((a, b) => b.i - a.i);
+    const go = (x) => { setShowAll(false); setTimeout(() => jumpToMessage(x.m.id, win, toast), showAll ? 60 : 0); };
+    const chip = (x) => React.createElement("button", { key: x.m.id, onClick: () => go(x), className: `flex ${rowStart()} items-center gap-1 shrink-0 rounded-full border px-2.5 py-1`, style: { borderColor: x.need ? colors.primary : colors.border, backgroundColor: x.need ? colors.primary + "14" : colors.bg, maxWidth: 190 } },
+        React.createElement("span", { className: "text-[12px]" }, x.ico),
+        React.createElement("span", { className: "text-[11px] font-bold truncate", style: { color: colors.text, minWidth: 0 } }, x.label),
+        React.createElement("span", { className: "text-[10px] shrink-0", style: { color: colors.textMuted } }, "· " + x.stat),
+        x.need && React.createElement("span", { "aria-label": tl("مطلوب منك", "Needs you"), className: "shrink-0 rounded-full", style: { width: 7, height: 7, backgroundColor: colors.danger } }));
+    const row = (x, hid) => React.createElement("div", { key: x.m.id, className: `flex ${rowStart()} items-center gap-2 py-2 border-b`, style: { borderColor: colors.border } },
+        React.createElement("button", { onClick: () => go(x), className: `flex-1 min-w-0 flex ${rowStart()} items-center gap-2 ${textStart()}` },
+            React.createElement("span", { className: "text-[16px] shrink-0" }, x.ico),
+            React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+                React.createElement("p", { className: "text-[13px] font-bold truncate", style: { color: colors.text } }, x.label),
+                React.createElement("p", { className: "text-[11px]", style: { color: colors.textMuted } }, x.stat + (x.active ? "" : tl(" · انتهت", " · ended")) + (x.need ? tl(" · مطلوب منك", " · needs you") : ""))),
+            x.need && React.createElement("span", { className: "shrink-0 rounded-full", style: { width: 8, height: 8, backgroundColor: colors.danger } })),
+        x.active && React.createElement("button", { onClick: () => saveHidden(hid ? hidden.filter((h) => h !== x.m.id) : hidden.concat([x.m.id])), className: "text-[11px] font-bold shrink-0 px-2 py-1 rounded-full", style: { color: colors.primary, backgroundColor: colors.primary + "14" } }, hid ? tl("إظهار", "Show") : tl("إخفاء", "Hide")));
+    return React.createElement(React.Fragment, null,
+        active.length > 0 ? React.createElement("div", { "data-sawa-tools": "1", className: `flex ${rowStart()} items-center gap-1.5 px-2 py-1.5 border-b overflow-x-auto`, style: { borderColor: colors.border, backgroundColor: colors.card, scrollbarWidth: "none" } },
+            active.map(chip),
+            React.createElement("button", { onClick: () => setShowAll(true), className: "shrink-0 text-[11px] font-bold px-2 py-1", style: { color: colors.primary } }, tl("الكل ›", "All ›")))
+            : React.createElement("button", { "data-sawa-tools": "0", onClick: () => setShowAll(true), className: `w-full flex ${rowStart()} items-center gap-1.5 px-3 py-1 border-b text-[10px]`, style: { borderColor: colors.border, backgroundColor: colors.card, color: colors.textMuted } }, tl("🧰 الأدوات (" + all.length + ") ›", "🧰 Tools (" + all.length + ") ›")),
+        showAll && React.createElement(FamSheet, { title: tl("أدوات المجموعة", "Group tools"), subtitle: tl("اضغط أيّ أداة للانتقال إلى رسالتها", "Tap a tool to jump to its message"), onClose: () => setShowAll(false), z: 60, maxHeight: "75%" },
+            active.length > 0 && React.createElement("p", { className: `text-[11px] font-extrabold mt-1 mb-1 ${textStart()}`, style: { color: colors.textMuted } }, tl("النشطة", "Active")),
+            active.map((x) => row(x, false)),
+            other.length > 0 && React.createElement("p", { className: `text-[11px] font-extrabold mt-3 mb-1 ${textStart()}`, style: { color: colors.textMuted } }, tl("المنتهية والمخفيّة", "Ended & hidden")),
+            other.map((x) => row(x, isHid(x)))));
+}
 function GroupChatScreen({ onEditTaskList, group, messages, myUserId, onSend, onSendFile, onSendVoice, onEditMessage, onReact, onDeleteMessage, onTyping, contactsForForward, onSendSticker, contacts = null, onInviteLink, onUpdateGroup, onCreatePoll, onEditPoll, onVotePoll, onCreateBillSplit, onPayBillSplit, onCreateFundraiser, onContributeFundraiser, onCreateTaskList, onToggleTaskStatus, onAddTaskNote, onForward, allConversations, allGroups, draft = "", onSaveDraft, unreadCount = 0, onBack, onRenameGroup, onAddGroupMembers, onRemoveGroupMember, onToggleGroupAdmin, onLeaveGroup }) {
     var _a, _b;
     const { colors } = useTheme();
@@ -1996,6 +2063,7 @@ function GroupChatScreen({ onEditTaskList, group, messages, myUserId, onSend, on
                     React.createElement(ChevronDown, { size: 16, color: colors.textMuted })))),
             React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => { setShowSearch(false); setSearchQuery(""); } },
                 React.createElement(X, { size: 16, color: colors.textMuted })))),
+        !sel && React.createElement(GroupToolsBar, { groupId: group.id, messages, myUserId, win, toast: showToast }),   // C172
         showMembers && (React.createElement("div", { className: "p-3 border-b", style: { borderColor: colors.border, backgroundColor: colors.bg } },
             group.members.map((m) => (React.createElement("div", { key: m.id, className: `flex ${rowStart()} items-center justify-between py-1.5` },
                 React.createElement("span", { className: "text-xs", style: { color: colors.text } }, m.name),
@@ -2023,7 +2091,7 @@ function GroupChatScreen({ onEditTaskList, group, messages, myUserId, onSend, on
                 const paidAmount = m.participants.filter((p) => p.paid).reduce((s, p) => s + p.share, 0);
                 const pct = Math.round((paidAmount / m.totalAmount) * 100);
                 const myShare = m.participants.find((p) => p.userId === myUserId);
-                return (React.createElement("div", { key: m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
+                return (React.createElement("div", { key: m.id, "data-message-id": m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
                     React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-1` },
                         React.createElement(Banknote, { size: 14, color: colors.primary }),
                         React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, m.description)),
@@ -2057,7 +2125,7 @@ function GroupChatScreen({ onEditTaskList, group, messages, myUserId, onSend, on
                 const isUrgent = daysLeft !== null && daysLeft <= 3 && daysLeft >= 0;
                 const isGoalReached = m.raised >= m.goal;
                 const isEnded = isGoalReached || (daysLeft !== null && daysLeft < 0);
-                return (React.createElement("div", { key: m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: isUrgent ? colors.danger : colors.border, backgroundColor: colors.card } },
+                return (React.createElement("div", { key: m.id, "data-message-id": m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: isUrgent ? colors.danger : colors.border, backgroundColor: colors.card } },
                     React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-1` },
                         React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5` },
                             React.createElement(Gift, { size: 14, color: colors.accent }),
@@ -2095,7 +2163,7 @@ function GroupChatScreen({ onEditTaskList, group, messages, myUserId, onSend, on
                         return -1;
                     return a.dueAt - b.dueAt; // الأقرب استحقاقاً أولاً
                 });
-                return (React.createElement("div", { key: m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
+                return (React.createElement("div", { key: m.id, "data-message-id": m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
                     React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-2` },
                         React.createElement(CheckCircle2, { size: 14, color: colors.primary }),
                         React.createElement("span", { className: "text-xs font-bold flex-1 min-w-0", style: { color: colors.text } }, m.title, m.editedAt ? React.createElement("span", { className: "text-[9px] font-normal", style: { color: colors.textMuted } }, tl(" · عُدّلت", " · edited")) : null),
@@ -2132,7 +2200,7 @@ function GroupChatScreen({ onEditTaskList, group, messages, myUserId, onSend, on
                 const isExpired = m.deadline && Date.now() > m.deadline;
                 const isCreator = m.creatorId === myUserId;
                 const canEdit = isCreator && Date.now() - m.createdAt < 15 * 60000;
-                return (React.createElement("div", { key: m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
+                return (React.createElement("div", { key: m.id, "data-message-id": m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
                     React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-2` },
                         React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5` },
                             React.createElement(BarChart3, { size: 14, color: colors.primary }),
