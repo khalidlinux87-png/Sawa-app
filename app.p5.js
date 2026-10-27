@@ -1672,7 +1672,7 @@ function ToolSheet({ title, onClose, children }) {
                     React.createElement(X, { size: 17, color: colors.text }))),
             React.createElement("div", { className: "px-4 pt-3 pb-4 overflow-y-auto", style: { flex: 1, minHeight: 0 } }, children))));
 }
-function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSendVoice, onEditMessage, onReact, onDeleteMessage, onTyping, contactsForForward, onSendSticker, contacts = null, onInviteLink, onUpdateGroup, onCreatePoll, onEditPoll, onVotePoll, onCreateBillSplit, onPayBillSplit, onCreateFundraiser, onContributeFundraiser, onCreateTaskList, onToggleTaskStatus, onAddTaskNote, onForward, allConversations, allGroups, draft = "", onSaveDraft, unreadCount = 0, onBack, onRenameGroup, onAddGroupMembers, onRemoveGroupMember, onToggleGroupAdmin, onLeaveGroup }) {
+function GroupChatScreen({ onEditTaskList, group, messages, myUserId, onSend, onSendFile, onSendVoice, onEditMessage, onReact, onDeleteMessage, onTyping, contactsForForward, onSendSticker, contacts = null, onInviteLink, onUpdateGroup, onCreatePoll, onEditPoll, onVotePoll, onCreateBillSplit, onPayBillSplit, onCreateFundraiser, onContributeFundraiser, onCreateTaskList, onToggleTaskStatus, onAddTaskNote, onForward, allConversations, allGroups, draft = "", onSaveDraft, unreadCount = 0, onBack, onRenameGroup, onAddGroupMembers, onRemoveGroupMember, onToggleGroupAdmin, onLeaveGroup }) {
     var _a, _b;
     const { colors } = useTheme();
     const { showToast } = useToast();
@@ -1738,6 +1738,8 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
     const [fundGoal, setFundGoal] = useState("");
     const [fundDeadline, setFundDeadline] = useState("");
     const [showTaskForm, setShowTaskForm] = useState(false);
+    const [editingTasksId, setEditingTasksId] = useState(null);   // C164: تعديل قائمة مهامّ
+    const [taskMenu, setTaskMenu] = useState(null);               // C164: ⋮ قائمة المهامّ
     const [taskListTitle, setTaskListTitle] = useState("");
     const [taskDrafts, setTaskDrafts] = useState([{ text: "", assigneeId: (_a = group.members[0]) === null || _a === void 0 ? void 0 : _a.id, dueAt: "" }]);
     const [memberSearch, setMemberSearch] = useState("");
@@ -2059,7 +2061,9 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 return (React.createElement("div", { key: m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
                     React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-2` },
                         React.createElement(CheckCircle2, { size: 14, color: colors.primary }),
-                        React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, m.title)),
+                        React.createElement("span", { className: "text-xs font-bold flex-1 min-w-0", style: { color: colors.text } }, m.title, m.editedAt ? React.createElement("span", { className: "text-[9px] font-normal", style: { color: colors.textMuted } }, tl(" · عُدّلت", " · edited")) : null),
+                        // C164: تعديل · توجيه · حذف
+                        React.createElement("button", { "aria-label": tl("خيارات القائمة", "List options"), onClick: () => setTaskMenu(m), className: "w-7 h-7 rounded-full flex items-center justify-center shrink-0" }, React.createElement(MoreVertical, { size: 15, color: colors.textMuted }))),
                     sortedTasks.map((task) => {
                         const isOverdue = task.status !== "done" && task.dueAt && task.dueAt < Date.now();
                         return (React.createElement("div", { key: task.id, className: "py-1.5 border-t", style: { borderColor: colors.border } },
@@ -2082,7 +2086,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                                         onAddTaskNote(m.id, task.id, noteDraft.trim()); setAddingNoteFor(null); setNoteDraft(""); } },
                                     React.createElement(Check, { size: 13, color: colors.success })),
                                 React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => { setAddingNoteFor(null); setNoteDraft(""); } },
-                                    React.createElement(X, { size: 13, color: colors.textMuted })))) : (React.createElement("button", { onClick: () => { setAddingNoteFor(task.id); setNoteDraft(""); }, className: `text-[9px] mt-1 ${me("6")}`, style: { color: colors.primary } }, t("idafa_mlahza")))));
+                                    React.createElement(X, { size: 13, color: colors.textMuted })))) : m.secret ? null : (React.createElement("button", { onClick: () => { setAddingNoteFor(task.id); setNoteDraft(""); }, className: `text-[9px] mt-1 ${me("6")}`, style: { color: colors.primary } }, t("idafa_mlahza")))));
                     })));
             }
             if (m.type === "poll") {
@@ -2124,7 +2128,8 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 m.forwarded && (React.createElement("span", { className: `text-[9px] mb-0.5 flex ${rowStart()} items-center gap-1`, style: { color: colors.textMuted } },
                     React.createElement(Send, { size: 9, style: { transform: "scaleX(-1)" } }),
                     t("rsala_mwjha"))),
-                !mine && React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-0.5` },
+                // C164: الصورة والاسم مع أوّل رسالةٍ في سلسلة رسائل المرسِل فقط (كواتساب) — لا تتكرّر مع كلّ رسالة
+                !mine && (() => { const pv = win.shown[mi - 1]; return !pv || pv.senderId !== m.senderId || pv.type === "system" || ["billSplit", "fundraiser", "taskList", "poll"].includes(pv.type) || (m.createdAt || 0) - (pv.createdAt || 0) > 300000; })() && React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-0.5 mt-1` },
                     React.createElement(SenderAvatar, { name: (sender && sender.name) || t("gc_swal"), size: 20, photo: sender && sender.photo }),
                     React.createElement("button", { onClick: () => { if (sender && sender.uid && window.SawaChat && window.SawaChat.renameContact) window.SawaChat.renameContact(sender.uid); }, className: "text-[11px] font-bold", style: { color: senderColor((sender && sender.name) || t("gc_swal")), background: "none", border: 0, padding: 0 } }, sender === null || sender === void 0 ? void 0 : sender.name, sender && sender.unnamed ? React.createElement("span", { style: { marginInlineStart: 6, fontSize: 10, color: "#B45309", fontWeight: 800 } }, tl("＋ اسم", "+ name")) : null)),
                 m.replyToText && React.createElement("div", { role: "button", onClick: () => jumpToMessage(m.replyTo && (m.replyTo.id || m.replyTo), win, showToast), className: "max-w-[78%] text-[10px] px-2 py-1 mb-0.5 rounded-lg truncate " + (isRTL() ? "border-r-2" : "border-l-2"), style: { backgroundColor: colors.card, borderColor: colors.accent, color: colors.textMuted, cursor: "pointer" } }, "↩ " + m.replyToText),
@@ -2217,7 +2222,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
             React.createElement(NumericAmountInput, { value: fundGoal, onChange: setFundGoal, placeholder: t("alhdf_j_s"), className: `w-full border rounded-xl px-3 py-2 text-xs mb-2 ${textStart()}`, style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             React.createElement("input", { dir: "ltr", type: "date", value: fundDeadline, onChange: (e) => setFundDeadline(e.target.value), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             React.createElement("button", { onClick: () => { onCreateFundraiser(fundCause.trim(), Number(fundGoal), fundDeadline || null); setShowFundraiserForm(false); setFundCause(""); setFundGoal(""); setFundDeadline(""); }, disabled: !fundCause.trim() || !fundGoal, className: "w-full mt-2 py-3 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary, opacity: (!fundCause.trim() || !fundGoal) ? 0.5 : 1 } }, t("bd_jma_altbraat")))),
-        showTaskForm && (React.createElement(ToolSheet, { title: t("qayma_mham"), onClose: () => setShowTaskForm(false) },
+        showTaskForm && (React.createElement(ToolSheet, { title: editingTasksId ? tl("تعديل قائمة المهامّ", "Edit task list") : t("qayma_mham"), onClose: () => { setShowTaskForm(false); setEditingTasksId(null); } },
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: taskListTitle, onChange: (e) => setTaskListTitle(e.target.value), placeholder: t("anwan_alqayma_mthal_thdyr"), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             taskDrafts.map((td, i) => {
                 var _a;
@@ -2240,11 +2245,13 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                         const validTasks = taskDrafts.filter((t) => t.text.trim());
                         if (!taskListTitle.trim() || validTasks.length === 0)
                             return;
-                        onCreateTaskList(taskListTitle.trim(), validTasks);
+                        if (editingTasksId && onEditTaskList) onEditTaskList(editingTasksId, taskListTitle.trim(), validTasks);   // C164
+                        else onCreateTaskList(taskListTitle.trim(), validTasks);
+                        setEditingTasksId(null);
                         setShowTaskForm(false);
                         setTaskListTitle("");
                         setTaskDrafts([{ text: "", assigneeId: (_a = group.members[0]) === null || _a === void 0 ? void 0 : _a.id, dueAt: "" }]);
-                    }, className: "flex-1 py-3 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary } }, t("nshr_qayma_almham"))))),
+                    }, className: "flex-1 py-3 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary } }, editingTasksId ? tl("حفظ التعديل", "Save changes") : t("nshr_qayma_almham"))))),
         false && (React.createElement("div", { style: { borderTop: `1px solid ${colors.border}`, backgroundColor: colors.primaryLight } },
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 py-1.5` },
                 React.createElement("div", { className: "w-7 h-7 rounded-full flex items-center justify-center animate-pulse shrink-0", style: { backgroundColor: colors.primary } },
@@ -2332,19 +2339,19 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                 React.createElement(Paperclip, { size: 16, color: showAttachMenu ? "#fff" : colors.textMuted })),
             showToolsMenu && React.createElement("div", { onClick: () => setShowToolsMenu(false), style: { position: "fixed", inset: 0, zIndex: 9 } }),
             showToolsMenu && (React.createElement("div", { className: "absolute bottom-14 right-16 rounded-2xl border shadow-lg overflow-hidden z-10 backdrop-blur-md sawa-pop-in", style: { backgroundColor: colors.card + "ee", borderColor: colors.border } },
-                React.createElement("button", { onClick: () => openTool("poll"), className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border, minWidth: 190 } },
+                !group.secret && React.createElement("button", { onClick: () => openTool("poll"), className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border, minWidth: 190 } },
                     React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: colors.textMuted + "22" } },
                         React.createElement(BarChart3, { size: 15, color: colors.textMuted })),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("asttlaa"))),
-                React.createElement("button", { onClick: () => openTool("bill"), className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border, minWidth: 190 } },
+                !group.secret && React.createElement("button", { onClick: () => openTool("bill"), className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border, minWidth: 190 } },
                     React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary + "22" } },
                         React.createElement(Banknote, { size: 15, color: colors.primary })),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("aqtsam_fatwra"))),
-                React.createElement("button", { onClick: () => openTool("fund"), className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border } },
+                !group.secret && React.createElement("button", { onClick: () => openTool("fund"), className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border } },
                     React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: colors.accent + "22" } },
                         React.createElement(Gift, { size: 15, color: colors.accent })),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("jma_tbraat"))),
-                React.createElement("button", { onClick: () => openTool("tasks"), className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border } },
+                React.createElement("button", { onClick: () => { setEditingTasksId(null); setTaskListTitle(""); setTaskDrafts([{ text: "", assigneeId: (group.members[0] || {}).id, dueAt: "" }]); openTool("tasks"); }, className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3 border-b`, style: { borderColor: colors.border, minWidth: 190 } },
                     React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: colors.success + "22" } },
                         React.createElement(CheckCircle2, { size: 15, color: colors.success })),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("qayma_mham"))),
@@ -2355,7 +2362,7 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
                         React.createElement("span", { className: "text-xs font-bold block", style: { color: colors.text } }, t("bd_mhadtha_swtya")),
                         React.createElement("span", { className: "text-[9px]", style: { color: colors.textMuted } }, t("ghrfa_mftwha_bla_rnyn"))))))),
             // C154: أثناء الكتابة تختفي «+» والرموز و@ فيتّسع حقل الكتابة (خاصّةً مع الخطّ الكبير)
-            !group.secret && !text.trim() && React.createElement("button", { "aria-label": t("idafa"), onClick: () => { setShowAttachMenu(false); setShowToolsMenu(!showToolsMenu); }, className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: showToolsMenu ? colors.primary : colors.bg } },
+            !text.trim() && React.createElement("button", { "aria-label": t("idafa"), onClick: () => { setShowAttachMenu(false); setShowToolsMenu(!showToolsMenu); }, className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: showToolsMenu ? colors.primary : colors.bg } },
                 React.createElement(Plus, { size: 16, color: showToolsMenu ? "#fff" : colors.textMuted })),
             onSendSticker && (!text.trim() || showGStickers) && React.createElement("button", { "aria-label": t("rmwz_tabyrya"), onClick: () => { setShowGStickers(!showGStickers); setShowToolsMenu(false); setShowAttachMenu(false); }, className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: showGStickers ? colors.primary : colors.bg } },
                 React.createElement(Smile, { size: 16, color: showGStickers ? "#fff" : colors.textMuted })),
@@ -2369,6 +2376,16 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
         React.createElement(RecordingBar, { isRecording: recorder.isRecording, seconds: recorder.seconds, micError: recorder.micError, onCancel: recorder.cancel, maxSeconds: recorder.maxSeconds }),
         viewingImage && (() => { const bItems = mediaBatchOf(mediaItems, viewingImage); return React.createElement(MediaLightbox, { items: bItems, startIndex: Math.max(0, bItems.findIndex((it) => it.url === viewingImage)), onClose: () => setViewingImage(null), onForward: (it) => { setViewingImage(null); setForwardingText({ id: it.id, text: it.name, cid: group.id }); } }); })(),
         forwardingText && (React.createElement(ForwardPickerScreen, { conversations: allConversations, groups: allGroups, contacts: contactsForForward, currentConversationId: group.id, onForward: (destinationIds) => { (forwardingText.multi || [forwardingText]).forEach((x) => onForward(x, destinationIds)); if (forwardingText.multi) setSel(null); setForwardingText(null); }, onClose: () => setForwardingText(null) })),
+        // C164: ⋮ قائمة المهامّ
+        taskMenu && React.createElement(MsgActionSheet, { colors, onClose: () => setTaskMenu(null), preview: "✅ " + (taskMenu.title || ""), onReact: null,
+            items: [
+                ...((taskMenu.creatorId || taskMenu.senderId) === myUserId || isAdmin ? [{ icon: Edit2, label: t("tadyl"), act: () => {
+                    const m = taskMenu, iso = (ts) => { try { return ts ? new Date(ts).toISOString().slice(0, 10) : ""; } catch (e) { return ""; } };
+                    setTaskListTitle(m.title || ""); setTaskDrafts((m.tasks || []).map((tk) => ({ id: tk.id, text: tk.text, assigneeId: tk.assigneeId, dueAt: iso(tk.dueAt) })));
+                    setEditingTasksId(m.id); setShowToolsMenu(false); setShowPollForm(false); setShowBillForm(false); setShowFundraiserForm(false); setShowTaskForm(true); } }] : []),
+                { icon: Share2, label: t("twjyh_2"), act: () => setForwardingText({ id: taskMenu.id, text: "✅ " + (taskMenu.title || ""), cid: group.id }) },
+                ...(onDeleteMessage ? [{ icon: Trash2, label: t("hdhf"), danger: true, act: () => setGDel({ id: taskMenu.id, canAll: (taskMenu.creatorId || taskMenu.senderId) === myUserId || isAdmin }) }] : []),
+            ] }),
         // C101: ورقةٌ مضغوطة كالخاصّة
         groupMsgMenu && React.createElement(MsgActionSheet, { colors, onClose: () => setGroupMsgMenu(null), preview: groupMsgMenu.text || "",
             onReact: onReact && !groupMsgMenu.deleted ? (e) => onReact(groupMsgMenu.id, e) : null,

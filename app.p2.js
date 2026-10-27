@@ -1228,6 +1228,19 @@ function NativeAppLockCard() {
         st.on && React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mt-3` }, opts.map((o) => React.createElement("button", { key: o.v, onClick: () => { if (o.v !== st.after) ask(true, o.v); }, disabled: busy, className: "rounded-full px-3 py-1.5 text-xs border", style: { backgroundColor: st.after === o.v ? colors.primary : colors.card, color: st.after === o.v ? "#fff" : colors.text, borderColor: st.after === o.v ? colors.primary : colors.border } }, o.l))),
         msg && React.createElement("p", { className: `text-[11px] mt-2 font-bold ${textStart()}`, style: { color: "#c0392b" } }, msg));
 }
+function NotifAvatarRow() {
+    const { colors } = useTheme();
+    const SC = window.SawaChat;
+    const [on, setOn] = useState(() => { try { return SC.notifAvatars(); } catch (e) { return true; } });
+    return React.createElement(Card, { className: "mb-2" },
+        React.createElement("div", { className: `flex ${rowEnd()} items-center gap-2.5` },
+            React.createElement("button", { onClick: () => { const v = !on; setOn(v); SC.setNotifAvatars(v); }, "aria-label": tl("صور المرسلين في الإشعارات", "Sender photos in notifications"), className: "w-11 h-6 rounded-full relative shrink-0", style: { backgroundColor: on ? colors.primary : colors.border } },
+                React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [on ? "right" : "left"]: 2 } })),
+            React.createElement("div", { className: `flex-1 ${textStart()}` },
+                React.createElement("span", { className: "text-sm font-bold block", style: { color: colors.text } }, tl("صور المرسلين في الإشعارات", "Sender photos in notifications")),
+                React.createElement("p", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, tl("تظهر صورة المرسل بجانب الإشعار، أو شعار سوا إن أطفأتها", "Show the sender's photo next to notifications, or the Sawa logo when off"))),
+            React.createElement(Image, { size: 16, color: colors.textMuted })));
+}
 function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiometricEnabled, autoLockDelay, setAutoLockDelay, remainingCodes, onLockNow, onOpenSessions, profilePhoto, setProfilePhoto, interfaceLanguage, setInterfaceLanguage, pinLockEnabled, setPinLockEnabled, browserNotifEnabled, onToggleBrowserNotif, statusOption, setStatusOption, customStatusMessage, setCustomStatusMessage, redeemedReferralCode, onRedeemReferral, blockUnsolicited, setBlockUnsolicited, identityVerified, chatBackupEnabled, setChatBackupEnabled, onDeleteKeys, backendLinked, onUnlink, }) {
     const { colors, isDark, toggleDark, accentKey, setAccentKey, accentThemes, fontScale, setFontScale, highContrast, setHighContrast, dataSaver, setDataSaver } = useTheme();
     const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
@@ -1324,6 +1337,8 @@ function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiome
                     React.createElement("span", { className: `text-sm font-bold flex-1 ${textStart()}`, style: { color: colors.text } }, RELEASE_UI ? tl("الإشعارات", "Notifications") : t("ishaarat_almtsfh_alhqyqya")),
                     React.createElement(BellIcon, { size: 16, color: colors.textMuted })),
                 React.createElement("p", { className: `text-[10px] mt-2 ${textStart()}`, style: { color: colors.textMuted } }, t("ystkhdm_idhn_alishaarat_alfaly"))),
+            // C164: صور المرسلين في إشعارات تطبيق أندرويد (الدائرة بجانب الإشعار) — أو شعار سوا
+            window.SawaNativeBridge && window.SawaChat && window.SawaChat.setNotifAvatars && React.createElement(NotifAvatarRow, null),
             !IS_RAHIM && !RELEASE_UI && React.createElement(ReferralSection, { myCode: MY_REFERRAL_CODE, redeemedCode: redeemedReferralCode, onRedeem: onRedeemReferral }),
             !IS_RAHIM && !RELEASE_UI && React.createElement("p", { className: "text-xs font-bold mt-1 mb-2", style: { color: colors.textMuted } }, t("haltk")),
             !IS_RAHIM && !RELEASE_UI && React.createElement(Card, null,

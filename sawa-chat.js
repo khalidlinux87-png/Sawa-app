@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c161";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c164";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -1502,9 +1502,23 @@
     toolCall("chat.fund", cid, id, { amount: amount }, function (m) { m.contrib = Object.assign({}, m.contrib); var p = m.contrib[state.uid] || { amount: 0 }; m.contrib[state.uid] = { amount: p.amount + amount, ts: Date.now() }; return m; });
   }
   function sendTasks(cid, title, tasks) {
-    return send(cid, null, { type: "tasks", extra: { title: String(title), tasks: (tasks || []).map(function (t) { return { id: t.id, text: t.text, assigneeId: realId(t.assigneeId), assigneeName: t.assigneeName || "", dueAt: t.dueAt || null }; }) } });
+    return send(cid, null, { type: "tasks", extra: tasksClean(title, tasks) });
+  }
+  // C164: تعديل قائمة المهامّ (منشئها أو المشرف) — في السرّيّة: المحتوى مشفّرٌ من جديد للرسالة نفسها
+  function tasksClean(title, tasks) {
+    return { title: String(title || "").slice(0, 200), tasks: (tasks || []).slice(0, 50).map(function (t, i) { return { id: t.id || ("t" + Date.now().toString(36) + i), text: String(t.text || "").slice(0, 300), assigneeId: t.assigneeId ? realId(t.assigneeId) : null, assigneeName: t.assigneeName || "", dueAt: t.dueAt || null }; }) };
+  }
+  function editTasks(cid, id, title, tasks) {
+    var f = findMsg(cid, id); if (!f) { notYet(); return Promise.resolve(null); }
+    var ex = tasksClean(title, tasks);
+    if (e2eOn(chats[cid])) {
+      return e2e.encrypt(chats[cid], id, { extra: ex }).then(function (en) { return call("chat.tasksEdit", { cid: cid, day: f.day, id: id, enc: en }); }).catch(function (e) { toast(e2eErrText(e)); });
+    }
+    patchLocal(cid, id, function (m) { m.extra = Object.assign({}, m.extra, ex, { editedAt: Date.now() }); return m; });
+    return call("chat.tasksEdit", Object.assign({ cid: cid, day: f.day, id: id }, ex)).catch(fail);
   }
   function setTask(cid, id, taskId, patch) {
+    if (patch && patch.note != null && e2eOn(chats[cid])) { toast(L("الملاحظات غير متاحة في المحادثة السرّيّة (تبقى المهمّة نفسها مشفّرة)", "Notes aren't available in secret chats")); return; }   // C164
     toolCall("chat.task", cid, id, Object.assign({ taskId: taskId }, patch), function (m) { m.tstate = Object.assign({}, m.tstate); m.tstate[taskId] = Object.assign({}, m.tstate[taskId], patch); return m; });
   }
   // نصّ رسائل النظام
@@ -1560,7 +1574,7 @@
     }
     if (m.type === "tasks") {
       var ts = m.tstate || {};
-      o.type = "taskList"; o.title = ex.title || "";
+      o.type = "taskList"; o.title = ex.title || ""; o.creatorId = appId(m.by); o.secret = !!(c && e2eOn(c)); o.editedAt = ex.editedAt || m.edited || null;   // C164
       o.tasks = (ex.tasks || []).map(function (t) { var s = ts[t.id] || {}; return { id: t.id, text: t.text, assigneeId: appId(t.assigneeId), assigneeName: t.assigneeName || personName(t.assigneeId, c), dueAt: t.dueAt || null, status: s.status || "pending", note: s.note || "" }; });
       return o;
     }
@@ -1824,6 +1838,12 @@
     // C100: الموقع وبطاقة جهة الاتّصال تُوجَّه بمحتواها (كانت تُرسل نصّاً فارغاً فتُرفض «لم تُرسل»)
     if (m.type === "location" && ex.lat != null) { send(toCid, null, { type: "location", fwd: true, extra: { lat: ex.lat, lng: ex.lng, acc: ex.acc || null, label: ex.label || null } }); return Promise.resolve(true); }
     if (m.contact) { send(toCid, m.text || "", { fwd: true, contact: m.contact }); return Promise.resolve(true); }
+    // C164: قائمة المهامّ تُوجَّه نسخةً جديدة (حالتها من جديد؛ المكلَّف يبقى إن كان عضواً في المحادثة الأخرى)
+    if (m.type === "tasks" && ex.tasks) {
+      var dm = (chats[toCid] && chats[toCid].members) || [];
+      send(toCid, null, { type: "tasks", fwd: true, extra: { title: ex.title || "", tasks: (ex.tasks || []).map(function (t) { var keep = t.assigneeId && dm.indexOf(t.assigneeId) >= 0; return { id: t.id, text: t.text, assigneeId: keep ? t.assigneeId : null, assigneeName: keep ? (t.assigneeName || "") : "", dueAt: t.dueAt || null }; }) } });
+      return Promise.resolve(true);
+    }
     if (["poll", "bill", "fund", "tasks", "system"].indexOf(m.type) >= 0) { toast(L("هذا النوع لا يُوجَّه", "This can't be forwarded")); return Promise.resolve(null); }
     if (["image", "video", "file", "voice"].indexOf(m.type) < 0 || !ex.mid) { if (!String(m.text || "").trim()) return Promise.resolve(null); send(toCid, m.text || "", { fwd: true }); return Promise.resolve(true); }
     toast(L("جارٍ التوجيه…", "Forwarding…"));
@@ -3455,11 +3475,17 @@
     var lang = isAr() ? "ar" : "en";
     // C151: الآيفون — رمز VoIP (PushKit) مع الجهاز ⇒ الخادم يرسل الرنين إلى شاشة المكالمة في النظام (CallKit)
     var vo = ""; try { vo = (IOSB() && IOSB().voip) || ""; } catch (e) {}
-    if (prev.token === tok && prev.uid === state.uid && (prev.lang || "ar") === lang && (prev.voip || "") === vo && Date.now() - (prev.ts || 0) < 3 * 86400000) return Promise.resolve(true);
-    var pl = { token: tok, ua: (navigator.userAgent || "").slice(0, 150), lang: lang, prevUid: prev.uid && prev.uid !== state.uid ? prev.uid : null };
+    var noav = !!lsGet("sawa_notif_noav", false);   // C164: «صور المرسلين في الإشعارات»
+    if (prev.token === tok && prev.uid === state.uid && (prev.lang || "ar") === lang && (prev.voip || "") === vo && !!prev.noav === noav && Date.now() - (prev.ts || 0) < 3 * 86400000) return Promise.resolve(true);
+    var pl = { token: tok, ua: (navigator.userAgent || "").slice(0, 150), lang: lang, noav: noav, prevUid: prev.uid && prev.uid !== state.uid ? prev.uid : null };
     if (vo) { pl.voip = vo; pl.voipEnv = (IOSB() && IOSB().voipEnv) || "production"; }
     return call("push.register", pl)
-      .then(function () { lsSet("sawa_push", { token: tok, uid: state.uid, ts: Date.now(), lang: lang, voip: vo }); return true; });
+      .then(function () { lsSet("sawa_push", { token: tok, uid: state.uid, ts: Date.now(), lang: lang, voip: vo, noav: noav }); return true; });
+  }
+  function notifAvatars() { return !lsGet("sawa_notif_noav", false); }
+  function setNotifAvatars(on) {
+    lsSet("sawa_notif_noav", !on);
+    try { if (state.uid && pushState() === "granted") pushToken().then(registerToken).catch(function () {}); } catch (e) {}
   }
   // C151: وصل رمز VoIP من الآيفون (أو تغيّر) ⇒ نعيد تسجيل الجهاز به
   global.__sawaNativeVoip = function () {
@@ -5769,6 +5795,13 @@
       if (!rt) { var rf = findMsg(cid, m.reply.id); var rp = rf && rf.msg.enc ? plain[encKey(cid, rf.msg)] : null; if (rp && typeof rp.text === "string") rt = rp.text; }   // الاقتباس من نسختي المفكوكة
       o.reply = { id: m.reply.id, day: m.reply.day || null, by: p.reply && typeof p.reply.by === "string" ? p.reply.by : null, text: rt.slice(0, 200) };
     }
+    if (m.type === "tasks") {   // C164: قائمة المهامّ المشفّرة — العنوان والمهامّ من enc، والحالة (tstate) ظاهرةٌ للخادم بلا نصّ
+      var tx = p.extra || {}, okId = function (v) { return /^[A-Za-z0-9_-]{1,40}$/.test(String(v || "")); };
+      var tl0 = (Array.isArray(tx.tasks) ? tx.tasks : []).filter(function (t) { return t && okId(t.id) && typeof t.text === "string"; }).slice(0, 50).map(function (t) {
+        return { id: String(t.id), text: t.text.slice(0, 300), assigneeId: /^[A-Za-z0-9_-]{1,128}$/.test(String(t.assigneeId || "")) ? String(t.assigneeId) : null, assigneeName: typeof t.assigneeName === "string" ? t.assigneeName.slice(0, 80) : "", dueAt: typeof t.dueAt === "number" ? t.dueAt : null }; });
+      if (!tl0.length) { o.type = "text"; o.e2eErr = true; o.text = L("🔒 تعذّر فكّ تشفير هذه الرسالة", "🔒 Couldn't decrypt this message"); delete o.extra; return o; }
+      o.extra = { title: typeof tx.title === "string" ? tx.title.slice(0, 200) : "", tasks: tl0 };
+    }
     if (m.type === "location") {
       var lx = p.extra || {}, la = Number(lx.lat), ln = Number(lx.lng);
       if (!(la >= -90 && la <= 90 && ln >= -180 && ln <= 180)) { o.type = "text"; o.e2eErr = true; o.text = L("🔒 تعذّر فكّ تشفير هذه الرسالة", "🔒 Couldn't decrypt this message"); delete o.extra; return o; }
@@ -5964,7 +5997,7 @@
     createGroup: createGroup, updateGroup: updateGroup, addMembers: addMembers, removeMember: removeMember, setAdmin: setAdmin,
     leaveGroup: leaveGroup, shareGroupInvite: shareGroupInvite, joinGroup: joinGroup,
     sendPoll: sendPoll, vote: vote, editPoll: editPoll, sendBill: sendBill, billPaid: billPaid, sendFund: sendFund, contribute: contribute,
-    sendTasks: sendTasks, setTask: setTask, deleteForAll: deleteForAll, deleteForMe: deleteForMe, react: react, pin: pin,
+    sendTasks: sendTasks, setTask: setTask, editTasks: editTasks, notifAvatars: notifAvatars, setNotifAvatars: setNotifAvatars,   // C164 deleteForAll: deleteForAll, deleteForMe: deleteForMe, react: react, pin: pin,
     setDisappear: setDisappear, openDm: openDm, openSaved: openSaved, dmWith: function (u) { return state.uid ? dmWith(u) : null; },
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
     _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,
