@@ -1709,6 +1709,158 @@ function ToolSheet({ title, onClose, children }) {
                     React.createElement(X, { size: 17, color: colors.text }))),
             React.createElement("div", { className: "px-4 pt-3 pb-4 overflow-y-auto", style: { flex: 1, minHeight: 0 } }, children))));
 }
+// C173: بطاقة قائمة المهامّ — تقدّم · إسنادٌ مرن («لأيّ عضو» ← «أنا عليها») · طيّ المنجَز · «+ مهمّة» سريعة · من أنجزها ومتى
+const TASK_LATE_MS = 24 * 3600000;   // الموعد يومٌ كامل: تتأخّر بعد نهايته
+function taskIsLate(task, now) { return task.status !== "done" && task.dueAt && now > task.dueAt + TASK_LATE_MS; }
+function taskDueLabel(d) { try { return new Date(d).toLocaleDateString(loc(), { day: "numeric", month: "short" }); } catch (e) { return ""; } }
+function TaskAssignSheet({ task, members, myUserId, boss, onPick, onClose }) {
+    const { colors } = useTheme();
+    const mine = task.assigneeId === myUserId;
+    const row = (key, label, sub, act, on) => React.createElement("button", { key, onClick: act, className: `w-full flex ${rowStart()} items-center gap-3 py-2.5 border-b ${textStart()}`, style: { borderColor: colors.border } },
+        React.createElement("div", { className: "flex-1 min-w-0" },
+            React.createElement("p", { className: "text-[14px] font-bold truncate", style: { color: on ? colors.primary : colors.text } }, label),
+            sub && React.createElement("p", { className: "text-[11px]", style: { color: colors.textMuted } }, sub)),
+        on && React.createElement(Check, { size: 16, color: colors.primary }));
+    return React.createElement(FamSheet, { title: tl("المسؤول عن المهمّة", "Task owner"), subtitle: task.text, onClose, z: 70, maxHeight: "75%" },
+        boss ? React.createElement(React.Fragment, null,
+            row("_any", tl("لأيّ عضو", "Anyone"), tl("يتولّاها من يضغط «أنا عليها»", "Whoever taps “I'm on it”"), () => onPick(""), !task.assigneeId),
+            (members || []).map((mm) => row(mm.id, mm.id === myUserId ? tl("أنا", "Me") : mm.name, null, () => onPick(mm.id), task.assigneeId === mm.id)))
+            : React.createElement(React.Fragment, null,
+                !task.assigneeId && row("_claim", tl("أنا عليها", "I'm on it"), tl("تصير المسؤول عنها", "You become the owner"), () => onPick({ claim: true }), false),
+                mine && row("_rel", tl("تخلَّ عنها", "Give it up"), tl("تعود «لأيّ عضو»", "Back to “anyone”"), () => onPick({ claim: false }), false),
+                !mine && task.assigneeId && React.createElement("p", { className: `text-[12px] py-3 ${textStart()}`, style: { color: colors.textMuted } }, tl("يغيّر المسؤولَ منشئُ القائمة أو المشرف.", "Only the list creator or an admin can reassign."))));
+}
+function TaskListCard({ m, myUserId, isAdmin, members, onToggle, onPatch, onAdd, onAddNote, onMenu }) {
+    const { colors } = useTheme();
+    const [showDone, setShowDone] = useState(false);
+    const [adding, setAdding] = useState(false);
+    const [draft, setDraft] = useState("");
+    const [noteFor, setNoteFor] = useState(null);
+    const [noteDraft, setNoteDraft] = useState("");
+    const [assignFor, setAssignFor] = useState(null);
+    const now = Date.now();
+    const boss = m.creatorId === myUserId || !!isAdmin;
+    const tasks = m.tasks || [];
+    const open = tasks.filter((x) => x.status !== "done").sort((a, b) => {
+        const am = a.assigneeId === myUserId ? 0 : 1, bm = b.assigneeId === myUserId ? 0 : 1;
+        if (am !== bm) return am - bm;   // مهامّي أوّلاً
+        if (!a.dueAt && !b.dueAt) return 0; if (!a.dueAt) return 1; if (!b.dueAt) return -1; return a.dueAt - b.dueAt;
+    });
+    const done = tasks.filter((x) => x.status === "done").sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    const pct = tasks.length ? Math.round(done.length / tasks.length * 100) : 0;
+    const canAdd = onAdd && (!m.secret || boss);
+    const canToggle = (task) => task.assigneeId === myUserId || !task.assigneeId || boss;
+    const box = (task) => {
+        const on = task.status === "done", can = canToggle(task);
+        return React.createElement("button", { "aria-label": on ? tl("إلغاء الإنجاز", "Mark not done") : tl("تمّ", "Done"), disabled: !can, onClick: () => can && onToggle(task.id), className: "shrink-0 flex items-center justify-center", style: { width: 26, height: 26, opacity: can ? 1 : 0.45 } },
+            React.createElement("div", { className: "rounded-md flex items-center justify-center", style: { width: 18, height: 18, border: "2px solid " + (on ? colors.success : can ? colors.primary : colors.border), backgroundColor: on ? colors.success : "transparent" } },
+                on && React.createElement(Check, { size: 12, color: "#fff" })));
+    };
+    const who = (task) => {
+        const mine = task.assigneeId === myUserId;
+        if (!task.assigneeId) return task.status === "done" ? null : React.createElement("button", { onClick: () => boss ? setAssignFor(task) : onPatch(task.id, { claim: true }), className: "text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0", style: { color: colors.primary, backgroundColor: colors.primary + "14" } }, boss ? tl("لأيّ عضو ▾", "Anyone ▾") : tl("أنا عليها ✋", "I'm on it ✋"));
+        return React.createElement("button", { onClick: () => (boss || mine) && setAssignFor(task), className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 truncate", style: { maxWidth: 96, color: mine ? "#fff" : colors.primary, backgroundColor: mine ? colors.primary : colors.primary + "14" } }, mine ? tl("أنت", "You") : (task.assigneeName || tl("عضو", "Member")));
+    };
+    const taskRow = (task) => {
+        const late = taskIsLate(task, now), on = task.status === "done";
+        return React.createElement("div", { key: task.id, className: "py-1.5 border-t", style: { borderColor: colors.border } },
+            React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5` },
+                box(task),
+                React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+                    React.createElement("p", { className: "text-[12px] leading-snug", style: { color: on ? colors.textMuted : colors.text, textDecoration: on ? "line-through" : "none", wordBreak: "break-word" } }, task.text),
+                    (on && task.doneByName) ? React.createElement("p", { className: "text-[9.5px]", style: { color: colors.success } }, tl("✓ أنجزها ", "✓ Done by ") + task.doneByName + (task.doneAt ? " · " + taskDueLabel(task.doneAt) : ""))
+                        : task.dueAt ? React.createElement("p", { className: `text-[9.5px] flex ${rowStart()} items-center gap-1`, style: { color: late ? colors.danger : colors.textMuted } }, late && React.createElement(AlertTriangle, { size: 9, color: colors.danger }), (late ? tl("متأخّرة · ", "Late · ") : tl("الموعد ", "Due ")) + taskDueLabel(task.dueAt)) : null),
+                who(task)),
+            task.note ? React.createElement("p", { className: `text-[10px] mt-0.5 ${me("8")} ${textStart()}`, style: { color: colors.textMuted } }, "📝 " + task.note)
+                : noteFor === task.id ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-1 ${me("8")}` },
+                    React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: noteDraft, onChange: (e) => setNoteDraft(e.target.value), placeholder: t("mlahza_qsyra"), autoFocus: true, className: "flex-1 border rounded px-2 py-1 text-[10px]", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
+                    React.createElement("button", { "aria-label": t("takyd"), onClick: () => { if (noteDraft.trim()) onAddNote(task.id, noteDraft.trim()); setNoteFor(null); setNoteDraft(""); } }, React.createElement(Check, { size: 13, color: colors.success })),
+                    React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => { setNoteFor(null); setNoteDraft(""); } }, React.createElement(X, { size: 13, color: colors.textMuted })))
+                : (!m.secret && !on && task.assigneeId === myUserId) ? React.createElement("button", { onClick: () => { setNoteFor(task.id); setNoteDraft(""); }, className: `text-[9px] ${me("8")}`, style: { color: colors.primary } }, t("idafa_mlahza")) : null);
+    };
+    const submitAdd = () => { const v = draft.trim(); if (!v) { setAdding(false); return; } onAdd(v); setDraft(""); };
+    return React.createElement("div", { "data-message-id": m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
+        React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5` },
+            React.createElement(CheckCircle2, { size: 14, color: pct === 100 ? colors.success : colors.primary }),
+            React.createElement("span", { className: `text-xs font-bold flex-1 min-w-0 ${textStart()}`, style: { color: colors.text } }, m.title, m.editedAt ? React.createElement("span", { className: "text-[9px] font-normal", style: { color: colors.textMuted } }, tl(" · عُدّلت", " · edited")) : null),
+            React.createElement("span", { className: "text-[10px] font-bold shrink-0", style: { color: pct === 100 ? colors.success : colors.textMuted } }, done.length + "/" + tasks.length),
+            React.createElement("button", { "aria-label": tl("خيارات القائمة", "List options"), onClick: onMenu, className: "w-7 h-7 rounded-full flex items-center justify-center shrink-0" }, React.createElement(MoreVertical, { size: 15, color: colors.textMuted }))),
+        React.createElement("div", { className: "h-1.5 rounded-full mt-1.5 mb-1", style: { backgroundColor: colors.border } },
+            React.createElement("div", { className: "h-1.5 rounded-full", style: { width: pct + "%", backgroundColor: colors.success, transition: "width .3s" } })),
+        open.map(taskRow),
+        open.length === 0 && React.createElement("p", { className: `text-[11px] py-1.5 ${textStart()}`, style: { color: colors.success } }, tl("🎉 اكتملت كلّ المهامّ", "🎉 All tasks done")),
+        done.length > 0 && React.createElement("button", { onClick: () => setShowDone(!showDone), className: `w-full flex ${rowStart()} items-center gap-1 pt-1.5 border-t text-[10.5px] font-bold`, style: { borderColor: colors.border, color: colors.textMuted } },
+            tl("✓ المنجَزة (" + done.length + ") ", "✓ Done (" + done.length + ") "), showDone ? "▴" : "▾"),
+        showDone && done.map(taskRow),
+        canAdd && (adding ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 pt-1.5 border-t`, style: { borderColor: colors.border } },
+            React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: draft, autoFocus: true, onChange: (e) => setDraft(e.target.value), onKeyDown: (e) => { if (e.key === "Enter") submitAdd(); }, placeholder: tl("مهمّة جديدة…", "New task…"), className: "flex-1 border rounded-lg px-2 py-1.5 text-[11.5px]", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
+            React.createElement("button", { "aria-label": tl("إضافة", "Add"), onClick: submitAdd, className: "w-8 h-8 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary } }, React.createElement(Check, { size: 15, color: "#fff" })),
+            React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => { setAdding(false); setDraft(""); } }, React.createElement(X, { size: 15, color: colors.textMuted })))
+            : React.createElement("button", { onClick: () => setAdding(true), className: `w-full pt-1.5 border-t text-[11px] font-bold ${textStart()}`, style: { borderColor: colors.border, color: colors.primary } }, tl("+ مهمّة", "+ Task"))),
+        assignFor && React.createElement(TaskAssignSheet, { task: assignFor, members, myUserId, boss, onClose: () => setAssignFor(null),
+            onPick: (v) => { setAssignFor(null); if (typeof v === "string") onPatch(assignFor.id, { owner: v }); else onPatch(assignFor.id, v); } }));
+}
+// C173: «مهامّي» — كلّ ما أُسند إليّ في كلّ المجموعات (والقوائم التي أنشأتُها) · يُفتح من ⋮ في «المحادثات» ومن شريط الأدوات
+function openMyTasks() { try { window.dispatchEvent(new CustomEvent("sawa-my-tasks")); } catch (e) { } }
+function MyTasksHost({ openChat }) {
+    const [on, setOn] = useState(false);
+    useEffect(() => { const f = () => setOn(true); window.addEventListener("sawa-my-tasks", f); return () => window.removeEventListener("sawa-my-tasks", f); }, []);
+    return on ? React.createElement(MyTasksSheet, { openChat, onClose: () => setOn(false) }) : null;
+}
+function MyTasksSheet({ openChat, onClose }) {
+    const { colors } = useTheme();
+    const { showToast } = useToast();
+    const [lists, setLists] = useState(null);
+    const [err, setErr] = useState(null);
+    const [tab, setTab] = useState("mine");
+    const SC = window.SawaChat;
+    const load = () => {
+        if (!SC || !SC.myTasks) { setErr(tl("سجّل الدخول لترى مهامّك", "Sign in to see your tasks")); return; }
+        SC.myTasks().then((l) => { setLists(l || []); setErr(null); }).catch((e) => setErr(tl("تعذّر تحميل المهامّ — تحقّق من الاتصال ثمّ أعد المحاولة", "Couldn't load tasks — check your connection") + (e && e.message && !/firebase|undefined/i.test(e.message) ? " (" + e.message + ")" : "")));
+    };
+    useEffect(load, []);
+    const now = Date.now();
+    const mineRows = [], othersRows = [];
+    (lists || []).forEach((l) => (l.tasks || []).forEach((tk) => {
+        if (tk.status === "done") return;
+        const r = { l, tk };
+        if (tk.assigneeId === "u-1") mineRows.push(r);
+        else if (l.creatorId === "u-1") othersRows.push(r);
+    }));
+    const byDue = (a, b) => (!!taskIsLate(b.tk, now) - !!taskIsLate(a.tk, now)) || ((a.tk.dueAt || 9e15) - (b.tk.dueAt || 9e15));
+    mineRows.sort(byDue); othersRows.sort(byDue);
+    const toggle = (r) => {
+        if (!SC || !SC.setTask) return;
+        SC.setTask(r.l.cid, r.l.id, r.tk.id, { status: "done" }, r.l.day);
+        setLists((p) => (p || []).map((l) => l !== r.l ? l : Object.assign({}, l, { tasks: l.tasks.map((x) => x.id === r.tk.id ? Object.assign({}, x, { status: "done" }) : x) })));
+        showToast(tl("✓ أُنجزت", "✓ Done"), "success");
+    };
+    const go = (r) => { onClose(); if (openChat) openChat(r.l.cid); setTimeout(() => jumpToMessage(r.l.id, null, showToast), 900); };
+    const rows = tab === "mine" ? mineRows : othersRows;
+    const sec = (label, arr) => arr.length ? React.createElement(React.Fragment, null,
+        React.createElement("p", { className: `text-[11px] font-extrabold mt-3 mb-1 ${textStart()}`, style: { color: colors.textMuted } }, label + " (" + arr.length + ")"),
+        arr.map((r) => {
+            const late = taskIsLate(r.tk, now);
+            return React.createElement("div", { key: r.l.cid + r.l.id + r.tk.id, className: `flex ${rowStart()} items-center gap-2 py-2 border-b`, style: { borderColor: colors.border } },
+                tab === "mine" ? React.createElement("button", { "aria-label": tl("تمّ", "Done"), onClick: () => toggle(r), className: "shrink-0 w-7 h-7 flex items-center justify-center" },
+                    React.createElement("div", { className: "rounded-md", style: { width: 18, height: 18, border: "2px solid " + colors.primary } })) : React.createElement("span", { className: "text-[13px] shrink-0 w-7 text-center" }, "👤"),
+                React.createElement("button", { onClick: () => go(r), className: `flex-1 min-w-0 ${textStart()}` },
+                    React.createElement("p", { className: "text-[13px] font-bold leading-snug", style: { color: colors.text, wordBreak: "break-word" } }, r.tk.text),
+                    React.createElement("p", { className: "text-[10.5px] truncate", style: { color: late ? colors.danger : colors.textMuted } },
+                        (r.l.secret ? "🔒 " : "") + (r.l.chat || tl("مجموعة", "Group")) + " · " + (r.l.title || "") + (tab === "others" ? " · " + (r.tk.assigneeName || tl("لأيّ عضو", "Anyone")) : "") + (r.tk.dueAt ? (late ? tl(" · متأخّرة ", " · late ") : " · ") + taskDueLabel(r.tk.dueAt) : ""))),
+                React.createElement(ChevronLeft, { size: 15, color: colors.textMuted, style: { transform: isRTL() ? "none" : "scaleX(-1)" } }));
+        })) : null;
+    const late = rows.filter((r) => taskIsLate(r.tk, now)), dated = rows.filter((r) => !taskIsLate(r.tk, now) && r.tk.dueAt), none = rows.filter((r) => !r.tk.dueAt);
+    const tabBtn = (k, label, n) => React.createElement("button", { key: k, onClick: () => setTab(k), className: "flex-1 py-2 rounded-full text-[12px] font-extrabold", style: { backgroundColor: tab === k ? colors.primary : "transparent", color: tab === k ? "#fff" : colors.textMuted } }, label + (n ? " · " + n : ""));
+    return React.createElement(FamSheet, { title: tl("مهامّي", "My tasks"), subtitle: tl("ما أُسند إليك في كلّ المجموعات", "Everything assigned to you, across groups"), onClose, z: 65 },
+        React.createElement("div", { className: `flex ${rowStart()} gap-1 p-1 rounded-full mb-1`, style: { backgroundColor: colors.bg } },
+            tabBtn("mine", tl("عليّ", "Mine"), mineRows.length), tabBtn("others", tl("أنشأتُها", "I created"), othersRows.length)),
+        err ? React.createElement("p", { className: `text-[12px] py-4 ${textStart()}`, style: { color: colors.danger } }, err)
+            : lists === null ? React.createElement("p", { className: "text-[12px] py-6 text-center", style: { color: colors.textMuted } }, tl("جارٍ التحميل…", "Loading…"))
+            : rows.length === 0 ? React.createElement("p", { className: "text-[13px] py-8 text-center", style: { color: colors.textMuted } }, tab === "mine" ? tl("لا مهامّ عليك الآن 🎉", "Nothing on your plate 🎉") : tl("لا مهامّ مفتوحة في قوائمك", "No open tasks in your lists"))
+            : React.createElement(React.Fragment, null, sec(tl("متأخّرة", "Late"), late), sec(tl("بموعد", "Scheduled"), dated), sec(tl("بلا موعد", "No date"), none)),
+        React.createElement("p", { className: `text-[10px] mt-4 ${textStart()}`, style: { color: colors.textMuted } }, tl("قوائم المجموعات السرّيّة 🔒 تظهر بعد فتحها على هذا الجهاز.", "Secret-group lists 🔒 show after you open them on this device.")));
+}
 // C172: شريط أدوات المجموعة — المهامّ/الاستطلاعات/التبرّعات/الفواتير النشطة فوق الرسائل للرجوع السريع
 function groupToolInfo(m, myUserId, now) {
     if (!m || m.deleted) return null;
@@ -1774,9 +1926,10 @@ function GroupToolsBar({ groupId, messages, myUserId, win, toast }) {
             active.length > 0 && React.createElement("p", { className: `text-[11px] font-extrabold mt-1 mb-1 ${textStart()}`, style: { color: colors.textMuted } }, tl("النشطة", "Active")),
             active.map((x) => row(x, false)),
             other.length > 0 && React.createElement("p", { className: `text-[11px] font-extrabold mt-3 mb-1 ${textStart()}`, style: { color: colors.textMuted } }, tl("المنتهية والمخفيّة", "Ended & hidden")),
-            other.map((x) => row(x, isHid(x)))));
+            other.map((x) => row(x, isHid(x))),
+            React.createElement("button", { onClick: () => { setShowAll(false); openMyTasks(); }, className: `w-full mt-3 py-2.5 rounded-xl text-[12px] font-extrabold`, style: { color: colors.primary, backgroundColor: colors.primary + "14" } }, tl("✅ كلّ مهامّي في كلّ المجموعات ›", "✅ All my tasks across groups ›"))));
 }
-function GroupChatScreen({ onEditTaskList, group, messages, myUserId, onSend, onSendFile, onSendVoice, onEditMessage, onReact, onDeleteMessage, onTyping, contactsForForward, onSendSticker, contacts = null, onInviteLink, onUpdateGroup, onCreatePoll, onEditPoll, onVotePoll, onCreateBillSplit, onPayBillSplit, onCreateFundraiser, onContributeFundraiser, onCreateTaskList, onToggleTaskStatus, onAddTaskNote, onForward, allConversations, allGroups, draft = "", onSaveDraft, unreadCount = 0, onBack, onRenameGroup, onAddGroupMembers, onRemoveGroupMember, onToggleGroupAdmin, onLeaveGroup }) {
+function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messages, myUserId, onSend, onSendFile, onSendVoice, onEditMessage, onReact, onDeleteMessage, onTyping, contactsForForward, onSendSticker, contacts = null, onInviteLink, onUpdateGroup, onCreatePoll, onEditPoll, onVotePoll, onCreateBillSplit, onPayBillSplit, onCreateFundraiser, onContributeFundraiser, onCreateTaskList, onToggleTaskStatus, onAddTaskNote, onForward, allConversations, allGroups, draft = "", onSaveDraft, unreadCount = 0, onBack, onRenameGroup, onAddGroupMembers, onRemoveGroupMember, onToggleGroupAdmin, onLeaveGroup }) {
     var _a, _b;
     const { colors } = useTheme();
     const { showToast } = useToast();
@@ -1845,7 +1998,7 @@ function GroupChatScreen({ onEditTaskList, group, messages, myUserId, onSend, on
     const [editingTasksId, setEditingTasksId] = useState(null);   // C164: تعديل قائمة مهامّ
     const [taskMenu, setTaskMenu] = useState(null);               // C164: ⋮ قائمة المهامّ
     const [taskListTitle, setTaskListTitle] = useState("");
-    const [taskDrafts, setTaskDrafts] = useState([{ text: "", assigneeId: (_a = group.members[0]) === null || _a === void 0 ? void 0 : _a.id, dueAt: "" }]);
+    const [taskDrafts, setTaskDrafts] = useState([{ text: "", assigneeId: null, dueAt: "" }]);
     const [memberSearch, setMemberSearch] = useState("");
     // C24: أداةٌ واحدة مفتوحة في كلّ مرّة
     const openTool = (k) => { setShowPollForm(k === "poll"); setShowBillForm(k === "bill"); setShowFundraiserForm(k === "fund"); setShowTaskForm(k === "tasks"); setShowToolsMenu(false); setShowAttachMenu(false); };
@@ -2151,48 +2304,11 @@ function GroupChatScreen({ onEditTaskList, group, messages, myUserId, onSend, on
                             t("w_sdg_sp"))))))),
                     React.createElement(Button, { label: t("tbra_alan"), onPress: () => onContributeFundraiser(m.id), disabled: isEnded })));
             }
-            if (m.type === "taskList") {
-                const sortedTasks = [...m.tasks].sort((a, b) => {
-                    if (a.status !== b.status)
-                        return a.status === "done" ? 1 : -1; // المُنجَزة بالأسفل دائماً
-                    if (!a.dueAt && !b.dueAt)
-                        return 0;
-                    if (!a.dueAt)
-                        return 1; // بلا موعد تنزل آخراً بين نفس الحالة
-                    if (!b.dueAt)
-                        return -1;
-                    return a.dueAt - b.dueAt; // الأقرب استحقاقاً أولاً
-                });
-                return (React.createElement("div", { key: m.id, "data-message-id": m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
-                    React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-2` },
-                        React.createElement(CheckCircle2, { size: 14, color: colors.primary }),
-                        React.createElement("span", { className: "text-xs font-bold flex-1 min-w-0", style: { color: colors.text } }, m.title, m.editedAt ? React.createElement("span", { className: "text-[9px] font-normal", style: { color: colors.textMuted } }, tl(" · عُدّلت", " · edited")) : null),
-                        // C164: تعديل · توجيه · حذف
-                        React.createElement("button", { "aria-label": tl("خيارات القائمة", "List options"), onClick: () => setTaskMenu(m), className: "w-7 h-7 rounded-full flex items-center justify-center shrink-0" }, React.createElement(MoreVertical, { size: 15, color: colors.textMuted }))),
-                    sortedTasks.map((task) => {
-                        const isOverdue = task.status !== "done" && task.dueAt && task.dueAt < Date.now();
-                        return (React.createElement("div", { key: task.id, className: "py-1.5 border-t", style: { borderColor: colors.border } },
-                            React.createElement("div", { className: `flex ${rowStart()} items-center justify-between` },
-                                React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
-                                    task.assigneeId === myUserId && (React.createElement("button", { "aria-label": t("takyd"), onClick: () => onToggleTaskStatus(m.id, task.id) },
-                                        React.createElement("div", { className: "w-4 h-4 rounded border-2 flex items-center justify-center", style: { borderColor: task.status === "done" ? colors.success : colors.border, backgroundColor: task.status === "done" ? colors.success : "transparent" } }, task.status === "done" && React.createElement(Check, { size: 10, color: "#fff" })))),
-                                    task.assigneeId !== myUserId && (React.createElement("div", { className: "w-4 h-4 rounded border-2 flex items-center justify-center", style: { borderColor: task.status === "done" ? colors.success : colors.border, backgroundColor: task.status === "done" ? colors.success : "transparent" } }, task.status === "done" && React.createElement(Check, { size: 10, color: "#fff" }))),
-                                    React.createElement("span", { className: "text-[11px]", style: { color: colors.text, textDecoration: task.status === "done" ? "line-through" : "none" } }, task.text)),
-                                React.createElement("div", { className: `${textStart()}` },
-                                    React.createElement("div", { className: "text-[10px] font-bold", style: { color: colors.primary } }, task.assigneeName),
-                                    task.dueAt && (React.createElement("div", { className: `text-[9px] flex ${rowStart()} items-center gap-1`, style: { color: isOverdue ? colors.danger : colors.textMuted } },
-                                        isOverdue && React.createElement(AlertTriangle, { size: 9, color: colors.danger }),
-                                        new Date(task.dueAt).toLocaleDateString(loc(), { day: "numeric", month: "long" }))))),
-                            task.note ? (React.createElement("p", { className: `text-[10px] mt-1 ${me("6")}`, style: { color: colors.textMuted } },
-                                "\uD83D\uDCDD ",
-                                task.note)) : addingNoteFor === task.id ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-1 ${me("6")}` },
-                                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: noteDraft, onChange: (e) => setNoteDraft(e.target.value), placeholder: t("mlahza_qsyra"), autoFocus: true, className: "flex-1 border rounded px-2 py-1 text-[10px]", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
-                                React.createElement("button", { "aria-label": t("takyd"), onClick: () => { if (noteDraft.trim())
-                                        onAddTaskNote(m.id, task.id, noteDraft.trim()); setAddingNoteFor(null); setNoteDraft(""); } },
-                                    React.createElement(Check, { size: 13, color: colors.success })),
-                                React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => { setAddingNoteFor(null); setNoteDraft(""); } },
-                                    React.createElement(X, { size: 13, color: colors.textMuted })))) : m.secret ? null : (React.createElement("button", { onClick: () => { setAddingNoteFor(task.id); setNoteDraft(""); }, className: `text-[9px] mt-1 ${me("6")}`, style: { color: colors.primary } }, t("idafa_mlahza")))));
-                    })));
+            if (m.type === "taskList") {   // C173
+                return React.createElement(TaskListCard, { key: m.id, m, myUserId, isAdmin, members: group.members,
+                    onToggle: (taskId) => onToggleTaskStatus(m.id, taskId), onAddNote: (taskId, note) => onAddTaskNote(m.id, taskId, note),
+                    onPatch: (taskId, patch) => onTaskPatch ? onTaskPatch(m.id, taskId, patch) : showToast(tl("غير متاح هنا", "Not available here"), "info"),
+                    onAdd: onAddTask ? (text) => onAddTask(m.id, text) : null, onMenu: () => setTaskMenu(m) });
             }
             if (m.type === "poll") {
                 const totalVotes = m.options.reduce((s, o) => s + o.votes.length, 0);
@@ -2334,17 +2450,14 @@ function GroupChatScreen({ onEditTaskList, group, messages, myUserId, onSend, on
                 return (React.createElement("div", { key: i, className: "rounded-xl border p-2 mb-2", style: { borderColor: colors.border } },
                     React.createElement("input", { value: td.text, onChange: (e) => setTaskDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, text: e.target.value } : d))), dir: isRTL() ? "rtl" : "ltr", placeholder: t("gc_almhma", { i: i + 1 }), className: "w-full border rounded-xl px-2 py-1.5 text-xs mb-1.5", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
                     React.createElement("div", { className: `flex ${rowStart()} gap-1.5` },
-                        React.createElement("div", { className: "flex-1 relative" },
-                            React.createElement("input", { list: `members-list-${i}`, defaultValue: ((_a = group.members.find((m) => m.id === td.assigneeId)) === null || _a === void 0 ? void 0 : _a.name) || "", onChange: (e) => {
-                                    const found = group.members.find((m) => m.name === e.target.value);
-                                    if (found)
-                                        setTaskDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, assigneeId: found.id } : d)));
-                                }, placeholder: t("bhth"), className: "w-full border rounded-xl px-2 py-1.5 text-[11px]", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
-                            React.createElement("datalist", { id: `members-list-${i}` }, group.members.map((mem) => React.createElement("option", { key: mem.id, value: mem.name })))),
+                        React.createElement("select", { "aria-label": tl("المسؤول", "Owner"), dir: isRTL() ? "rtl" : "ltr", value: td.assigneeId || "", onChange: (e) => { const v = e.target.value || null; setTaskDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, assigneeId: v } : d))); },   // C173: «لأيّ عضو» + قائمة الأعضاء
+                                className: "flex-1 border rounded-xl px-2 py-1.5 text-[11px]", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg, minWidth: 0 } },
+                            React.createElement("option", { value: "" }, tl("👥 لأيّ عضو", "👥 Anyone")),
+                            group.members.map((mem) => React.createElement("option", { key: mem.id, value: mem.id }, mem.id === myUserId ? tl("أنا", "Me") : mem.name))),
                         React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", type: "date", value: td.dueAt, onChange: (e) => setTaskDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, dueAt: e.target.value } : d))), className: "flex-1 border rounded-xl px-2 py-1.5 text-[11px]", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }))));
             }),
             React.createElement("div", { className: `flex ${rowStart()} gap-2` },
-                React.createElement("button", { onClick: () => setTaskDrafts((prev) => { var _a; return [...prev, { text: "", assigneeId: (_a = group.members[0]) === null || _a === void 0 ? void 0 : _a.id, dueAt: "" }]; }), className: "text-[11px]", style: { color: colors.primary } }, t("mhma")),
+                React.createElement("button", { onClick: () => setTaskDrafts((prev) => { var _a; return [...prev, { text: "", assigneeId: null, dueAt: "" }]; }), className: "text-[11px]", style: { color: colors.primary } }, t("mhma")),
                 React.createElement("button", { onClick: () => {
                         var _a;
                         const validTasks = taskDrafts.filter((t) => t.text.trim());
@@ -2355,7 +2468,7 @@ function GroupChatScreen({ onEditTaskList, group, messages, myUserId, onSend, on
                         setEditingTasksId(null);
                         setShowTaskForm(false);
                         setTaskListTitle("");
-                        setTaskDrafts([{ text: "", assigneeId: (_a = group.members[0]) === null || _a === void 0 ? void 0 : _a.id, dueAt: "" }]);
+                        setTaskDrafts([{ text: "", assigneeId: null, dueAt: "" }]);
                     }, className: "flex-1 py-3 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary } }, editingTasksId ? tl("حفظ التعديل", "Save changes") : t("nshr_qayma_almham"))))),
         false && (React.createElement("div", { style: { borderTop: `1px solid ${colors.border}`, backgroundColor: colors.primaryLight } },
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 py-1.5` },

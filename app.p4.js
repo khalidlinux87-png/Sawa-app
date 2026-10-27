@@ -1950,6 +1950,12 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                         React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "#16a34a18" } },
                             React.createElement(Lock, { size: 20, color: "#16a34a" })),
                         React.createElement("span", { className: "text-[15.5px] font-bold", style: { color: colors.text } }, tl("محادثة أو مجموعة سرّيّة", "Secret chat or group"))),
+                    React.createElement("button", { onClick: () => { setShowNewMenu(false); openMyTasks(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },   // C173
+                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.success + "18" } },
+                            React.createElement(CheckCircle2, { size: 20, color: colors.success })),
+                        React.createElement("div", { className: "flex-1", style: { textAlign: isRTL() ? "right" : "left" } },
+                            React.createElement("span", { className: "text-[15.5px] font-bold block leading-snug", style: { color: colors.text } }, tl("مهامّي", "My tasks")),
+                            React.createElement("span", { className: "text-[12.5px] block mt-0.5", style: { color: colors.textMuted } }, tl("ما أُسند إليك في كلّ المجموعات", "Assigned to you, across groups")))),
                     React.createElement("button", { onClick: () => { setShowNewMenu(false); onNewBroadcastList(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },
                         React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "18" } },
                             React.createElement(Send, { size: 19, color: colors.primary, style: { transform: "scaleX(-1)" } })),

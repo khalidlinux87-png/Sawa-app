@@ -1623,6 +1623,19 @@ function AppInner() {
                 : m),
         }));
     }
+    // C173: تولّي/تخلٍّ/إعادة إسناد · إضافة سريعة
+    function patchGroupTask(groupId, listId, taskId, patch) {
+        if (cloudChat(groupId)) { cloudChat(groupId).setTask(groupId, listId, taskId, patch); return; }
+        const g = groups.find((x) => x.id === groupId);
+        const owner = patch.owner !== undefined ? (patch.owner || null) : patch.claim === true ? myUserId : patch.claim === false ? null : undefined;
+        if (owner === undefined) return;
+        const mm = owner && g && g.members.find((x) => x.id === owner);
+        setGroupMessages((prev) => ({ ...prev, [groupId]: (prev[groupId] || []).map((m) => m.id !== listId ? m : { ...m, tasks: m.tasks.map((tk) => tk.id === taskId ? { ...tk, assigneeId: owner, assigneeName: (mm && mm.name) || "" } : tk) }) }));
+    }
+    function addGroupTask(groupId, listId, text) {
+        if (cloudChat(groupId)) { cloudChat(groupId).addTask(groupId, listId, { text }); return; }
+        setGroupMessages((prev) => ({ ...prev, [groupId]: (prev[groupId] || []).map((m) => m.id !== listId ? m : { ...m, tasks: [...(m.tasks || []), { id: "task-" + Date.now(), text, assigneeId: null, assigneeName: "", dueAt: null, status: "pending" }] }) }));
+    }
     function addGroupTaskNote(groupId, listId, taskId, note) {
         if (cloudChat(groupId)) { cloudChat(groupId).setTask(groupId, listId, taskId, { note }); return; }
         setGroupMessages((prev) => ({
@@ -3924,7 +3937,7 @@ function AppInner() {
                             onDeleteMessage: cloudChat(liveGroup.id) ? (messageId, scope) => { scope === "all" ? cloudChat(liveGroup.id).deleteForAll(liveGroup.id, messageId) : cloudChat(liveGroup.id).deleteForMe(liveGroup.id, messageId); showToast(scope === "all" ? t("ai_hdhft_lljmya") : t("ai_hdhft_andk"), "success"); } : null,
                             contacts: cloudChat(liveGroup.id) ? people : null,
                             onInviteLink: cloudChat(liveGroup.id) ? (gid) => cloudChat(gid).shareGroupInvite(gid) : null,
-                            onUpdateGroup: cloudChat(liveGroup.id) ? (gid, patch) => cloudChat(gid).updateGroup(gid, patch) : null, onSendFile: (name, size, fileUrl, type, file) => sendGroupFile(liveGroup.id, name, size, fileUrl, type, file), onSendVoice: (url, duration, transcript, blob, secs) => sendGroupVoice(liveGroup.id, url, duration, transcript, blob, secs), onEditMessage: (messageId, newText) => editGroupMessage(liveGroup.id, messageId, newText), onCreatePoll: (q, opts, deadlineMinutes, anonymous) => createGroupPoll(liveGroup.id, q, opts, deadlineMinutes, anonymous), onEditPoll: (pollId, q, opts) => editGroupPoll(liveGroup.id, pollId, q, opts), onVotePoll: (pollId, optIdx) => voteGroupPoll(liveGroup.id, pollId, optIdx), onCreateBillSplit: (desc, total, participantAmounts, splitType) => createGroupBillSplit(liveGroup.id, desc, total, participantAmounts, splitType), onPayBillSplit: (billId) => payGroupBillSplit(liveGroup.id, billId), onCreateFundraiser: (cause, goal, deadline) => createGroupFundraiser(liveGroup.id, cause, goal, deadline), onContributeFundraiser: (fundraiserId) => contributeGroupFundraiser(liveGroup.id, fundraiserId), onCreateTaskList: (title, drafts) => createGroupTaskList(liveGroup.id, title, drafts), onEditTaskList: (listId, title, drafts) => editGroupTaskList(liveGroup.id, listId, title, drafts), onToggleTaskStatus: (listId, taskId) => toggleGroupTaskStatus(liveGroup.id, listId, taskId), onAddTaskNote: (listId, taskId, note) => addGroupTaskNote(liveGroup.id, listId, taskId, note), onForward: (text, destinationIds) => forwardMessageToTargets(text, destinationIds), allConversations: conversations, allGroups: groups, onRenameGroup: renameGroup, onAddGroupMembers: addGroupMembers, onRemoveGroupMember: removeGroupMember, onToggleGroupAdmin: toggleGroupAdmin, onLeaveGroup: leaveGroup, onBack: () => setChatsStack([]) }));
+                            onUpdateGroup: cloudChat(liveGroup.id) ? (gid, patch) => cloudChat(gid).updateGroup(gid, patch) : null, onSendFile: (name, size, fileUrl, type, file) => sendGroupFile(liveGroup.id, name, size, fileUrl, type, file), onSendVoice: (url, duration, transcript, blob, secs) => sendGroupVoice(liveGroup.id, url, duration, transcript, blob, secs), onEditMessage: (messageId, newText) => editGroupMessage(liveGroup.id, messageId, newText), onCreatePoll: (q, opts, deadlineMinutes, anonymous) => createGroupPoll(liveGroup.id, q, opts, deadlineMinutes, anonymous), onEditPoll: (pollId, q, opts) => editGroupPoll(liveGroup.id, pollId, q, opts), onVotePoll: (pollId, optIdx) => voteGroupPoll(liveGroup.id, pollId, optIdx), onCreateBillSplit: (desc, total, participantAmounts, splitType) => createGroupBillSplit(liveGroup.id, desc, total, participantAmounts, splitType), onPayBillSplit: (billId) => payGroupBillSplit(liveGroup.id, billId), onCreateFundraiser: (cause, goal, deadline) => createGroupFundraiser(liveGroup.id, cause, goal, deadline), onContributeFundraiser: (fundraiserId) => contributeGroupFundraiser(liveGroup.id, fundraiserId), onCreateTaskList: (title, drafts) => createGroupTaskList(liveGroup.id, title, drafts), onEditTaskList: (listId, title, drafts) => editGroupTaskList(liveGroup.id, listId, title, drafts), onToggleTaskStatus: (listId, taskId) => toggleGroupTaskStatus(liveGroup.id, listId, taskId), onTaskPatch: (listId, taskId, patch) => patchGroupTask(liveGroup.id, listId, taskId, patch), onAddTask: (listId, text) => addGroupTask(liveGroup.id, listId, text), onAddTaskNote: (listId, taskId, note) => addGroupTaskNote(liveGroup.id, listId, taskId, note), onForward: (text, destinationIds) => forwardMessageToTargets(text, destinationIds), allConversations: conversations, allGroups: groups, onRenameGroup: renameGroup, onAddGroupMembers: addGroupMembers, onRemoveGroupMember: removeGroupMember, onToggleGroupAdmin: toggleGroupAdmin, onLeaveGroup: leaveGroup, onBack: () => setChatsStack([]) }));
                     }
                     if (chatsTop.type === "newGroup") {
                         return React.createElement(NewGroupScreen, { onCreate: createGroup, onClose: () => setChatsStack([]), contacts: (function () {
@@ -4030,6 +4043,7 @@ function AppInner() {
             React.createElement(ScheduledRoomsScreen, { rooms: scheduledRooms, onBack: () => setRoomsListOpen(false), onNew: () => setSchedulingRoom(true),
                 onJoin: (code) => { setRoomsListOpen(false); if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoin(code))) setActiveRoom(code); },
                 onCancel: (id) => { const sr = scheduledRooms.find((r) => r.id === id); if (sr && sr.cloud && window.SawaRTC) window.SawaRTC.schedRemove(id); else setScheduledRooms((p) => p.filter((r) => r.id !== id)); showToast(t("alghy_almwad"), "info"); } }))),
+        React.createElement(MyTasksHost, { openChat: (cid) => openChatByIdRef.current && openChatByIdRef.current(cid) }),   // C173
         pendingContributionTarget && (React.createElement(ContributionAmountModal, { onConfirm: confirmContribution, onClose: () => setPendingContributionTarget(null), walletBalance: walletBalance }))));
 }
 //@@sawa-part:8

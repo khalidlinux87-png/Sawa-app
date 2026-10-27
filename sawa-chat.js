@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c170";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c173";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -1520,9 +1520,64 @@
     patchLocal(cid, id, function (m) { m.extra = Object.assign({}, m.extra, ex, { editedAt: Date.now() }); return m; });
     return call("chat.tasksEdit", Object.assign({ cid: cid, day: f.day, id: id }, ex)).catch(fail);
   }
-  function setTask(cid, id, taskId, patch) {
+  // C173: المسؤول الفعليّ = tstate.owner (إن وُجد؛ "" = لأيّ عضو) وإلّا assigneeId
+  function taskEffId(t, s) { return s && s.owner != null ? (s.owner || null) : (t.assigneeId || null); }
+  function taskOut(t, s, c) {
+    var eff = taskEffId(t, s || {});
+    s = s || {};
+    return { id: t.id, text: t.text, assigneeId: eff ? appId(eff) : null, assigneeName: eff ? (eff === t.assigneeId && t.assigneeName ? t.assigneeName : personName(eff, c)) : "",
+      origAssigneeId: t.assigneeId ? appId(t.assigneeId) : null, claimed: s.owner != null && !!s.owner && s.owner !== t.assigneeId,
+      dueAt: t.dueAt || null, status: s.status || "pending", note: s.note || "",
+      doneById: s.doneBy ? appId(s.doneBy) : null, doneByName: s.doneBy ? personName(s.doneBy, c) : "", doneAt: s.doneAt || null,
+      addedById: t.addedBy ? appId(t.addedBy) : null };
+  }
+  function setTask(cid, id, taskId, patch, dayHint) {
     if (patch && patch.note != null && e2eOn(chats[cid])) { toast(L("الملاحظات غير متاحة في المحادثة السرّيّة (تبقى المهمّة نفسها مشفّرة)", "Notes aren't available in secret chats")); return; }   // C164
-    toolCall("chat.task", cid, id, Object.assign({ taskId: taskId }, patch), function (m) { m.tstate = Object.assign({}, m.tstate); m.tstate[taskId] = Object.assign({}, m.tstate[taskId], patch); return m; });
+    var p = Object.assign({}, patch);
+    if (p.owner != null) p.owner = p.owner ? realId(p.owner) : "";
+    if (!findMsg(cid, id) && dayHint) { call("chat.task", Object.assign({ cid: cid, day: dayHint, id: id, taskId: taskId }, p)).catch(fail); return; }   // C173: من «مهامّي» (المحادثة غير محمّلة)
+    toolCall("chat.task", cid, id, Object.assign({ taskId: taskId }, p), function (m) {
+      m.tstate = Object.assign({}, m.tstate); var s = Object.assign({}, m.tstate[taskId]);
+      if (p.status) { s.status = p.status; if (p.status === "done") { s.doneBy = state.uid; s.doneAt = Date.now(); var t0 = ((m.extra && m.extra.tasks) || []).filter(function (x) { return x.id === taskId; })[0]; if (t0 && !taskEffId(t0, s) && p.owner === undefined) s.owner = state.uid; } else { delete s.doneBy; delete s.doneAt; } }
+      if (p.note != null) s.note = p.note;
+      if (p.owner !== undefined) s.owner = p.owner;
+      if (p.claim === true) s.owner = state.uid; else if (p.claim === false) s.owner = "";
+      m.tstate[taskId] = s; return m;
+    });
+  }
+  // C173: إضافة مهمّة سريعة من البطاقة — في السرّيّة: تعديلٌ مشفّر (المنشئ/المشرف)
+  function addTask(cid, id, task) {
+    var f = findMsg(cid, id); if (!f) { notYet(); return Promise.resolve(null); }
+    var text = String((task && task.text) || "").trim(); if (!text) return Promise.resolve(null);
+    var a = task.assigneeId ? realId(task.assigneeId) : null, c = chats[cid] || {};
+    if (e2eOn(chats[cid])) {
+      var ex = f.msg.extra || {};
+      return editTasks(cid, id, ex.title || "", (ex.tasks || []).concat([{ text: text, assigneeId: a, assigneeName: a ? personName(a, c) : "", dueAt: task.dueAt || null }]));
+    }
+    var tid = "t" + Date.now().toString(36) + "x";
+    patchLocal(cid, id, function (m) { m.extra = Object.assign({}, m.extra, { tasks: ((m.extra && m.extra.tasks) || []).concat([{ id: tid, text: text, assigneeId: a, assigneeName: a ? personName(a, c) : "", dueAt: task.dueAt || null, addedBy: state.uid }]) }); return m; });
+    return call("chat.taskAdd", { cid: cid, day: f.day, id: id, text: text, assigneeId: a, dueAt: task.dueAt || null }).then(function (r) {
+      // معرّف الخادم يحلّ محلّ المؤقّت (تصل النسخة الحقيقيّة مع المزامنة أيضاً)
+      if (r && r.task) patchLocal(cid, id, function (m) { m.extra = Object.assign({}, m.extra, { tasks: ((m.extra && m.extra.tasks) || []).map(function (t) { return t.id === tid ? r.task : t; }) }); return m; });
+      return r;
+    }).catch(fail);
+  }
+  // C173: «مهامّي» — من الخادم (غير السرّيّة) + القوائم السرّيّة المحمّلة على هذا الجهاز
+  function myTasks() {
+    var local = [];
+    Object.keys(days).forEach(function (cid) {
+      var c = chats[cid]; if (!c || !e2eOn(c)) return;
+      var dd = days[cid] || {};
+      Object.keys(dd).forEach(function (day) { Object.keys(dd[day] || {}).forEach(function (id) {
+        var m = dd[day][id]; if (!m || m.del || m.type !== "tasks" || !m.extra || !Array.isArray(m.extra.tasks)) return;
+        local.push({ cid: cid, chat: c.name || "", secret: true, admin: (c.admins || []).indexOf(state.uid) >= 0, day: day, id: id, by: m.by, title: m.extra.title || "", ts: m.ts || 0,
+          tasks: m.extra.tasks.map(function (t) { return taskOut(t, (m.tstate || {})[t.id], c); }) });
+      }); });
+    });
+    var fix = function (l) { var c = chats[l.cid] || {}; return Object.assign({}, l, { chat: l.chat || c.name || "", creatorId: appId(l.by), tasks: (l.tasks || []).map(function (t) {
+      return Object.assign({}, t, { assigneeId: t.assigneeId ? appId(t.assigneeId) : null, assigneeName: t.assigneeId ? personName(t.assigneeId, c) : "", doneById: t.doneBy ? appId(t.doneBy) : null, doneByName: t.doneBy ? personName(t.doneBy, c) : "" }); }) }); };
+    var loc = local.map(function (l) { return Object.assign({}, l, { creatorId: appId(l.by) }); });
+    return call("chat.myTasks", {}).then(function (r) { return ((r && r.lists) || []).map(fix).concat(loc); }).catch(function (e) { if (loc.length) return loc; throw e; });
   }
   // نصّ رسائل النظام
   function sysText(m, c) {
@@ -1578,7 +1633,7 @@
     if (m.type === "tasks") {
       var ts = m.tstate || {};
       o.type = "taskList"; o.title = ex.title || ""; o.creatorId = appId(m.by); o.secret = !!(c && e2eOn(c)); o.editedAt = ex.editedAt || m.edited || null;   // C164
-      o.tasks = (ex.tasks || []).map(function (t) { var s = ts[t.id] || {}; return { id: t.id, text: t.text, assigneeId: appId(t.assigneeId), assigneeName: t.assigneeName || personName(t.assigneeId, c), dueAt: t.dueAt || null, status: s.status || "pending", note: s.note || "" }; });
+      o.tasks = (ex.tasks || []).map(function (t) { var s = ts[t.id] || {}; return taskOut(t, s, c); });   // C173
       return o;
     }
     return o;
@@ -6002,7 +6057,7 @@
     leaveGroup: leaveGroup, shareGroupInvite: shareGroupInvite, joinGroup: joinGroup,
     sendPoll: sendPoll, vote: vote, editPoll: editPoll, sendBill: sendBill, billPaid: billPaid, sendFund: sendFund, contribute: contribute,
     // C164: editTasks · notifAvatars · setNotifAvatars (C170: كان هذا التعليق في وسط السطر فعطّل ما بعده — react وdeleteForAll وpin…)
-    sendTasks: sendTasks, setTask: setTask, editTasks: editTasks, notifAvatars: notifAvatars, setNotifAvatars: setNotifAvatars, deleteForAll: deleteForAll, deleteForMe: deleteForMe, react: react, pin: pin,
+    sendTasks: sendTasks, setTask: setTask, editTasks: editTasks, addTask: addTask, myTasks: myTasks, notifAvatars: notifAvatars, setNotifAvatars: setNotifAvatars, deleteForAll: deleteForAll, deleteForMe: deleteForMe, react: react, pin: pin,
     setDisappear: setDisappear, openDm: openDm, openSaved: openSaved, dmWith: function (u) { return state.uid ? dmWith(u) : null; },
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
     _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,
