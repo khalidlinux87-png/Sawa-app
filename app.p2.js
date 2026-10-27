@@ -579,7 +579,7 @@ window.__sawaBack = function () {
         // (٣) سهم الرجوع في رأس الشاشة الظاهرة
         let btn = null, btz = -1;
         const cands = new Set(document.querySelectorAll('button[aria-label="رجوع"],button[aria-label="Back"]'));
-        document.querySelectorAll('button svg[data-i="ChevronLeft"],button svg[data-i="ChevronRight"],button svg[data-i="ArrowRight"],button svg[data-i="ArrowLeft"]').forEach((svg) => { const b = svg.closest("button"); if (b && b.getBoundingClientRect().top < 150) cands.add(b); });
+        document.querySelectorAll('button svg[data-i="ChevronLeft"],button svg[data-i="ChevronRight"],button svg[data-i="ArrowRight"],button svg[data-i="ArrowLeft"]').forEach((svg) => { const b = svg.closest("button"); if (!b) return; const r = b.getBoundingClientRect(); if (r.top < 150 && r.width <= 64 && r.height <= 64) cands.add(b); });   // C162: زرّ سهمٍ صغير فقط — كانت بطاقة «صلة الرحم» (فيها سهم) تُضغط فيفتحها «رجوع» في استكشف
         cands.forEach((b) => { if (excluded(b) || b.disabled || !vis(b)) return; const z = zOf(b); if (z >= btz) { btz = z; btn = b; } });
         if (btn) { btn.click(); return true; }
     } catch (e) { }

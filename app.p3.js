@@ -685,9 +685,35 @@ function kinCompute(persons, relations, meId) {
                 L.push({ base: kinOf(kinBloodName(G, p.up, p.down, p.pM, p.pT), fem(S) ? "الزوجة" : "الزوج"), prox: KIN_PROX_DOWN[kinProx(p.up, p.down)], section: "other", marriage: true });
             });
         }
+        // C162: أقارب زوجِ قريبي بالدم — والد زوجة الأخ · أخو زوج الأخت · ابن زوجة العمّ (من غيره)… الأقرب أوّلاً
+        if (!L.length && !blood[T]) {
+            const PR = { "A***": 0, "A**": 1, "A*": 2, "A": 3, B: 4, C: 5 };
+            let best = null;
+            Object.keys(blood).forEach((X) => {
+                const xb = blood[X][0];
+                if (!xb || xb.base === "نفسي") return;
+                (G.spouses[X] || []).forEach((S) => {
+                    if (S === meId || S === T || blood[S]) return;   // زوجة أبي وهي أمّي ⇒ أقاربها أقاربي بالدم أصلاً
+                    const ps = kinBloodPaths(G, kgAncestors(G, S), T);
+                    if (!ps.length) return;
+                    const p = ps[0], score = (PR[xb.prox] != null ? PR[xb.prox] : 5) * 10 + p.up + p.down;
+                    if (best && best.score <= score) return;
+                    best = { score, base: kinOf(kinBloodName(G, p.up, p.down, p.pM, p.pT), (fem(S) ? "زوجة " : "زوج ") + xb.base) };
+                });
+            });
+            if (best) L.push({ base: best.base, prox: "C", section: "other", marriage: true });
+        }
         if (!L.length) return;
         const seen = {}, uniq = L.filter((x) => (seen[x.base] ? false : (seen[x.base] = true)));
         out[T] = { kinship: uniq[0].base, label: uniq[0].label || uniq[0].base, proximity: uniq[0].prox, section: uniq[0].section, also: uniq.slice(1).map((x) => x.label || x.base) };
+    });
+    // C162: زوجُ صهرٍ معروف — زوجة أخي الزوجة · زوج أخت الزوج · زوجة والد زوجة الأخ…
+    Object.keys(G.byId).forEach((T) => {
+        if (out[T] || T === meId) return;
+        const Y = (G.spouses[T] || []).find((y) => out[y] && y !== meId && !/^(زوجة|زوج) /.test(out[y].kinship));
+        if (!Y) return;
+        const nm = (fem(T) ? "زوجة " : "زوج ") + out[Y].kinship;
+        out[T] = { kinship: nm, label: nm, proximity: "C", section: "other", also: [] };
     });
     return out;
 }
@@ -1048,7 +1074,7 @@ function FamilyTreeToolsSheet({ personsCount, missingSpouseLinks, mismatchedCoun
 }
 // C33: من يملك تعديل الشجرة؟ كلّ من ليس «مشاهداً» (المالك والمحرّر، والعائلة المحلّيّة لصاحبها)
 function famCanEdit(group) { return !!group && group.role !== "viewer"; }
-function FamilyGroupDetailScreen({ meId, onPickMe, group, persons, relations = [], favorites, otherGroups = [], onToggleFav, onOpenPerson, onBack, onOpenGroups, onAddPerson, onAddPersonChain, onMergePersons, onOpenTree, onOpenSuggestions, onOpenSchedules, onOpenEvents, onOpenMembers, onAddRelativesBulk, onExportSelected, onPrioritizeSelected, onSuggestForSelected, onDeletePerson, onDeletePersonsBulk, onMarkContactBulk, onRecalcProximity, onInferSpouses, groupAllowsMemberEvents = false, initialFilterStatus = "all", }) {
+function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons, relations = [], favorites, otherGroups = [], onToggleFav, onOpenPerson, onBack, onOpenGroups, onAddPerson, onAddPersonChain, onMergePersons, onOpenTree, onOpenSuggestions, onOpenSchedules, onOpenEvents, onOpenMembers, onAddRelativesBulk, onExportSelected, onPrioritizeSelected, onSuggestForSelected, onDeletePerson, onDeletePersonsBulk, onMarkContactBulk, onRecalcProximity, onInferSpouses, groupAllowsMemberEvents = false, initialFilterStatus = "all", }) {
     const { colors, isDark } = useTheme();
     const [showAddForm, setShowAddForm] = useState(false);
     const [showChainAdd, setShowChainAdd] = useState(false);
@@ -1382,6 +1408,9 @@ function FamilyGroupDetailScreen({ meId, onPickMe, group, persons, relations = [
                                 !p.alive ? t("fg_mtwfa") : ""),
                             p.status_detail && p.alive && React.createElement("div", { className: "mt-1.5" },
                                 React.createElement(FamChip, { tone: "warn", icon: AlertCircle, label: statusLabels[p.status_detail] })))),
+                    // C162: موقعه في الشجرة (لفهم القرابة)
+                    onShowInTree && React.createElement("button", { "aria-label": tl("موقعه في الشجرة", "Show in tree"), onClick: () => onShowInTree(p.id), className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "12", marginInlineEnd: 4 } },
+                        React.createElement(GitBranch, { size: 16, color: colors.primary })),
                     canEdit && React.createElement("button", { "aria-label": t("idafa_aqarb"), onClick: () => setBulkFor(p), className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "12" } },
                         React.createElement(UserPlus, { size: 16, color: colors.primary })),
                     React.createElement("button", { "aria-label": t("almfdla"), onClick: () => onToggleFav(p.id), className: `w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${ms("1")}`, style: { backgroundColor: fav ? colors.accent + "18" : "transparent" } },
@@ -2355,7 +2384,7 @@ function normalizeArabicName(name) {
         .replace(/\s+/g, " ");
 }
 
-function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, relations, canEdit = true, onAddRelation, onDeleteRelation, onEndMarriage, onOpenPerson, onMarkContact, onQuickSchedule, onOpenStats, onAddRelativeTo, onAddRelativesBulk, onOpenInLaws, onInheritParents, allGroupPersons = {}, onBack, }) {
+function FamilyTreeScreen({ initialFocusId, onClaimChildren, onChangeParent, groupId, persons, relations, canEdit = true, onAddRelation, onDeleteRelation, onEndMarriage, onOpenPerson, onMarkContact, onQuickSchedule, onOpenStats, onAddRelativeTo, onAddRelativesBulk, onOpenInLaws, onInheritParents, allGroupPersons = {}, onBack, }) {
     var _a, _b, _c, _d;
     const { colors, isDark } = useTheme();
     const [showAddRelation, setShowAddRelation] = useState(false);
@@ -2613,7 +2642,7 @@ function FamilyTreeScreen({ onClaimChildren, onChangeParent, groupId, persons, r
         if (!pinching.current) applyZoom(zoom);
     }, [zoom, viewMode]);
     const [compactDeep, setCompactDeep] = useState(true); // ضغط الأجيال البعيدة
-    const [focusId, setFocusId] = useState(null);
+    const [focusId, setFocusId] = useState(initialFocusId || null);   // C162: «موقعه في الشجرة»
     const [focusPath, setFocusPath] = useState([]); // مسار التنقّل
     // C46: الطيّ التلقائيّ يُحسب قبل أوّل رسمٍ للشجرة الكاملة (كان أثراً بعده: تُرسم الشجرة كلّها مفتوحةً ثمّ تُطوى = ضعف العمل)
     function autoFold() {
