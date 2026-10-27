@@ -214,6 +214,23 @@
     })).then(function () { ids.forEach(function (u) { delete avFetching[u]; }); avSave(); avChanged(); });
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
+  // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
+  function setGroupPhoto(cid, has) {
+    return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
+      if (!du) return null;
+      var v = du === "-" ? "" : du;
+      return call("group.update", { cid: cid, photo: v }).then(function () {
+        var all = avAll(); all[cid] = { d: v || null, at: Date.now() }; avSave(); avChanged();
+        toast(v ? L("تغيّرت صورة المجموعة ✓", "Group photo updated ✓") : L("أُزيلت صورة المجموعة", "Group photo removed"));
+        return true;
+      });
+    }).catch(function (e) { toast(/only admins/.test(String(e && e.message)) ? L("المشرفون وحدهم يغيّرون صورة هذه المجموعة", "Only admins can change this group's photo") : L("تعذّر تغيير الصورة", "Couldn't change the photo")); });
+  }
+  function groupPhotoOf(c) {
+    var e = avAll()[c.cid];
+    if (e && c.photoTs && (e.at || 0) < c.photoTs) e.at = 0;   // تغيّرت عند غيري ⇒ تُجلب من جديد
+    return c.photoTs ? photoOf(c.cid) : null;
+  }
   function setMyPhoto(dataUrl) {   // null ⇒ إزالة
     return call("profile.set", { photo: dataUrl || null }).then(function () {
       var all = avAll(); all[state.uid] = { d: dataUrl || null, at: Date.now() }; avSave(); avChanged();
@@ -251,7 +268,8 @@
       inp.click();
     });
   }
-  function choosePhoto() {
+  function choosePhoto(o) {
+    o = o || {};
     return new Promise(function (res) {
       var ov = document.createElement("div"); ov.dir = isAr() ? "rtl" : "ltr";
       ov.style.cssText = "position:fixed;inset:0;z-index:2147483005;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;font-family:system-ui";
@@ -259,7 +277,7 @@
       box.style.cssText = "background:#fff;color:#1A1A2E;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:14px 14px calc(env(safe-area-inset-bottom,0px) + 14px);box-sizing:border-box;max-height:88vh;overflow:auto";
       var done = false, close = function (v) { if (done) return; done = true; ov.remove(); res(v || null); };
       ov.onclick = function (e) { if (e.target === ov) close(null); };
-      var h = document.createElement("div"); h.textContent = L("صورة حسابك", "Your profile photo"); h.style.cssText = "font:800 15px system-ui;text-align:center;margin-bottom:10px"; box.appendChild(h);
+      var h = document.createElement("div"); h.textContent = o.title || L("صورة حسابك", "Your profile photo"); h.style.cssText = "font:800 15px system-ui;text-align:center;margin-bottom:10px"; box.appendChild(h);
       var row = document.createElement("div"); row.style.cssText = "display:grid;grid-template-columns:repeat(" + (NB() && NB().albumsOk ? 4 : 3) + ",1fr);gap:8px";
       var src = function (ic, label, fn) {
         var b = document.createElement("button"); b.type = "button";
@@ -282,6 +300,11 @@
         b.textContent = x[0]; b.onclick = function () { close(presetAvatar(x)); }; grid.appendChild(b);
       });
       box.appendChild(grid);
+      if (o.remove) {   // C155: إزالة الصورة الحاليّة (صورة المجموعة)
+        var rm = document.createElement("button"); rm.type = "button"; rm.textContent = L("إزالة الصورة", "Remove photo");
+        rm.style.cssText = "width:100%;margin-top:14px;padding:12px;border:0;border-radius:12px;background:#fdecec;color:#b42318;font:700 14px system-ui"; rm.onclick = function () { close("-"); };
+        box.appendChild(rm);
+      }
       var cn = document.createElement("button"); cn.type = "button"; cn.textContent = L("إلغاء", "Cancel");
       cn.style.cssText = "width:100%;margin-top:14px;padding:12px;border:0;border-radius:12px;background:#eee;color:#333;font:700 14px system-ui"; cn.onclick = function () { close(null); };
       box.appendChild(cn); ov.appendChild(box); document.body.appendChild(ov);
@@ -1271,7 +1294,8 @@
     var lastText = lp ? preview(lp.msg) : (l ? (l.type === "system" ? sysText({ by: l.by, extra: { ev: l.ev } }, c).replace(/«»|“”/g, "").trim() : (l.by && l.by !== state.uid ? personName(l.by, c) + ": " : "") + (sec ? secretPreview(c) : preview(l))) : (sec ? secretPreview(c) : ""));
     return { id: c.cid, cloud: true, kind: c.type, familyGroupId: c.familyGroupId || null, desc: c.desc || "", adminsOnly: !!c.adminsOnly, infoAdminsOnly: !!c.infoAdminsOnly,
       name: (c.name || L("مجموعة", "Group")) + (sec ? " 🔒" : ""), members: members, lastMessage: lastText, secret: sec, e2e: sec ? e2eUi(c) : null,
-      unread: unreadOf(c), updatedAt: lp ? lp.ts : (c.updatedTs || 0), pinnedMessageId: c.pinned || null, disappear: c.disappear || 0 };
+      unread: unreadOf(c), updatedAt: lp ? lp.ts : (c.updatedTs || 0), pinnedMessageId: c.pinned || null, disappear: c.disappear || 0,
+      photo: c.type === "group" ? groupPhotoOf(c) : null };   // C155
   }
   var pubChatsT = null;
   function publishChats() {
@@ -1493,6 +1517,7 @@
       admin: L(who + " جعل " + list + " مشرفاً", who + " made " + list + " an admin"), unadmin: L(who + " أزال إشراف " + list, who + " removed " + list + " as admin"),
       renamed: L(who + " غيّر الاسم إلى «" + (ex.name || "") + "»", who + " renamed the group to “" + (ex.name || "") + "”"),
       desc: L(who + " غيّر الوصف", who + " changed the description"),
+      photo: ex.on !== false ? L(who + " غيّر صورة المجموعة", who + " changed the group photo") : L(who + " أزال صورة المجموعة", who + " removed the group photo"),   // C155
       adminsOnly: ex.on ? L(who + " جعل الإرسال للمشرفين فقط", who + " allowed only admins to send") : L(who + " سمح للجميع بالإرسال", who + " allowed everyone to send"),
       vc_on: m.by === state.uid ? L("🎙 بدأتَ دردشةً صوتيّة", "🎙 You started a voice chat") : L("🎙 " + who + " بدأ دردشةً صوتيّة — انضمّ من الشريط أعلى المحادثة", "🎙 " + who + " started a voice chat — join from the bar at the top"),
       // C23
@@ -5946,7 +5971,7 @@
     adminCached: adminCached, checkAdmin: checkAdmin, adminReports: adminReports, voipTest: voipTest,   // C24
     setBlocked: setBlocked,
     sendLocation: sendLocation, mapsUrl: mapsUrl,   // C32
-    photoOf: photoOf, setMyPhoto: setMyPhoto,   // C25
+    photoOf: photoOf, setMyPhoto: setMyPhoto, setGroupPhoto: setGroupPhoto,   // C25
     e2eCreateDm: e2eCreateDm, e2eCreateGroup: e2eCreateGroup, e2eJoin: e2eJoin, e2eState: function (cid) { return e2eState(chats[cid]); },
     _e2e: e2e, _plain: function () { return plain; },
     installState: installState, installable: installable, installSheet: installSheet, installNow: installNow,

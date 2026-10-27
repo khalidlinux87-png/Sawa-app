@@ -1190,7 +1190,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                 React.createElement(Chip, { label: t("la_ywjd"), active: !statusDetail, onPress: () => setStatusDetail("") }),
                 Object.entries(statusLabels).map(([key, label]) => (React.createElement(Chip, { key: key, label: label, active: statusDetail === key, onPress: () => setStatusDetail(key) })))),
             React.createElement(FamCard, { className: "mb-4" },
-                React.createElement("div", { className: `flex ${rowStart()} items-center gap-2.5` },
+                React.createElement("div", { className: `flex ${rowEnd()} items-center gap-2.5` },
                     React.createElement("button", { onClick: () => setIsDeceased(!isDeceased), className: "w-11 h-6 rounded-full relative", style: { backgroundColor: isDeceased ? colors.danger : colors.border } },
                         React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [isDeceased ? "right" : "left"]: 2 } })),
                     React.createElement("span", { className: `text-sm font-bold flex-1 ${textStart()}`, style: { color: colors.text } }, t("mtwfa_rhmh_allh")),
@@ -1475,20 +1475,20 @@ function ChatSettingsScreen({ chatBackupEnabled, setChatBackupEnabled, chatFolde
                         React.createElement("span", { className: "text-sm font-bold block", style: { color: colors.danger } }, t("msh_albyanat_almhfwza")),
                         React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } }, t("iaada_alttbyq_lhalth_alawla"))))),
             React.createElement("p", { className: "text-xs font-bold mb-2", style: { color: colors.textMuted } }, t("anasr_shasha_almhadthat")),
-            React.createElement(Card, { className: `flex ${rowStart()} items-start gap-2.5 mb-2` },
+            React.createElement(Card, { className: `flex ${rowEnd()} items-start gap-2.5 mb-2` },
                 React.createElement("button", { onClick: () => setShowStoriesRow === null || setShowStoriesRow === void 0 ? void 0 : setShowStoriesRow(!showStoriesRow), className: "w-11 h-6 rounded-full relative shrink-0 mt-0.5", style: { backgroundColor: showStoriesRow ? colors.primary : colors.border } },
                     React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [showStoriesRow ? "right" : "left"]: 2 } })),
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
                     React.createElement("span", { className: "text-sm font-bold block mb-1", style: { color: colors.text } }, t("shryt_allhzat")),
                     React.createElement("p", { className: "text-[10px]", style: { color: colors.textMuted } }, t("izhar_dwayr_allhzat_aala")))),
-            React.createElement(Card, { className: `flex ${rowStart()} items-start gap-2.5 mb-4` },
+            React.createElement(Card, { className: `flex ${rowEnd()} items-start gap-2.5 mb-4` },
                 React.createElement("button", { onClick: () => setShowFamilyReminders === null || setShowFamilyReminders === void 0 ? void 0 : setShowFamilyReminders(!showFamilyReminders), className: "w-11 h-6 rounded-full relative shrink-0 mt-0.5", style: { backgroundColor: showFamilyReminders ? colors.primary : colors.border } },
                     React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [showFamilyReminders ? "right" : "left"]: 2 } })),
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
                     React.createElement("span", { className: "text-sm font-bold block mb-1", style: { color: colors.text } }, t("tdhkyrat_sla_alrhm")),
                     React.createElement("p", { className: "text-[10px]", style: { color: colors.textMuted } }, t("btaqat_tdhkyr_altwasl_walmwaayd")))),
             React.createElement("p", { className: "text-xs font-bold mb-2", style: { color: colors.textMuted } }, t("aam")),
-            React.createElement(Card, { className: `flex ${rowStart()} items-start gap-2.5 mb-4` },
+            React.createElement(Card, { className: `flex ${rowEnd()} items-start gap-2.5 mb-4` },
                 React.createElement("button", { onClick: () => setChatBackupEnabled(!chatBackupEnabled), className: "w-11 h-6 rounded-full relative shrink-0 mt-0.5", style: { backgroundColor: chatBackupEnabled ? colors.primary : colors.border } },
                     React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [chatBackupEnabled ? "right" : "left"]: 2 } })),
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
@@ -2451,6 +2451,7 @@ const MUTE_OPTIONS = [
 function ChatInfoScreen({ conversation, messages, background, setBackground, disappearing, setDisappearing, isBlocked, onBlock, onUnblock, onReport, isLocked, onToggleLock, chatFolders, folderId, onSetFolder, notificationTone, setNotificationTone, onBack, muteDuration: muteDurationProp = 0, onSetMute, groupPersons = {}, onOpenFamilyProfile, }) {
     var _a;
     const { colors } = useTheme();
+    const [viewPhoto, setViewPhoto] = useState(null);   // C155
     const [muteDuration, setMuteDuration] = useState(muteDurationProp);
     const { showToast } = useToast();
     function handleSetMute(val) {
@@ -2503,9 +2504,12 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
         React.createElement(TopBar, { title: t("malwmat_almhadtha"), onBack: onBack }),
         React.createElement("div", { className: "flex-1 overflow-y-auto", style: { backgroundColor: colors.bg } },
             React.createElement("div", { className: "flex flex-col items-center py-5" },
-                React.createElement("div", { className: "w-16 h-16 rounded-full flex items-center justify-center mb-2", style: { backgroundColor: colors.primaryLight } },
-                    React.createElement(User, { size: 26, color: colors.primaryDark })),
-                React.createElement("span", { className: "text-sm font-bold", style: { color: colors.text } }, conversation.name),
+                // C155: صورة الطرف الآخر (كانت أيقونةً ثابتة) — اضغطها لعرضها كبيرة
+                (() => { const ph = conversation.photo || (conversation.peerUid && window.SawaChat && window.SawaChat.photoOf ? window.SawaChat.photoOf(conversation.peerUid) : null);
+                    return React.createElement("button", { "aria-label": tl("الصورة", "Photo"), onClick: () => ph && setViewPhoto(ph), className: "mb-2", style: { cursor: ph ? "pointer" : "default" } },
+                        React.createElement(Pic, { photo: ph, letter: conversation.isSavedMessages ? null : ((conversation.name || "?").trim().charAt(0) || "?"), size: 96, bg: colors.primaryLight, color: colors.primaryDark }, !ph && conversation.isSavedMessages ? React.createElement(Bookmark, { size: 36, color: colors.primaryDark }) : null)); })(),
+                viewPhoto && React.createElement(PhotoViewer, { photo: viewPhoto, onClose: () => setViewPhoto(null) }),
+                React.createElement("span", { className: "text-lg font-extrabold", style: { color: colors.text } }, conversation.name),
                 React.createElement("span", { className: "text-[11px] mt-1", style: { color: colors.textMuted } }, t("mhadtha_mshfra_mn_trf"))),
             React.createElement("div", { className: "p-4" },
                 (() => {

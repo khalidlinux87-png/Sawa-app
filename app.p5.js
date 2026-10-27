@@ -234,6 +234,7 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
     const isFamily = group.kind === "family";
     const [picked, setPicked] = useState([]);
     const [descDraft, setDescDraft] = useState(null);
+    const [viewPhoto, setViewPhoto] = useState(null);   // C155
     const memberUids = group.members.map((m) => m.uid || m.id);
     const addable = (contacts || []).filter((c) => memberUids.indexOf(c.uid) < 0);
 
@@ -256,8 +257,14 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
         React.createElement("div", { className: "flex-1 overflow-y-auto" },
             // ── الرأس: الصورة والاسم ──
             React.createElement("div", { className: "flex flex-col items-center py-6 px-6", style: { backgroundColor: colors.card } },
-                React.createElement("div", { className: "w-24 h-24 rounded-full flex items-center justify-center mb-3", style: { backgroundColor: colors.primaryLight } },
-                    React.createElement(UsersRound, { size: 40, color: colors.primary })),
+                // C155: صورة المجموعة — اضغط لتغييرها (لمن يحقّ له تعديل المعلومات) أو لعرضها كبيرة
+                (() => {
+                    const canPhoto = !isFamily && group.cloud && window.SawaChat && window.SawaChat.setGroupPhoto && (isAdmin || !group.infoAdminsOnly);
+                    return React.createElement("button", { "aria-label": tl("صورة المجموعة", "Group photo"), onClick: () => canPhoto ? window.SawaChat.setGroupPhoto(group.id, !!group.photo) : (group.photo && setViewPhoto(group.photo)), className: "relative mb-3", style: { cursor: canPhoto || group.photo ? "pointer" : "default" } },
+                        React.createElement(Pic, { photo: group.photo || null, letter: null, size: 96, bg: colors.primaryLight, color: colors.primary }, group.photo ? null : React.createElement(UsersRound, { size: 40, color: colors.primary })),
+                        canPhoto && React.createElement("span", { className: "absolute bottom-0 rounded-full flex items-center justify-center", style: { insetInlineEnd: 0, width: 30, height: 30, backgroundColor: colors.primary, border: "2px solid " + colors.card } }, React.createElement(Camera, { size: 15, color: "#fff" })));
+                })(),
+                viewPhoto && React.createElement(PhotoViewer, { photo: viewPhoto, onClose: () => setViewPhoto(null) }),
                 editingName
                     ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 w-full` },
                         React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: nameDraft, autoFocus: true, onChange: (e) => setNameDraft(e.target.value), className: `flex-1 rounded-xl border px-3 py-2 text-sm ${textStart()}`, style: { borderColor: colors.primary, color: colors.text, backgroundColor: colors.bg } }),
@@ -1917,6 +1924,9 @@ function GroupChatScreen({ group, messages, myUserId, onSend, onSendFile, onSend
         React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex flex-row items-center gap-2 p-3 border-b", style: { borderColor: colors.border, backgroundColor: colors.card } },   // C146
             React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack },
                 React.createElement(isRTL() ? ChevronRight : ChevronLeft, { size: 20, color: colors.text })),
+            // C155: صورة المجموعة في رأسها (كالمحادثة الفرديّة) — تفتح المعلومات
+            React.createElement("button", { "aria-label": t("gi_malwmat"), onClick: () => setShowGroupInfo(true), className: "shrink-0" },
+                React.createElement(Pic, { photo: group.photo || null, letter: null, size: 38, bg: colors.primaryLight, color: colors.primaryDark }, group.photo ? null : React.createElement(Users2, { size: 18, color: colors.primaryDark }))),
             React.createElement("div", { onClick: () => setShowGroupInfo(true), className: `flex-1 ${textStart()} ${me("2")}`, style: { minWidth: 0, cursor: "pointer" } },
                 React.createElement("div", { className: "font-bold text-sm truncate", style: { color: colors.text } }, group.name),
                 React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowMembers(!showMembers); }, className: "text-[11px]", style: { color: colors.textMuted } },
