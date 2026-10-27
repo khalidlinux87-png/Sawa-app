@@ -1321,7 +1321,7 @@
   function inviteFor(lg, pid, pname) {
     var sg = serverGid(lg);
     if (!sg) { toast(L("ارفع الشجرة أوّلاً", "Upload the tree first")); return Promise.resolve(null); }
-    return call("invite.create", { groupId: sg, role: "viewer" }).then(function (b) {
+    return call("invite.create", { groupId: sg, role: "viewer", personId: pid }).then(function (b) {   // C156: الدعوة تحمل الشخص فيُربط من يقبلها ويؤكّد
       var url = global.location.origin + global.location.pathname + "?join=" + b.token + "&p=" + encodeURIComponent(pid) + "&pn=" + encodeURIComponent(String(pname || "").slice(0, 40));
       var gname = groupName(lg);
       var text = L("أنت «" + (pname || "") + "» في شجرة «" + gname + "» على سوا 🤍 انضمّ لتتواصل مع أهلك (صالح أسبوعاً):", "You are «" + (pname || "") + "» in the «" + gname + "» family tree on Sawa — join to stay in touch (valid 1 week):");
@@ -1357,17 +1357,19 @@
     toast(L("جارٍ الانضمام…", "Joining…"));
     onReady(function () {
       whenApp(function () {
-        call("invite.accept", { token: tok }).then(function (b) {
+        // C156: «هل أنت فلان؟» قبل القبول ⇒ الخادم يربط إن كانت الدعوة لهذا الشخص نفسه (لا ربط بعد الانضمام بمجرّد الاختيار)
+        var claim = jp && global.confirm(L("دعوةٌ باسم «" + jpn + "» في شجرة العائلة — هل أنت «" + jpn + "»؟", "This invite is for «" + jpn + "» in the family tree — are you «" + jpn + "»?")) ? jp : null;
+        call("invite.accept", { token: tok, claim: claim || undefined }).then(function (b) {
           var rp = Promise.resolve(restoreGroup(b.groupId, b.name, b.role));
           toast(L("انضممتَ إلى «" + (b.name || "العائلة") + "» (" + roleLabel(b.role) + ") ✓",
                   "Joined «" + (b.name || "family") + "» (" + roleLabel(b.role) + ") ✓"));
-          // C107: الدعوة لشخصٍ بعينه ⇒ نسأل ثمّ نربط
-          if (jp) rp.then(function (lg) {
+          // C107/C156: الدعوة لشخصٍ بعينه ⇒ ربطه الخادمُ عند القبول (b.claimed) ⇒ العرض منه على هذا الجهاز أيضاً
+          if (claim) rp.then(function (lg) {
             setTimeout(function () {
-              if (!global.confirm(L("هل أنت «" + jpn + "» في شجرة «" + (b.name || "") + "»؟", "Are you «" + jpn + "» in the «" + (b.name || "") + "» tree?"))) return;
-              if (global.__sawaFamClaim && lg) global.__sawaFamClaim(lg, jp);
-              else call("fam.claim", { groupId: b.groupId, personId: jp }).catch(function () {});
-              toast(L("تمّ ✓ — أنت «" + jpn + "» في الشجرة", "Done ✓ — linked"));
+              if (b.claimed) {
+                if (global.__sawaFamClaim && lg) global.__sawaFamClaim(lg, b.claimed);
+                toast(L("تمّ ✓ — أنت «" + jpn + "» في الشجرة", "Done ✓ — linked"));
+              } else toast(L("انضممتَ، لكنّ «" + jpn + "» مربوطٌ بحسابٍ آخر — اطلب من محرّر العائلة تصحيحه", "Joined, but «" + jpn + "» is linked to another account — ask a family editor"));
             }, 900);
           });
         }).catch(function (e) {

@@ -436,7 +436,9 @@ function DailyReminderCard({ card, onClose, onFamily }) {
 // C107: ربط قريبٍ بحسابه في سوا — برمزه · من جهات اتّصالي · أو دعوةٌ لمن ليس في سوا (رابطٌ باسمه في الشجرة)
 function famLinkErr(m) {
     m = String(m || "");
-    return /person taken/.test(m) ? tl("هذا الشخص مربوطٌ بحسابٍ آخر", "This person is already linked")
+    return /person taken/.test(m) ? tl("هذا الشخص مربوطٌ بحسابٍ آخر — استعمل «تغيير الحساب المربوط»", "This person is already linked — use “Change the linked account”")
+        : /already this account/.test(m) ? tl("هذا هو الحساب المربوط به أصلاً", "That's already the linked account")
+        : /ask_family/.test(m) ? tl("يربطك أحد محرّري العائلة: يرسل لك «هل هذا أنت؟» من ملفّك في الشجرة", "A family editor links you by sending “Is this you?”")
         : /already linked/.test(m) ? tl("صاحب هذا الحساب مربوطٌ بشخصٍ آخر في الشجرة", "That account is linked to another person here")
         : /use this is me/.test(m) ? tl("هذا رمزك أنت — استعمل «هذا أنا»", "That's your own code — use “This is me”")
         : /rate_limited/.test(m) ? tl("طلباتٌ كثيرة — جرّب بعد قليل", "Too many requests — try later")
@@ -478,14 +480,14 @@ function FamLinkSheet({ person, onClose }) {
         if (!sg || !SS || !SS.call) { setErr(tl("هذه الشجرة ليست على الخادم بعد — ارفعها أوّلاً", "This tree isn't on the server yet")); return; }
         setBusy(true); setPending(key || "code");
         let p0;
-        try { p0 = Promise.resolve(SS.call("fam.linkReq", Object.assign({ groupId: sg, personId: person.id }, payload))); } catch (e) { p0 = Promise.reject(e); }
+        try { p0 = Promise.resolve(SS.call("fam.linkReq", Object.assign({ groupId: sg, personId: person.id }, person.acctUid ? { replace: true } : {}, payload))); } catch (e) { p0 = Promise.reject(e); }   // C156
         p0.then((b) => {
             if (b && b.found === false) { setErr(key === "phone" ? tl("لم يعد الرقم مطابقاً لحسابٍ موثَّق", "The number no longer matches a verified account") : tl("لا حساب بهذا الرمز (أو أخفى صاحبه رمزه)", "No account with this code (or it's hidden)")); return; }
             setSentTo((b && b.name) || label || "");
         }).catch((e) => { const m = (e && e.message) || String(e); try { console.log("[famlink]", m); } catch (x) { } setErr(errText(m)); }).then(() => { setBusy(false); setPending(null); });
     };
     const box = { backgroundColor: colors.bg, border: `1px solid ${colors.border}`, color: colors.text };
-    return React.createElement(FamSheet, { title: tl("ربط «" + person.local_name + "» بحساب سوا", "Link «" + person.local_name + "» to a Sawa account"), onClose, z: 45 },
+    return React.createElement(FamSheet, { title: person.acctUid ? tl("حسابٌ جديد لـ«" + person.local_name + "»", "New account for «" + person.local_name + "»") : tl("ربط «" + person.local_name + "» بحساب سوا", "Link «" + person.local_name + "» to a Sawa account"), onClose, z: 45 },
         sentTo != null ? React.createElement("div", { className: "text-center py-6" },
             React.createElement("div", { className: "text-3xl mb-2" }, "📨"),
             React.createElement("p", { className: "text-sm font-extrabold mb-1", style: { color: colors.text } }, tl("أُرسل الطلب", "Request sent") + (sentTo ? tl(" إلى " + sentTo, " to " + sentTo) : "")),
