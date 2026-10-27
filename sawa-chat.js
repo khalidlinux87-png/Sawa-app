@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c167";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c169";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -1193,9 +1193,12 @@
     publishMessages(cid); publishChats(); savePrefs({ cleared: prefs.cleared });
   }
   function react(cid, id, emoji) {
-    var day = patchLocal(cid, id, function (m) { m.re = Object.assign({}, m.re); if (emoji) m.re[state.uid] = emoji; else delete m.re[state.uid]; return m; });
-    if (!day) { notYet(); return; }
-    call("chat.react", { cid: cid, day: day, id: id, emoji: emoji || null }).catch(fail);
+    try {
+      var day = patchLocal(cid, id, function (m) { m.re = Object.assign({}, m.re); if (emoji) m.re[state.uid] = emoji; else delete m.re[state.uid]; return m; });
+      if (!day) { notYet(); return; }
+      // C169: تشخيص للمدير — نتيجة التفاعل من الخادم ظاهرة (خالد: «الضغط على الإيموجي لا يعمل»)
+      call("chat.react", { cid: cid, day: day, id: id, emoji: emoji || null }).then(function () { if (adminCached()) toast("✓ " + (emoji || L("أُزيل", "removed")) + " · " + day); }, fail);
+    } catch (e) { toast(L("تعذّر التفاعل: ", "Reaction failed: ") + ((e && e.message) || e)); }
   }
   function pin(cid, id) {
     var c = chats[cid]; if (!c) return;
