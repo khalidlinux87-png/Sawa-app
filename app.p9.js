@@ -14,7 +14,7 @@ function App() {
     const [accentKey0, setAccentKey] = usePersistedState("ui.accent", IS_RAHIM ? "green" : "sawa", 50);
     const accentKey = ACCENT_THEMES[accentKey0] ? accentKey0 : (IS_RAHIM ? "green" : "sawa");
     const [fontScale0, setFontScale] = usePersistedState("ui.fontScale", 1, 50);
-    const fontScale = typeof fontScale0 === "number" && fontScale0 >= 0.8 && fontScale0 <= 1.4 ? fontScale0 : 1;
+    const fontScale = typeof fontScale0 === "number" && fontScale0 >= 0.8 && fontScale0 <= 1.4 ? (fontScale0 === 1.3 ? 1.35 : fontScale0) : 1;   // C154: «أكبر» صار 1.35
     const [highContrast, setHighContrast] = usePersistedState("ui.contrast", false, 50);
     const [dataSaver, setDataSaver] = usePersistedState("dataSaver", false);
     const accent = ACCENT_THEMES[accentKey];
@@ -38,8 +38,19 @@ function App() {
     // حجم الخط: نطبّقه على الجذر عشان يؤثّر على كل وحدات rem المستخدمة بكل مكوّنات
     // Tailwind (text-xs/text-sm/...) — تأثير حقيقي وشامل، مو محلي لشاشة وحدة بس
     useEffect(() => {
-        document.documentElement.style.fontSize = `${16 * fontScale}px`;
-        return () => { document.documentElement.style.fontSize = ""; };
+        // C154: الخطّ وحده يكبر (لا الأزرار والمسافات) — كان الجذر كلّه يكبر فتضيق رؤوس الشاشات وحقل الكتابة بينما نصوص البكسل لا تتغيّر
+        document.documentElement.style.fontSize = "";
+        // C154: النصوص المحدّدة بالبكسل (text-[11px]… وخطوط شاشات المحادثات واللحظات) والأيقونات كانت لا تكبر ⇒ متغيّر --sfs
+        document.documentElement.style.setProperty("--sfs", String(fontScale));
+        if (!document.getElementById("sawa-fs-css")) {
+            const st = document.createElement("style"); st.id = "sawa-fs-css";
+            st.textContent = ["7", "8", "9", "9.5", "10", "10.5", "11", "11.5", "12", "12.5", "13", "13.5", "14", "14.5", "15", "16", "17", "19", "22"].map((n) => `.text-\\[${n.replace(".", "\\.")}px\\]{font-size:calc(${n}px * var(--sfs, 1))}`).join("")
+                + [["xs", .75, 1], ["sm", .875, 1.25], ["base", 1, 1.5], ["lg", 1.125, 1.75], ["xl", 1.25, 1.75], ["2xl", 1.5, 2], ["3xl", 1.875, 2.25], ["4xl", 2.25, 2.5]].map(([k, f, l]) => `.text-${k}{font-size:calc(${f}rem * var(--sfs, 1));line-height:calc(${l}rem * var(--sfs, 1))}`).join("")
+                + [["4", 1], ["5", 1.25], ["7", 1.75], ["8", 2]].map(([k, l]) => `.leading-${k}{line-height:calc(${l}rem * var(--sfs, 1))}`).join("")
+                + "body{font-size:calc(1rem * var(--sfs, 1))}";
+            document.head.appendChild(st);
+        }
+        return () => { document.documentElement.style.fontSize = ""; document.documentElement.style.removeProperty("--sfs"); };
     }, [fontScale]);
     return (React.createElement(ErrorBoundary, null,
         React.createElement(ThemeContext.Provider, { value: theme },

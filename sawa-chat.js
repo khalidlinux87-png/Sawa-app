@@ -2087,7 +2087,7 @@
   }
   function moName(uid, fallback) { if (uid === state.uid) return (state.me && state.me.name) || L("أنا", "Me"); return stName(uid, fallback); }
   function moIcon(path, size, color) {
-    var s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("width", size || 20); s.setAttribute("height", size || 20);
+    var s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("width", size || 20); s.setAttribute("height", size || 20); s.style.width = s.style.height = "calc(" + (size || 20) + "px * var(--sfs, 1))"; s.style.flexShrink = "0";
     s.setAttribute("fill", "none"); s.setAttribute("stroke", color || "currentColor"); s.setAttribute("stroke-width", "2"); s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round");
     s.innerHTML = path; return s;
   }
@@ -3942,7 +3942,9 @@
   }
 
   // ---------- أدوات واجهةٍ صغيرة (DOM) ----------
-  function mk(tag, css, text) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; }
+  // C154: أحجام الخطّ بالبكسل تكبر مع «حجم الخط» في الإعدادات (--sfs)
+  function fsx(css) { return css.indexOf("px") < 0 ? css : css.replace(/(^|;)(\s*font:\s*(?:[0-9]{3}|bold|normal|italic)?\s*)([0-9.]+)px/g, "$1$2calc($3px * var(--sfs, 1))").replace(/(^|;)(\s*font-size:\s*)([0-9.]+)px/g, "$1$2calc($3px * var(--sfs, 1))"); }
+  function mk(tag, css, text) { var e = document.createElement(tag); if (css) e.style.cssText = fsx(css); if (text != null) e.textContent = text; return e; }
   function mkBtn(text, kind) {
     var css = kind === "primary" ? "background:#2e7d5b;color:#fff;border:0"
       : kind === "danger" ? "background:#fdecec;color:#b42318;border:0"
