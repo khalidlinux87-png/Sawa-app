@@ -114,11 +114,12 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
+  var RTC_BUILD = "c167";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
   function netKey() { var n = global.navigator && global.navigator.connection; return (n ? (n.type || "") + "/" + (n.effectiveType || "") : "") + "/" + (cfColo || ""); }
-  try { var m0 = JSON.parse(lsGet("sawa-relay-ms") || "null"); if (m0 && m0.ms && Date.now() - m0.at < 30 * 60000) { relayMs = m0.ms; relayAt = m0.at; relayNet = m0.net || ""; } } catch (e) {}
+  try { var m0 = JSON.parse(lsGet("sawa-relay-ms2") || "null"); if (m0 && m0.ms && Date.now() - m0.at < 30 * 60000) { relayMs = m0.ms; relayAt = m0.at; relayNet = m0.net || ""; } } catch (e) {}
   // C165: وسيطٌ أساسيّ يحدّده الخادم (Metered افتراضاً) — يُقدَّم ما لم يفشل قياسه، والآخر احتياطٌ فقط
   function isPrim(r) { return relayPrimary === "cf" ? r.id === "cf" : relayPrimary === "m" ? /^m/.test(r.id) : false; }
   function relayRank() {
@@ -139,7 +140,8 @@
   function probeOne(rel) {
     return new Promise(function (res) {
       var srv = (rel.iceServers || []).map(function (x) {
-        var u = [].concat(x.urls || []).map(String).filter(function (u) { return /^turn:/.test(u) && !/transport=tcp/.test(u); });
+        // C167: كلّ طرق الوسيط (UDP و TCP و TLS ‎443‎) — كان يقيس UDP وحده فشبكةٌ تحجبه تجعل Metered «فاشلاً» فيُستعمل Cloudflare
+        var u = [].concat(x.urls || []).map(String).filter(function (u) { return /^turns?:/.test(u) && !/:53(\?|$)/.test(u); });
         return u.length ? { urls: u, username: x.username, credential: x.credential } : null;
       }).filter(Boolean);
       if (!srv.length || !global.RTCPeerConnection) return res(null);
@@ -160,7 +162,7 @@
       var ms = {};
       iceRelays.forEach(function (r, i) { var x = [ab[0][i], ab[1][i]].filter(function (v) { return typeof v === "number"; }); ms[r.id] = x.length ? Math.min.apply(null, x) : (ab[0][i] === null ? null : false); });
       relayMs = ms; relayAt = Date.now(); relayNet = netKey(); relayBusy = null;
-      lsSet("sawa-relay-ms", JSON.stringify({ ms: ms, at: relayAt, net: relayNet }));
+      lsSet("sawa-relay-ms2", JSON.stringify({ ms: ms, at: relayAt, net: relayNet }));
       var l = relayIce(); if (l) iceCache = l;
       log("relays", JSON.stringify(ms), "→", (relayRank() || [])[0] && relayRank()[0].id);
       return ms;
@@ -873,6 +875,7 @@
         var relay = lc.candidateType === "relay" || rc.candidateType === "relay";
         c.route = relay ? "relay" : "direct"; c.proto = String(lc.relayProtocol || lc.protocol || "").toLowerCase() || null;
         var rr = lc.candidateType === "relay" ? relayOfUrl(lc.url) : null; c.relayLbl = rr ? rr.label : null; c.relayId = rr ? rr.id : null;   // C94: أيّ وسيط
+        if (!rr && rc.candidateType === "relay") c.relayLbl = L("وسيط الطرف الآخر", "peer's relay");   // C167: الوسيط من جهة الطرف الآخر (قد تكون نسخته أقدم)
         log("route", lc.candidateType, "→", rc.candidateType, c.proto);
         if (ui.sub && c === cur && isAdm()) ui.sub.textContent = relay ? L("عبر خادم وسيط", "via relay") : L("اتّصال مباشر", "direct");   // C115: للمدير فقط
       }).catch(function () {});
@@ -1277,7 +1280,9 @@
         body.parentNode.parentNode.style.direction = isAr() ? "rtl" : "ltr";
         if (!items.length) { body.appendChild(el("div", "padding:24px;text-align:center;color:" + MUTED + ";font:600 13px system-ui", L("لا تقييمات بعد — أرسل لمختبِريك الرابط sawaaap.com/?qa=1", "No ratings yet — send testers sawaaap.com/?qa=1"))); return; }
         var groups = {};
-        items.forEach(function (x) { var k = (x.kind || "?") + " · " + (x.engine === "native" ? "⚡" : "WebView") + (x.out === "spk" ? " · 🔊" : x.out === "ear" ? " · 👂" : "") + " · " + (x.ver || "?"); (groups[k] = groups[k] || []).push(x); });
+        // C166: والوسيط في المفتاح — مقارنة Metered بـCloudflare (والمباشر)
+        var via = function (x) { return x.route === "relay" ? (/metered/i.test(x.relay || "") ? "Metered" : /cloudflare/i.test(x.relay || "") ? "Cloudflare" : "relay ?") : x.route === "direct" ? "direct" : (x.route || "?"); };
+        items.forEach(function (x) { var k = (x.kind || "?") + " · " + (x.engine === "native" ? "⚡" : "WebView") + (x.out === "spk" ? " · 🔊" : x.out === "ear" ? " · 👂" : "") + " · " + via(x); (groups[k] = groups[k] || []).push(x); });
         var med = function (a) { a = a.filter(function (v) { return typeof v === "number"; }).sort(function (x, y) { return x - y; }); return a.length ? a[Math.floor(a.length / 2)] : "–"; };
         Object.keys(groups).sort().forEach(function (k) {
           var g = groups[k], avg = g.reduce(function (t, x) { return t + (x.stars || 0); }, 0) / g.length;
@@ -4203,6 +4208,7 @@
       makeHost: rMakeHost, ctl: rCtl, muteAll: rMuteAll, lowerAll: rLowerAll, meta: rSetMeta, endAll: rEndAll, summary: rSummaryText, panel: rOpenPanel, settings: rSettings, max: rMax, rejoin: function () { if (rm) rRejoin(rm); }, bigToggle: rBigToggle, sfuRestart: function () { if (rm) sfuRestart(rm, 100); }, adapt: function (q) { if (rm) rAdapt(rm, q); }, stats: function () { if (rm) rStatsTick(rm); } },
     _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming,
     _native: { ok: nativeAudioOk, PC: NativePC }, qaReport: qaReport, _qaAsk: qaAsk,
+    build: RTC_BUILD, relayPrimary: function () { return relayPrimary; }, relayMs: function () { return relayMs; },
     _relay: { probe: probeRelays, rank: relayRank, ice: relayIce, ms: function () { return relayMs; }, list: function () { return iceRelays; }, ofUrl: relayOfUrl, text: callNetText }
   };
   try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") schedRefresh(false); }); } catch (e) {}
