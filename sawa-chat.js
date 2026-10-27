@@ -224,7 +224,7 @@
         toast(v ? L("تغيّرت صورة المجموعة ✓", "Group photo updated ✓") : L("أُزيلت صورة المجموعة", "Group photo removed"));
         return true;
       });
-    }).catch(function (e) { toast(/only admins/.test(String(e && e.message)) ? L("المشرفون وحدهم يغيّرون صورة هذه المجموعة", "Only admins can change this group's photo") : L("تعذّر تغيير الصورة", "Couldn't change the photo")); });
+    }).catch(function (e) { toast(/only admins/.test(String(e && e.message)) ? L("المشرفون وحدهم يغيّرون صورة هذه المجموعة", "Only admins can change this group's photo") : L("تعذّر تغيير الصورة: ", "Couldn't change the photo: ") + String((e && e.message) || e).slice(0, 80)); });   // C159: السبب ظاهر
   }
   function groupPhotoOf(c) {
     var e = avAll()[c.cid];
@@ -1295,7 +1295,7 @@
     return { id: c.cid, cloud: true, kind: c.type, familyGroupId: c.familyGroupId || null, desc: c.desc || "", adminsOnly: !!c.adminsOnly, infoAdminsOnly: !!c.infoAdminsOnly,
       name: (c.name || L("مجموعة", "Group")) + (sec ? " 🔒" : ""), members: members, lastMessage: lastText, secret: sec, e2e: sec ? e2eUi(c) : null,
       unread: unreadOf(c), updatedAt: lp ? lp.ts : (c.updatedTs || 0), pinnedMessageId: c.pinned || null, disappear: c.disappear || 0,
-      photo: c.type === "group" ? groupPhotoOf(c) : null };   // C155
+      photo: c.type === "group" || c.type === "family" ? groupPhotoOf(c) : null };   // C155 · C159: والعائلة
   }
   var pubChatsT = null;
   function publishChats() {

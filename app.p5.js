@@ -259,8 +259,10 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
             React.createElement("div", { className: "flex flex-col items-center py-6 px-6", style: { backgroundColor: colors.card } },
                 // C155: صورة المجموعة — اضغط لتغييرها (لمن يحقّ له تعديل المعلومات) أو لعرضها كبيرة
                 (() => {
-                    const canPhoto = !isFamily && group.cloud && window.SawaChat && window.SawaChat.setGroupPhoto && (isAdmin || !group.infoAdminsOnly);
-                    return React.createElement("button", { "aria-label": tl("صورة المجموعة", "Group photo"), onClick: () => canPhoto ? window.SawaChat.setGroupPhoto(group.id, !!group.photo) : (group.photo && setViewPhoto(group.photo)), className: "relative mb-3", style: { cursor: canPhoto || group.photo ? "pointer" : "default" } },
+                    // C159: والعائلة أيضاً (لمالكها ومحرّريها — يتحقّق الخادم) · وسببٌ واضح بدل لا شيء
+                    const canPhoto = group.cloud && window.SawaChat && window.SawaChat.setGroupPhoto && (isFamily || isAdmin || !group.infoAdminsOnly);
+                    const why = !group.cloud ? tl("هذه المجموعة على جهازك فقط — صورتها تحتاج مجموعةً في سوا", "This group is only on your device") : !(window.SawaChat && window.SawaChat.setGroupPhoto) ? tl("حدّث التطبيق («حسابي ← تحديث التطبيق») ثمّ جرّب", "Update the app and try again") : tl("المشرفون وحدهم يغيّرون صورة هذه المجموعة", "Only admins can change this group's photo");
+                    return React.createElement("button", { "aria-label": tl("صورة المجموعة", "Group photo"), onClick: () => canPhoto ? window.SawaChat.setGroupPhoto(group.id, !!group.photo) : (group.photo ? setViewPhoto(group.photo) : alert(why)), className: "relative mb-3", style: { cursor: "pointer" } },
                         React.createElement(Pic, { photo: group.photo || null, letter: null, size: 96, bg: colors.primaryLight, color: colors.primary }, group.photo ? null : React.createElement(UsersRound, { size: 40, color: colors.primary })),
                         canPhoto && React.createElement("span", { className: "absolute bottom-0 rounded-full flex items-center justify-center", style: { insetInlineEnd: 0, width: 30, height: 30, backgroundColor: colors.primary, border: "2px solid " + colors.card } }, React.createElement(Camera, { size: 15, color: "#fff" })));
                 })(),
