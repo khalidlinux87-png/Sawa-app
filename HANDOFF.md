@@ -11,7 +11,7 @@
 - **بعد كلّ تسليم:** تعليمات الرفع مع **حجم كلّ ملفّ**.
 - **ترتيب الرفع:** الـWorker أوّلاً، ثمّ قواعد Firestore، ثمّ ملفّات التطبيق، و`sw.js` **أخيراً** برقمٍ جديد.
 - **بعد تعديل سطر تصدير SawaChat/SawaRTC:** قارن المفاتيح بالنسخة السابقة (x/t/app/keys.mjs) — C164 ابتلع تعليقٌ react/pin/deleteForAll.
-- **التوثيق:** كلّ تغيير يُوثَّق في `BUILD.md` (قسم بالرقم التالي: **C179**).
+- **التوثيق:** كلّ تغيير يُوثَّق في `BUILD.md` (قسم بالرقم التالي: **C181**).
 - **الملفّات للهاتف:** ملفّات منفردة لا zip، لأنّ فكّ الضغط على هاتفه يفشل أحياناً. محرّر GitHub على الهاتف يفسد النصّ العربيّ في الملفّات غير JS (مثل ‎`.strings`)، فتُرسَل بترميز `\Uxxxx`.
 - **صور المتجر:** بصيغة JPG خفيفة.
 - **الأسرار — لا تُطلب ولا تُرسَل في المحادثة أبداً:**
@@ -25,7 +25,7 @@
 | ماذا | أين |
 |---|---|
 | الموقع (PWA) | GitHub **Sawa-app** ← Cloudflare Pages ← https://www.sawaaap.com |
-| الخادم | Cloudflare Worker **sawa-deploy-test**، الملفّ `worker-3.js` ← https://sawa-deploy-test.khalidlinux87.workers.dev |
+| الخادم | Cloudflare Worker **sawa-deploy-test**، الملفّ `worker-3.js` ← https://sawa-deploy-test.khalidlinux87.workers.dev · **الخطّة المدفوعة** منذ C180 (WORKERS_FREE=1 يعيد حدود المجّانيّة) |
 | Firebase | المشروع **sawa-test-9770f** (Auth: ضيف/بريد/Google/Apple · Firestore · RTDB · FCM) |
 | أندرويد | **Sawa-android**: `sawa-native.zip` + `.github/workflows/build.yml` (البناء ⇒ APK + AAB، وRelease ‏`android-latest` ⇒ رابط التنزيل) |
 | آيفون | **Sawa-iOS**: مشروع XcodeGen ‏(`project.yml`) + Swift + ثلاثة سير عمل |
@@ -47,9 +47,9 @@
 
 | المكوّن | النسخة |
 |---|---|
-| sw.js | **sawa-v375** |
+| sw.js | **sawa-v376** |
 | sawa-rtc | **c131** |
-| Worker | **v88-sfu-health** |
+| Worker | **v90-paid** |
 | أندرويد الأصليّ (`native/SAWA_BUILD`) | **c152** (versionCode = 1000 + رقم التشغيل، والاسم 2.0.N) |
 | iOS | 1.0.0 · رقم البناء = 100 + رقم تشغيل TestFlight (آخر ما رُفع **106**) |
 
