@@ -116,7 +116,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c178";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c181";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -304,7 +304,8 @@
         if (!sn.track) return;
         senderTune(sn, function (pr) {
           if (sn.track && sn.track.kind === "audio") { pr.encodings[0].priority = "high"; pr.encodings[0].networkPriority = "high"; }
-          else if (sn.track.__scr) { pr.degradationPreference = "maintain-resolution"; pr.encodings[0].maxBitrate = 1200000; pr.encodings[0].maxFramerate = 15; }   // C120: الشاشة نصٌّ دقيق
+          else if (sn.track.__scr) { pr.degradationPreference = "maintain-resolution"; pr.encodings[0].maxBitrate = 1200000; pr.encodings[0].maxFramerate = 15; if (pr.encodings[1]) pr.encodings[1].active = false; }   // C179: الشاشة طبقةٌ واحدة كاملة   // C120: الشاشة نصٌّ دقيق
+          else if (pr.encodings.length > 1 && pr.encodings[0].rid) { pr.degradationPreference = "balanced"; if (videoBitrate) { pr.encodings[0].maxBitrate = videoBitrate; pr.encodings[1].maxBitrate = Math.min(110000, Math.round(videoBitrate / 3)); } pr.encodings[1].active = true; }   // C179: طبقتا Simulcast
           else { pr.degradationPreference = "balanced"; if (videoBitrate) pr.encodings[0].maxBitrate = videoBitrate; }
         });
       });
@@ -728,6 +729,7 @@
   function newCall(o) {
     o.timers = {}; o.offs = []; o.iceOut = []; o.iceIn = []; o.remoteSet = false;
     o.muted = false; o.camOff = false; o.facing = "user"; o.reN = 0; o.reSeen = 0;
+    o.t0 = Date.now();   // C179: لزمن إنشاء الاتّصال
     return o;
   }
   function setState(c, s) {
@@ -797,10 +799,11 @@
     if (c.done || !c.pc || c.state !== "connected") return;
     c.pc.getStats().then(function (rep) {
       if (c.done) return;
-      var rtt = null, lostIn = 0, recvIn = 0, lostOut = null, pair = null, jbD = 0, jbN = 0;
+      var rtt = null, lostIn = 0, recvIn = 0, lostOut = null, pair = null, jbD = 0, jbN = 0, jitS = null, fpsS = null, hS = null;
       rep.forEach(function (x) {
         if (x.type === "transport" && x.selectedCandidatePairId) pair = rep.get(x.selectedCandidatePairId);
-        if (x.type === "inbound-rtp" && x.kind === "audio") { lostIn += x.packetsLost || 0; recvIn += x.packetsReceived || 0; jbD += x.jitterBufferDelay || 0; jbN += x.jitterBufferEmittedCount || 0; }
+        if (x.type === "inbound-rtp" && x.kind === "audio") { lostIn += x.packetsLost || 0; recvIn += x.packetsReceived || 0; jbD += x.jitterBufferDelay || 0; jbN += x.jitterBufferEmittedCount || 0; if (typeof x.jitter === "number") jitS = x.jitter * 1000; }
+        if (x.type === "inbound-rtp" && x.kind === "video") { if (typeof x.framesPerSecond === "number") fpsS = x.framesPerSecond; if (x.frameHeight) hS = x.frameHeight; }   // C179
         if (x.type === "remote-inbound-rtp" && x.kind === "audio") { if (typeof x.fractionLost === "number") lostOut = x.fractionLost; if (typeof x.roundTripTime === "number") rtt = x.roundTripTime * 1000; }
       });
       if (!pair) rep.forEach(function (x) { if (x.type === "candidate-pair" && x.state === "succeeded" && (x.selected || x.nominated)) pair = pair || x; });
@@ -818,6 +821,7 @@
       if (dN > 0) c.jb = Math.round(dD / dN * 1000);
       c.lagHist = (c.lagHist || []).concat([Math.round((rtt || 0) / 2 + (c.jb || 0))]).slice(-40);
       qaSample(c, rtt, c.jb, loss, pair);   // C131
+      telSample(c, jitS, fpsS, hS);   // C179
       if (c === cur && ui.sub && c.type !== "video") ui.sub.textContent = netLine(c);
       c.qHist = (c.qHist || []).concat([q]).slice(-6);
       var h = c.qHist, bad = h.length >= 2 && h.slice(-2).every(function (x) { return x <= 1; }), good = h.length >= 4 && h.slice(-4).every(function (x) { return x >= 2; });
@@ -1063,7 +1067,7 @@
     if (v.up && !c.upSeen) { c.upSeen = true; c.silent = true; finish(c, "upgraded", { remote: true }); groupJoinDirect(v.up, c.type, null, c.upgrading ? "starter" : "joiner"); return; }
     if (v.rung && !c.rung) { c.rung = true; if (c.state === "calling") { setState(c, "ringing"); playTone("back"); } }
     if (v.acc && !c.accepted) {
-      c.accepted = true; clearTimeout(c.timers.ring); stopTone();
+      c.accepted = true; c.accAt = c.accAt || Date.now(); clearTimeout(c.timers.ring); stopTone();
       setState(c, "connecting");
       if (c.inbox) c.inbox.remove().catch(function () {});
       c.timers.conn = setTimeout(function () { if (!c.connectedAt) finish(c, "failed"); }, CONNECT_MS + 15000);
@@ -1148,6 +1152,7 @@
   }
   function accept(audioOnly) {
     var c = cur; if (!c || c.role !== "callee" || c.state !== "incoming") return;
+    c.accAt = Date.now();   // C179
     nativeCallDone(c.id);   // C72: أوقف رنين الهاتف
     ckEnd(c.id, "answered");   // C151
     stopTone(); clearTimeout(c.timers.ring);
@@ -1233,6 +1238,14 @@
     if (rtt != null) s.rtt.push(Math.round(rtt)); if (jb != null) s.jb.push(Math.round(jb)); if (loss != null) s.loss.push(Math.round(loss * 1000) / 10);
     ["rtt", "jb", "loss"].forEach(function (k) { if (s[k].length > 400) s[k] = s[k].slice(-400); });
   }
+  // C179: سجلّ كلّ مكالمة (لا المقيَّمة وحدها) — يرسله كلّ طرف عند الانتهاء تحت معرّف المكالمة نفسه
+  function telSample(c, jit, fps, h) {
+    var s = c.telS || (c.telS = { jit: [], fps: [], h: [] });
+    if (jit != null) s.jit.push(Math.round(jit)); if (fps != null) s.fps.push(Math.round(fps)); if (h) s.h.push(h);
+    ["jit", "fps", "h"].forEach(function (k) { if (s[k].length > 400) s[k] = s[k].slice(-400); });
+  }
+  function telNet() { try { var n = navigator.connection; return n ? String(n.type || n.effectiveType || "") : ""; } catch (e) { return ""; } }
+  function telSend(o) { try { o.plat = qaPlat(); o.model = qaModel(); o.ver = RTC_BUILD; o.net = telNet(); wcall("call.tel", o).catch(function () {}); } catch (e) {} }
   function qaStat(a) {
     if (!a || !a.length) return null;
     var b = a.slice().sort(function (x, y) { return x - y; });
@@ -1294,6 +1307,70 @@
     return closeFn;
   }
   // C175: مفتاح المدير — الوسيط الأساسيّ (Metered / Cloudflare / تلقائيّ = إعداد الـWorker) · يصل الكلّ خلال دقائق
+  // C179: سجلّ المكالمات (للمدير) — من سجلّات كلّ المكالمات مجمّعةً بمعرّف المكالمة: نسبة المرور عبر TURN · UDP · زمن الاتّصال · الجودة · أسباب الفشل
+  var TEL_REASON = { hangup: ["أُنهيت", "Hung up"], remote: ["أنهاها الآخر", "Remote"], noanswer: ["لم يُجب", "No answer"], declined: ["رُفضت", "Declined"], cancel: ["أُلغيت", "Cancelled"], failed: ["فشل الاتّصال", "Failed"], lost: ["انقطعت", "Lost"], error: ["خطأ", "Error"], busy: ["مشغول", "Busy"], missed: ["فائتة", "Missed"], left: ["غادر", "Left"], moved: ["انتقلت إلى SFU", "Moved to SFU"] };
+  function telReport(days) {
+    days = days || 7;
+    sheet(L("سجلّ المكالمات", "Call log (all calls)"), function (body, close) {
+      body.parentNode.parentNode.style.direction = isAr() ? "rtl" : "ltr";
+      var tabs = el("div", "display:flex;gap:6px;padding:0 14px 8px");
+      [1, 7, 30].forEach(function (d) { var b = el("button", "flex:1;padding:8px;border-radius:10px;border:1px solid " + (d === days ? PRI : LINE) + ";background:" + (d === days ? PRI : "transparent") + ";color:#fff;font:800 12.5px system-ui", d === 1 ? L("اليوم", "Today") : d + L(" أيّام", " days")); b.onclick = function () { close(); telReport(d); }; tabs.appendChild(b); });
+      body.appendChild(tabs);
+      var box = el("div", "padding:0 14px 12px"); box.textContent = L("جارٍ التحميل…", "Loading…"); body.appendChild(box);
+      var pct = function (a, b) { return b ? Math.round(a * 100 / b) + "%" : "–"; };
+      var ms = function (v) { return v == null ? "–" : v >= 1000 ? (v / 1000).toFixed(1) + " s" : v + " ms"; };
+      var card = function (title) { var c = el("div", "padding:10px 12px;margin-bottom:10px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid " + LINE); if (title) c.appendChild(el("div", "font:800 13.5px system-ui;margin-bottom:6px", title)); box.appendChild(c); return c; };
+      var kv = function (c, k, v, warn) { var r0 = el("div", "display:flex;justify-content:space-between;gap:8px;font:600 12.5px system-ui;padding:2px 0"); r0.appendChild(el("span", "color:" + MUTED, k)); r0.appendChild(el("span", "direction:ltr;font-weight:800;color:" + (warn ? "#fbbf24" : "#fff"), v)); c.appendChild(r0); };
+      wcall("admin.tel", { days: days }).then(function (r) {
+        box.innerHTML = "";
+        if (!r || !r.admin) { box.textContent = L("للمدير فقط", "Admin only"); return; }
+        var a = r.all || {};
+        var c1 = card(L("المكالمات الفرديّة", "1:1 calls"));
+        kv(c1, L("العدد", "Calls"), String(a.n || 0));
+        kv(c1, L("نجح الاتّصال", "Connected"), pct(a.conn, a.n), a.n && a.conn / a.n < 0.85);
+        kv(c1, L("عبر الوسيط (TURN)", "Via TURN relay"), pct(a.relay, a.conn), a.conn && a.relay / a.conn > 0.4);
+        kv(c1, L("عبر TCP/TLS (ليس UDP)", "Over TCP/TLS (not UDP)"), pct(a.tcp, a.conn), a.conn && a.tcp / a.conn > 0.15);
+        kv(c1, L("زمن إنشاء الاتّصال (وسيط · ٩٠٪)", "Setup time (median · p90)"), ms(a.setup) + " · " + ms(a.setup90), a.setup > 3000);
+        kv(c1, "RTT", ms(a.rtt), a.rtt > 300);
+        kv(c1, L("فقد الحزم", "Packet loss"), a.loss == null ? "–" : a.loss + "%", a.loss > 3);
+        kv(c1, L("التذبذب (jitter)", "Jitter"), ms(a.jit), a.jit > 40);
+        if (a.fps != null) kv(c1, L("إطارات الفيديو", "Video fps"), a.fps + " fps", a.fps < 12);
+        if (a.ringN) kv(c1, L("وصل إشعار الرنين", "Ring push delivered"), pct(a.ringOk, a.ringN), a.ringOk / a.ringN < 0.9);
+        c1.appendChild(el("div", "font:600 11px system-ui;color:" + MUTED + ";margin-top:4px", L("المعتاد عالميّاً: ١٥–٤٠٪ عبر الوسيط. الأصفر يستحقّ المراجعة.", "Typical: 15–40% relayed. Yellow deserves a look.")));
+        var rs = Object.keys(a.reasons || {}).sort(function (x, y) { return a.reasons[y] - a.reasons[x]; });
+        if (rs.length) { var c2 = card(L("لم تتّصل — الأسباب", "Not connected — reasons")); rs.forEach(function (k) { kv(c2, TEL_REASON[k] ? L(TEL_REASON[k][0], TEL_REASON[k][1]) : k, String(a.reasons[k])); }); }
+        var ps = Object.keys(r.byPlat || {});
+        if (ps.length) { var c3 = card(L("حسب المنصّة", "By platform")); ps.forEach(function (k) { var x = r.byPlat[k]; kv(c3, k, x.n + " · ✓ " + pct(x.conn, x.n) + " · TURN " + pct(x.relay, x.conn)); }); }
+        var g = r.groups || {};
+        if (g.n) { var c4 = card(L("المجموعات والغرف", "Groups & rooms")); kv(c4, L("الجلسات", "Sessions"), String(g.n)); kv(c4, L("عبر خادم الوسائط (SFU)", "Via SFU"), pct(g.sfu, g.n)); kv(c4, L("انضمّ بنجاح", "Joined"), pct(g.conn, g.n)); }
+        // C181: الملخّص اليوميّ (٧ صباحاً) وتنبيه التراجع — تشغيل/إيقاف وتجربة
+        var cq = card(L("الملخّص اليوميّ والتنبيهات", "Daily digest & alerts"));
+        cq.appendChild(el("div", "font:600 11.5px system-ui;color:" + MUTED + ";margin-bottom:8px", L("كلّ صباح (٧ بتوقيت السودان) يصلك ملخّص أمس، وتنبيهٌ فوريّ إن تراجعت المكالمات في آخر ساعتين.", "Every morning you get yesterday's summary, plus an instant alert if calls degrade in the last 2 hours.")));
+        var qr = el("div", "display:flex;gap:6px"); cq.appendChild(qr);
+        var qb = el("button", "flex:1;padding:9px;border-radius:10px;border:1px solid " + LINE + ";background:" + (r.qoff ? "transparent" : PRI) + ";color:#fff;font:800 12.5px system-ui", r.qoff ? L("متوقّف — تشغيل", "Off — turn on") : L("مفعّل — إيقاف", "On — turn off"));
+        qb.onclick = function () { qb.disabled = true; wcall("admin.qcfg", { off: !r.qoff }).then(function (x) { r.qoff = !!(x && x.qoff); qb.textContent = r.qoff ? L("متوقّف — تشغيل", "Off — turn on") : L("مفعّل — إيقاف", "On — turn off"); qb.style.background = r.qoff ? "transparent" : PRI; toast(r.qoff ? L("أُوقف الملخّص", "Digest off") : L("✓ الملخّص مفعّل", "✓ Digest on")); }).catch(function (e) { toast(String((e && e.message) || e)); }).then(function () { qb.disabled = false; }); };
+        var qt = el("button", "flex:1;padding:9px;border-radius:10px;border:1px solid " + LINE + ";background:transparent;color:#fff;font:800 12.5px system-ui", L("أرسل ملخّصاً الآن", "Send a digest now"));
+        qt.onclick = function () { qt.disabled = true; wcall("admin.qcfg", { test: true, off: !!r.qoff }).then(function (x) { toast(x && x.sent ? L("✓ أُرسل — انظر الإشعارات", "✓ Sent — check notifications") : L("لم يُرسل — فعّل الإشعارات على هذا الهاتف", "Not sent — enable notifications on this phone")); }).catch(function (e) { toast(String((e && e.message) || e)); }).then(function () { qt.disabled = false; }); };
+        qr.appendChild(qb); qr.appendChild(qt);
+        var c5 = card(L("آخر المكالمات", "Recent calls"));
+        (r.recent || []).forEach(function (c) {
+          var x = c.sides[0] || {}, ok = c.sides.some(function (y) { return y.ok; });
+          var row = el("div", "padding:6px 0;border-top:1px solid " + LINE + ";font:600 12px system-ui");
+          row.appendChild(el("div", "display:flex;justify-content:space-between;gap:6px", ""));
+          row.firstChild.appendChild(el("span", "font-weight:800", (ok ? "✅ " : "❌ ") + (x.k || "?") + (x.mode ? " · " + x.mode : "") + (x.n ? " · " + x.n + "👥" : "")));
+          row.firstChild.appendChild(el("span", "color:" + MUTED + ";direction:ltr", new Date(c.ts).toLocaleString(isAr() ? "ar" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })));
+          c.sides.forEach(function (y) {
+            row.appendChild(el("div", "color:" + MUTED + ";direction:ltr;text-align:start;margin-top:2px;word-break:break-word",
+              [y.role, y.plat, y.eng, y.ok ? ms(y.setup) : (TEL_REASON[y.reason] ? L(TEL_REASON[y.reason][0], TEL_REASON[y.reason][1]) : y.reason), y.route ? y.route + "/" + (y.proto || "?") + (y.relay ? " " + y.relay : "") : "", y.rtt ? "RTT " + y.rtt.med : "", y.loss ? "loss " + y.loss.med + "%" : "", y.secs ? y.secs + "s" : ""].filter(Boolean).join(" · ")));
+          });
+          if (c.srv) row.appendChild(el("div", "color:" + MUTED + ";font-size:11px", L("الخادم: رنين ", "Server: ring ") + (c.srv.sent || 0)));
+          row.appendChild(el("div", "color:#64748b;font-size:10.5px;direction:ltr;text-align:start", "call_id " + c.cid));
+          c5.appendChild(row);
+        });
+        if (!(r.recent || []).length) c5.appendChild(el("div", "color:" + MUTED + ";font:600 12px system-ui", L("لا سجلّات بعد — تبدأ من المكالمات القادمة", "No records yet — starts with upcoming calls")));
+      }).catch(function (e) { box.textContent = L("تعذّر التحميل: ", "Couldn't load: ") + ((e && e.message) || e); });
+    });
+  }
   // C178: حالة الخدمات (للمدير) — من فحص الخادم كلّ ٢٠ دقيقة (health/now) أو «فحص الآن»
   function healthSheet() {
     sheet(L("حالة الخدمات", "Service health"), function (body) {
@@ -1445,6 +1522,11 @@
     stopStream(c.local);
     try { if (c.pc) c.pc.close(); } catch (e) {}
     logCall(c);
+    var S0 = c.qaS || {}, T0 = c.telS || {};
+    telSend({ id: c.id, k: c.type === "video" ? "video" : "audio", role: c.role, eng: c.native ? (RTCB() && RTCB().ios ? "native-ios" : "native") : "web", ok: !!c.connectedAt,
+      setup: c.connectedAt ? c.connectedAt - (c.accAt || c.t0 || c.connectedAt) : null, secs: c.connectedAt ? Math.round((Date.now() - c.connectedAt) / 1000) : 0, reason: reason,
+      route: c.route || "", proto: c.proto || "", relay: c.relayLbl || c.relayId || "", rst: c.reN || 0,
+      rtt: qaStat(S0.rtt), loss: qaStat(S0.loss), jb: qaStat(S0.jb), jit: qaStat(T0.jit), fps: qaStat(T0.fps), h: qaStat(T0.h) });   // C179
     qaAfter(c.connectedAt ? Math.round((Date.now() - c.connectedAt) / 1000) : 0, { kind: c.type === "video" ? "video" : "audio", engine: c.native ? (RTCB() && RTCB().ios ? "native-ios" : "native") : "web", osr: c.osRoute || "",
       out: c.out || "", route: c.route || "", relay: c.relayLbl || c.relayId || "", proto: c.proto || "", s: c.qaS || null, reason: reason });
     if (cur === c) cur = null;
@@ -1491,7 +1573,7 @@
 
   function gcNew(o) {
     o.peers = {}; o.members = {}; o.offs = []; o.timers = {}; o.sess = rid(8); o.muted = false; o.camOff = false; o.facing = "user";
-    o.met = {}; o.reqs = {};
+    o.met = {}; o.reqs = {}; o.t0 = Date.now();
     return o;
   }
   function gListen(g, ref, ev, fn) { var h = ref.on(ev, fn, function () {}); g.offs.push(function () { try { ref.off(ev, h); } catch (e) {} }); }
@@ -1879,6 +1961,8 @@
                  type: type, time: L("الآن", "Now"), duration: secs ? fmt(secs) : null, timestamp: Date.now(), participants: names.length ? names : null, cloud: true, cid: g.cid || null, gid: g.gid });
     }
     if (gc === g) gc = null;
+    if (g.gid && (g.live || g.role !== "incoming")) telSend({ id: g.gid, k: "group-" + g.type, mode: "mesh", role: g.role, ok: !!g.joinedAt, n: Object.keys(g.met || {}).length + 1,
+      setup: g.joinedAt && g.t0 ? g.joinedAt - g.t0 : null, secs: g.joinedAt ? Math.round((Date.now() - g.joinedAt) / 1000) : 0, reason: reason });   // C179
     log("gend", g.gid, reason);
     if (g.live && g.joinedAt && reason !== "moved") qaAfter(Math.round((Date.now() - g.joinedAt) / 1000), { kind: g.type === "video" ? "group-video" : "group-audio", engine: "web",
       n: Object.keys(g.met || {}).length + 1, reason: reason });
@@ -2620,7 +2704,7 @@
       if (u === me) return;
       var m = r.members[u], f = m && m.sfu; if (!f || !f.s) return;
       if (f.a) want[u + ":a"] = { uid: u, kind: "audio", sessionId: f.s, trackName: f.a };
-      if (f.v && m.cam && !r.low) want[u + ":v"] = { uid: u, kind: "video", sessionId: f.s, trackName: f.v };
+      if (f.v && m.cam && !r.low) want[u + ":v"] = { uid: u, kind: "video", sessionId: f.s, trackName: f.v, sc: !!f.sc };
     });
     var same = function (k) { var x = s.pulled[k], w = want[k]; return x && w && x.sessionId === w.sessionId && x.trackName === w.trackName; };
     var toPull = Object.keys(want).filter(function (k) { return !same(k) && (s.fails[k] || 0) < 6; });
@@ -2641,7 +2725,9 @@
     });
     if (toPull.length) step = step.then(function () {
       if (r.sfu !== s) return;
-      return wcall("sfu.pull", { room: r.code, sid: s.sid, tracks: toPull.map(function (k) { return { sessionId: want[k].sessionId, trackName: want[k].trackName }; }) }).then(function (b) {
+      // C179: أكثر من كاميرتين معروضتين ⇒ نطلب نصف الدقّة (المربّعات صغيرة) — والخادم ينزل تلقائيّاً إن ضاقت شبكتي
+      var vids = Object.keys(want).filter(function (k) { return want[k].kind === "video"; }).length;
+      return wcall("sfu.pull", { room: r.code, sid: s.sid, tracks: toPull.map(function (k) { var w = want[k]; return { sessionId: w.sessionId, trackName: w.trackName, sc: w.kind === "video" && w.sc, rid: vids > 2 ? "h" : "f" }; }) }).then(function (b) {
         if (r.sfu !== s || s.gen !== gen) return;
         (b.tracks || []).forEach(function (t) {
           var k = toPull.filter(function (kk) { return want[kk].sessionId === t.sessionId && want[kk].trackName === t.trackName; })[0];
@@ -2682,13 +2768,16 @@
     if (s.busy) { s.camPending = true; return; }   // تفاوضٌ جارٍ على الاتّصال نفسه — ننتظره
     s.vpush = true;
     var pc = s.pc;
-    s.vtx = pc.addTransceiver(t, { direction: "sendonly" });
+    // C179: Simulcast — طبقتان (f كاملة · h نصف الدقّة) والخادم يعطي كلّ مشاهدٍ ما تحتمله شبكته. «بيانات قليلة»/«دقّة منخفضة» ⇒ طبقةٌ واحدة
+    s.sc = !r.lowRes;
+    try { s.vtx = pc.addTransceiver(t, s.sc ? { direction: "sendonly", sendEncodings: [{ rid: "f", scaleResolutionDownBy: 1, maxBitrate: 350000 }, { rid: "h", scaleResolutionDownBy: 2, maxBitrate: 110000 }] } : { direction: "sendonly" }); }
+    catch (e) { s.sc = false; s.vtx = pc.addTransceiver(t, { direction: "sendonly" }); }
     s.vName = r.sess + "v";
     s.busy = true;
     pc.createOffer().then(function (o) { return pc.setLocalDescription(tuneSdp(o)); })
       .then(function () { return wcall("sfu.push", { room: r.code, sid: s.sid, sdp: pc.localDescription.sdp, tracks: [{ mid: s.vtx.mid, trackName: s.vName }] }); })
       .then(function (b) { if (r.sfu !== s) return; return pc.setRemoteDescription({ type: "answer", sdp: b.sdp }); })
-      .then(function () { if (r.sfu !== s) return; rMember(r, { sfu: { s: s.sid, a: s.aName, v: s.vName } }); rCap(r); })
+      .then(function () { if (r.sfu !== s) return; rMember(r, { sfu: { s: s.sid, a: s.aName, v: s.vName, sc: s.sc ? 1 : null } }); rCap(r); })
       .catch(function (e) { log("sfu cam", e && e.message); s.vtx = null; })
       .then(function () { s.vpush = false; s.busy = false; s.again = false; if (r.sfu === s) { sfuCam(r); sfuSync(r); } });
   }
@@ -3133,6 +3222,8 @@
     r = r || rm; if (!r) return;
     if (r.done) { if (rm === r) rm = null; return; }
     opts = opts || {}; r.done = true; bgAudio(false);
+    if (reason !== "retry") telSend({ id: r.code + "-" + r.sess, k: "room", mode: rBig(r) ? "sfu" : "mesh", role: amHost(r) ? "host" : "member", ok: !!r.joinedAt, n: Object.keys(r.met || {}).length + 1,
+      setup: r.joinedAt && r.t0 ? r.joinedAt - r.t0 : null, secs: r.joinedAt ? Math.round((Date.now() - r.joinedAt) / 1000) : 0, reason: reason });   // C179
     if (r.scr) { r.scr = false; var wasN = !!(r.scrTrack && r.scrTrack.__native); try { if (r.scrTrack) r.scrTrack.stop(); } catch (e) {} if (wasN) { nscrEnd(); try { NB().screenStop(); } catch (e) {} } } rScrBar(null);   // C115/C120 · C141: وإيقاف الالتقاط الأصليّ عند مغادرة الغرفة
     if (reason === "retry") r.silentRetry = true;
     var me = myUid(), ref = r.ref, wasHost = amHost(r), members = r.members, meta = r.meta;
@@ -4345,7 +4436,7 @@
     _rm: function () { return rm; }, _r: { prejoin: roomPrejoin, pin: function (u) { if (rm) { rm.pin = u; rm.focusU = null; rLayout(rm); } }, viewToggle: function () { rViewToggle(rm); }, tileMenu: function (u) { if (rm) rTileMenu(rm, u); }, layout: function () { if (rm) rLayout(rm); }, sendFile: function (f) { rSendFile(rm, f); }, fileGet: function (f) { return rFileGet(rm, f); }, toggleMic: rToggleMic, toggleCam: rToggleCam, hand: rToggleHand, low: rToggleLow, chat: rSendChat, react: rReact, admit: rAdmit, remove: rRemove,
       makeHost: rMakeHost, ctl: rCtl, muteAll: rMuteAll, lowerAll: rLowerAll, meta: rSetMeta, endAll: rEndAll, summary: rSummaryText, panel: rOpenPanel, settings: rSettings, max: rMax, rejoin: function () { if (rm) rRejoin(rm); }, bigToggle: rBigToggle, sfuRestart: function () { if (rm) sfuRestart(rm, 100); }, adapt: function (q) { if (rm) rAdapt(rm, q); }, stats: function () { if (rm) rStatsTick(rm); } },
     _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming,
-    _native: { ok: nativeAudioOk, PC: NativePC }, qaReport: qaReport, relaySheet: relaySheet, healthSheet: healthSheet, _qaAsk: qaAsk,
+    _native: { ok: nativeAudioOk, PC: NativePC }, qaReport: qaReport, relaySheet: relaySheet, healthSheet: healthSheet, telReport: telReport, _qaAsk: qaAsk,
     build: RTC_BUILD, relayPrimary: function () { return relayPrimary; }, relayMs: function () { return relayMs; },
     _relay: { probe: probeRelays, rank: relayRank, ice: relayIce, ms: function () { return relayMs; }, list: function () { return iceRelays; }, ofUrl: relayOfUrl, text: callNetText }
   };
