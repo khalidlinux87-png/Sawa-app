@@ -116,7 +116,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c175";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c177";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -199,10 +199,28 @@
       try { fn(k); } catch (e) { clearTimeout(t); delete NRTC.cbs[k]; rej(e); }
     });
   }
+  // C177: الآيفون — المحرّك الأصليّ نفسه (SawaRtc.swift) عبر SawaIOS.call، بالدوالّ نفسها التي يستعملها NativePC في أندرويد
+  var iosRtc = {
+    ios: true,
+    _c: function (m, a, k) { IOSB().call(m, a, 20000).then(function (r) { if (k) global.__sawaRtcCb(k, !!(r && r.ok), r ? (r.v === undefined ? (r.error || null) : r.v) : "no reply"); }); },
+    rtcMicOk: function () { var i = IOSB(); return !!(i && i.micOk !== false); },
+    rtcNew: function (id, ice, k) { iosRtc._c("rtcNew", { id: id, ice: ice }, k); },
+    rtcAddAudio: function (id) { iosRtc._c("rtcAddAudio", { id: id }); },
+    rtcCreate: function (id, offer, restart, k) { iosRtc._c("rtcCreate", { id: id, offer: !!offer, restart: !!restart }, k); },
+    rtcSet: function (id, local, type, sdp, k) { iosRtc._c("rtcSet", { id: id, local: !!local, type: type, sdp: sdp }, k); },
+    rtcIce: function (id, json) { iosRtc._c("rtcIce", { id: id, json: json }); },
+    rtcStats: function (id, k) { iosRtc._c("rtcStats", { id: id }, k); },
+    rtcAudioBr: function (id, bps) { iosRtc._c("rtcAudioBr", { id: id, bps: bps | 0 }); },
+    rtcMute: function (m) { iosRtc._c("rtcMute", { m: !!m }); },
+    rtcClose: function (id) { iosRtc._c("rtcClose", { id: id }); }
+  };
+  function RTCB() { var n = NB(); if (n && n.rtcNew) return n; var i = IOSB(); return i && i.rtc ? iosRtc : null; }
   function nativeAudioOk(type) {
     try {
-      var nb = NB();
+      var nb = RTCB();
       if (type === "video" || !nb || !nb.rtcNew || !nb.rtcMicOk || !nb.rtcMicOk()) return false;
+      // C177: في الآيفون المحرّك الأصليّ هو الافتراضيّ — WebKit يفرض المكبّر في مكالماته (C127/C150 لم يكفيا). المدير يعود إلى WebView بلمس سطر الشبكة
+      if (nb.ios) return lsGet("sawa-eng") !== "web" && !(Date.now() - Number(lsGet("sawa-nrtc-fail") || 0) < 86400000);
       // C131: العودة إلى الأساس — الصوتيّة الثنائيّة على محرّك WebView (محرّك الجماعيّة والفيديو، ومحرّك النسخ الأولى الممتازة C6–C94).
       //       الأصليّ ⚡ للمدير وحده للمقارنة: لمس سطر الشبكة ⇒ sawa-eng = "nat". القرار بعد الآن بتقييمات المكالمات (qa) لا بالانطباع.
       if (lsGet("sawa-eng") !== "nat") return false;
@@ -212,7 +230,7 @@
   function nativeFail(e) { log("native rtc failed", e && e.message); lsSet("sawa-nrtc-fail", String(Date.now())); }
   function nativeLocal() {
     var t = { kind: "audio", id: "native-mic", readyState: "live", _en: true, stop: function () { t.readyState = "ended"; }, getSettings: function () { return { echoCancellation: "native", noiseSuppression: "native", autoGainControl: "native" }; } };
-    Object.defineProperty(t, "enabled", { get: function () { return t._en; }, set: function (v) { t._en = !!v; try { NB().rtcMute(!v); } catch (e) {} } });
+    Object.defineProperty(t, "enabled", { get: function () { return t._en; }, set: function (v) { t._en = !!v; try { RTCB().rtcMute(!v); } catch (e) {} } });
     return { native: true, getAudioTracks: function () { return [t]; }, getVideoTracks: function () { return []; }, getTracks: function () { return [t]; }, addTrack: function () {}, removeTrack: function () {} };
   }
   function NativePC(ice) {
@@ -220,7 +238,7 @@
     this.id = "p" + Date.now().toString(36) + rid(5); this.native = true; this.closed = false;
     this.connectionState = "new"; this.iceConnectionState = "new";
     NRTC.pcs[this.id] = this;
-    this.ready = nCall(function (k) { NB().rtcNew(self.id, JSON.stringify(ice || []), k); });
+    this.ready = nCall(function (k) { RTCB().rtcNew(self.id, JSON.stringify(ice || []), k); });
     this.ready.catch(nativeFail);
   }
   NativePC.prototype._ev = function (kind, v) {
@@ -230,22 +248,22 @@
     else if (kind === "ice") { this.iceConnectionState = v; if (this.oniceconnectionstatechange) this.oniceconnectionstatechange(); }
   };
   NativePC.prototype._q = function (fn) { var self = this; return this.ready.then(function () { if (self.closed) throw new Error("closed"); return nCall(fn); }); };
-  NativePC.prototype.addTrack = function () { var id = this.id, self = this; this.ready.then(function () { if (!self.closed) NB().rtcAddAudio(id); }, function () {}); return {}; };
-  NativePC.prototype.createOffer = function (o) { var id = this.id, r = !!(o && o.iceRestart); return this._q(function (k) { NB().rtcCreate(id, true, r, k); }); };
-  NativePC.prototype.createAnswer = function () { var id = this.id; return this._q(function (k) { NB().rtcCreate(id, false, false, k); }); };
-  NativePC.prototype.setLocalDescription = function (d) { var id = this.id; return this._q(function (k) { NB().rtcSet(id, true, d.type, d.sdp, k); }); };
-  NativePC.prototype.setRemoteDescription = function (d) { var id = this.id; return this._q(function (k) { NB().rtcSet(id, false, d.type, d.sdp, k); }); };
-  NativePC.prototype.addIceCandidate = function (j) { var id = this.id, self = this; return this.ready.then(function () { if (!self.closed && j && j.candidate) NB().rtcIce(id, JSON.stringify(j)); }); };
+  NativePC.prototype.addTrack = function () { var id = this.id, self = this; this.ready.then(function () { if (!self.closed) RTCB().rtcAddAudio(id); }, function () {}); return {}; };
+  NativePC.prototype.createOffer = function (o) { var id = this.id, r = !!(o && o.iceRestart); return this._q(function (k) { RTCB().rtcCreate(id, true, r, k); }); };
+  NativePC.prototype.createAnswer = function () { var id = this.id; return this._q(function (k) { RTCB().rtcCreate(id, false, false, k); }); };
+  NativePC.prototype.setLocalDescription = function (d) { var id = this.id; return this._q(function (k) { RTCB().rtcSet(id, true, d.type, d.sdp, k); }); };
+  NativePC.prototype.setRemoteDescription = function (d) { var id = this.id; return this._q(function (k) { RTCB().rtcSet(id, false, d.type, d.sdp, k); }); };
+  NativePC.prototype.addIceCandidate = function (j) { var id = this.id, self = this; return this.ready.then(function () { if (!self.closed && j && j.candidate) RTCB().rtcIce(id, JSON.stringify(j)); }); };
   NativePC.prototype.getStats = function () {
     var id = this.id;
-    return this._q(function (k) { NB().rtcStats(id, k); }).then(function (o) { var m = new Map(); for (var key in (o || {})) m.set(key, o[key]); return m; });
+    return this._q(function (k) { RTCB().rtcStats(id, k); }).then(function (o) { var m = new Map(); for (var key in (o || {})) m.set(key, o[key]); return m; });
   };
   NativePC.prototype.getSenders = function () { return []; };
   NativePC.prototype.setConfiguration = function () {};
   NativePC.prototype.close = function () {
     if (this.closed) return; this.closed = true; this.connectionState = "closed";
     var id = this.id; delete NRTC.pcs[id];
-    this.ready.then(function () { try { NB().rtcClose(id); } catch (e) {} }, function () {});
+    this.ready.then(function () { try { RTCB().rtcClose(id); } catch (e) {} }, function () {});
   };
 
   // ---------- C52: ضبط الصوت في SDP ----------
@@ -352,7 +370,9 @@
       .then(function (x) { c.routing = false; return x; });
   }
   // C92: التطبيق الأصليّ يوجّه الصوت بنفسه (وضع الاتّصال) — يعمل ولو لم يكشف WebView مدخلَي «المكبّر/السمّاعة»
-  function nativeSpk(on) { try { if (RB()) RB().setSpeaker(!!on); } catch (e) {} }
+  function nativeSpk(on) { try { if (RB()) RB().setSpeaker(!!on); var n = NB(); if (n && n.audioRoute) setTimeout(function () { try { routeDiag(n.audioRoute()); } catch (e) {} }, 700); } catch (e) {} }
+  // C177: المدير يرى المسار الفعليّ بعد كلّ تحويل (Receiver/Speaker · earpiece/speaker) — لتشخيص «الصوت من المكبّر رغم السمّاعة»
+  function routeDiag(r) { try { if (r && isAdm()) { toast("🔈 " + r); if (cur) cur.osRoute = String(r).slice(0, 40); } } catch (e) {} }
   function nativeRoute(c, which) {
     c.out = which; nativeSpk(which === "spk");
     if (which === "ear") { wakeOff(); earArm(); } else { wakeOn(); earOff(); }
@@ -434,7 +454,7 @@
   // C127: تطبيق iOS — توجيه الصوت (السمّاعة/المكبّر) وحسّاس القرب ومنع القفل عبر جسر SawaIOS
   function IOSB() { try { return global.SawaIOS || null; } catch (e) { return null; } }
   var iosRoute = {
-    setSpeaker: function (on) { try { IOSB().call("setSpeaker", { on: !!on }); } catch (e) {} },
+    setSpeaker: function (on) { try { IOSB().call("setSpeaker", { on: !!on }).then(function (r) { routeDiag(r && r.route); }); } catch (e) {} },
     setProximity: function (on) { try { IOSB().call("setProximity", { on: !!on }); } catch (e) {} return true; },
     setInCall: function (on) { try { IOSB().call("setInCall", { on: !!on }); } catch (e) {} }
   };
@@ -599,8 +619,8 @@
     // C124: المدير يبدّل محرّك الصوت للمكالمات الصوتيّة القادمة بلمس سطر الشبكة (أندرويد فقط)
     sub.addEventListener("click", function () {
       try {
-        var nb = NB(); if (!isAdm() || !nb || !nb.rtcNew) return;
-        var on = lsGet("sawa-eng") === "nat"; lsSet("sawa-eng", on ? "web" : "nat"); try { localStorage.removeItem("sawa-nrtc-fail"); } catch (e) {}
+        var nb = RTCB(); if (!isAdm() || !nb || !nb.rtcNew) return;
+        var on = nb.ios ? lsGet("sawa-eng") !== "web" : lsGet("sawa-eng") === "nat"; lsSet("sawa-eng", on ? "web" : "nat"); try { localStorage.removeItem("sawa-nrtc-fail"); } catch (e) {}   // C177: الآيفون أصليّ افتراضيّاً
         toast(on ? L("محرّك الصوت: WebView (كالفيديو) — من المكالمة القادمة", "Audio engine: WebView — from the next call")
                  : L("محرّك الصوت: الأصليّ ⚡ — من المكالمة القادمة", "Audio engine: native ⚡ — from the next call"));
       } catch (e) {}
@@ -824,7 +844,7 @@
   var ABR = [32000, 24000, 20000];   // C113: لا ننزل تحت ٢٠ ك (٨–١٢ ك كانت مكتومة/آليّة)
   function audioCap(c, bps) {
     try {
-      if (c.native) { var nb = NB(); if (nb && nb.rtcAudioBr) nb.rtcAudioBr(c.pc.id, bps); return; }
+      if (c.native) { var nb = RTCB(); if (nb && nb.rtcAudioBr) nb.rtcAudioBr(c.pc.id, bps); return; }
       (c.pc.getSenders ? c.pc.getSenders() : []).forEach(function (sn) {
         if (sn.track && sn.track.kind === "audio") senderTune(sn, function (pr) { pr.encodings[0].maxBitrate = bps; });
       });
@@ -914,7 +934,7 @@
       clearTimeout(c.timers.conn); clearTimeout(c.timers.lost); delete c.timers.lost;
       if (!c.connectedAt) { c.connectedAt = Date.now(); softDrop(c); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); }); if (c.out === "ear" && RB()) setTimeout(earArm, 0);
         if (RB()) nativeRoute(c, c.type === "video" ? "spk" : "ear");   // C92
-        if (!c.native) audioRoutes().then(function (rt) {   // C15: المكالمة الصوتيّة تبدأ على سمّاعة الأذن كالهاتف، والفيديو على المكبّر
+        if (!c.native && !RB()) audioRoutes().then(function (rt) {   // C177: مع التطبيق الأصليّ التوجيه له وحده — تبديل الميكروفون كان يُرجع الوضع «عاديّاً» في بعض أندرويد   // C15: المكالمة الصوتيّة تبدأ على سمّاعة الأذن كالهاتف، والفيديو على المكبّر
           if (!rt || c.done || cur !== c) return;
           c.routes = rt; c.out = "spk";
           if (c.type !== "video") setRoute(c, "ear", true); else paint(c);
@@ -1319,7 +1339,7 @@
         var groups = {};
         // C166: والوسيط في المفتاح — مقارنة Metered بـCloudflare (والمباشر)
         var via = function (x) { return x.route === "relay" ? (/metered/i.test(x.relay || "") ? "Metered" : /cloudflare/i.test(x.relay || "") ? "Cloudflare" : "relay ?") : x.route === "direct" ? "direct" : (x.route || "?"); };
-        items.forEach(function (x) { var k = (x.kind || "?") + " · " + (x.engine === "native" ? "⚡" : "WebView") + (x.out === "spk" ? " · 🔊" : x.out === "ear" ? " · 👂" : "") + " · " + via(x); (groups[k] = groups[k] || []).push(x); });
+        items.forEach(function (x) { var k = (x.kind || "?") + " · " + (x.engine === "native" ? "⚡" : x.engine === "native-ios" ? "⚡iOS" : "WebView") + (x.out === "spk" ? " · 🔊" : x.out === "ear" ? " · 👂" : "") + " · " + via(x); (groups[k] = groups[k] || []).push(x); });
         var med = function (a) { a = a.filter(function (v) { return typeof v === "number"; }).sort(function (x, y) { return x - y; }); return a.length ? a[Math.floor(a.length / 2)] : "–"; };
         Object.keys(groups).sort().forEach(function (k) {
           var g = groups[k], avg = g.reduce(function (t, x) { return t + (x.stars || 0); }, 0) / g.length;
@@ -1385,7 +1405,7 @@
     stopStream(c.local);
     try { if (c.pc) c.pc.close(); } catch (e) {}
     logCall(c);
-    qaAfter(c.connectedAt ? Math.round((Date.now() - c.connectedAt) / 1000) : 0, { kind: c.type === "video" ? "video" : "audio", engine: c.native ? "native" : "web",
+    qaAfter(c.connectedAt ? Math.round((Date.now() - c.connectedAt) / 1000) : 0, { kind: c.type === "video" ? "video" : "audio", engine: c.native ? (RTCB() && RTCB().ios ? "native-ios" : "native") : "web", osr: c.osRoute || "",
       out: c.out || "", route: c.route || "", relay: c.relayLbl || c.relayId || "", proto: c.proto || "", s: c.qaS || null, reason: reason });
     if (cur === c) cur = null;
     var tx = opts.text || (END_TEXT[reason] && L(END_TEXT[reason][0], END_TEXT[reason][1])) || (c.connectedAt ? L("انتهت المكالمة", "Call ended") + " · " + fmt(Math.max(1, Math.round((Date.now() - c.connectedAt) / 1000))) : L("انتهت المكالمة", "Call ended"));

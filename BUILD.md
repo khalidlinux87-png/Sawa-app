@@ -2144,3 +2144,33 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
   - شارات العرض: dir=ltr + unicode-bidi:isolate.
   - ملاحظة vCard: الرمز أوّلاً.
 - **الرفع:** Sawa-app: sawa-chat.js + app.p2.js + app.p4.js + app.p6.js + BUILD.md + HANDOFF.md ← sw.js (v373) أخيراً.
+
+## 📱 C177 — الآيفون: محرّك المكالمات الصوتيّة الأصليّ (سمّاعة الأذن) · أندرويد: تثبيت وضع الاتّصال · Worker v87-iosrtc · rtc c177 · sw v374 · Sawa-ios · native c177
+- **البلاغ (خالد):** في الآيفون يخرج صوت المكالمة الصوتيّة من المكبّر حتّى بعد التحويل إلى سمّاعة الأذن. والمشكلة نفسها في بعض أجهزة أندرويد. اختار «المحرّك الأصليّ مباشرة».
+- **الآيفون — السبب:** WebKit يدير جلسة صوت مكالماته (getUserMedia/RTCPeerConnection)، ويضبطها PlayAndRecord مع DefaultToSpeaker. محاولتا التطبيق (C127 عند تغيّر المسار، وC150 كلّ ثانية) لم تكفيا.
+- **الآيفون — الحلّ:** `SawaRtc.swift`، مكتبة WebRTC الأصليّة (`stasel/WebRTC` 140.0.0 عبر SPM في project.yml).
+  - يطابق NativeRtc.java في أندرويد: rtcNew · rtcAddAudio · rtcCreate · rtcSet · rtcIce · rtcStats · rtcAudioBr · rtcMute · rtcClose، عبر `SawaIOS.call`.
+  - الأحداث إلى `__sawaRtcEv`.
+  - جلسة الصوت: playAndRecord/voiceChat بلا defaultToSpeaker (سمّاعة الأذن)، والمكبّر بـCallAudio كما في C150.
+  - useManualAudio: الصوت يبدأ عند إنشاء المكالمة، أو عند تفعيل CallKit للجلسة إن رُدّ من شاشة النظام (`awaitingActivation` · `callKitActivated`).
+  - الإعدادات مطابقة لأندرويد ⚡: مخزن ٥٠ حزمة بلا تسريع · تكبير ١٫٤ على السمّاعة و١٫٠ على المكبّر. **لا ضبط صوتٍ جديد.**
+  - `SawaIOS.rtc=true` و`micOk` في السكربت المحقون.
+  - `audioRoute` للتشخيص. `setSpeaker` يردّ بالمسار الفعليّ بعد ٠٫٦ ث.
+- **sawa-rtc:**
+  - `iosRtc` و`RTCB()`: NativePC يعمل على أندرويد والآيفون.
+  - الآيفون: المحرّك الأصليّ افتراضيّ للصوتيّة الثنائيّة. الفيديو والجماعيّة والغرف تبقى WebView. المدير يعود إلى WebView بلمس سطر الشبكة. فشلٌ واحد ⇒ WebView يوماً.
+  - أندرويد: لا تغيير في المحرّك (WebView افتراضيّ، ⚡ للمدير).
+  - التقييم: engine = native-ios («⚡iOS» في التقرير) و`osr` = المسار الفعليّ. المدير يرى «🔈 المسار» بعد كلّ تحويل.
+- **أندرويد — بعض الأجهزة:**
+  - (١) مع التطبيق الأصليّ لم يعد sawa-rtc يبدّل الميكروفون (getUserMedia بمعرّف «Speakerphone/Headset earpiece»). إغلاقه وفتحه كانا يُرجعان الوضع «عاديّاً» في بعض الهواتف، فيخرج الصوت وسائطَ من المكبّر.
+  - (٢) `applyRoute` يعيد MODE_IN_COMMUNICATION قبل كلّ توجيه.
+  - (٣) `audioRoute()` للتشخيص: الجهاز الفعليّ + الوضع.
+- **اختبار:**
+  - x/t/rtc/run177.mjs: محاكي SawaIOS بـRTCPeerConnection حقيقيّ ⇒ أصليّ افتراضيّاً · الفيديو WebView · اختيار المدير · اتّصال iOS-أصليّ ⇄ WebView · setSpeaker:false عند الاتّصال و:true بالزرّ · engine native-ios · rtcClose · بلا أخطاء.
+  - run131 · run142 بلا تراجع. وحدة Worker (qa engine).
+  - ⚠️ Swift لم يُترجم هنا (لا Xcode) — أوّل بناءٍ في GitHub Actions هو الفحص؛ إن فشل تُرسل سطور الخطأ.
+- **الرفع:**
+  1. Worker.
+  2. Sawa-app: sawa-rtc.js + BUILD.md + HANDOFF.md + sw.js (v374) أخيراً.
+  3. Sawa-ios: project.yml + Sawa/SawaRtc.swift (جديد) + Sawa/NativeBridge.swift + Sawa/SawaCallKit.swift (أو Sawa-ios.zip كاملاً) ⇒ Actions ← iOS TestFlight.
+  4. Sawa-android: sawa-native.zip (c177).
