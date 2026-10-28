@@ -1761,6 +1761,113 @@ function ArchivedChatsScreen({ conversations, archivedIds, mutedIds, onOpenChat,
                     mutedIds.includes(c.id) && React.createElement(BellOff, { size: 13, color: colors.textMuted, className: `shrink-0 ${ms("1.5")}` })),
                 React.createElement("button", { onClick: () => onUnarchive(c.id), className: `px-2.5 py-1.5 rounded-xl text-[10px] font-bold shrink-0 ${me("2")}`, style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("astaada"))))))));
 }
+// C184: بطاقة جهة الاتّصال داخل المحادثة — اسم وأرقام ورمز سوا، مع أزرار: مراسلة/إضافة في سوا/اتّصال/حفظ/دعوة
+function ContactCardBubble({ m, mine }) {
+    const { colors } = useTheme();
+    const SC = window.SawaChat;
+    const k = m.card || {};
+    const [open, setOpen] = useState(false);
+    const me = SC && SC.myUid ? SC.myUid() : null;
+    const isMe = !!k.uid && k.uid === me;
+    const known = !!k.uid && !!(SC && SC.contacts && SC.contacts().some((c) => c && c.uid === k.uid));
+    const tels = k.tels || [];
+    const fc = k.code ? String(k.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3") : "";
+    const fg = mine ? "#fff" : colors.text, mut = mine ? "#ffffffcc" : colors.textMuted, ac = mine ? "#fff" : colors.primary;
+    const stop = (fn) => (e) => { e.stopPropagation(); fn(); };
+    const acts = [];
+    if (k.uid && known && !isMe) acts.push([tl("مراسلة", "Message"), () => SC.openDm(k.uid)]);
+    else if (k.code && !isMe) acts.push([tl("إضافة في سوا", "Add on Sawa"), () => SC.findSheet(k.code)]);
+    if (tels.length) {
+        acts.push([tl("اتّصال", "Call"), () => { location.href = "tel:" + tels[0]; }]);
+        if (!k.uid && !k.code) acts.push([tl("ابحث عنه في سوا", "Find on Sawa"), () => SC.findSheet({ phone: tels[0] })]);
+        if (!k.uid && !k.code && !mine) acts.push([tl("دعوة إلى سوا", "Invite to Sawa"), () => SC.invitePhone(tels[0])]);
+        acts.push([tl("حفظ", "Save"), () => shareContactOut({ name: k.n, phone: tels[0], code: k.code || "" })]);
+    }
+    return React.createElement("div", { style: { minWidth: 210, maxWidth: 260 } },
+        React.createElement("div", { className: `flex ${rowStart()} items-center gap-2.5 pb-2`, style: { borderBottom: `1px solid ${mine ? "#ffffff33" : colors.border}` } },
+            React.createElement("div", { className: "w-11 h-11 rounded-full flex items-center justify-center shrink-0 text-base font-extrabold", style: { backgroundColor: mine ? "rgba(255,255,255,0.22)" : colors.primaryLight, color: mine ? "#fff" : colors.primaryDark } }, (k.n || "؟").charAt(0)),
+            React.createElement("div", { className: textStart(), style: { minWidth: 0, flex: 1 } },
+                React.createElement("div", { className: "text-sm font-extrabold truncate", style: { color: fg } }, k.n || tl("جهة اتّصال", "Contact")),
+                (k.uid || k.code) ? React.createElement("div", { className: "text-[10.5px] font-bold", style: { color: mut } }, "✓ " + tl("على سوا", "On Sawa") + (fc ? " · " : ""), fc ? React.createElement("span", { dir: "ltr", style: { unicodeBidi: "isolate" } }, fc) : null)
+                    : React.createElement("div", { className: "text-[10.5px] font-bold", style: { color: mut } }, tl("من جهات الهاتف", "Phone contact")))),
+        tels.slice(0, open ? 5 : 2).map((t) => React.createElement("button", { key: t, onClick: stop(() => { location.href = "tel:" + t; }), className: `w-full flex ${rowStart()} items-center gap-2 pt-1.5` },
+            React.createElement(Phone, { size: 12, color: mut }),
+            React.createElement("span", { dir: "ltr", className: "text-[12.5px] font-bold", style: { color: fg, unicodeBidi: "isolate" } }, t))),
+        tels.length > 2 && !open ? React.createElement("button", { onClick: stop(() => setOpen(true)), className: "text-[11px] font-bold pt-1", style: { color: mut } }, tl("+" + (tels.length - 2) + " أرقام أخرى", "+" + (tels.length - 2) + " more")) : null,
+        acts.length ? React.createElement("div", { className: "flex flex-row flex-wrap gap-1.5 pt-2" },
+            acts.map(([l, fn]) => React.createElement("button", { key: l, onClick: stop(fn), className: "text-[11.5px] font-extrabold px-2.5 py-1.5 rounded-full", style: { color: ac, backgroundColor: mine ? "rgba(255,255,255,0.18)" : colors.primaryLight } }, l))) : null);
+}
+// C184: جهات الهاتف داخل منتقي المشاركة — أندرويد: القائمة كاملة مع بحثٍ وتحديد، المتصفّح: منتقي النظام، وإدخالٌ يدويّ للجميع
+function PhoneContactsPane({ colors, onPick }) {
+    const SC = window.SawaChat;
+    const kind = SC && SC.phonePickKind ? SC.phonePickKind() : null;
+    const [st, setSt] = useState(kind === "list" ? "loading" : "idle");
+    const [list, setList] = useState([]);
+    const [q, setQ] = useState("");
+    const [picked, setPicked] = useState([]);
+    const [mn, setMn] = useState(""); const [mp, setMp] = useState("");
+    const run = () => {
+        setSt("loading");
+        SC.readPhoneContacts().then((r) => {
+            if (r.list) { setList(r.list); setSt("list"); return; }
+            if (r.picked) { const ok = r.picked.filter((c) => c && c.tels && c.tels.length); if (ok.length) onPick(ok); setSt("idle"); return; }
+            setSt(r.err || "denied");
+        }).catch(() => setSt("denied"));
+    };
+    useEffect(() => { if (kind === "list") run(); }, []);
+    const nq = normAr(q), qd = q.replace(/\D/g, "");
+    const shown = st === "list" ? list.filter((c) => !q || normAr(c.n || "").includes(nq) || (qd.length >= 3 && c.tels.some((t) => t.replace(/\D/g, "").includes(qd)))) : [];
+    const manualOk = mp.replace(/\D/g, "").length >= 6;
+    const inp = { backgroundColor: colors.bg, border: `1px solid ${colors.border}`, color: colors.text };
+    return React.createElement(React.Fragment, null,
+        React.createElement("div", { className: "overflow-y-auto px-3 pb-2", style: { minHeight: 120 } },
+            st === "loading" && React.createElement("p", { className: "text-xs text-center py-6", style: { color: colors.textMuted } }, tl("جارٍ قراءة جهات الهاتف…", "Reading contacts…")),
+            (st === "denied" || st === "never") && React.createElement("p", { className: "text-xs text-center py-3 px-2 rounded-xl mb-2", style: { color: "#b45309", backgroundColor: "#fff7e6" } }, st === "never" ? tl("إذن جهات الاتّصال مرفوض — افتحه من «معلومات التطبيق» ← «الأذونات».", "Contacts permission is blocked — allow it in App info → Permissions.") : tl("لم يُسمح بقراءة جهات الهاتف — يمكنك كتابة الرقم يدويّاً بالأسفل.", "Contacts not allowed — type the number below.")),
+            (kind === "picker" || kind === "native") && st !== "loading" && React.createElement("button", { onClick: run, className: "w-full rounded-2xl py-3 mb-3 text-sm font-extrabold", style: { backgroundColor: colors.primaryLight, color: colors.primaryDark } }, "📱 " + tl("اختر من جهات الهاتف", "Pick from phone contacts")),
+            st === "list" && React.createElement("div", { className: "flex flex-row items-center gap-2 px-3 py-2 rounded-xl mb-1", style: inp },
+                React.createElement(Search, { size: 14, color: colors.textMuted }),
+                React.createElement("input", { value: q, onChange: (e) => setQ(e.target.value), placeholder: tl("ابحث بالاسم أو الرقم", "Search name or number") + " (" + list.length + ")", className: "flex-1 bg-transparent text-sm outline-none", style: { color: colors.text, minWidth: 0 } })),
+            st === "list" && shown.length === 0 && React.createElement("p", { className: "text-xs text-center py-6", style: { color: colors.textMuted } }, list.length ? tl("لا نتائج", "No results") : tl("لا أرقام في جهات هاتفك", "No numbers in your contacts")),
+            shown.slice(0, 200).map((c, i) => { const id = (c.n || "") + "|" + c.tels[0], on = picked.includes(id);
+                return React.createElement("button", { key: id + i, onClick: () => setPicked((p) => on ? p.filter((x) => x !== id) : p.length >= 10 ? p : [...p, id]), className: "w-full flex flex-row items-center gap-3 px-2 py-2 rounded-xl", style: { backgroundColor: on ? colors.primaryLight : "transparent" } },
+                    React.createElement("span", { className: "w-6 h-6 rounded-full flex items-center justify-center shrink-0 border-2", style: { borderColor: on ? colors.primary : colors.border, backgroundColor: on ? colors.primary : "transparent" } }, on && React.createElement(Check, { size: 14, color: "#fff", strokeWidth: 3 })),
+                    React.createElement("span", { className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-extrabold", style: { backgroundColor: colors.primaryLight, color: colors.primaryDark } }, (c.n || "#").charAt(0)),
+                    React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
+                        React.createElement("div", { className: "text-sm font-bold truncate", style: { color: colors.text } }, c.n || c.tels[0]),
+                        React.createElement("div", { className: "text-[11px] truncate", dir: "ltr", style: { color: colors.textMuted, textAlign: isRTL() ? "right" : "left" } }, c.tels.slice(0, 2).join(" · ") + (c.tels.length > 2 ? " +" + (c.tels.length - 2) : "")))); }),
+            shown.length > 200 && React.createElement("p", { className: "text-[11px] text-center py-2", style: { color: colors.textMuted } }, tl("ابحث لتضييق القائمة", "Search to narrow the list")),
+            React.createElement("p", { className: "text-[11px] font-bold pt-3 pb-1", style: { color: colors.textMuted } }, kind ? tl("أو اكتب جهة الاتّصال", "Or type a contact") : tl("اكتب اسم جهة الاتّصال ورقمها", "Type the contact's name and number")),
+            React.createElement("div", { className: "flex flex-row gap-2" },
+                React.createElement("input", { value: mn, onChange: (e) => setMn(e.target.value), placeholder: tl("الاسم", "Name"), className: "flex-1 rounded-xl px-3 py-2 text-sm outline-none", style: { ...inp, minWidth: 0 } }),
+                React.createElement("input", { value: mp, onChange: (e) => setMp(e.target.value), placeholder: "+249…", type: "tel", inputMode: "tel", dir: "ltr", className: "flex-1 rounded-xl px-3 py-2 text-sm outline-none", style: { ...inp, minWidth: 0 } }))),
+        React.createElement("div", { className: "px-3 pt-2 shrink-0" },
+            React.createElement("button", { disabled: !picked.length && !manualOk, onClick: () => {
+                    const out = list.filter((c) => picked.includes((c.n || "") + "|" + c.tels[0]));
+                    if (manualOk) out.push({ n: mn.trim(), tels: [mp.trim()] });
+                    onPick(out);
+                }, className: "w-full rounded-2xl py-3 text-[15px] font-extrabold", style: { backgroundColor: picked.length || manualOk ? colors.primary : colors.border, color: "#fff" } },
+                picked.length || manualOk ? tl("إرسال " + (picked.length + (manualOk ? 1 : 0)) + " جهة اتّصال", "Send " + (picked.length + (manualOk ? 1 : 0))) : tl("اختر جهة اتّصال", "Pick a contact"))));
+}
+// C184: ورقة «مشاركة جهة اتّصال» المشتركة بين المحادثة الفرديّة والمجموعة — بطاقاتٌ غنيّة في محادثات السحابة، ونصٌّ في غيرها
+function ContactShareSheet({ colors, cid, cloud, onSendText, onClose }) {
+    const SC = window.SawaChat;
+    const [tab, setTab] = useState("sawa");
+    const send = (cards) => {
+        [].concat(cards).forEach((k, i) => setTimeout(() => {
+            if (cloud && SC && SC.sendCard) SC.sendCard(cid, k);
+            else { const c = SC && SC.cleanCard ? SC.cleanCard(k) : null; if (c) onSendText(SC.cardText(c)); }
+        }, i * 120));
+        onClose();
+    };
+    const tb = (id, label) => React.createElement("button", { onClick: () => setTab(id), className: "flex-1 rounded-xl py-2 text-xs font-extrabold", style: { backgroundColor: tab === id ? colors.card : "transparent", color: tab === id ? colors.text : colors.textMuted, boxShadow: tab === id ? "0 1px 3px rgba(0,0,0,.12)" : "none" } }, label);
+    return React.createElement(React.Fragment, null,
+        React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.4)" } }),
+        React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 41, backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 12, maxHeight: "78%", display: "flex", flexDirection: "column" } },
+            React.createElement("div", { className: "w-10 h-1 rounded-full mx-auto my-3 shrink-0", style: { backgroundColor: colors.border } }),
+            React.createElement("p", { className: "text-sm font-extrabold text-center mb-2 px-4 shrink-0", style: { color: colors.text } }, tl("مشاركة جهة اتّصال", "Share a contact")),
+            React.createElement("div", { className: "flex flex-row gap-1 mx-3 mb-2 p-1 rounded-xl shrink-0", style: { backgroundColor: colors.bg } }, tb("sawa", tl("جهات سوا", "Sawa contacts")), tb("phone", tl("من الهاتف", "From phone"))),
+            tab === "sawa" ? React.createElement(ShareContactPicker, { colors, onPick: send }) : React.createElement(PhoneContactsPane, { colors, onPick: send })));
+}
 function ShareContactPicker({ colors, onPick }) {
     const SC = window.SawaChat;
     const [q, setQ] = useState("");
@@ -1768,11 +1875,7 @@ function ShareContactPicker({ colors, onPick }) {
     const all = (SC && SC.contacts ? SC.contacts() : []).filter((c) => c && c.uid);
     const nq = normAr(q);
     const list = all.filter((c) => !nq || [c.name, c.realName, c.nick, c.code].some((x) => x && normAr(String(x)).includes(nq)));
-    const card = (c) => {
-        const code = c.code ? String(c.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3") : null;
-        const link = c.code ? (location.origin + "/?code=" + c.code) : null;
-        return "👤 " + (c.realName || c.name) + (code ? "\n" + tl("رمزه في سوا: ", "Sawa code: ") + code + "\n" + link : "");
-    };
+    const card = (c) => ({ n: c.realName || c.name, uid: c.uid, code: c.code || null });   // C184: بطاقةٌ غنيّة (النصّ الاحتياطيّ يُبنى في SawaChat)
     return React.createElement(React.Fragment, null,
         React.createElement("div", { className: "px-3 pb-2 shrink-0" },
             React.createElement("div", { className: "flex flex-row items-center gap-2 px-3 py-2 rounded-xl", style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
@@ -2311,7 +2414,7 @@ function SenderAvatar({ name, size, photo }) {
 
 // حقل الكتابة — كان input بسطر واحد، فالرسالة الطويلة تنزلق أفقياً
 // ولا يرى الكاتب إلا آخرها. يتمدّد الآن حتى خمسة أسطر ثم يمرّر داخلياً.
-function ChatComposerInput({ value, onChange, placeholder, disabled, onEnter }) {
+function ChatComposerInput({ value, onChange, placeholder, disabled, onEnter, onPasteFiles }) {
     const { colors } = useTheme();
     const ref = useRef(null);
     const MAX_LINES = 5;
@@ -2342,6 +2445,8 @@ function ChatComposerInput({ value, onChange, placeholder, disabled, onEnter }) 
         value: value,
         onChange: (e) => { onChange(e.target.value); composerCaret(e.target); },
         onSelect: (e) => composerCaret(e.target), onBlur: (e) => composerCaret(e.target),   // C129: موضع المؤشّر لإدراج الإيموجي
+        // C184: لصق صورة (لقطة شاشة من الحافظة) في خانة الكتابة ⇒ تُرسل صورةً كما لو اختيرت من المعرض
+        onPaste: onPasteFiles ? (e) => { try { const fs = Array.from((e.clipboardData && e.clipboardData.files) || []).filter((f) => /^(image|video)\//.test(f.type)); if (fs.length) { e.preventDefault(); onPasteFiles(fs); } } catch (x) { } } : undefined,
         onKeyDown: function (e) {
             // Enter يُرسل، و Shift+Enter سطر جديد — كما اعتاد المستخدم
             if (e.key === "Enter" && !e.shiftKey && onEnter && enterSends()) { e.preventDefault(); onEnter(); }

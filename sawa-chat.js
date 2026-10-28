@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c176";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c184";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -933,6 +933,7 @@
     if (!m) return "";
     if (m.del) return L("🚫 حُذفت هذه الرسالة", "🚫 This message was deleted");
     if (!m.type || m.type === "text" || m.type === "sticker") return m.text || "";
+    if (m.type === "contact" && m.extra && m.extra.card && m.extra.card.n) return "👤 " + String(m.extra.card.n).slice(0, 60);   // C184
     return typeLabel(m.type) || m.text || "";
   }
   function statusOf(c, ts) {
@@ -1349,6 +1350,7 @@
       else { o.senderUserId = appId(m.by); if (m.type === "system") { o.type = "system"; o.text = sysText(m, c); } }   // C23: إشعارات المحادثة السرّيّة في المحادثة الفرديّة
       if (m.e2eErr) o.e2eErr = true;
       if (!m.del && MEDIA_TYPES.indexOf(m.type) >= 0) mediaShape(m, o, cid, mine);
+      if (!m.del && m.type === "contact") { var kk = cleanCard(m.extra && m.extra.card) || (m.contact ? cleanCard({ n: m.contact.name, uid: m.contact.uid }) : null); if (kk) o.card = kk; }   // C184
       if (!m.del && m.type === "location" && m.extra) { o.type = "location"; o.lat = Number(m.extra.lat); o.lng = Number(m.extra.lng); o.acc = m.extra.acc || null; o.text = m.extra.label || ""; }
       if (mine) o.status = x.pending ? (x.pending === "failed" ? "failed" : "pending") : statusOf(c, m.ts);
       if (x.progress != null) o.uploadPct = x.progress;   // نسبة رفع الوسيط (تظهر بدل الساعة)
@@ -1736,6 +1738,54 @@
       }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
     });
   }
+  // C184: بطاقة جهة اتّصال غنيّة (من سوا أو من جهات الهاتف) — type:"contact" + extra.card، ونصٌّ احتياطيّ تقرؤه النسخ القديمة
+  function cleanCard(c) {
+    if (!c || typeof c !== "object") return null;
+    var n = String(c.n || c.name || "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 80);
+    var tels = (Array.isArray(c.tels) ? c.tels : c.p ? [c.p] : []).map(function (t) { return String(t || "").replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "").slice(0, 20); })
+      .filter(function (t, i, a) { return t.replace(/\D/g, "").length >= 3 && a.indexOf(t) === i; }).slice(0, 5);
+    var code = codeDigits(String(c.code || "")); code = codeValid(code) ? code : null;
+    var uid = /^[A-Za-z0-9_-]{1,128}$/.test(String(c.uid || "")) ? String(c.uid) : null;
+    if (!n && !tels.length && !code) return null;
+    var o = { n: n || tels[0] || fmtCode(code) }; if (tels.length) o.tels = tels; if (code) o.code = code; if (uid) o.uid = uid;
+    return o;
+  }
+  function cardText(k) {
+    return "👤 " + k.n + (k.tels || []).map(function (t) { return "\n📞 " + t; }).join("") +
+      (k.code ? "\n" + L("رمزه في سوا: ", "Sawa code: ") + fmtCode(k.code) + "\n" + codeUrl(k.code) : "");
+  }
+  function sendCard(cid, card, o2) {
+    var k = cleanCard(card); if (!k) return null;
+    var opts = { type: "contact", extra: { card: k } };
+    if (o2 && o2.fwd) opts.fwd = true;
+    if (o2 && o2.reply) opts.reply = o2.reply;
+    if (k.uid) opts.contact = { uid: k.uid, name: k.n };
+    return send(cid, cardText(k), opts);
+  }
+  // قراءة جهات الهاتف: أندرويد ⇒ القائمة كلّها (تُختار داخل سوا)، المتصفّح ⇒ منتقي النظام (ما اختاره المستخدم فقط)
+  function phonePickKind() {
+    try { if (NB() && NB().readContacts) return "list"; } catch (e) {}
+    try { if (NB() && NB().pickContacts) return "native"; } catch (e) {}
+    return global.navigator && navigator.contacts && navigator.contacts.select ? "picker" : null;
+  }
+  function readPhoneContacts() {
+    var k = phonePickKind();
+    if (k === "list") return nativeAsk("readContacts", [], 90000).then(function (r) {
+      if (!r || !r.ok) return { err: r && r.never ? "never" : "denied" };
+      var by = {};   // رقمان للاسم نفسه ⇒ بطاقةٌ واحدة
+      (r.list || []).forEach(function (c) { if (!c || !c.p) return; var key = (c.n || c.p).trim(); (by[key] = by[key] || { n: c.n || "", tels: [] }).tels.push(c.p); });
+      return { list: Object.keys(by).map(function (x) { return by[x]; }).sort(function (a, b) { return (a.n || "").localeCompare(b.n || "", "ar"); }) };
+    });
+    if (k === "native") return nativeAsk("pickContacts", [], 120000).then(function (r) { return r && r.ok ? { picked: r.list || [] } : { err: "denied" }; });
+    if (k === "picker") return navigator.contacts.select(["name", "tel"], { multiple: true }).then(function (arr) {
+      return { picked: (arr || []).map(function (c) { return { n: (c.name && c.name[0]) || "", tels: c.tel || [] }; }) };
+    }, function () { return { picked: [] }; });
+    return Promise.resolve({ err: "unsupported" });
+  }
+  function invitePhone(phone) {
+    var go = function (code) { openSms(phone, smsText(code || myCode() || "")); };
+    loadCode().then(function (b) { go(b && b.code); }, function () { go(null); });
+  }
   function mapsUrl(lat, lng) { return "https://www.google.com/maps/search/?api=1&query=" + lat + "," + lng; }
   // C99: نسخة الملفّ المختار في الذاكرة فوراً — ملفّات منتقي الصور في أندرويد تُقرأ من مصدرٍ قد تنتهي صلاحيّته قبل اكتمال
   //      الرفع (فيفشل أو يظهر عند المرسل مكسوراً)، والنوع يُستنتج من الامتداد إن جاء فارغاً
@@ -1904,7 +1954,8 @@
     if (ex.viewOnce) { toast(L("الصورة لمرّةٍ واحدة لا تُوجَّه", "View-once media can't be forwarded")); return Promise.resolve(null); }   // C100
     // C100: الموقع وبطاقة جهة الاتّصال تُوجَّه بمحتواها (كانت تُرسل نصّاً فارغاً فتُرفض «لم تُرسل»)
     if (m.type === "location" && ex.lat != null) { send(toCid, null, { type: "location", fwd: true, extra: { lat: ex.lat, lng: ex.lng, acc: ex.acc || null, label: ex.label || null } }); return Promise.resolve(true); }
-    if (m.contact) { send(toCid, m.text || "", { fwd: true, contact: m.contact }); return Promise.resolve(true); }
+    if (m.type === "contact" && ex.card) { sendCard(toCid, ex.card, { fwd: true }); return Promise.resolve(true); }   // C184
+    if (m.contact) { send(toCid, m.text || "", { type: "contact", fwd: true, contact: m.contact }); return Promise.resolve(true); }
     // C164: قائمة المهامّ تُوجَّه نسخةً جديدة (حالتها من جديد؛ المكلَّف يبقى إن كان عضواً في المحادثة الأخرى)
     if (m.type === "tasks" && ex.tasks) {
       var dm = (chats[toCid] && chats[toCid].members) || [];
@@ -4393,9 +4444,11 @@
         function (e) { res.innerHTML = ""; res.appendChild(note(codeErr(e), "#b42318")); })
         .then(function () { go.disabled = false; go.textContent = L("بحث", "Search"); });
     };
-    setMode("code");
-    if (prefill) { inp.value = prefill; if (sync()) go.onclick(); } else sync();
-    setTimeout(function () { try { if (!prefill) inp.focus(); } catch (e) {} }, 60);
+    var preObj = prefill && typeof prefill === "object" ? prefill : null; if (preObj) prefill = preObj.code || null;   // C184: {phone} من بطاقة جهة اتّصال
+    setMode(preObj && preObj.phone && !prefill ? "phone" : "code");
+    if (preObj && preObj.phone && !prefill) { inp.value = String(preObj.phone); if (sync()) go.onclick(); }
+    else if (prefill) { inp.value = prefill; if (sync()) go.onclick(); } else sync();
+    setTimeout(function () { try { if (!prefill && !preObj) inp.focus(); } catch (e) {} }, 60);
     return true;
   }
 
@@ -5873,6 +5926,7 @@
       if (!tl0.length) { o.type = "text"; o.e2eErr = true; o.text = L("🔒 تعذّر فكّ تشفير هذه الرسالة", "🔒 Couldn't decrypt this message"); delete o.extra; return o; }
       o.extra = { title: typeof tx.title === "string" ? tx.title.slice(0, 200) : "", tasks: tl0 };
     }
+    if (m.type === "contact") { var kc = cleanCard(p.extra && p.extra.card); if (kc) o.extra = { card: kc }; else delete o.extra; }   // C184
     if (m.type === "location") {
       var lx = p.extra || {}, la = Number(lx.lat), ln = Number(lx.lng);
       if (!(la >= -90 && la <= 90 && ln >= -180 && ln <= 180)) { o.type = "text"; o.e2eErr = true; o.text = L("🔒 تعذّر فكّ تشفير هذه الرسالة", "🔒 Couldn't decrypt this message"); delete o.extra; return o; }
@@ -6084,7 +6138,8 @@
     e2eSupported: function () { return e2e.ok(); }, e2eStartDm: e2eStartDm, e2eNewSheet: e2eNewSheet, e2eAct: e2eAct, e2eSafety: e2eSafety,   // C23
     adminCached: adminCached, checkAdmin: checkAdmin, adminReports: adminReports, voipTest: voipTest,   // C24
     setBlocked: setBlocked,
-    sendLocation: sendLocation, mapsUrl: mapsUrl,   // C32
+    sendLocation: sendLocation, mapsUrl: mapsUrl, sendCard: sendCard, cleanCard: cleanCard, cardText: cardText, phonePickKind: phonePickKind, readPhoneContacts: readPhoneContacts, invitePhone: invitePhone, myUid: function () { return state.uid || null; },   // C184
+      // C32
     photoOf: photoOf, setMyPhoto: setMyPhoto, setGroupPhoto: setGroupPhoto,   // C25
     e2eCreateDm: e2eCreateDm, e2eCreateGroup: e2eCreateGroup, e2eJoin: e2eJoin, e2eState: function (cid) { return e2eState(chats[cid]); },
     _e2e: e2e, _plain: function () { return plain; },
