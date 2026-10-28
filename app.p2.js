@@ -1017,6 +1017,7 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         // C131: نتائج تقييم المكالمات (المحرّك · النسخة · التأخير · الصدى…) — للمدير
         ...(isAdm ? [{ key: "voip", label: tl("اختبار مكالمة الآيفون (للمدير)", "iPhone call test (admin)"), icon: Phone, onPress: () => { if (window.SawaChat && window.SawaChat.voipTest) window.SawaChat.voipTest(); }, color: "#2F80C8" }] : []),   // C151
         ...(isAdm ? [{ key: "reports", label: tl("البلاغات (للمدير)", "Reports (admin)"), icon: Flag, onPress: () => { if (window.SawaChat && window.SawaChat.adminReports) window.SawaChat.adminReports(); }, color: "#DC2626" }] : []),   // C150
+        ...(isAdm ? [{ key: "relay", label: tl("الوسيط الأساسيّ للمكالمات (للمدير)", "Primary call relay (admin)"), icon: Radio, onPress: () => { if (window.SawaRTC && window.SawaRTC.relaySheet) window.SawaRTC.relaySheet(); } }] : []),   // C175
         ...(isAdm ? [{ key: "qa", label: tl("تقييمات المكالمات (للمدير)", "Call ratings (admin)"), icon: Star, onPress: () => { if (window.SawaRTC && window.SawaRTC.qaReport) window.SawaRTC.qaReport(); }, color: "#F59E0B" }] : []),
         // C83: تحديث التطبيق لكلّ مستخدم — النسخة، ما الجديد، وتحديثٌ قسريّ آمن
         ...(SCm && SCm.updateSheet ? [{ key: "update", label: updAvail ? tl("تحديث التطبيق • نسخةٌ جديدة ✨", "App update • new ✨") : tl("تحديث التطبيق", "App update"), icon: RotateCcw, onPress: () => SCm.updateSheet(), color: updAvail ? "#D97706" : "#2F80C8" }] : []),

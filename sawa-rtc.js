@@ -93,7 +93,9 @@
   var iceWarm = false;
   var iceBusy = null;
   function getIce(waitMs) {
-    if (iceCache && Date.now() - iceAt < 20 * 60 * 1000) return Promise.resolve(iceCache);
+    // C175: بعد ٣ دقائق نجدّد في الخلفيّة (والمحفوظ يُستعمل فوراً) — فيصل تبديل المدير للوسيط الأساسيّ إلى الكلّ خلال دقائق
+    if (iceCache && Date.now() - iceAt < 3 * 60 * 1000) return Promise.resolve(iceCache);
+    if (iceCache && Date.now() - iceAt < 20 * 60 * 1000) { if (!iceBusy) { iceBusy = fetchIce(); iceBusy.then(function () { iceBusy = null; }, function () { iceBusy = null; }); } return Promise.resolve(iceCache); }
     // C113: بيانات الوسيط صالحة ٦ ساعات — نستعمل المحفوظة فوراً ونجدّدها في الخلفيّة (كانت أوّل مكالمة بعد ٢٠ دقيقة تنتظر الخادم حتّى ٦ ث)
     if (iceCache && Date.now() - iceAt < 4 * 3600 * 1000) { if (!iceBusy) { iceBusy = fetchIce(); iceBusy.then(function () { iceBusy = null; }, function () { iceBusy = null; }); } return Promise.resolve(iceCache); }
     return fetchIce(waitMs);
@@ -114,7 +116,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c167";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c175";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -1271,6 +1273,40 @@
     });
     return closeFn;
   }
+  // C175: مفتاح المدير — الوسيط الأساسيّ (Metered / Cloudflare / تلقائيّ = إعداد الـWorker) · يصل الكلّ خلال دقائق
+  function relaySheet() { sheet(L("الوسيط الأساسيّ", "Primary relay"), function (body) { body.parentNode.parentNode.style.direction = isAr() ? "rtl" : "ltr"; body.appendChild(relaySwitchCard()); }); }
+  function relaySwitchCard() {
+    var card = el("div", "margin:0 14px 12px;padding:12px;border-radius:14px;background:rgba(47,128,200,.12);border:1px solid " + LINE);
+    card.appendChild(el("div", "font:800 14px system-ui;margin-bottom:2px", L("الوسيط الأساسيّ للمكالمات", "Primary call relay")));
+    var st = el("div", "font:600 12px system-ui;color:" + MUTED + ";margin-bottom:8px", L("جارٍ التحميل…", "Loading…"));
+    card.appendChild(st);
+    var row = el("div", "display:flex;gap:6px");
+    card.appendChild(row);
+    var opts = [["m", "Metered"], ["cf", "Cloudflare"], ["", L("تلقائيّ", "Auto")]];
+    var paint = function (r) {
+      row.innerHTML = "";
+      var eff = r.primary || r.envDefault;
+      st.textContent = L("الآن: ", "Now: ") + (eff === "cf" ? "Cloudflare" : "Metered") + (r.primary ? "" : L(" (إعداد الخادم)", " (server default)")) + L(" · والآخر احتياطيّ إن فشل", " · the other is the fallback");
+      opts.forEach(function (o) {
+        var on = (r.primary || "") === o[0], off = (o[0] === "m" && r.has && !r.has.m) || (o[0] === "cf" && r.has && !r.has.cf);
+        var b = el("button", "flex:1;padding:9px 4px;border-radius:10px;border:1px solid " + (on ? PRI : LINE) + ";background:" + (on ? PRI : "transparent") + ";color:#fff;font:800 12.5px system-ui;opacity:" + (off ? ".4" : "1"), o[1]);
+        b.disabled = off;
+        b.onclick = function () {
+          if (on) return;
+          st.textContent = L("جارٍ الحفظ…", "Saving…");
+          wcall("admin.relay", { primary: o[0] }).then(function (r2) {
+            if (!r2 || !r2.admin) { toast(L("للمدير فقط", "Admin only")); return; }
+            iceCache = null; iceAt = 0; fetchIce();   // هاتف المدير فوراً
+            paint(r2); toast(L("✓ الأساسيّ الآن: ", "✓ Primary now: ") + ((r2.primary || r2.envDefault) === "cf" ? "Cloudflare" : "Metered") + L(" — يصل بقيّة الهواتف خلال دقائق", " — other phones within minutes"));
+          }).catch(function (e) { st.textContent = L("تعذّر الحفظ: ", "Couldn't save: ") + ((e && e.message) || e); });
+        };
+        row.appendChild(b);
+      });
+    };
+    wcall("admin.relay", {}).then(function (r) { if (r && r.admin) paint(r); else st.textContent = L("للمدير فقط", "Admin only"); })
+      .catch(function (e) { st.textContent = L("تعذّر التحميل: ", "Couldn't load: ") + ((e && e.message) || e); });
+    return card;
+  }
   // تقرير المدير: المتوسّطات لكلّ (نوع × محرّك) + آخر التقييمات
   function qaReport() {
     return wcall("admin.qa", { limit: 300 }).then(function (r) {
@@ -1278,6 +1314,7 @@
       var items = r.items || [];
       sheet(L("تقييمات المكالمات", "Call ratings") + " (" + items.length + ")", function (body) {
         body.parentNode.parentNode.style.direction = isAr() ? "rtl" : "ltr";
+        body.appendChild(relaySwitchCard());   // C175
         if (!items.length) { body.appendChild(el("div", "padding:24px;text-align:center;color:" + MUTED + ";font:600 13px system-ui", L("لا تقييمات بعد — أرسل لمختبِريك الرابط sawaaap.com/?qa=1", "No ratings yet — send testers sawaaap.com/?qa=1"))); return; }
         var groups = {};
         // C166: والوسيط في المفتاح — مقارنة Metered بـCloudflare (والمباشر)
@@ -4207,7 +4244,7 @@
     _rm: function () { return rm; }, _r: { prejoin: roomPrejoin, pin: function (u) { if (rm) { rm.pin = u; rm.focusU = null; rLayout(rm); } }, viewToggle: function () { rViewToggle(rm); }, tileMenu: function (u) { if (rm) rTileMenu(rm, u); }, layout: function () { if (rm) rLayout(rm); }, sendFile: function (f) { rSendFile(rm, f); }, fileGet: function (f) { return rFileGet(rm, f); }, toggleMic: rToggleMic, toggleCam: rToggleCam, hand: rToggleHand, low: rToggleLow, chat: rSendChat, react: rReact, admit: rAdmit, remove: rRemove,
       makeHost: rMakeHost, ctl: rCtl, muteAll: rMuteAll, lowerAll: rLowerAll, meta: rSetMeta, endAll: rEndAll, summary: rSummaryText, panel: rOpenPanel, settings: rSettings, max: rMax, rejoin: function () { if (rm) rRejoin(rm); }, bigToggle: rBigToggle, sfuRestart: function () { if (rm) sfuRestart(rm, 100); }, adapt: function (q) { if (rm) rAdapt(rm, q); }, stats: function () { if (rm) rStatsTick(rm); } },
     _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming,
-    _native: { ok: nativeAudioOk, PC: NativePC }, qaReport: qaReport, _qaAsk: qaAsk,
+    _native: { ok: nativeAudioOk, PC: NativePC }, qaReport: qaReport, relaySheet: relaySheet, _qaAsk: qaAsk,
     build: RTC_BUILD, relayPrimary: function () { return relayPrimary; }, relayMs: function () { return relayMs; },
     _relay: { probe: probeRelays, rank: relayRank, ice: relayIce, ms: function () { return relayMs; }, list: function () { return iceRelays; }, ofUrl: relayOfUrl, text: callNetText }
   };

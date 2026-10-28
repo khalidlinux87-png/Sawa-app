@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c174";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c175";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -4037,7 +4037,9 @@
     return String((10 - (sum % 10)) % 10);
   }
   function codeValid(c) { return /^[1-9]\d{9}$/.test(c) && luhnDigit(c.slice(0, 9)) === c[9]; }
-  function fmtCode(c) { c = codeDigits(c); return c.length > 6 ? c.slice(0, 3) + " " + c.slice(3, 6) + " " + c.slice(6) : c.length > 3 ? c.slice(0, 3) + " " + c.slice(3) : c; }
+  // C175: المسافة بين المجموعات «غير قابلة للكسر» (U+00A0) — فاصلٌ رقميّ في خوارزميّة الاتّجاه، فيبقى ٣٣٤ بترتيبه داخل النصّ العربيّ
+  //       (المسافة العاديّة كانت تقلب المجموعات: «7890 456 123» — في التطبيق وحين يُلصق في واتساب وغيره). النسخ: الأرقام وحدها.
+  function fmtCode(c) { c = codeDigits(c); var S = "\u00A0"; return c.length > 6 ? c.slice(0, 3) + S + c.slice(3, 6) + S + c.slice(6) : c.length > 3 ? c.slice(0, 3) + S + c.slice(3) : c; }
   function myCode() { return (state.me && state.me.code) || null; }
   function codeUrl(c) { return global.location.origin + global.location.pathname.replace(/index\.html$/, "") + "?code=" + codeDigits(c); }
   function codeShareText(c) {
@@ -4609,7 +4611,7 @@
     s.box.appendChild(note(L("غيّره إن انتشر رمزك أكثر ممّا تريد — القديم يتوقّف فوراً، وجهات اتّصالك الحاليّة لا تتأثّر.", "Change it if it spread too far — the old one stops working; existing contacts stay.")));
     function fill(b) {
       big.textContent = fmtCode(b.code); cb.checked = b.findable !== false;
-      cp.onclick = function () { copyText(fmtCode(b.code)); };
+      cp.onclick = function () { copyText(codeDigits(b.code)); };
       sh.onclick = function () { shareText(codeShareText(b.code)); };
       inS.onclick = function () { var R = global.SawaRTC; if (R && R.sendInSawa) { s.close(); R.sendInSawa(codeShareText(b.code)); } else shareText(codeShareText(b.code)); };
       sms.onclick = function () { s.close(); phoneContactsSheet(); };
@@ -5340,7 +5342,7 @@
         loadCode().then(function (r) {
           big.textContent = fmtCode(r.code);
           cp.onclick = function () {
-            copyText(fmtCode(r.code));
+            copyText(codeDigits(r.code));
             cp.innerHTML = ""; cp.appendChild(oi("check")); cp.appendChild(mk("span", "", L("نُسخ", "Copied")));
             setTimeout(function () { cp.innerHTML = ""; cp.appendChild(oi("copy")); cp.appendChild(mk("span", "", L("نسخ", "Copy"))); }, 1600);
           };

@@ -573,6 +573,29 @@ function ContactRow({ contact, isOnline, blocked, colors, onPress, showInvite })
         blocked && React.createElement(Ban, { size: 15, color: colors.danger }),
         showInvite && (React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("dawa")))));
 }
+// C175: مشاركة جهة اتّصال خارج سوا (واتساب · رسالة · بريد…) — بطاقة vCard إن عُرف رقمه، وإلّا نصٌّ فيه رمز سوا ورابط إضافته
+function shareContactOut(contact) {
+    const name = String(contact.nick || contact.name || "").trim();
+    const code = contact.code ? String(contact.code).replace(/\D/g, "") : "";
+    const url = code ? location.origin + "/?code=" + code : "";
+    const phone = String(contact.phone || "").replace(/[^\d+]/g, "");
+    const fc = code.replace(/^(\d{3})(\d{3})(\d{4})$/, "$1\u00A0$2\u00A0$3");
+    const text = name + (phone ? "\n📞 " + phone : "") + (code ? "\n" + tl("على سوا — رمزه: ", "On Sawa — code: ") + fc + "\n" + url : "");
+    const toast = (m) => { try { window.SawaSync.toast(m); } catch (e) { } };
+    const asText = () => {
+        try { if (navigator.share) { navigator.share({ title: name, text }).catch(() => { }); return; } } catch (e) { }
+        copyText(text); toast(tl("نُسخت بيانات جهة الاتّصال — الصقها حيث تريد", "Contact copied — paste it anywhere"));
+    };
+    if (phone) {
+        try {
+            const esc = (v) => String(v).replace(/([\\,;])/g, "\\$1");
+            const vcf = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:" + esc(name) + "\r\nN:" + esc(name) + ";;;;\r\nTEL;TYPE=CELL:" + phone + "\r\n" + (url ? "URL:" + url + "\r\nNOTE:" + esc(tl("رمز سوا ", "Sawa code ") + code) + "\r\n" : "") + "END:VCARD\r\n";
+            const file = new File([vcf], (name || "contact").replace(/[\\/:*?"<>|]/g, "") + ".vcf", { type: "text/vcard" });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) { navigator.share({ files: [file], title: name }).catch((e) => { if (!e || e.name !== "AbortError") asText(); }); return; }
+        } catch (e) { }
+    }
+    asText();
+}
 function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVideoCall, onMessage, onSecret, onRename, onToggleBlock, onRemove, familyOnly, onReport, onClose }) {
     const [confirm, setConfirm] = useState(null);   // null | "block" | "remove"
     // C61: الكلمة تحت الدائرة تنقر أيضاً (كان النقر عليها لا يفعل شيئاً)
@@ -606,9 +629,9 @@ function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVid
                 React.createElement("span", { className: "text-xs mt-1", style: { color: blocked ? colors.danger : isOnline ? "#22C55E" : colors.textMuted } }, blocked ? tl("🚫 محظور — لا تصلك رسائله ولا مكالماته", "🚫 Blocked") : contactSubtitle(contact, isOnline)),
                 contact.families && contact.families.length > 0 && React.createElement("span", { className: "text-[11px] mt-0.5 text-center", style: { color: colors.textMuted } }, contact.families.map((f) => f.name).join(" · ")),
                 // C88: رمز سوا (١٠ أرقام) بدل الوسم القديم — نقرةٌ تنسخه
-                contact.code && React.createElement("button", { onClick: () => { const f = String(contact.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3"); try { navigator.clipboard.writeText(f); } catch (e) { } try { window.SawaSync.toast(tl("نُسخ الرمز ✓", "Code copied ✓")); } catch (e) { } }, className: "mt-1.5 flex flex-row items-center gap-1.5 px-2.5 py-1 rounded-full", style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
+                contact.code && React.createElement("button", { onClick: () => { const f = String(contact.code).replace(/\D/g, ""); try { navigator.clipboard.writeText(f); } catch (e) { } try { window.SawaSync.toast(tl("نُسخ الرمز ✓", "Code copied ✓")); } catch (e) { } }, className: "mt-1.5 flex flex-row items-center gap-1.5 px-2.5 py-1 rounded-full", style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
                     React.createElement(QrCode, { size: 12, color: colors.primary }),
-                    React.createElement("span", { className: "text-[12px] font-extrabold", dir: "ltr", style: { color: colors.text, letterSpacing: 1 } }, String(contact.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3")),
+                    React.createElement("span", { className: "text-[12px] font-extrabold", dir: "ltr", style: { color: colors.text, letterSpacing: 1 } }, String(contact.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1\u00A0$2\u00A0$3")),
                     React.createElement(Copy, { size: 11, color: colors.textMuted }))),
             React.createElement("div", { className: "flex flex-row justify-center gap-5 mb-5" },
                 act(MessageCircle, t("rsala"), blocked ? null : onMessage, colors.primary),
@@ -618,6 +641,7 @@ function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVid
             confirm === "block" ? ask(tl("حظر «" + contact.name + "»؟", "Block " + contact.name + "?"), tl("لن تصلك رسائله ولا مكالماته، ولن يعرف أنّك حظرته. يمكنك إلغاء الحظر في أيّ وقت.", "You won't get their messages or calls, and they won't be told. You can unblock anytime."), tl("حظر", "Block"), onToggleBlock)
                 : confirm === "remove" ? ask(tl("إزالة «" + contact.name + "» من جهات اتّصالك؟", "Remove " + contact.name + "?"), tl("لن يرى حالتك ولن يستطيع الاتّصال بك. محادثتكما السابقة تبقى عندك. ليعود يحتاج رمزك أو رابطك من جديد.", "They won't see your status or be able to call you. Your chat stays. To reconnect they'll need your code or link again."), tl("إزالة", "Remove"), onRemove)
                 : React.createElement("div", { className: "flex flex-col gap-2" },
+                    row(Share2, tl("مشاركة خارج سوا", "Share outside Sawa"), contact.phone ? tl("بطاقة جهة اتّصال إلى واتساب أو رسالة أو غيرها", "A contact card to WhatsApp, SMS…") : tl("اسمه ورمز سوا ورابط إضافته", "Name, Sawa code and add link"), () => shareContactOut(contact)),   // C175
                     onRename && row(Edit3, contact.nick ? tl("تعديل التسمية", "Edit name") : tl("تسمية", "Set a name"), tl("اسمٌ تختاره يظهر لك وحدك", "A name only you see"), onRename),
                     onToggleBlock && (blocked ? row(Ban, tl("إلغاء الحظر", "Unblock"), null, onToggleBlock) : row(Ban, tl("حظر", "Block"), tl("لا تصلك رسائله ولا مكالماته", "No messages or calls from them"), () => setConfirm("block"), true)),
                     onRemove ? row(Trash2, t("ct_remove"), null, () => setConfirm("remove"), true)
