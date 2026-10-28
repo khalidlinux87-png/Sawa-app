@@ -116,7 +116,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c177";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c178";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -1294,6 +1294,46 @@
     return closeFn;
   }
   // C175: مفتاح المدير — الوسيط الأساسيّ (Metered / Cloudflare / تلقائيّ = إعداد الـWorker) · يصل الكلّ خلال دقائق
+  // C178: حالة الخدمات (للمدير) — من فحص الخادم كلّ ٢٠ دقيقة (health/now) أو «فحص الآن»
+  function healthSheet() {
+    sheet(L("حالة الخدمات", "Service health"), function (body) {
+      body.parentNode.parentNode.style.direction = isAr() ? "rtl" : "ltr";
+      var box = el("div", "padding:0 14px 6px");
+      body.appendChild(box);
+      var paint = function (r) {
+        box.innerHTML = "";
+        if (!r || !r.admin) { box.appendChild(el("div", "padding:20px;text-align:center;color:" + MUTED + ";font:600 13px system-ui", L("للمدير فقط", "Admin only"))); return; }
+        var lb = r.labels || {}, keys = Object.keys(r.svc || {});
+        var name = function (k) { return lb[k] || (k.indexOf("metered:") === 0 ? L("وسيط Metered (", "Metered relay (") + k.slice(8) + ")" : k); };
+        box.appendChild(el("div", "font:600 12px system-ui;color:" + MUTED + ";margin-bottom:8px", r.at ? L("آخر فحص: ", "Last check: ") + new Date(r.at).toLocaleString(isAr() ? "ar" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }) : L("لم يُفحص بعد — اضغط «فحص الآن»", "Not checked yet — tap “Check now”")));
+        keys.forEach(function (k) {
+          var v = r.svc[k], h = (r.hist && r.hist[k]) || [];
+          var card = el("div", "padding:10px 12px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid " + (v.ok ? LINE : "#b91c1c"));
+          var top = el("div", "display:flex;align-items:center;gap:8px");
+          top.appendChild(el("span", "width:10px;height:10px;border-radius:5px;flex-shrink:0;background:" + (v.ok ? "#22c55e" : "#ef4444")));
+          top.appendChild(el("span", "flex:1;font:800 13.5px system-ui", name(k)));
+          top.appendChild(el("span", "font:700 12px system-ui;direction:ltr;color:" + MUTED, v.ok ? v.ms + " ms" : L("متعطّل", "down")));
+          card.appendChild(top);
+          var up = h.filter(function (x) { return x[1] >= 0; }).length;
+          var sub = (v.ok ? L("يعمل منذ ", "Up since ") : L("متعطّل منذ ", "Down since ")) + new Date(v.since || v.at).toLocaleString(isAr() ? "ar" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }) + (h.length ? " · " + L("التوفّر ", "uptime ") + Math.round(up * 100 / h.length) + "%" : "");
+          card.appendChild(el("div", "font:600 11.5px system-ui;color:" + MUTED + ";margin-top:3px", sub));
+          if (!v.ok && v.err) card.appendChild(el("div", "font:600 11.5px system-ui;color:#fca5a5;margin-top:3px;direction:ltr;text-align:start;word-break:break-word", v.err));
+          if (h.length > 1) {   // آخر القياسات: عمودٌ لكلّ فحص (الأحمر عطل)
+            var mx = Math.max.apply(null, h.map(function (x) { return x[1]; }).concat([1]));
+            var bars = el("div", "display:flex;align-items:flex-end;gap:2px;height:26px;margin-top:6px;direction:ltr");
+            h.slice(-36).forEach(function (x) { bars.appendChild(el("span", "flex:1;border-radius:2px;background:" + (x[1] < 0 ? "#ef4444" : "#3b82f6") + ";height:" + (x[1] < 0 ? 100 : Math.max(8, Math.round(x[1] * 100 / mx))) + "%")); });
+            card.appendChild(bars);
+          }
+          box.appendChild(card);
+        });
+        box.appendChild(el("div", "font:600 11px system-ui;color:" + MUTED + ";margin-top:4px", L("يُفحص الخادم كلّ ٢٠ دقيقة، ويصلك إشعارٌ حين تتعطّل خدمة أو تعود.", "Checked every 20 min; you're notified when a service goes down or recovers.")));
+      };
+      var go = el("button", "margin:4px 16px 12px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 14px system-ui", L("فحص الآن", "Check now"));
+      go.onclick = function () { go.disabled = true; go.textContent = L("جارٍ الفحص…", "Checking…"); wcall("admin.health", { run: true }).then(paint).catch(function (e) { toast(L("تعذّر الفحص: ", "Check failed: ") + ((e && e.message) || e)); }).then(function () { go.disabled = false; go.textContent = L("فحص الآن", "Check now"); }); };
+      body.appendChild(go);
+      wcall("admin.health", {}).then(paint).catch(function (e) { box.textContent = L("تعذّر التحميل: ", "Couldn't load: ") + ((e && e.message) || e); });
+    });
+  }
   function relaySheet() { sheet(L("الوسيط الأساسيّ", "Primary relay"), function (body) { body.parentNode.parentNode.style.direction = isAr() ? "rtl" : "ltr"; body.appendChild(relaySwitchCard()); }); }
   function relaySwitchCard() {
     var card = el("div", "margin:0 14px 12px;padding:12px;border-radius:14px;background:rgba(47,128,200,.12);border:1px solid " + LINE);
@@ -1338,7 +1378,7 @@
         if (!items.length) { body.appendChild(el("div", "padding:24px;text-align:center;color:" + MUTED + ";font:600 13px system-ui", L("لا تقييمات بعد — أرسل لمختبِريك الرابط sawaaap.com/?qa=1", "No ratings yet — send testers sawaaap.com/?qa=1"))); return; }
         var groups = {};
         // C166: والوسيط في المفتاح — مقارنة Metered بـCloudflare (والمباشر)
-        var via = function (x) { return x.route === "relay" ? (/metered/i.test(x.relay || "") ? "Metered" : /cloudflare/i.test(x.relay || "") ? "Cloudflare" : "relay ?") : x.route === "direct" ? "direct" : (x.route || "?"); };
+        var via = function (x) { return x.route === "relay" ? (/metered/i.test(x.relay || "") ? String(x.relay).slice(0, 24) : /cloudflare/i.test(x.relay || "") ? "Cloudflare" : "relay ?") : x.route === "direct" ? "direct" : (x.route || "?"); };
         items.forEach(function (x) { var k = (x.kind || "?") + " · " + (x.engine === "native" ? "⚡" : x.engine === "native-ios" ? "⚡iOS" : "WebView") + (x.out === "spk" ? " · 🔊" : x.out === "ear" ? " · 👂" : "") + " · " + via(x); (groups[k] = groups[k] || []).push(x); });
         var med = function (a) { a = a.filter(function (v) { return typeof v === "number"; }).sort(function (x, y) { return x - y; }); return a.length ? a[Math.floor(a.length / 2)] : "–"; };
         Object.keys(groups).sort().forEach(function (k) {
@@ -1549,6 +1589,7 @@
       if (!n || !n.allow || !n.allow[me]) { gFinish(g, "error", { text: L("انتهت هذه المكالمة", "This call has ended") }); return; }
       g.by = n.by; g.approval = !!n.approval; g.title = n.title || g.title; g.cid = n.cid || g.cid || null; g.type = n.type === "video" ? "video" : "audio";
       g.allow = n.allow;
+      if (n.room) { stopStream(g.local); g.local = null; gMoveTo(g, n.room); return; }   // C178: انتقلت إلى خادم الوسائط
       var others = Object.keys(n.members || {}).filter(function (u) { return u !== me; });
       if (others.length + 1 > GC_MAX[g.type]) { gFinish(g, "full"); return; }
       gLocalTile(g);
@@ -1605,6 +1646,7 @@
       });
       if (g.by === me && g.approval) gListen(g, g.ref.child("req"), "value", function (s) { g.reqs = s.val() || {}; gPaintReqs(g); });
       gListen(g, g.ref.child("allow"), "value", function (s) { g.allow = s.val() || g.allow; });
+      gListen(g, g.ref.child("room"), "value", function (s) { var code = s.val(); if (code && !g.done) gMoveTo(g, code); });   // C178
     }).catch(function (e) {
       log("genter", e && e.message);
       gFinish(g, "error", { text: L("تعذّر الانضمام للمكالمة", "Couldn't join the call") });
@@ -1632,7 +1674,29 @@
     // C24: الدردشة الصوتيّة غرفةٌ مفتوحة — تنتظر وحدك حتّى ١٥ دقيقة
     if (!others.length) { if (!g.timers.alone) g.timers.alone = setTimeout(function () { gFinish(g, Object.keys(g.met).length ? "everyoneLeft" : "nobody"); }, g.vc ? Math.max(ALONE_MS, 15 * 60000) : ALONE_MS); }
     else { clearTimeout(g.timers.alone); delete g.timers.alone; stopTone(); }
+    gAutoSfu(g, m);   // C178
     gPaint(g);
+  }
+  // C178: المكالمة كبرت ⇒ أصغر الحاضرين معرّفاً (واحدٌ فقط، بلا تصادم) ينشئ غرفةً كبيرة مرتبطة بها، والخادم يدلّ الجميع عليها
+  function gAutoSfu(g, m) {
+    var me = myUid(), ids = Object.keys(m || {}).filter(function (u) { return m[u] && m[u].sess; }).sort();
+    if (!g.live || g.moving || g.noSfu || ids.length < AUTO_SFU[g.type] || ids[0] !== me) return;
+    g.moving = true;
+    sfuReady().then(function (on) {
+      if (!on || g.done) { g.moving = false; g.noSfu = true; return; }
+      var code = newCode(), title = String(g.title || L("مكالمة جماعيّة", "Group call")).slice(0, 80);
+      var meta = { host: me, owner: me, title: title, ts: TS(), gc: Date.now() + 3 * 3600000, locked: false, lobby: false, big: true, gcid: g.gid };
+      if (g.type === "audio") meta.audioOnly = true;
+      return db().ref("rooms/" + code + "/meta").set(meta).then(function () { return wcall("gcall.room", { gid: g.gid, code: code }); })
+        .then(function (r) { if (r && r.room && !g.done) gMoveTo(g, r.room); });
+    }).catch(function (e) { log("gcall sfu", e && e.message); g.moving = false; g.noSfu = true; });
+  }
+  function gMoveTo(g, code) {
+    if (g.done || g.movedTo) return;
+    g.movedTo = code;
+    var title = g.title, mic = !g.muted;
+    gFinish(g, "moved");
+    setTimeout(function () { roomJoin(code, { title: title, mic: mic }); toast(L("انتقلت المكالمة إلى خادم الوسائط — جودةٌ أفضل للمجموعة", "The call moved to the media server for better group quality")); }, 150);
   }
   function gSend(g, to, toSess, payload) {
     var o = { from: myUid(), fs: g.sess, tsn: toSess, ts: TS() };
@@ -1792,7 +1856,8 @@
     if (g.ref && me) {
       try { g.ref.child("members/" + me).onDisconnect().cancel(); g.ref.child("sig/" + me).onDisconnect().cancel(); g.ref.child("req/" + me).onDisconnect().cancel(); } catch (e) {}
       if (g.state === "waiting") g.ref.child("req/" + me).remove().catch(function () {});
-      if (g.live) {
+      if (g.live && reason === "moved") g.ref.child("members/" + me).remove().then(function () { return g.ref.child("sig/" + me).remove(); }).catch(function () {});   // C178: تبقى المكالمة ومؤشّرها فيصل المتأخّرون إلى الغرفة
+      else if (g.live) {
         var ref = g.ref, cid = g.cid, gid = g.gid;
         ref.child("members/" + me).remove().then(function () { return ref.child("sig/" + me).remove(); }).then(function () {
           return ref.child("members").once("value");
@@ -1815,9 +1880,9 @@
     }
     if (gc === g) gc = null;
     log("gend", g.gid, reason);
-    if (g.live && g.joinedAt) qaAfter(Math.round((Date.now() - g.joinedAt) / 1000), { kind: g.type === "video" ? "group-video" : "group-audio", engine: "web",
+    if (g.live && g.joinedAt && reason !== "moved") qaAfter(Math.round((Date.now() - g.joinedAt) / 1000), { kind: g.type === "video" ? "group-video" : "group-audio", engine: "web",
       n: Object.keys(g.met || {}).length + 1, reason: reason });
-    if (reason === "declined") { gHide(); return; }
+    if (reason === "declined" || reason === "moved") { gHide(); return; }
     if (g.live) endTone();
     var tx = opts.text || (G_END[reason] && L(G_END[reason][0], G_END[reason][1])) || L("غادرت المكالمة", "You left the call");
     g.endText = tx; g.state = "ended";
@@ -2091,6 +2156,21 @@
   }
   var SFU_MAX = 30, SFU_CAMS = 6;
   function rBig(r) { return !!(r && r.meta && r.meta.big); }
+  // C178: خادم الوسائط (SFU) تلقائيّاً — من ٣ مشاركين يستقبل الخادم تدفّقاً واحداً من كلّ شخص ويوزّعه (بدل أن يرفع كلّ هاتفٍ نسخةً لكلّ مشارك)
+  //       الغرف: من ٣ · مكالمات المجموعات: الفيديو من ٣ والصوت من ٥ (الصوت المباشر خفيف وأقلّ تأخيراً). المضيف يستطيع إعادتها عاديّة.
+  var AUTO_SFU = { room: 3, video: 3, audio: 5 }, sfuCfgC = null, sfuCfgAt = 0;
+  function sfuReady() {
+    if (sfuCfgC !== null && Date.now() - sfuCfgAt < 10 * 60000) return Promise.resolve(sfuCfgC);
+    return wcall("sfu.cfg", {}).then(function (b) { sfuCfgC = !!(b && b.enabled); sfuCfgAt = Date.now(); return sfuCfgC; }, function () { return false; });
+  }
+  function rAutoBig(r) {
+    if (!r.live || rBig(r) || !amHost(r) || r.meta.noAuto || r.autoBig || Object.keys(r.members || {}).length < AUTO_SFU.room) return;
+    r.autoBig = true;
+    sfuReady().then(function (on) {
+      if (!on || r.done || rBig(r) || !amHost(r)) { r.autoBig = false; return; }
+      rRef(r, "meta/big").set(true).catch(function (e) { r.autoBig = false; log("auto big", e && e.message); });
+    });
+  }
   function rCap0(r) { return rBig(r) ? SFU_MAX : ROOM_MAX; }
   function rMax(r) { var cap = rCap0(r), m = r && r.meta && Number(r.meta.max); return m >= 2 && m <= cap ? m : cap; }   // C38: حدّ المضيف
   var rm = null, rui = { root: null };
@@ -2427,6 +2507,7 @@
       var oldest = Object.keys(r.members).sort(function (a, b) { return (r.members[a].ts || 0) - (r.members[b].ts || 0); })[0];
       if (oldest === me) rRef(r, "meta/host").set(me).catch(function (e) { log("claim", e && e.message); });
     }, HOST_GRACE);
+    rAutoBig(r);   // C178
     if (rBig(r)) sfuSync(r);
     Object.keys(rui.tiles || {}).forEach(function (u) { if (u !== "__me" && u.indexOf("scr:") !== 0 && !m[u]) rTile(r, u); });   // C121: بلاطة الشاشة ليست عضواً (كانت تُحذف مع كلّ تحديثٍ للأعضاء)
     Object.keys(m).forEach(function (u) { if (u !== me) rTile(r, u); });
@@ -3706,7 +3787,7 @@
     if (rBig(r)) {
       var n = Object.keys(r.members).length;
       if (n > ROOM_MAX) { toast(L("في الغرفة " + n + " — الغرفة العاديّة تحتمل " + ROOM_MAX + " فقط", n + " here — a regular room holds " + ROOM_MAX)); return; }
-      rRef(r, "meta").update({ big: null, max: null }).catch(function (e) { log("big off", e && e.message); });
+      rRef(r, "meta").update({ big: null, max: null, noAuto: true }).catch(function (e) { log("big off", e && e.message); });   // C178: لا يعيدها التلقائيّ
       return;
     }
     wcall("sfu.cfg", {}).then(function (b) {
@@ -4264,7 +4345,7 @@
     _rm: function () { return rm; }, _r: { prejoin: roomPrejoin, pin: function (u) { if (rm) { rm.pin = u; rm.focusU = null; rLayout(rm); } }, viewToggle: function () { rViewToggle(rm); }, tileMenu: function (u) { if (rm) rTileMenu(rm, u); }, layout: function () { if (rm) rLayout(rm); }, sendFile: function (f) { rSendFile(rm, f); }, fileGet: function (f) { return rFileGet(rm, f); }, toggleMic: rToggleMic, toggleCam: rToggleCam, hand: rToggleHand, low: rToggleLow, chat: rSendChat, react: rReact, admit: rAdmit, remove: rRemove,
       makeHost: rMakeHost, ctl: rCtl, muteAll: rMuteAll, lowerAll: rLowerAll, meta: rSetMeta, endAll: rEndAll, summary: rSummaryText, panel: rOpenPanel, settings: rSettings, max: rMax, rejoin: function () { if (rm) rRejoin(rm); }, bigToggle: rBigToggle, sfuRestart: function () { if (rm) sfuRestart(rm, 100); }, adapt: function (q) { if (rm) rAdapt(rm, q); }, stats: function () { if (rm) rStatsTick(rm); } },
     _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming,
-    _native: { ok: nativeAudioOk, PC: NativePC }, qaReport: qaReport, relaySheet: relaySheet, _qaAsk: qaAsk,
+    _native: { ok: nativeAudioOk, PC: NativePC }, qaReport: qaReport, relaySheet: relaySheet, healthSheet: healthSheet, _qaAsk: qaAsk,
     build: RTC_BUILD, relayPrimary: function () { return relayPrimary; }, relayMs: function () { return relayMs; },
     _relay: { probe: probeRelays, rank: relayRank, ice: relayIce, ms: function () { return relayMs; }, list: function () { return iceRelays; }, ofUrl: relayOfUrl, text: callNetText }
   };
