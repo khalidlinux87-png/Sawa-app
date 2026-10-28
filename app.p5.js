@@ -778,21 +778,42 @@ function useChatDraft(draft, onSaveDraft, onTyping) {
 // المدة "0:00" دائماً مهما طال التسجيل. المرجع أدناه يحمل القيمة الحيّة.
 // C18: المحادثة تُفتح عند آخر رسالة وتبقى في الأسفل ما لم يصعد المستخدم — كانت تُفتح من الأعلى لأنّ الرسائل تصل بعد فتح الشاشة
 //      (والصور تكبر بعد تحميلها)، وشرط «قريبٌ من الأسفل» كان يُقرأ والصفحة في أعلاها.
+// C174: الالتصاق بآخر المحادثة — لا يحرّره إلّا المستخدم (لمسٌ/عجلة) أو قفزةٌ مقصودة إلى رسالة.
+//       كان أيّ حدث تمريرٍ (استعادة المتصفّح · تحميل الأقدم · تغيّر الارتفاع بعد ٥ ثوانٍ) يُفلت المحادثة فتُفتح في وسطها.
+let SAWA_JUMP_AT = 0;
+function noteJump() { SAWA_JUMP_AT = Date.now(); }
 function useStickToBottom(ref, dep) {
-    const stick = useRef(true);
+    const stick = useRef(true), userAt = useRef(0);
+    stick.recent = () => Date.now() - userAt.current < 2000;
     useEffect(() => {
-        const el = ref.current;
-        if (!el) return;
-        const toEnd = () => { el.scrollTop = el.scrollHeight; };
-        const onScroll = () => { stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; };
-        const onLoad = () => { if (stick.current) toEnd(); };   // صورة/فيديو اكتمل تحميله فطال المحتوى
-        el.addEventListener("scroll", onScroll, { passive: true });
-        el.addEventListener("load", onLoad, true);
-        el.addEventListener("loadedmetadata", onLoad, true);
-        toEnd();
-        const t0 = Date.now();
-        const iv = setInterval(() => { if (stick.current) toEnd(); if (Date.now() - t0 > 5000) clearInterval(iv); }, 200);
-        return () => { el.removeEventListener("scroll", onScroll); el.removeEventListener("load", onLoad, true); el.removeEventListener("loadedmetadata", onLoad, true); clearInterval(iv); };
+        let el = null, mo = null, ro = null, raf = 0, poll = null, n = 0, dead = false;
+        const toEnd = () => { if (el) el.scrollTop = el.scrollHeight; };
+        const pin = () => { if (raf || !stick.current) return; raf = requestAnimationFrame(() => { raf = 0; if (stick.current) toEnd(); }); };
+        const onUser = () => { userAt.current = Date.now(); };
+        const onScroll = () => {
+            const d = el.scrollHeight - el.scrollTop - el.clientHeight;
+            if (d < 120) stick.current = true;
+            else if (Date.now() - userAt.current < 1500 || Date.now() - SAWA_JUMP_AT < 1500) stick.current = false;
+            else pin();   // تمريرٌ لم يطلبه المستخدم ⇒ نبقى في الأسفل
+        };
+        const UEV = ["touchstart", "touchmove", "wheel", "pointerdown", "keydown"];
+        const attach = () => {
+            el = ref.current; if (!el) return false;
+            el.addEventListener("scroll", onScroll, { passive: true });
+            UEV.forEach((k) => el.addEventListener(k, onUser, { passive: true }));
+            el.addEventListener("load", pin, true);
+            el.addEventListener("loadedmetadata", pin, true);
+            try { mo = new MutationObserver(pin); mo.observe(el, { childList: true, subtree: true, characterData: true }); } catch (e) { }
+            try { ro = new ResizeObserver(pin); ro.observe(el); } catch (e) { }
+            toEnd(); requestAnimationFrame(toEnd);
+            return true;
+        };
+        if (!attach()) poll = setInterval(() => { if (dead || attach() || ++n > 50) { clearInterval(poll); poll = null; } }, 100);   // الحاوية قد تظهر بعد التحميل
+        return () => {
+            dead = true; if (poll) clearInterval(poll); if (raf) cancelAnimationFrame(raf);
+            if (mo) mo.disconnect(); if (ro) ro.disconnect();
+            if (el) { el.removeEventListener("scroll", onScroll); UEV.forEach((k) => el.removeEventListener(k, onUser)); el.removeEventListener("load", pin, true); el.removeEventListener("loadedmetadata", pin, true); }
+        };
     }, []);
     useEffect(() => {
         const el = ref.current;
@@ -801,6 +822,45 @@ function useStickToBottom(ref, dep) {
         requestAnimationFrame(() => { if (stick.current) el.scrollTop = el.scrollHeight; });
     }, [dep]);
     return stick;
+}
+// C174: زرّ «إلى آخر المحادثة» وعدد ما لم تره بعد تحت الشاشة (رسائل الآخرين)
+function useJumpDown(ref, stickRef, messages, isMine) {
+    const [st, setSt] = useState({ show: false, below: 0 });
+    const othersRef = useRef(new Set());
+    othersRef.current = new Set((messages || []).filter((m) => m && !isMine(m)).map((m) => String(m.id)));
+    const calc = () => {
+        const el = ref.current; if (!el) return;
+        const d = el.scrollHeight - el.scrollTop - el.clientHeight;
+        let below = 0;
+        if (d > 200) {
+            const bottom = el.getBoundingClientRect().bottom - 8;
+            const nodes = el.querySelectorAll("[data-message-id]");
+            for (let i = nodes.length - 1; i >= 0; i--) {
+                const nd = nodes[i];
+                if (nd.getBoundingClientRect().top <= bottom) break;
+                if (othersRef.current.has(nd.getAttribute("data-message-id"))) below++;
+            }
+        }
+        setSt((o) => (o.show === d > 200 && o.below === below) ? o : { show: d > 200, below });
+    };
+    useEffect(() => {
+        let el = null, raf = 0, poll = null, n = 0;
+        const on = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; calc(); }); };
+        const attach = () => { el = ref.current; if (!el) return false; el.addEventListener("scroll", on, { passive: true }); return true; };
+        if (!attach()) poll = setInterval(() => { if (attach() || ++n > 50) { clearInterval(poll); poll = null; } }, 100);
+        return () => { if (poll) clearInterval(poll); if (raf) cancelAnimationFrame(raf); if (el) el.removeEventListener("scroll", on); };
+    }, []);
+    useEffect(() => { const id = requestAnimationFrame(calc); return () => cancelAnimationFrame(id); }, [messages.length]);
+    const go = () => { const el = ref.current; if (!el) return; stickRef.current = true; el.scrollTop = el.scrollHeight; requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; }); setSt({ show: false, below: 0 }); };
+    return Object.assign({ go }, st);
+}
+function JumpDownButton({ jd }) {
+    const { colors } = useTheme();
+    if (!jd || !jd.show) return null;
+    return React.createElement("button", { "aria-label": tl("إلى آخر المحادثة", "Jump to latest"), onClick: jd.go, className: "sawa-pop-in",
+        style: { position: "absolute", bottom: 14, [isRTL() ? "left" : "right"]: 14, zIndex: 10, width: 42, height: 42, borderRadius: 21, backgroundColor: colors.card, border: "1px solid " + colors.border, boxShadow: "0 3px 10px rgba(0,0,0,0.22)", display: "flex", alignItems: "center", justifyContent: "center" } },
+        React.createElement(ChevronDown, { size: 22, color: colors.primary }),
+        jd.below > 0 && React.createElement("span", { style: { position: "absolute", top: -7, [isRTL() ? "right" : "left"]: -5, minWidth: 20, height: 20, padding: "0 5px", borderRadius: 10, backgroundColor: colors.primary, color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid " + colors.card } }, jd.below > 99 ? "99+" : jd.below.toLocaleString(loc())));
 }
 function useVoiceRecorder({ onComplete, transcribe }) {
     const [isRecording, setIsRecording] = useState(false);
@@ -1255,7 +1315,7 @@ function jumpToMessage(id, win, toast) {
     const go = () => {
         const el = find();
         if (!el) { if (toast) toast(tl("الرسالة الأصليّة غير متاحة هنا (أقدم)", "Original message isn't available here"), "info"); return; }
-        el.scrollIntoView({ block: "center" });
+        noteJump(); el.scrollIntoView({ block: "center" });   // C174
         const old = el.style.backgroundColor; el.style.transition = "background-color .4s"; el.style.backgroundColor = "rgba(250,204,21,0.35)";
         setTimeout(() => { el.style.backgroundColor = old || "transparent"; }, 1200);
     };
@@ -1325,6 +1385,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
     const [viewingImage, setViewingImage] = useState(null);
     const [searchQueryW, setSearchQueryW] = useState("");
     const win = useMessageWindow(messages, unreadCount, !!searchQueryW.trim(), scrollContainerRef);
+    const jd = useJumpDown(scrollContainerRef, stickRef, messages, (m) => m.senderUserId === myUserId);   // C174
     // كل صور وفيديوهات المحادثة بالترتيب — تُمرَّر للمعاينة لتمكين التنقّل
     const mediaItems = useMemo(() => mediaWithBatches(messages), [messages]);   // C140: كلّ وسيطٍ معه رقم دفعته
     const mediaInputRef = useRef(null);
@@ -1348,7 +1409,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
     useEffect(() => {
         var _a;
         if (currentMatchId) {
-            (_a = document.querySelector(`[data-message-id="${currentMatchId}"]`)) === null || _a === void 0 ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "center" });
+            noteJump(); (_a = document.querySelector(`[data-message-id="${currentMatchId}"]`)) === null || _a === void 0 ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "center" });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentMatchId]);
@@ -1462,15 +1523,14 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                     " \u2190")));
         })(),
         !online && React.createElement(OfflineBar, null),
-        pinnedMessage && (React.createElement("button", { "aria-label": t("tthbyt"), onClick: () => { const go = () => { var _a; return (_a = document.querySelector(`[data-message-id="${pinnedMessage.id}"]`)) === null || _a === void 0 ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "center" }); }; if (document.querySelector(`[data-message-id="${pinnedMessage.id}"]`)) go(); else { win.more(Infinity); setTimeout(go, 60); } }, className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2 border-b`, style: { borderColor: colors.border, backgroundColor: colors.primaryLight } },
+        pinnedMessage && (React.createElement("button", { "aria-label": t("tthbyt"), onClick: () => { const go = () => { var _a; noteJump(); return (_a = document.querySelector(`[data-message-id="${pinnedMessage.id}"]`)) === null || _a === void 0 ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "center" }); }; if (document.querySelector(`[data-message-id="${pinnedMessage.id}"]`)) go(); else { win.more(Infinity); setTimeout(go, 60); } }, className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2 border-b`, style: { borderColor: colors.border, backgroundColor: colors.primaryLight } },
             React.createElement(Pin, { size: 12, color: colors.primary, fill: colors.primary }),
             React.createElement("span", { className: `text-[11px] font-bold flex-1 ${textStart()} truncate`, style: { color: colors.primaryDark } }, pinnedMessage.text))),
         React.createElement("div", { style: { position: "relative", flex: 1, minHeight: 0 } },
             React.createElement("div", { ref: scrollContainerRef, className: "flex-1 overflow-y-auto p-4", style: { background: bgGradient || colors.bg, height: "100%", overflowY: "auto" }, onScroll: (e) => {
                     const el = e.currentTarget;
                     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-                    setShowScrollBtn(distFromBottom > 120);
-                    if (win.hidden > 0 && el.scrollTop < 80) win.more();
+                    if (win.hidden > 0 && el.scrollTop < 80 && stickRef.recent()) win.more();   // C174: الأقدم بطلب المستخدم فقط
                 } },
                 messages.length === 0 && !isTyping && React.createElement(EmptyChatState, { icon: MessageCircle }),
                 win.hidden > 0 && React.createElement(OlderButton, { hidden: win.hidden, onMore: win.more }),
@@ -1523,10 +1583,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                             React.createElement("span", { className: "w-1.5 h-1.5 rounded-full animate-bounce", style: { backgroundColor: colors.textMuted, animationDelay: "0ms" } }),
                             React.createElement("span", { className: "w-1.5 h-1.5 rounded-full animate-bounce", style: { backgroundColor: colors.textMuted, animationDelay: "150ms" } }),
                             React.createElement("span", { className: "w-1.5 h-1.5 rounded-full animate-bounce", style: { backgroundColor: colors.textMuted, animationDelay: "300ms" } })))))),
-            showScrollBtn && (React.createElement("button", { onClick: () => { const el = scrollContainerRef.current; if (el)
-                    el.scrollTop = el.scrollHeight; setShowScrollBtn(false); }, style: { position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", zIndex: 10, backgroundColor: colors.primary, color: "#fff", borderRadius: 20, padding: "5px 14px", fontSize: 12, fontWeight: 700, boxShadow: "0 2px 8px rgba(0,0,0,0.25)", display: "flex", alignItems: "center", gap: 4 } },
-                React.createElement(ChevronDown, { size: 13, color: "#fff" }),
-                t("ch_rsayl_jdyda")))),
+            React.createElement(JumpDownButton, { jd })),
         replyTo && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 py-2 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => setReplyTo(null) },
                 React.createElement(X, { size: 14, color: colors.textMuted })),
@@ -2027,6 +2084,7 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
     const scrollContainerRef = useRef(null);
     const stickRef = useStickToBottom(scrollContainerRef, messages.length);
     const win = useMessageWindow(messages, unreadCount, !!gSearchQ.trim(), scrollContainerRef);
+    const jd = useJumpDown(scrollContainerRef, stickRef, messages, (m) => m.senderId === myUserId || m.type === "system");   // C174
     const [forwardingText, setForwardingText] = useState(null);
     const [groupMsgMenu, setGroupMsgMenu] = useState(null);
     const [sel, setSel] = useState(null);   // C119
@@ -2079,7 +2137,7 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
     useEffect(() => {
         var _a;
         if (currentMatchId) {
-            (_a = document.querySelector(`[data-message-id="${currentMatchId}"]`)) === null || _a === void 0 ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "center" });
+            noteJump(); (_a = document.querySelector(`[data-message-id="${currentMatchId}"]`)) === null || _a === void 0 ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "center" });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentMatchId]);
@@ -2226,7 +2284,8 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
                 a,
                 t("gc_slahya_mshrf"))))))),
         !online && React.createElement(OfflineBar, null),
-        React.createElement("div", { ref: scrollContainerRef, className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg }, onScroll: (e) => { if (win.hidden > 0 && e.currentTarget.scrollTop < 80) win.more(); } },
+        React.createElement("div", { style: { position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } },   // C174: لزرّ «إلى آخر المحادثة»
+        React.createElement("div", { ref: scrollContainerRef, className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg }, onScroll: (e) => { if (win.hidden > 0 && e.currentTarget.scrollTop < 80 && stickRef.recent()) win.more(); } },
             messages.length === 0 && React.createElement(EmptyChatState, { icon: UsersRound }),
             win.hidden > 0 && React.createElement(OlderButton, { hidden: win.hidden, onMore: win.more }),
             (function () {
@@ -2392,6 +2451,7 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
             }
             return out;
             })()),
+        React.createElement(JumpDownButton, { jd })),
         showGStickers && React.createElement(EmojiTray, { colors, onPick: (e) => handleTextChange(composerInsert(text, e)), onSticker: (st) => { onSendSticker(st); setShowGStickers(false); } }),
         showMentions && (React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 p-2 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } }, group.members.filter((m) => m.id !== myUserId).map((m) => (React.createElement("button", { key: m.id, onClick: () => insertMention(m.name), className: "text-xs rounded-full border px-2.5 py-1", style: { borderColor: colors.border, color: colors.text } },
             "@",

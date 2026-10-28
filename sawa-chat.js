@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c173";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c174";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -1272,10 +1272,19 @@
       return !cleared[c.cid] || c.cid === openCid || ((c.last && c.last.ts) || 0) > cleared[c.cid] || (pend[c.cid] || []).length;
     });
   }
+  // C174: المعلّقة/الفاشلة تُعرض في معاينة القائمة فقط إن كانت أحدث من آخر رسالةٍ في المحادثة —
+  //       كانت رسالةٌ فشلت قبل أيّام (أو عالقة بلا صدى) تُبقي المعاينة والترتيب عليها مهما وصل بعدها
+  function freshPend(list, l) {
+    var lp = list[list.length - 1]; if (!lp) return null;
+    var lt = (l && l.ts) || 0;
+    if (lt && lp.ts <= lt) return null;
+    if (lp.status === "sent" && Date.now() - lp.ts > 120000) return null;
+    return lp;
+  }
   function convOf(c) {
     var other = others(c)[0], l = c.last;
     var p = other && state.people.filter(function (x) { return x.uid === other; })[0];
-    var pendList = pend[c.cid] || [], lp = pendList[pendList.length - 1];
+    var pendList = pend[c.cid] || [], lp = freshPend(pendList, l);   // C174
     var lastMine = lp ? true : !!(l && l.by === state.uid);
     var sec = e2eOn(c);
     return {
@@ -1284,7 +1293,7 @@
       isSavedMessages: c.type === "saved", secret: sec, e2e: sec ? e2eUi(c) : null, photo: other ? photoOf(other) : null,
       lastMessage: lp ? preview(lp.msg) : sec ? secretPreview(c) : preview(l), lastFromMe: lastMine,
       lastStatus: lp ? lp.status : (l && l.by === state.uid ? statusOf(c, l.ts) : null),
-      unread: unreadOf(c), updatedAt: lp ? lp.ts : (c.updatedTs || 0), pinnedMessageId: c.pinned || null,
+      unread: unreadOf(c), updatedAt: Math.max(lp ? lp.ts : 0, c.updatedTs || 0), pinnedMessageId: c.pinned || null,
       disappear: c.disappear || 0, online: !!(p && state.presence[other] && state.presence[other].state === "online")
     };
   }
@@ -1293,12 +1302,12 @@
     var members = (c.members || []).map(function (u) {
       return { id: appId(u), uid: u, unnamed: !hasRealName(u, c), name: u === state.uid ? L("أنت", "You") : personName(u, c), role: admins.indexOf(u) >= 0 ? "admin" : "member", photo: photoOf(u) };
     });
-    var pendList = pend[c.cid] || [], lp = pendList[pendList.length - 1];
+    var pendList = pend[c.cid] || [], lp = freshPend(pendList, l);   // C174
     var sec = e2eOn(c);
     var lastText = lp ? preview(lp.msg) : (l ? (l.type === "system" ? sysText({ by: l.by, extra: { ev: l.ev } }, c).replace(/«»|“”/g, "").trim() : (l.by && l.by !== state.uid ? personName(l.by, c) + ": " : "") + (sec ? secretPreview(c) : preview(l))) : (sec ? secretPreview(c) : ""));
     return { id: c.cid, cloud: true, kind: c.type, familyGroupId: c.familyGroupId || null, desc: c.desc || "", adminsOnly: !!c.adminsOnly, infoAdminsOnly: !!c.infoAdminsOnly,
       name: (c.name || L("مجموعة", "Group")) + (sec ? " 🔒" : ""), members: members, lastMessage: lastText, secret: sec, e2e: sec ? e2eUi(c) : null,
-      unread: unreadOf(c), updatedAt: lp ? lp.ts : (c.updatedTs || 0), pinnedMessageId: c.pinned || null, disappear: c.disappear || 0,
+      unread: unreadOf(c), updatedAt: Math.max(lp ? lp.ts : 0, c.updatedTs || 0), pinnedMessageId: c.pinned || null, disappear: c.disappear || 0,
       photo: c.type === "group" || c.type === "family" ? groupPhotoOf(c) : null };   // C155 · C159: والعائلة
   }
   var pubChatsT = null;
