@@ -116,7 +116,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c181";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c182";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -2242,13 +2242,16 @@
   function rBig(r) { return !!(r && r.meta && r.meta.big); }
   // C178: خادم الوسائط (SFU) تلقائيّاً — من ٣ مشاركين يستقبل الخادم تدفّقاً واحداً من كلّ شخص ويوزّعه (بدل أن يرفع كلّ هاتفٍ نسخةً لكلّ مشارك)
   //       الغرف: من ٣ · مكالمات المجموعات: الفيديو من ٣ والصوت من ٥ (الصوت المباشر خفيف وأقلّ تأخيراً). المضيف يستطيع إعادتها عاديّة.
-  var AUTO_SFU = { room: 3, video: 3, audio: 5 }, sfuCfgC = null, sfuCfgAt = 0;
+  // C182: الغرف تبقى مباشرةً حتّى ٨ (مشاركة الشاشة بمسارها المستقلّ) وتصير كبيرةً حين تمتلئ فقط — ولا تتحوّل أثناء عرض شاشة
+  var AUTO_SFU = { room: 8, video: 3, audio: 5 }, sfuCfgC = null, sfuCfgAt = 0;
   function sfuReady() {
     if (sfuCfgC !== null && Date.now() - sfuCfgAt < 10 * 60000) return Promise.resolve(sfuCfgC);
     return wcall("sfu.cfg", {}).then(function (b) { sfuCfgC = !!(b && b.enabled); sfuCfgAt = Date.now(); return sfuCfgC; }, function () { return false; });
   }
   function rAutoBig(r) {
     if (!r.live || rBig(r) || !amHost(r) || r.meta.noAuto || r.autoBig || Object.keys(r.members || {}).length < AUTO_SFU.room) return;
+    if (r.meta.max && r.meta.max < ROOM_MAX) return;   // المضيف حدّد عدداً أقلّ
+    if (r.scr || Object.keys(r.members).some(function (u) { return r.members[u] && r.members[u].scr; })) return;   // C182: لا انتقال أثناء عرض شاشة (يُعاد الفحص بعد انتهائه)
     r.autoBig = true;
     sfuReady().then(function (on) {
       if (!on || r.done || rBig(r) || !amHost(r)) { r.autoBig = false; return; }
@@ -2727,7 +2730,7 @@
       if (r.sfu !== s) return;
       // C179: أكثر من كاميرتين معروضتين ⇒ نطلب نصف الدقّة (المربّعات صغيرة) — والخادم ينزل تلقائيّاً إن ضاقت شبكتي
       var vids = Object.keys(want).filter(function (k) { return want[k].kind === "video"; }).length;
-      return wcall("sfu.pull", { room: r.code, sid: s.sid, tracks: toPull.map(function (k) { var w = want[k]; return { sessionId: w.sessionId, trackName: w.trackName, sc: w.kind === "video" && w.sc, rid: vids > 2 ? "h" : "f" }; }) }).then(function (b) {
+      return wcall("sfu.pull", { room: r.code, sid: s.sid, tracks: toPull.map(function (k) { var w = want[k], mm = r.members[w.uid] || {}; return { sessionId: w.sessionId, trackName: w.trackName, sc: w.kind === "video" && w.sc, rid: vids > 2 && !mm.scr ? "h" : "f" }; }) }).then(function (b) {   // C182: العارض بالدقّة الكاملة
         if (r.sfu !== s || s.gen !== gen) return;
         (b.tracks || []).forEach(function (t) {
           var k = toPull.filter(function (kk) { return want[kk].sessionId === t.sessionId && want[kk].trackName === t.trackName; })[0];
@@ -2803,6 +2806,18 @@
   function rSwitchMode(r) {
     Object.keys(r.peers).forEach(function (u) { rDrop(r, u); });
     sfuStop(r);
+    // C182: عرض الشاشة يستمرّ عبر الانتقال — في الكبيرة الشاشة مكان الكاميرا، وفي العاديّة مسارٌ مستقلّ والكاميرا تعود اختياريّة
+    if (r.scr && r.scrTrack && r.scrTrack.readyState === "live") {
+      if (rBig(r) && !r.scrViaCam) {
+        if (r.camOn && r.camTrack && r.camTrack !== r.scrTrack) { try { r.camTrack.stop(); } catch (e) {} }
+        r.camTrack = r.scrTrack; r.camOn = true; r.scrViaCam = true;
+        rMember(r, { cam: true, scr: true, scrCam: true });
+      } else if (!rBig(r) && r.scrViaCam) {
+        r.camTrack = null; r.camOn = false; r.scrViaCam = false;
+        rMember(r, { cam: false, scr: true, scrCam: false });
+      }
+      rTile(r, "__me"); rScrBar(r);
+    }
     Object.keys(r.timers).forEach(function (k) { if (/^o/.test(k)) { clearTimeout(r.timers[k]); delete r.timers[k]; } });
     if (rBig(r)) { toast(L("صارت غرفةً كبيرة — جارٍ الانتقال…", "Switched to a large room…")); sfuStart(r); }
     else {
@@ -3689,6 +3704,7 @@
   function rFocus(r, ids) {
     if (r.pin && ids.indexOf(r.pin) >= 0) return r.pin;
     var sc = ids.filter(function (u) { return String(u).indexOf("scr:") === 0; })[0]; if (sc) return sc;   // C120: الشاشة المعروضة تتصدّر
+    var pr = ids.filter(function (u) { return u !== "__me" && r.members[u] && r.members[u].scr && r.members[u].scrCam; })[0]; if (pr) return pr;   // C182: وفي الغرفة الكبيرة العارض يتصدّر
     if (r.pin) r.pin = null;
     if (r.view !== "speaker") return null;
     var now = Date.now(), sp = r.speaker && r.speaker !== "__me" ? r.speaker : null;
