@@ -1051,7 +1051,7 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
                         : React.createElement("p", { className: "text-xs mt-0.5 truncate", style: { color: colors.textMuted } }, meState === "loading" ? tl("لحظات…", "One moment…") : ""),
                     cloudMe && myProfile.code && SCm.fmtCode && React.createElement("button", { onClick: () => SCm.codeSheet(), className: `flex ${rowStart()} items-center gap-1.5 mt-1`, style: { color: colors.primary } },
                         React.createElement("span", { className: "text-[11px] font-bold" }, tl("رمزك:", "Code:")),
-                        React.createElement("span", { className: "text-xs font-extrabold", dir: "ltr", style: { letterSpacing: 1, whiteSpace: "nowrap" } }, SCm.fmtCode(myProfile.code))),
+                        React.createElement("span", { className: "text-xs font-extrabold", dir: "ltr", style: { unicodeBidi: "isolate", letterSpacing: 1, whiteSpace: "nowrap" } }, SCm.fmtCode(myProfile.code))),
                     cloudMe && myProfile.emailVerified && React.createElement("div", { className: "text-[10px] font-bold mt-1", style: { color: "#187854" } }, tl("✓ بريدك موثّق — يمكن لمعارفك إيجادك به", "✓ Email verified — people can find you by it")),
                     !RELEASE_UI && React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-2` },
                         React.createElement("span", { className: "w-2 h-2 rounded-full shrink-0", style: { backgroundColor: currentStatus.color } }),

@@ -579,8 +579,8 @@ function shareContactOut(contact) {
     const code = contact.code ? String(contact.code).replace(/\D/g, "") : "";
     const url = code ? location.origin + "/?code=" + code : "";
     const phone = String(contact.phone || "").replace(/[^\d+]/g, "");
-    const fc = code.replace(/^(\d{3})(\d{3})(\d{4})$/, "$1\u00A0$2\u00A0$3");
-    const text = name + (phone ? "\n📞 " + phone : "") + (code ? "\n" + tl("على سوا — رمزه: ", "On Sawa — code: ") + fc + "\n" + url : "");
+    const fc = code.replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3");
+    const text = name + (phone ? "\n📞 " + phone : "") + (code ? "\n" + tl("على سوا — رمزه:", "On Sawa — code:") + "\n" + fc + "\n" + url : "");
     const toast = (m) => { try { window.SawaSync.toast(m); } catch (e) { } };
     const asText = () => {
         try { if (navigator.share) { navigator.share({ title: name, text }).catch(() => { }); return; } } catch (e) { }
@@ -589,7 +589,7 @@ function shareContactOut(contact) {
     if (phone) {
         try {
             const esc = (v) => String(v).replace(/([\\,;])/g, "\\$1");
-            const vcf = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:" + esc(name) + "\r\nN:" + esc(name) + ";;;;\r\nTEL;TYPE=CELL:" + phone + "\r\n" + (url ? "URL:" + url + "\r\nNOTE:" + esc(tl("رمز سوا ", "Sawa code ") + code) + "\r\n" : "") + "END:VCARD\r\n";
+            const vcf = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:" + esc(name) + "\r\nN:" + esc(name) + ";;;;\r\nTEL;TYPE=CELL:" + phone + "\r\n" + (url ? "URL:" + url + "\r\nNOTE:" + esc(fc + tl(" — رمز سوا", " — Sawa code")) + "\r\n" : "") + "END:VCARD\r\n";
             const file = new File([vcf], (name || "contact").replace(/[\\/:*?"<>|]/g, "") + ".vcf", { type: "text/vcard" });
             if (navigator.canShare && navigator.canShare({ files: [file] })) { navigator.share({ files: [file], title: name }).catch((e) => { if (!e || e.name !== "AbortError") asText(); }); return; }
         } catch (e) { }
@@ -629,9 +629,9 @@ function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVid
                 React.createElement("span", { className: "text-xs mt-1", style: { color: blocked ? colors.danger : isOnline ? "#22C55E" : colors.textMuted } }, blocked ? tl("🚫 محظور — لا تصلك رسائله ولا مكالماته", "🚫 Blocked") : contactSubtitle(contact, isOnline)),
                 contact.families && contact.families.length > 0 && React.createElement("span", { className: "text-[11px] mt-0.5 text-center", style: { color: colors.textMuted } }, contact.families.map((f) => f.name).join(" · ")),
                 // C88: رمز سوا (١٠ أرقام) بدل الوسم القديم — نقرةٌ تنسخه
-                contact.code && React.createElement("button", { onClick: () => { const f = String(contact.code).replace(/\D/g, ""); try { navigator.clipboard.writeText(f); } catch (e) { } try { window.SawaSync.toast(tl("نُسخ الرمز ✓", "Code copied ✓")); } catch (e) { } }, className: "mt-1.5 flex flex-row items-center gap-1.5 px-2.5 py-1 rounded-full", style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
+                contact.code && React.createElement("button", { onClick: () => { const f = String(contact.code).replace(/\D/g, "").replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3"); try { navigator.clipboard.writeText(f); } catch (e) { } try { window.SawaSync.toast(tl("نُسخ الرمز ✓", "Code copied ✓")); } catch (e) { } }, className: "mt-1.5 flex flex-row items-center gap-1.5 px-2.5 py-1 rounded-full", style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
                     React.createElement(QrCode, { size: 12, color: colors.primary }),
-                    React.createElement("span", { className: "text-[12px] font-extrabold", dir: "ltr", style: { color: colors.text, letterSpacing: 1 } }, String(contact.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1\u00A0$2\u00A0$3")),
+                    React.createElement("span", { className: "text-[12px] font-extrabold", dir: "ltr", style: { unicodeBidi: "isolate", color: colors.text, letterSpacing: 1 } }, String(contact.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3")),
                     React.createElement(Copy, { size: 11, color: colors.textMuted }))),
             React.createElement("div", { className: "flex flex-row justify-center gap-5 mb-5" },
                 act(MessageCircle, t("rsala"), blocked ? null : onMessage, colors.primary),

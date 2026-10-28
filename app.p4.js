@@ -1769,7 +1769,7 @@ function ShareContactPicker({ colors, onPick }) {
     const nq = normAr(q);
     const list = all.filter((c) => !nq || [c.name, c.realName, c.nick, c.code].some((x) => x && normAr(String(x)).includes(nq)));
     const card = (c) => {
-        const code = c.code ? String(c.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1\u00A0$2\u00A0$3") : null;
+        const code = c.code ? String(c.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3") : null;
         const link = c.code ? (location.origin + "/?code=" + c.code) : null;
         return "👤 " + (c.realName || c.name) + (code ? "\n" + tl("رمزه في سوا: ", "Sawa code: ") + code + "\n" + link : "");
     };
@@ -1785,7 +1785,7 @@ function ShareContactPicker({ colors, onPick }) {
                 React.createElement(Pic, { photo: c.photo || null, letter: (c.name || "؟").charAt(0), size: 38, bg: colors.primaryLight, color: colors.primaryDark }),
                 React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
                     React.createElement("div", { className: "text-sm font-bold truncate", style: { color: colors.text } }, c.name),
-                    c.code && React.createElement("div", { className: "text-[11px] truncate", dir: "ltr", style: { color: colors.textMuted, textAlign: isRTL() ? "right" : "left" } }, String(c.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1\u00A0$2\u00A0$3")))))),
+                    c.code && React.createElement("div", { className: "text-[11px] truncate", dir: "ltr", style: { color: colors.textMuted, textAlign: isRTL() ? "right" : "left" } }, String(c.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3")))))),
         React.createElement("div", { className: "px-3 pt-2 shrink-0" },
             React.createElement("button", { disabled: !picked.length, onClick: () => onPick(all.filter((c) => picked.includes(c.uid)).map(card)), className: "w-full rounded-2xl py-3 text-[15px] font-extrabold", style: { backgroundColor: picked.length ? colors.primary : colors.border, color: "#fff" } },
                 picked.length ? tl("إرسال " + picked.length + (picked.length === 1 ? " جهة اتّصال" : " جهات اتّصال"), "Send " + picked.length) : tl("اختر جهة اتّصال أو أكثر", "Pick one or more"))));

@@ -166,7 +166,7 @@
   var peerCodes = lsGet("sawa_codes_v1", {});   // uid -> { c: "1234567890" | null, t: وقت الجلب }
   function peerCode(uid) { var e = peerCodes[uid]; return e && e.c ? e.c : null; }
   function guestTag(uid) {
-    var c = peerCode(uid); if (c) return fmtCode(c);
+    var c = peerCode(uid); if (c) return codeIso(c);   // C176: داخل نصٍّ عربيّ ⇒ معزول الاتّجاه
     var t = String(uid || "").replace(/[^A-Za-z0-9]/g, "").slice(-4).toUpperCase(); return t || "؟";
   }
   var codesBusy = false;
@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c175";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c176";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -4037,13 +4037,14 @@
     return String((10 - (sum % 10)) % 10);
   }
   function codeValid(c) { return /^[1-9]\d{9}$/.test(c) && luhnDigit(c.slice(0, 9)) === c[9]; }
-  // C175: المسافة بين المجموعات «غير قابلة للكسر» (U+00A0) — فاصلٌ رقميّ في خوارزميّة الاتّجاه، فيبقى ٣٣٤ بترتيبه داخل النصّ العربيّ
+  // C176: بشَرطة (اقتراح خالد): 136-860-8541 — الشرطة بين رقمين تُبقي الرقم متّصلاً بترتيبه في كلّ تطبيق (C175 كان U+00A0)
   //       (المسافة العاديّة كانت تقلب المجموعات: «7890 456 123» — في التطبيق وحين يُلصق في واتساب وغيره). النسخ: الأرقام وحدها.
-  function fmtCode(c) { c = codeDigits(c); var S = "\u00A0"; return c.length > 6 ? c.slice(0, 3) + S + c.slice(3, 6) + S + c.slice(6) : c.length > 3 ? c.slice(0, 3) + S + c.slice(3) : c; }
+  function codeIso(c) { return "\u2066" + fmtCode(c) + "\u2069"; }   // C176: LRI…PDI — للرمز داخل جملةٍ عربيّة في الواجهة
+  function fmtCode(c) { c = codeDigits(c); var S = "-"; return c.length > 6 ? c.slice(0, 3) + S + c.slice(3, 6) + S + c.slice(6) : c.length > 3 ? c.slice(0, 3) + S + c.slice(3) : c; }
   function myCode() { return (state.me && state.me.code) || null; }
   function codeUrl(c) { return global.location.origin + global.location.pathname.replace(/index\.html$/, "") + "?code=" + codeDigits(c); }
   function codeShareText(c) {
-    return L("تواصل معي على سوا — رمزي: ", "Reach me on Sawa — my code: ") + fmtCode(c) + "\n" + codeUrl(c);
+    return L("تواصل معي على سوا — رمزي:\n", "Reach me on Sawa — my code:\n") + fmtCode(c) + "\n" + codeUrl(c);   // C176: الرمز في سطرٍ وحده فلا يقلبه ما قبله
   }
   function loadCode() {
     if (myCode()) return Promise.resolve({ code: myCode(), findable: state.me.findable !== false });
@@ -4515,7 +4516,7 @@
   // ---------- «رمزي في سوا» ----------
   // C88: جهات اتّصال الهاتف — تُقرأ على الجهاز فقط (لا تُرفع إلى الخادم) لإرسال رسالة نصّيّة فيها رمز سوا ورابطه
   function smsText(code) {
-    return L("السلام عليكم 👋 تعال نتواصل على سوا — مكالمات ورسائل مجّانيّة.\nرمزي في سوا: ", "Hi 👋 let's talk on Sawa — free calls and messages.\nMy Sawa code: ") + fmtCode(code) +
+    return L("السلام عليكم 👋 تعال نتواصل على سوا — مكالمات ورسائل مجّانيّة.\nرمزي في سوا:\n", "Hi 👋 let's talk on Sawa — free calls and messages.\nMy Sawa code:\n") + fmtCode(code) +
       L("\nحمّل سوا وأضفني من هنا: ", "\nGet Sawa and add me: ") + codeUrl(code);
   }
   function openSms(phone, body) {
@@ -4611,7 +4612,7 @@
     s.box.appendChild(note(L("غيّره إن انتشر رمزك أكثر ممّا تريد — القديم يتوقّف فوراً، وجهات اتّصالك الحاليّة لا تتأثّر.", "Change it if it spread too far — the old one stops working; existing contacts stay.")));
     function fill(b) {
       big.textContent = fmtCode(b.code); cb.checked = b.findable !== false;
-      cp.onclick = function () { copyText(codeDigits(b.code)); };
+      cp.onclick = function () { copyText(fmtCode(b.code)); };
       sh.onclick = function () { shareText(codeShareText(b.code)); };
       inS.onclick = function () { var R = global.SawaRTC; if (R && R.sendInSawa) { s.close(); R.sendInSawa(codeShareText(b.code)); } else shareText(codeShareText(b.code)); };
       sms.onclick = function () { s.close(); phoneContactsSheet(); };
@@ -4866,7 +4867,7 @@
   function signOutSheet() {
     var a = authNow() || {}, me = state.me || {};
     var s = sheet(L("تسجيل الخروج", "Sign out"));
-    s.box.appendChild(note((me.name || L("حسابك", "Your account")) + (a.email ? " · " + a.email : "") + (myCode() ? " · " + fmtCode(myCode()) : ""), "#1A1A2E", "#f3f7fb"));
+    s.box.appendChild(note((me.name || L("حسابك", "Your account")) + (a.email ? " · " + a.email : "") + (myCode() ? " · " + codeIso(myCode()) : ""), "#1A1A2E", "#f3f7fb"));
     if (a.anon || !a.uid) {
       s.box.appendChild(note(L("حسابك «ضيف» غير مربوط بـGoogle أو بالبريد — إن خرجت فلن تستطيع العودة إليه أبداً، وتضيع محادثاتك ورمزك.",
         "Your guest account isn't linked to Google or email — signing out loses it forever."), "#b42318", "#fdecec"));
@@ -4911,7 +4912,7 @@
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
     var s = sheet(L("حذف الحساب نهائيّاً", "Delete account permanently"));
     var a = authNow(), me = state.me || {};
-    s.box.appendChild(note((me.name || L("حسابك", "Your account")) + (a && a.email ? " · " + a.email : "") + (myCode() ? " · " + fmtCode(myCode()) : ""), "#1A1A2E", "#f3f7fb"));
+    s.box.appendChild(note((me.name || L("حسابك", "Your account")) + (a && a.email ? " · " + a.email : "") + (myCode() ? " · " + codeIso(myCode()) : ""), "#1A1A2E", "#f3f7fb"));
     var ul = mk("ul", "font:500 13.5px/1.9 system-ui;color:#3b4652;padding-inline-start:20px;margin:8px 0");
     [L("يُحذف: اسمك ورقمك ورمزك في سوا، وجهات اتّصالك وطلبات التواصل، ورسائلك المحفوظة، وإعداداتك، وأجهزتك المسجّلة للإشعارات.", "Deleted: your name, number and code, contacts and requests, saved messages, settings and notification devices."),
      L("تخرج من كلّ المحادثات والمجموعات. رسائلك عند الآخرين تبقى عندهم باسم «حساب محذوف».", "You leave all chats and groups. Messages others received stay with them under «Deleted account»."),
@@ -5342,7 +5343,7 @@
         loadCode().then(function (r) {
           big.textContent = fmtCode(r.code);
           cp.onclick = function () {
-            copyText(codeDigits(r.code));
+            copyText(fmtCode(r.code));
             cp.innerHTML = ""; cp.appendChild(oi("check")); cp.appendChild(mk("span", "", L("نُسخ", "Copied")));
             setTimeout(function () { cp.innerHTML = ""; cp.appendChild(oi("copy")); cp.appendChild(mk("span", "", L("نسخ", "Copy"))); }, 1600);
           };
