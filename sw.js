@@ -13,7 +13,7 @@ const NOTES = '• لقطات الشاشة والصور الطويلة تظهر 
 const MOVED_TO = 'https://www.sawaaap.com';
 const MOVED = /\.netlify\.app$/i.test(self.location.hostname) || /^sawaap\.pages\.dev$/i.test(self.location.hostname) || /^sawaaap\.com$/i.test(self.location.hostname);
 // C139: الحجم المتوقَّع (بالبايت) للملفّات المرفوعة مع هذه النسخة — إن اختلف على الخادم (لم يُرفع، أو رُفع ناقصاً) يُسجَّل ويُنبَّه المستخدم
-const EXPECT = { './sawa-rtc.js': 393742, './sawa-chat.js': 537184 };
+const EXPECT = { './sawa-rtc.js': 393742, './sawa-chat.js': 537392 };
 const REPORT = [];
 const ASSETS = [
   './',
