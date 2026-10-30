@@ -1765,7 +1765,7 @@
   // قراءة جهات الهاتف: أندرويد ⇒ القائمة كلّها (تُختار داخل سوا)، المتصفّح ⇒ منتقي النظام (ما اختاره المستخدم فقط)
   function phonePickKind() {
     try { if (NB() && NB().readContacts) return "list"; } catch (e) {}
-    try { if (NB() && NB().pickContacts) return "native"; } catch (e) {}
+    try { if (IOSB() && IOSB().contacts && IOSB().call) return "native"; } catch (e) {}   // C184: الآيفون — منتقي النظام (بناء TestFlight الجديد)
     return global.navigator && navigator.contacts && navigator.contacts.select ? "picker" : null;
   }
   function readPhoneContacts() {
@@ -1776,7 +1776,7 @@
       (r.list || []).forEach(function (c) { if (!c || !c.p) return; var key = (c.n || c.p).trim(); (by[key] = by[key] || { n: c.n || "", tels: [] }).tels.push(c.p); });
       return { list: Object.keys(by).map(function (x) { return by[x]; }).sort(function (a, b) { return (a.n || "").localeCompare(b.n || "", "ar"); }) };
     });
-    if (k === "native") return nativeAsk("pickContacts", [], 120000).then(function (r) { return r && r.ok ? { picked: r.list || [] } : { err: "denied" }; });
+    if (k === "native") return IOSB().call("pickContacts", {}, 600000).then(function (r) { return r && r.ok ? { picked: (r.list || []).map(function (c) { return { n: c && c.n || "", tels: c && Array.isArray(c.tels) ? c.tels : [] }; }) } : { err: "denied" }; });
     if (k === "picker") return navigator.contacts.select(["name", "tel"], { multiple: true }).then(function (arr) {
       return { picked: (arr || []).map(function (c) { return { n: (c.name && c.name[0]) || "", tels: c.tel || [] }; }) };
     }, function () { return { picked: [] }; });
