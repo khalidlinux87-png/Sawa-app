@@ -1760,6 +1760,7 @@ function AppInner() {
         setMessagesByConversation((prev) => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), msg] }));
         setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, lastMessage: "🎤 رسالة صوتية" } : c)));
     }
+    function typeLabelOf(t) { return t === "image" ? "📷 صورة" : t === "video" ? "🎥 فيديو" : t === "voice" ? "🎤 رسالة صوتية" : "📎 ملف"; }   // C185
     function forwardMessageToTargets(payload, destinationIds) {
         // C48: payload قد يكون {id, text, cid} — رسالة وسائط تُوجَّه بملفّها لا باسمها
         const src = payload && typeof payload === "object" ? payload : null;
@@ -1767,17 +1768,21 @@ function AppInner() {
         const srcMsg = src && src.cid ? ((messagesByConversation[src.cid] || groupMessages[src.cid] || []).find((m) => m.id === src.id) || null) : null;
         // C100: كلّ رسالةٍ سحابيّة تُوجَّه بمحتواها عبر SawaChat (وسائط · موقع · جهة اتّصال) — لا بنصّها فقط
         const media = !!(srcMsg && src.cid && cloudChat(src.cid) && window.SawaChat && window.SawaChat.forwardMessage && (srcMsg.cloudMid || ["location", "contact"].includes(srcMsg.type) || srcMsg.contact));
-        const toCloud = (cid) => { if (media) window.SawaChat.forwardMessage(src.cid, src.id, cid); else cloudChat(cid).send(cid, text, { fwd: true }); };
+        // C185: الملف الموجَّه يُرسل وحده — كان اسمه يُرسل رسالةً نصّيّة ثانية حين لا يُعثر على الوسيط السحابيّ
+        const isMediaSrc = !!(srcMsg && ["image", "video", "file", "voice"].includes(srcMsg.type));
+        const toCloud = (cid) => { if (media) window.SawaChat.forwardMessage(src.cid, src.id, cid); else if (!isMediaSrc) cloudChat(cid).send(cid, text, { fwd: true }); };
         destinationIds.forEach((id) => {
             if (/^contact:/.test(id) && window.SawaChat && window.SawaChat.openDm) { window.SawaChat.openDm(id.slice(8)).then((cid) => { if (cid) toCloud(cid); }); return; }
             if (cloudChat(id)) { toCloud(id); return; }
             if (conversations.some((c) => c.id === id)) {
-                const msg = { id: `msg-${Date.now()}-f-${id}`, senderUserId: myUserId, text, createdAt: Date.now(), forwarded: true, status: "sent" };
+                const msg = isMediaSrc ? { id: `msg-${Date.now()}-f-${id}`, senderUserId: myUserId, type: srcMsg.type, text: srcMsg.text || "", fileUrl: srcMsg.fileUrl, fileSize: srcMsg.fileSize, createdAt: Date.now(), forwarded: true, status: "sent" }
+                    : { id: `msg-${Date.now()}-f-${id}`, senderUserId: myUserId, text, createdAt: Date.now(), forwarded: true, status: "sent" };   // C185: الوسائط تُوجَّه بنوعها
                 setMessagesByConversation((prev) => ({ ...prev, [id]: [...(prev[id] || []), msg] }));
-                setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, lastMessage: text, lastFromMe: false } : c)));
+                setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, lastMessage: isMediaSrc ? (typeLabelOf(srcMsg.type)) : text, lastFromMe: false } : c)));
             }
             else if (groups.some((g) => g.id === id)) {
-                const msg = { id: `gmsg-${Date.now()}-f-${id}`, senderId: myUserId, text, type: "text", forwarded: true, createdAt: Date.now() };
+                const msg = isMediaSrc ? { id: `gmsg-${Date.now()}-f-${id}`, senderId: myUserId, text: srcMsg.text || "", type: srcMsg.type, fileUrl: srcMsg.fileUrl, fileSize: srcMsg.fileSize, forwarded: true, createdAt: Date.now() }   // C185
+                    : { id: `gmsg-${Date.now()}-f-${id}`, senderId: myUserId, text, type: "text", forwarded: true, createdAt: Date.now() };
                 setGroupMessages((prev) => ({ ...prev, [id]: [...(prev[id] || []), msg] }));
             }
         });
@@ -3425,6 +3430,8 @@ function AppInner() {
         try { if (navigator.vibrate) navigator.vibrate([120, 60, 120]); } catch (e) { }
     });
     useEffect(() => { const h = (e) => setHomeSave(e.detail || null); window.addEventListener("sawa-save-home", h); return () => window.removeEventListener("sawa-save-home", h); }, []);
+    const [filePreview, setFilePreview] = useState(null);   // C185
+    useEffect(() => { const h = (e) => setFilePreview(e.detail || null); window.addEventListener("sawa-file-preview", h); return () => window.removeEventListener("sawa-file-preview", h); }, []);
     function setPersonHome(gid, p, c, label) {
         const loc = { type: "home", lat: Number(Number(c.lat).toFixed(6)), lng: Number(Number(c.lng).toFixed(6)), radius_meters: 0, address_text: String(label || "").slice(0, 120) };
         setGroupPersons((prev) => ({ ...prev, [gid]: (prev[gid] || []).map((x) => (x.id === p.id ? { ...x, locations: [loc] } : x)) }));
@@ -3844,6 +3851,7 @@ function AppInner() {
             onSnooze: () => { proxSeenSet(proxAlert.person.id, new Date(Date.now() + 7200000).toISOString()); setProxAlert(null); showToast(tl("سأذكّرك بعد ساعتين", "I'll remind you in 2 hours"), "success"); },
             onMute: () => { try { const m = JSON.parse(localStorage.getItem("sawa_prox_mute") || "{}"); m[proxAlert.person.id] = 1; localStorage.setItem("sawa_prox_mute", JSON.stringify(m)); } catch (e) { } setProxAlert(null); },
             onOpenPerson: () => { const a = proxAlert; setProxAlert(null); const g = familyGroups.find((x) => x.id === a.gid); if (!g) return; setTab("discover"); setDiscoverStack([{ type: "groups" }, { type: "groupDetail", data: g }, { type: "personDetail", data: a.person, groupId: a.gid }]); } }),
+        filePreview && React.createElement(FilePreviewSheet, { file: filePreview, onClose: () => { try { URL.revokeObjectURL(filePreview.url); } catch (e) {} setFilePreview(null); } }),
         flow === "app" && homeSave && React.createElement(HomePickerSheet, { coords: homeSave, label: homeSave.label, groups: familyGroups, groupPersons: groupPersons, onClose: () => setHomeSave(null), onPick: (gid, p) => { setPersonHome(gid, p, homeSave, homeSave.label); setHomeSave(null); } }),
         flow === "app" && activeRoom && (React.createElement(ErrorBoundary, null,
             React.createElement(SawaRoomScreen, { roomCode: activeRoom, onBack: () => setActiveRoom(null), familyMembers: Object.values(groupPersons).flat().filter((p) => { var _a; return p.alive && ((_a = p.contacts) === null || _a === void 0 ? void 0 : _a.phone); }), groups: groups, onSendTasksToGroup: (groupId, title, texts) => {
@@ -3911,7 +3919,7 @@ function AppInner() {
                             }, onBack: () => setChatsStack([]) }));
                     }
                     if (chatsTop.type === "lockedChats") {
-                        return (React.createElement(LockedChatsScreen, { conversations: conversations, lockedConversationIds: lockedConversationIds, correctPin: pin, onOpenChat: (c) => setChatsStack([{ type: "chat", data: c }]), onClose: () => setChatsStack([]) }));
+                        return (React.createElement(LockedChatsScreen, { conversations: conversations, lockedConversationIds: lockedConversationIds, correctPin: pin, onOpenChat: (c) => setChatsStack([{ type: "chat", data: c }]), onClose: () => setChatsStack([]), onForgot: () => { setChatsStack([]); setFlow("forgot"); } }));
                     }
                     if (chatsTop.type === "starredMessages") {
                         return (React.createElement(StarredMessagesScreen, { starredMessages: starredMessages, onOpenConversation: (conversationId) => {

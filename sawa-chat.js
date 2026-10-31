@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c184";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c185";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -2038,6 +2038,12 @@
     if (IOSB() && blob.size < 40 * 1024 * 1024) {
       return blobPartB64(blob, 0, blob.size).then(function (b64) { return IOSB().call("openFile", { fileName: name, fileB64: b64, mime: mime }); })
         .then(function (r) { if (r && r.ok) return true; return saveBlob(blob, name, "share", mime); });
+    }
+    // C185: معاينةٌ داخل سوا للـPDF والصور والنصوص (المتصفّح) — بدل تبويبٍ جديد يحجبه مانع النوافذ المنبثقة
+    if (!NB() && /^(application\/pdf|image\/|text\/plain)/.test(mime) && global.dispatchEvent) {
+      var pu = URL.createObjectURL(new Blob([blob], { type: mime }));
+      global.dispatchEvent(new CustomEvent("sawa-file-preview", { detail: { url: pu, name: name, mime: mime, blob: blob } }));
+      return Promise.resolve(true);
     }
     if (!NB() && /^(application\/pdf|image\/|text\/|video\/|audio\/)/.test(mime)) {
       var u = URL.createObjectURL(new Blob([blob], { type: mime }));
@@ -6130,6 +6136,7 @@
     // C10
     stories: stories, storyComposer: storyComposer, moments: { mount: momentsMount, compose: momentComposer, list: function () { return mo.list; }, start: function () { if (state.uid) startMoments(state.uid); }, open: moOpen, unread: moUnread, notes: moNotesSheet }, storyViewer: storyViewer, storyOpenMine: storyOpenMine, storyAudienceSheet: storyAudienceSheet,   // C90
     saveBlob: saveBlob, saveMediaUrl: saveMediaUrl, shareInSheet: shareInSheet, nativeFiles: nativeFiles,   // C89
+    saveFileBlob: function (f) { return saveBlob(f.blob, f.name, "save", f.mime); },   // C185
     codeSheet: codeSheet, findSheet: findSheet, phoneContactsSheet: phoneContactsSheet, smsText: smsText, openSms: openSms, setNick: setNick, peerCode: peerCode, fetchPeerCodes: fetchPeerCodes, verifySheet: verifySheet, requestsSheet: requestsSheet, emailSheet: emailSheet, linkSheet: linkSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, reportSheet: reportSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },
     requestCount: function () { return reqs.incoming.length; }, fmtCode: fmtCode, codeValid: codeValid,
     retryFailed: retryFailed, discardFailed: discardFailed, failedSheet: failedSheet,   // C14

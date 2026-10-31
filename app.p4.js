@@ -1355,7 +1355,7 @@ function FamilyAddScheduleSheet({ persons, allPersons, relations = [], preselect
 // شاشات المحادثات — مع تحذير بارز إنها غير مشفّرة طرف لطرف فعلياً بعد
 // (نفس القرار المتّبع بمشروع RN الحقيقي: مو تشفير شكلي يبان آمن وما هو آمن)
 // ============================================================================
-function LockedChatsScreen({ conversations, lockedConversationIds, correctPin, onOpenChat, onClose }) {
+function LockedChatsScreen({ conversations, lockedConversationIds, correctPin, onOpenChat, onClose, onForgot }) {
     const { colors } = useTheme();
     const [enteredPin, setEnteredPin] = useState("");
     const [unlocked, setUnlocked] = useState(false);
@@ -1397,6 +1397,8 @@ function LockedChatsScreen({ conversations, lockedConversationIds, correctPin, o
             React.createElement("div", { className: "flex-1 flex flex-col items-center justify-center p-6" },
                 React.createElement(Lock, { size: 36, color: colors.primary, className: "mb-4" }),
                 React.createElement("p", { className: "text-sm font-bold text-center mb-4", style: { color: colors.text } }, t("adkhl_rmz_qfl_alttbyq")),
+                // C185: رمز المحادثات المغلقة هو رمز قفل سوا نفسه — زرّ «نسيت الرمز» كان غائباً هنا فيُحبس المستخدم
+                onForgot && !isRateLocked && React.createElement("button", { onClick: onForgot, className: "mb-3 text-xs font-bold", style: { color: colors.primary } }, t("nsyt_alrmz")),
                 isRateLocked ? (React.createElement("div", { className: "flex flex-col items-center gap-3" },
                     React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: colors.danger + "22" } },
                         React.createElement(Lock, { size: 24, color: colors.danger })),

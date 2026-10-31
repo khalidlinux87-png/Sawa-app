@@ -286,13 +286,14 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
                         React.createElement(UserPlus, { size: 14, color: colors.primary }),
                         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.primary } }, t("gi_idafa")))),
                 group.members.map((m) => React.createElement("div", { key: m.id, className: `flex ${rowStart()} items-center gap-3 px-4 py-2.5` },
-                    React.createElement(Pic, { photo: m.photo || null, letter: (m.name || "?").charAt(0), size: 40, bg: colors.primaryLight, color: colors.primary }),
+                    // C185: الصورة في أقصى اليسار (آخر عنصر في الصفّ) بدل أوّله
                     React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
                         React.createElement("div", { className: "text-sm truncate", style: { color: colors.text } }, m.name),
                         m.role === "admin" && React.createElement("div", { className: "text-[10px] font-bold", style: { color: colors.accent } }, t("gi_mshrf"))),
                     // المشرف لا يدير نفسه من هنا — الخروج له زر مستقل بالأسفل
                     isAdmin && !isFamily && m.id !== myUserId && React.createElement("button", { "aria-label": t("gi_khyarat"), onClick: () => setMemberMenu(m), className: "w-7 h-7 flex items-center justify-center shrink-0" },
-                        React.createElement(MoreVertical, { size: 15, color: colors.textMuted }))))),
+                        React.createElement(MoreVertical, { size: 15, color: colors.textMuted })),
+                    React.createElement(Pic, { photo: m.photo || null, letter: (m.name || "?").charAt(0), size: 40, bg: colors.primaryLight, color: colors.primary })))),
             isFamily && React.createElement("p", { className: `text-[11px] px-4 py-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, t("c3_family_managed")),
             !isFamily && onUpdate && React.createElement("div", { className: "mt-3 px-4 py-3", style: { backgroundColor: colors.card } },
                 React.createElement("div", { className: `text-xs font-extrabold mb-1.5 ${textStart()}`, style: { color: colors.textMuted } }, t("c3_desc")),
@@ -844,9 +845,13 @@ function useJumpDown(ref, stickRef, messages, isMine) {
     const [st, setSt] = useState({ show: false, below: 0 });
     const othersRef = useRef(new Set());
     othersRef.current = new Set((messages || []).filter((m) => m && !isMine(m)).map((m) => String(m.id)));
+    // C185: العدّاد يعرض الرسائل الجديدة فقط — ما كان ظاهراً عند فتح المحادثة أو قُرئ بالنزول إلى الأسفل لا يُحسب
+    const seenRef = useRef(null);
     const calc = () => {
         const el = ref.current; if (!el) return;
         const d = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (seenRef.current === null) seenRef.current = new Set((messages || []).map((m) => String(m && m.id)));
+        if (d <= 200) (messages || []).forEach((m) => { if (m) seenRef.current.add(String(m.id)); });
         let below = 0;
         if (d > 200) {
             const bottom = el.getBoundingClientRect().bottom - 8;
@@ -854,7 +859,8 @@ function useJumpDown(ref, stickRef, messages, isMine) {
             for (let i = nodes.length - 1; i >= 0; i--) {
                 const nd = nodes[i];
                 if (nd.getBoundingClientRect().top <= bottom) break;
-                if (othersRef.current.has(nd.getAttribute("data-message-id"))) below++;
+                const id = nd.getAttribute("data-message-id");
+                if (othersRef.current.has(id) && !seenRef.current.has(id)) below++;
             }
         }
         setSt((o) => (o.show === d > 200 && o.below === below) ? o : { show: d > 200, below });
@@ -1079,7 +1085,21 @@ function mediaBatchOf(items, url) {
 // items: [{ url, type: "image"|"video", name }]  ·  startIndex: موضع البداية
 // يُستعمل في ChatScreen و GroupChatScreen و ChatInfoScreen.
 // ============================================================
-function MediaLightbox({ items: itemsIn, startIndex = 0, onClose, onForward }) {
+// C185: معاينة الملفّ داخل سوا (PDF · صور · نصوص) بدل تبويبٍ جديد أو تنزيلٍ مباشر
+function FilePreviewSheet({ file, onClose }) {
+    const { colors } = useTheme();
+    useEffect(() => { const k = (e) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, []);
+    const isImg = /^image\//.test(file.mime || "");
+    return React.createElement("div", { className: "fixed inset-0 flex flex-col", style: { zIndex: 70, backgroundColor: colors.bg } },
+        React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 py-2 shrink-0`, style: { backgroundColor: colors.card, borderBottom: `1px solid ${colors.border}`, paddingTop: "calc(env(safe-area-inset-top,0px) + 8px)" } },
+            React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: onClose, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0" }, React.createElement(X, { size: 20, color: colors.text })),
+            React.createElement("span", { className: "flex-1 text-sm font-extrabold truncate", dir: "auto", style: { color: colors.text } }, file.name || tl("ملفّ", "File")),
+            React.createElement("button", { onClick: () => { try { window.SawaChat && window.SawaChat.saveFileBlob && window.SawaChat.saveFileBlob(file); } catch (e) {} }, className: "text-xs font-bold px-3 py-1.5 rounded-full shrink-0", style: { color: colors.primary, backgroundColor: colors.primaryLight } }, tl("حفظ", "Save"))),
+        React.createElement("div", { className: "flex-1 min-h-0 flex items-center justify-center", style: { backgroundColor: isImg ? "#000" : colors.bg } },
+            isImg ? React.createElement("img", { src: file.url, alt: file.name || "", style: { maxWidth: "100%", maxHeight: "100%", objectFit: "contain" } })
+                : React.createElement("iframe", { src: file.url, title: file.name || "", style: { width: "100%", height: "100%", border: 0, backgroundColor: "#fff" } })));
+}
+function MediaLightbox({ items: itemsIn, startIndex = 0, onClose, onForward, onReply }) {
     // C100: قائمةٌ ثابتة منذ الفتح — كانت تتغيّر تحت العارض (صورةٌ لمرّة/حذفٌ للجميع) فيختلف عدد الخطّافات فتنهار الشاشة
     const [items] = useState(() => (itemsIn || []).slice());
     const [i, setI] = useState(startIndex);
@@ -1280,6 +1300,10 @@ function MediaLightbox({ items: itemsIn, startIndex = 0, onClose, onForward }) {
             React.createElement("button", { onClick: handleShare, className: "flex flex-col items-center gap-1" },
                 React.createElement("div", { className: "w-10 h-10 rounded-full flex items-center justify-center", style: btn }, React.createElement(Share2, { size: 18, color: "#fff" })),
                 React.createElement("span", { className: "text-[10px]", style: { color: "#fff" } }, tl("مشاركة", "Share"))),
+            // C185: الرد على الصورة/الفيديو من العارض نفسه (كان لا يوجد أيّ تفاعلٍ معها من العارض)
+            onReply && React.createElement("button", { onClick: () => onReply(cur), className: "flex flex-col items-center gap-1" },
+                React.createElement("div", { className: "w-10 h-10 rounded-full flex items-center justify-center", style: btn }, React.createElement(MessageCircle, { size: 18, color: "#fff" })),
+                React.createElement("span", { className: "text-[10px]", style: { color: "#fff" } }, tl("رد", "Reply"))),
             onForward && React.createElement("button", { onClick: () => onForward(cur), className: "flex flex-col items-center gap-1" },
                 React.createElement("div", { className: "w-10 h-10 rounded-full flex items-center justify-center", style: btn }, React.createElement(Forward, { size: 18, color: "#fff" })),
                 React.createElement("span", { className: "text-[10px]", style: { color: "#fff" } }, tl("توجيه", "Forward"))))));
@@ -1338,9 +1362,28 @@ function jumpToMessage(id, win, toast) {
     if (find()) go(); else { try { win && win.more && win.more(Infinity); } catch (e) { } setTimeout(go, 80); }
 }
 function msgFirstUrl(text) { const mm = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+\.[^\s<>"']+)/i.exec(String(text || "")); return mm ? mm[0].replace(/[.,،؛)\]]+$/, "") : null; }
+// C185: قائمة المهامّ خارج سوا — نصٌّ بعنوانها وبنودها (✓ منجزة · ○ مفتوحة) مع المكلَّف إن وُجد
+function taskListText(m) {
+    const ex = m.extra || {};
+    const title = m.title || ex.title || "";
+    const tasks = Array.isArray(m.tasks) ? m.tasks : (Array.isArray(ex.tasks) ? ex.tasks : []);
+    const lines = tasks.map((t) => {
+        const done = t.status === "done" || t.done === true;
+        const who = t.assigneeName ? " — " + t.assigneeName : "";
+        return (done ? "✓ " : "○ ") + String(t.text || "") + who;
+    });
+    const doneN = tasks.filter((t) => t.status === "done" || t.done === true).length;
+    return "✅ " + title + (tasks.length ? "\n" + lines.join("\n") + "\n" + doneN + "/" + tasks.length : "");
+}
 function shareMessageOut(m, toast) {
     if (!m) return;
     const SC = window.SawaChat;
+    if (m.type === "taskList" || m.type === "tasks") {
+        const text = taskListText(m);
+        try { if (navigator.share) { navigator.share({ text }).catch(() => {}); return; } } catch (e) {}
+        copyText(text); if (toast) toast(tl("نُسخت قائمة المهامّ — الصقها حيث تريد", "Task list copied — paste it anywhere"), "success");
+        return;
+    }
     if (["image", "video", "file", "voice"].includes(m.type)) {
         if (m.cloudMid && SC && SC.openFile) { SC.openFile(m, "share"); return; }
         if (m.fileUrl && SC && SC.saveMediaUrl) { SC.saveMediaUrl(m.fileUrl, m.text || "file", "share", m.mime || null); return; }
@@ -1757,7 +1800,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                 ? React.createElement("video", { src: viewOnce.url, autoPlay: true, playsInline: true, controls: false, controlsList: "nodownload", onEnded: () => setViewOnce(null), onClick: (e) => e.stopPropagation(), style: { maxWidth: "100%", maxHeight: "100%" } })
                 : React.createElement("img", { src: viewOnce.url, alt: "", draggable: false, style: { maxWidth: "100%", maxHeight: "100%", pointerEvents: "none" } }),
             React.createElement("span", { style: { position: "absolute", top: 18, left: 0, right: 0, textAlign: "center", color: "#fff", fontSize: 12, fontWeight: 700, opacity: 0.85 } }, "🔥 " + tl("لمرّة واحدة — اضغط للإغلاق", "View once — tap to close"))),
-        viewingImage && (() => { const bItems = mediaBatchOf(mediaItems, viewingImage); return React.createElement(MediaLightbox, { items: bItems, startIndex: Math.max(0, bItems.findIndex((it) => it.url === viewingImage)), onClose: () => setViewingImage(null), onForward: (it) => { setViewingImage(null); setForwardingText({ id: it.id, text: it.name, cid: conversation.id }); } }); })(),
+        viewingImage && (() => { const bItems = mediaBatchOf(mediaItems, viewingImage); return React.createElement(MediaLightbox, { items: bItems, startIndex: Math.max(0, bItems.findIndex((it) => it.url === viewingImage)), onClose: () => setViewingImage(null), onForward: (it) => { setViewingImage(null); setForwardingText({ id: it.id, text: it.name, cid: conversation.id }); }, onReply: (it) => { setViewingImage(null); setReplyTo({ id: it.id, text: it.type === "video" ? tl("🎥 فيديو", "🎥 Video") : tl("📷 صورة", "📷 Photo"), by: (messages.find((x) => x.id === it.id) || {}).senderUserId || null }); } }); })(),
         forwardingText && (React.createElement(ForwardPickerScreen, { conversations: allConversations, groups: allGroups, contacts: contactsForForward, currentConversationId: conversation.id, onForward: (destinationIds) => { (forwardingText.multi || [forwardingText]).forEach((x) => onForward(x, destinationIds)); if (forwardingText.multi) setSel(null); setForwardingText(null); }, onClose: () => setForwardingText(null) }))));
 }
 const GROUP_ADMIN_ACTIONS = ["تسمية المجموعة", "إدارة الأعضاء"];
@@ -1850,7 +1893,7 @@ function TaskListCard({ m, myUserId, isAdmin, members, onToggle, onPatch, onAdd,
         React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5` },
             React.createElement(CheckCircle2, { size: 14, color: pct === 100 ? colors.success : colors.primary }),
             React.createElement("span", { className: `text-xs font-bold flex-1 min-w-0 ${textStart()}`, style: { color: colors.text } }, m.title, m.editedAt ? React.createElement("span", { className: "text-[9px] font-normal", style: { color: colors.textMuted } }, tl(" · عُدّلت", " · edited")) : null),
-            React.createElement("span", { className: "text-[10px] font-bold shrink-0", style: { color: pct === 100 ? colors.success : colors.textMuted } }, done.length + "/" + tasks.length),
+            React.createElement("span", { className: "text-[10px] font-bold shrink-0", style: { color: pct === 100 ? colors.success : colors.textMuted } }, done.length + "/" + tasks.length + (tasks.length ? " · " + pct + "%" : "")),   // C185: نسبة الإنجاز بجانب العدد
             React.createElement("button", { "aria-label": tl("خيارات القائمة", "List options"), onClick: onMenu, className: "w-7 h-7 rounded-full flex items-center justify-center shrink-0" }, React.createElement(MoreVertical, { size: 15, color: colors.textMuted }))),
         React.createElement("div", { className: "h-1.5 rounded-full mt-1.5 mb-1", style: { backgroundColor: colors.border } },
             React.createElement("div", { className: "h-1.5 rounded-full", style: { width: pct + "%", backgroundColor: colors.success, transition: "width .3s" } })),
@@ -2667,7 +2710,7 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
                 React.createElement(Square, { size: 14, color: "#fff", fill: "#fff" }))) : (React.createElement("button", { "aria-label": t("gc_tsjyl"), onClick: recorder.start, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.accent } },
                 React.createElement(Mic, { size: 16, color: "#fff" })))),
         React.createElement(RecordingBar, { isRecording: recorder.isRecording, seconds: recorder.seconds, micError: recorder.micError, onCancel: recorder.cancel, maxSeconds: recorder.maxSeconds }),
-        viewingImage && (() => { const bItems = mediaBatchOf(mediaItems, viewingImage); return React.createElement(MediaLightbox, { items: bItems, startIndex: Math.max(0, bItems.findIndex((it) => it.url === viewingImage)), onClose: () => setViewingImage(null), onForward: (it) => { setViewingImage(null); setForwardingText({ id: it.id, text: it.name, cid: group.id }); } }); })(),
+        viewingImage && (() => { const bItems = mediaBatchOf(mediaItems, viewingImage); return React.createElement(MediaLightbox, { items: bItems, startIndex: Math.max(0, bItems.findIndex((it) => it.url === viewingImage)), onClose: () => setViewingImage(null), onForward: (it) => { setViewingImage(null); setForwardingText({ id: it.id, text: it.name, cid: group.id }); }, onReply: (it) => { setViewingImage(null); const mm = messages.find((x) => x.id === it.id) || {}; setGReply({ id: it.id, text: it.type === "video" ? tl("🎥 فيديو", "🎥 Video") : tl("📷 صورة", "📷 Photo"), senderId: mm.senderId || null, senderName: mm.senderName || "" }); } }); })(),
         sharingContact && React.createElement(ContactShareSheet, { colors, cid: group.id, cloud: /^(fam_|grp_)/.test(group.id || ""), onSendText: (tx) => onSend(tx, null), onClose: () => setSharingContact(false) }),
         forwardingText && (React.createElement(ForwardPickerScreen, { conversations: allConversations, groups: allGroups, contacts: contactsForForward, currentConversationId: group.id, onForward: (destinationIds) => { (forwardingText.multi || [forwardingText]).forEach((x) => onForward(x, destinationIds)); if (forwardingText.multi) setSel(null); setForwardingText(null); }, onClose: () => setForwardingText(null) })),
         // C164: ⋮ قائمة المهامّ
@@ -2678,6 +2721,7 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
                     setTaskListTitle(m.title || ""); setTaskDrafts((m.tasks || []).map((tk) => ({ id: tk.id, text: tk.text, assigneeId: tk.assigneeId, dueAt: iso(tk.dueAt) })));
                     setEditingTasksId(m.id); setShowToolsMenu(false); setShowPollForm(false); setShowBillForm(false); setShowFundraiserForm(false); setShowTaskForm(true); } }] : []),
                 { icon: Share2, label: t("twjyh_2"), act: () => setForwardingText({ id: taskMenu.id, text: "✅ " + (taskMenu.title || ""), cid: group.id }) },
+                { icon: ArrowUpRight, label: tl("مشاركة خارج سوا", "Share outside Sawa"), act: () => shareMessageOut({ type: "taskList", title: taskMenu.title, tasks: taskMenu.tasks }) },   // C185
                 ...(onDeleteMessage ? [{ icon: Trash2, label: t("hdhf"), danger: true, act: () => setGDel({ id: taskMenu.id, canAll: (taskMenu.creatorId || taskMenu.senderId) === myUserId || isAdmin }) }] : []),
             ] }),
         // C101: ورقةٌ مضغوطة كالخاصّة
