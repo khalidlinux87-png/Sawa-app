@@ -2187,7 +2187,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                     React.createElement("button", { onClick: () => onOpenGroup(g), /* flex-row صريحة لا rowStart(): ترميز هذا الصف مرتّب من اليمين
                                (صورة ← نص ← عدّاد ← سهم) فلا يحتاج عكساً */
                             className: `w-full flex flex-row items-center gap-3 ${textStart()}` },
-                        React.createElement("div", { className: "w-12 h-12 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primaryLight, backgroundImage: g.photo ? `url(${g.photo})` : "none", backgroundSize: "cover", backgroundPosition: "center" } },
+                        React.createElement("div", { className: "w-12 h-12 rounded-full flex items-center justify-center shrink-0", onClick: (e) => { if (g.photo) { e.stopPropagation(); e.preventDefault(); setPreviewPhoto(g.photo); } }, style: { backgroundColor: colors.primaryLight, backgroundImage: g.photo ? `url(${g.photo})` : "none", backgroundSize: "cover", backgroundPosition: "center", cursor: g.photo ? "zoom-in" : "default" } },   // C187: صورة المجموعة تُفتح كاملةً
                             g.photo ? null : React.createElement(Users2, { size: 21, color: colors.primaryDark })),
                         React.createElement("div", { className: "flex-1", style: { minWidth: 0 } },
                             React.createElement("div", { style: { display: "flex", flexDirection: isRTL() ? "row" : "row-reverse", direction: "ltr", alignItems: "center", justifyContent: "space-between" } },

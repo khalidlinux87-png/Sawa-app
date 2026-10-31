@@ -1764,24 +1764,28 @@ function AppInner() {
     function forwardMessageToTargets(payload, destinationIds) {
         // C48: payload قد يكون {id, text, cid} — رسالة وسائط تُوجَّه بملفّها لا باسمها
         const src = payload && typeof payload === "object" ? payload : null;
-        const text = src ? (src.text || "") : payload;
         const srcMsg = src && src.cid ? ((messagesByConversation[src.cid] || groupMessages[src.cid] || []).find((m) => m.id === src.id) || null) : null;
+        const isTaskSrc = !!(srcMsg && (srcMsg.type === "taskList" || srcMsg.type === "tasks"));   // C187: قائمة المهامّ تُوجَّه كاملةً لا باسمها
+        const text = isTaskSrc ? taskListText(srcMsg) : (src ? (src.text || "") : payload);
         // C100: كلّ رسالةٍ سحابيّة تُوجَّه بمحتواها عبر SawaChat (وسائط · موقع · جهة اتّصال) — لا بنصّها فقط
-        const media = !!(srcMsg && src.cid && cloudChat(src.cid) && window.SawaChat && window.SawaChat.forwardMessage && (srcMsg.cloudMid || ["location", "contact"].includes(srcMsg.type) || srcMsg.contact));
+        const media = !!(srcMsg && src.cid && cloudChat(src.cid) && window.SawaChat && window.SawaChat.forwardMessage && (srcMsg.cloudMid || ["location", "contact", "tasks"].includes(srcMsg.type) || srcMsg.contact));
         // C185: الملف الموجَّه يُرسل وحده — كان اسمه يُرسل رسالةً نصّيّة ثانية حين لا يُعثر على الوسيط السحابيّ
         const isMediaSrc = !!(srcMsg && ["image", "video", "file", "voice"].includes(srcMsg.type));
+        const isListSrc = isTaskSrc && !media;   // C187: القائمة المحلّيّة تُنسخ بمهامّها إلى المحادثة/المجموعة المحلّيّة
         const toCloud = (cid) => { if (media) window.SawaChat.forwardMessage(src.cid, src.id, cid); else if (!isMediaSrc) cloudChat(cid).send(cid, text, { fwd: true }); };
         destinationIds.forEach((id) => {
             if (/^contact:/.test(id) && window.SawaChat && window.SawaChat.openDm) { window.SawaChat.openDm(id.slice(8)).then((cid) => { if (cid) toCloud(cid); }); return; }
             if (cloudChat(id)) { toCloud(id); return; }
             if (conversations.some((c) => c.id === id)) {
-                const msg = isMediaSrc ? { id: `msg-${Date.now()}-f-${id}`, senderUserId: myUserId, type: srcMsg.type, text: srcMsg.text || "", fileUrl: srcMsg.fileUrl, fileSize: srcMsg.fileSize, createdAt: Date.now(), forwarded: true, status: "sent" }
+                const msg = isListSrc ? { id: `msg-${Date.now()}-f-${id}`, senderUserId: myUserId, type: "taskList", title: srcMsg.title || "", tasks: (srcMsg.tasks || []).map((t, i) => ({ ...t, id: `task-${Date.now()}-${i}`, status: "pending" })), createdAt: Date.now(), forwarded: true, status: "sent" }
+                    : isMediaSrc ? { id: `msg-${Date.now()}-f-${id}`, senderUserId: myUserId, type: srcMsg.type, text: srcMsg.text || "", fileUrl: srcMsg.fileUrl, fileSize: srcMsg.fileSize, createdAt: Date.now(), forwarded: true, status: "sent" }
                     : { id: `msg-${Date.now()}-f-${id}`, senderUserId: myUserId, text, createdAt: Date.now(), forwarded: true, status: "sent" };   // C185: الوسائط تُوجَّه بنوعها
                 setMessagesByConversation((prev) => ({ ...prev, [id]: [...(prev[id] || []), msg] }));
                 setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, lastMessage: isMediaSrc ? (typeLabelOf(srcMsg.type)) : text, lastFromMe: false } : c)));
             }
             else if (groups.some((g) => g.id === id)) {
-                const msg = isMediaSrc ? { id: `gmsg-${Date.now()}-f-${id}`, senderId: myUserId, text: srcMsg.text || "", type: srcMsg.type, fileUrl: srcMsg.fileUrl, fileSize: srcMsg.fileSize, forwarded: true, createdAt: Date.now() }   // C185
+                const msg = isListSrc ? { id: `gmsg-${Date.now()}-f-${id}`, senderId: myUserId, type: "taskList", title: srcMsg.title || "", tasks: (srcMsg.tasks || []).map((t, i) => ({ ...t, id: `task-${Date.now()}-${i}`, status: "pending" })), forwarded: true, createdAt: Date.now() }   // C187
+                    : isMediaSrc ? { id: `gmsg-${Date.now()}-f-${id}`, senderId: myUserId, text: srcMsg.text || "", type: srcMsg.type, fileUrl: srcMsg.fileUrl, fileSize: srcMsg.fileSize, forwarded: true, createdAt: Date.now() }   // C185
                     : { id: `gmsg-${Date.now()}-f-${id}`, senderId: myUserId, text, type: "text", forwarded: true, createdAt: Date.now() };
                 setGroupMessages((prev) => ({ ...prev, [id]: [...(prev[id] || []), msg] }));
             }

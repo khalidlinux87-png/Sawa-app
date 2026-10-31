@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c186";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c187";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -1713,10 +1713,13 @@
   }
   function prepareImage(blob) {
     if (/gif/.test(blob.type) && blob.size < 2 * 1024 * 1024) return loadImg(blob).then(function (r) { var th = smallThumb(r.img, r.img.naturalWidth, r.img.naturalHeight); URL.revokeObjectURL(r.url); return { blob: blob, thumb: th, w: r.img.naturalWidth, h: r.img.naturalHeight }; });
+    // C187: الصورة الصغيرة تُرسل كما هي (لقطات الشاشة والنصوص تفقد وضوحها بإعادة الترميز)؛ الكبيرة تُصغَّر إلى ٢٠٤٨ بجودة ٠٫٩
     return loadImg(blob).then(function (r) {
-      var w = r.img.naturalWidth, h = r.img.naturalHeight, c = drawTo(r.img, w, h, 1280), th = smallThumb(r.img, w, h);
+      var w = r.img.naturalWidth, h = r.img.naturalHeight, th = smallThumb(r.img, w, h);
+      if (blob.size <= 6 * 1024 * 1024 && /^image\/(jpeg|png|webp)$/.test(blob.type)) { URL.revokeObjectURL(r.url); return { blob: blob, thumb: th, w: w, h: h }; }
+      var c = drawTo(r.img, w, h, 2048);
       URL.revokeObjectURL(r.url);
-      return canvasBlob(c, 0.78).then(function (b) { return { blob: b && b.size < blob.size ? b : blob, thumb: th, w: c.width, h: c.height }; });
+      return canvasBlob(c, 0.9).then(function (b) { return { blob: b && b.size < blob.size ? b : blob, thumb: th, w: c.width, h: c.height }; });
     });
   }
   function prepareVideo(blob) {
