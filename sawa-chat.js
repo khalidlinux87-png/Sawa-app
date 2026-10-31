@@ -3483,7 +3483,10 @@
     pv.textContent = lines.join("\n") || "—"; s.box.appendChild(pv);
     if (tooLarge.length || big.length) s.box.appendChild(note(L("لن يُرسل (أكبر من ١٦ ميجابايت): ", "Not sent (over 16 MB): ") + tooLarge.concat(big).map(function (f) { return f.name; }).join("، "), "#b42318", "#fdecec"));
     var cap = null;
-    if (files.length) { cap = mk("input", "width:100%;box-sizing:border-box;border:1px solid #dfe5ec;border-radius:12px;padding:10px 12px;font:600 14px system-ui;margin-bottom:8px"); cap.placeholder = L("تعليق (اختياريّ)", "Caption (optional)"); cap.value = text; s.box.appendChild(cap); }
+    if (files.length) { cap = mk("input", "width:100%;box-sizing:border-box;border:1px solid #dfe5ec;border-radius:12px;padding:10px 12px;font:600 14px system-ui;margin-bottom:8px"); cap.placeholder = L("تعليق (اختياريّ)", "Caption (optional)");
+      // C185: اسم الملف (وهو ما يصل نصّاً مع المشاركة من تطبيقٍ آخر) ليس تعليقاً — كان يُرسل رسالةً نصّيّة ثانية باسم الملف
+      var isNameOnly = !text || files.some(function (f) { return f.name === text || (f.name || "").replace(/\.[^.]+$/, "") === text; });
+      cap.value = isNameOnly ? "" : text; s.box.appendChild(cap); }
     var q = mk("input", "width:100%;box-sizing:border-box;border:1px solid #dfe5ec;border-radius:12px;padding:10px 12px;font:600 14px system-ui;margin-bottom:6px");
     q.placeholder = L("ابحث عن محادثة أو شخص…", "Search chats or people…"); s.box.appendChild(q);
     var list = mk("div", "max-height:42vh;overflow:auto"); s.box.appendChild(list);
