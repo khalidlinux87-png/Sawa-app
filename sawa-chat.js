@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c192";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c193";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -1827,6 +1827,7 @@
     var kind = opts.kind, id = newMsgId(), mid = newMediaId();
     var extra = { mid: mid, name: opts.name || src.name || null, mime: src.type || null, size: src.size };
     if (opts.viewOnce) extra.viewOnce = true;
+    if (opts.caption) extra.cap = String(opts.caption).slice(0, 1000);   // C193: التعليق مع الوسيط
     if (opts.duration) extra.duration = opts.duration;
     if (opts.transcript) extra.transcript = String(opts.transcript).slice(0, 1500);
     localUrls[mid] = URL.createObjectURL(src);
@@ -5966,6 +5967,7 @@
       if (!sx.mid || px.mid !== sx.mid) { o.type = "text"; delete o.extra; o.e2eErr = true; o.text = L("🔒 تعذّر فكّ تشفير هذه الرسالة", "🔒 Couldn't decrypt this message"); return o; }   // الخادم لا يربط الرسالة بوسيطٍ آخر
       var ex = { mid: sx.mid, viewOnce: !!sx.viewOnce };
       if (typeof px.name === "string") ex.name = px.name.slice(0, 200);
+      if (typeof px.cap === "string") ex.cap = px.cap.slice(0, 1000);   // C193
       if (typeof px.mime === "string" && /^[\w.+-]+\/[\w.+-]+$/.test(px.mime)) ex.mime = px.mime.slice(0, 100);
       ["size", "duration", "w", "h"].forEach(function (f) { var v = num(px[f]); if (v != null) ex[f] = v; });
       if (typeof px.transcript === "string") ex.transcript = px.transcript.slice(0, 1500);

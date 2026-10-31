@@ -833,8 +833,32 @@ function OnboardingScreen({ onDone }) {
 // السياق التقني يُرفَق تلقائياً — لأن المجرِّب لا يعرف نسخته ولا
 // جهازه، وبدونها يصعب تتبّع البلاغ.
 // ============================================================
+// C193: التعليق على الوسائط قبل الإرسال — معاينة + حقل تعليق + إرسال
+function takeMediaCaption() { const c = window.__sawaCap || ""; window.__sawaCap = ""; return c; }
+function CaptionSendSheet({ items, colors, onCancel, onSend }) {
+    useSheetBack(onCancel);
+    const [cap, setCap] = useState("");
+    const [urls, setUrls] = useState([]);
+    useEffect(() => { const u = items.map((it) => (it.kind === "image" || it.kind === "video") ? URL.createObjectURL(it.file) : null); setUrls(u); return () => u.forEach((x) => { if (x) try { URL.revokeObjectURL(x); } catch (e) { } }); }, [items]);
+    const first = items[0] || {}, more = items.length - 1;
+    return React.createElement("div", { onClick: onCancel, style: { position: "fixed", inset: 0, zIndex: 2147482000, backgroundColor: "rgba(0,0,0,0.55)", display: "flex", alignItems: "flex-end", justifyContent: "center" } },
+        React.createElement("div", { onClick: (e) => e.stopPropagation(), className: "w-full max-w-md rounded-t-3xl p-4", style: { backgroundColor: colors.card, paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" } },
+            React.createElement("div", { className: "flex items-center gap-3 mb-3" },
+                React.createElement("div", { className: "rounded-xl overflow-hidden flex items-center justify-center shrink-0", style: { width: 84, height: 84, backgroundColor: colors.bg, border: "1px solid " + colors.border } },
+                    urls[0] && first.kind === "image" ? React.createElement("img", { src: urls[0], alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } })
+                        : urls[0] && first.kind === "video" ? React.createElement("video", { src: urls[0], muted: true, playsInline: true, preload: "metadata", style: { width: "100%", height: "100%", objectFit: "cover" } })
+                        : React.createElement("span", { className: "text-xs font-bold px-2 text-center", style: { color: colors.primary, overflowWrap: "anywhere" } }, first.file ? first.file.name : "")),
+                React.createElement("div", { className: "flex-1 min-w-0" },
+                    React.createElement("p", { className: "text-sm font-extrabold", style: { color: colors.text } }, tl("إرسال " + (items.length > 1 ? items.length + " ملفّات" : (first.kind === "video" ? "فيديو" : first.kind === "image" ? "صورة" : "ملفّ")), "Send " + (items.length > 1 ? items.length + " files" : first.kind))),
+                    more > 0 && React.createElement("p", { className: "text-[11px]", style: { color: colors.textMuted } }, tl("و" + more + " آخرون", "and " + more + " more")))),
+            React.createElement("input", { value: cap, onChange: (e) => setCap(e.target.value), maxLength: 1000, autoFocus: true, placeholder: tl("أضف تعليقاً…", "Add a caption…"), dir: isRTL() ? "rtl" : "ltr", className: "w-full border rounded-xl px-3 py-2.5 text-sm mb-3", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
+            React.createElement("div", { className: "flex items-center gap-2" },
+                React.createElement("button", { onClick: onCancel, className: "flex-1 py-2.5 rounded-xl text-sm font-bold border", style: { borderColor: colors.border, color: colors.textMuted } }, tl("إلغاء", "Cancel")),
+                React.createElement("button", { onClick: () => onSend(cap.trim()), className: "flex-1 py-2.5 rounded-xl text-sm font-bold text-white", style: { backgroundColor: colors.primary } }, tl("إرسال", "Send")))));
+}
 function FeedbackSheet({ onClose, currentScreen = "" }) {
     const { colors } = useTheme();
+    useSheetBack(onClose);   // C193: زرّ الرجوع يغلق الورقة لا التطبيق
     const showToast = useToast();
     const [kind, setKind] = useState(null);
     const [text, setText] = useState("");
@@ -1435,7 +1459,7 @@ function AppInner() {
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
     }
     function sendGroupFile(groupId, fileName, fileSize, fileUrl, type = "file", file = null) {
-        if (cloudChat(groupId)) { cloudChat(groupId).sendMedia(groupId, { kind: type, blob: file, dataUrl: file ? null : fileUrl, name: fileName }); return; }
+        if (cloudChat(groupId)) { cloudChat(groupId).sendMedia(groupId, { kind: type, blob: file, dataUrl: file ? null : fileUrl, name: fileName, caption: takeMediaCaption() }); return; }
         const msg = { id: `gmsg-${Date.now()}-file-${Math.random().toString(36).slice(2, 7)}`, senderId: myUserId, text: fileName, fileSize, fileUrl, type, createdAt: Date.now() };
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
     }
@@ -1835,7 +1859,7 @@ function AppInner() {
         setMessagesByConversation((prev) => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), msg] }));
     }
     function sendChatFile(conversationId, fileName, fileSize, fileUrl, type = "file", viewOnce = false, file = null) {
-        if (cloudChat(conversationId)) { cloudChat(conversationId).sendMedia(conversationId, { kind: type, blob: file, dataUrl: file ? null : fileUrl, name: fileName, viewOnce }); return; }
+        if (cloudChat(conversationId)) { cloudChat(conversationId).sendMedia(conversationId, { kind: type, blob: file, dataUrl: file ? null : fileUrl, name: fileName, viewOnce, caption: takeMediaCaption() }); return; }
         const lastMessageLabel = viewOnce ? t("ai_swra_mra") : type === "image" ? t("ai_swra") : type === "video" ? t("ai_fydyw") : `📎 ${fileName}`;
         const msg = { id: `msg-${Date.now()}-file-${Math.random().toString(36).slice(2, 7)}`, senderUserId: myUserId, text: fileName, fileSize, fileUrl, type, viewOnce, viewedOnce: false, createdAt: Date.now(), status: "sent" };
         setMessagesByConversation((prev) => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), msg] }));

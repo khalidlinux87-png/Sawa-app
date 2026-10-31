@@ -1378,17 +1378,27 @@ function replyTextOf(m) {
     }
 }
 function taskListText(m) {
+    // C193: النصّ المشارَك خارج سوا — رأس بالتقدّم، ثمّ المعلّقة (الأقرب موعداً أوّلاً)، ثمّ المنجزة
     const ex = m.extra || {};
     const title = m.title || ex.title || "";
     const tasks = Array.isArray(m.tasks) ? m.tasks : (Array.isArray(ex.tasks) ? ex.tasks : []);
-    const lines = tasks.map((t) => {
-        const done = t.status === "done" || t.done === true;
+    const isDone = (t) => t.status === "done" || t.done === true;
+    const eff = (t) => (isDone(t) ? 100 : (Number(t.pct) || 0));
+    const pct = tasks.length ? Math.round(tasks.reduce((s, t) => s + eff(t), 0) / tasks.length) : 0;
+    const doneN = tasks.filter(isDone).length;
+    const line = (t) => {
         const who = t.assigneeName ? " — " + t.assigneeName : "";
-        const pc = !done && t.pct > 0 ? " · " + t.pct + "%" : "";   // C188
-        return (done ? "✓ " : "○ ") + String(t.text || "") + who + pc;
-    });
-    const doneN = tasks.filter((t) => t.status === "done" || t.done === true).length;
-    return "✅ " + title + (tasks.length ? "\n" + lines.join("\n") + "\n" + doneN + "/" + tasks.length : "");
+        const due = t.dueAt ? " · " + taskDueLabel(t.dueAt) : "";
+        const pc = !isDone(t) && eff(t) > 0 ? " · " + eff(t) + "%" : "";
+        return String(t.text || "") + who + due + pc;
+    };
+    const byDue = (a, b) => (a.dueAt ? 0 : 1) - (b.dueAt ? 0 : 1) || (a.dueAt || 0) - (b.dueAt || 0);
+    const open = tasks.filter((t) => !isDone(t)).sort(byDue);
+    const finished = tasks.filter(isDone);
+    const parts = ["✅ " + title + (tasks.length ? " — " + doneN + "/" + tasks.length + " · " + pct + "%" : "")];
+    if (open.length) parts.push("⏳ المعلّقة", ...open.map((t) => "○ " + line(t)));
+    if (finished.length) parts.push("", "✅ المنجزة", ...finished.map((t) => "✓ " + line(t)));
+    return parts.join("\n");
 }
 function shareMessageOut(m, toast) {
     if (!m) return;
@@ -1448,6 +1458,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
     const [showSearch, setShowSearch] = useState(false);
     const [showAttachMenu, setShowAttachMenu] = useState(false);
     const [viewOnceNext, setViewOnceNext] = useState(false);
+    const [staged, setStaged] = useState(null);   // C193: وسائط مختارة تنتظر التعليق قبل الإرسال
     const [viewOnce, setViewOnce] = useState(null);   // C100: عارضٌ مستقلّ للصورة/الفيديو لمرّة واحدة (بلا تنزيل/توجيه/تقليب)
     const [headMenu, setHeadMenu] = useState(false);   // C101: قائمة ⋮ في رأس المحادثة
     const [menuReact, setMenuReact] = useState(false);
@@ -1628,6 +1639,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                             t("rsala_mwjha"))),
                         React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "" : "px-3 py-2"}`, style: { backgroundColor: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "transparent" : mine ? myBubbleColor : colors.card, borderColor: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "transparent" : colors.border, cursor: "pointer", borderRadius: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? 16 : (mine ? "16px 16px 4px 16px" : "16px 16px 16px 4px"), boxShadow: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "none" : "0 1px 1.5px rgba(0,0,0,0.10)" }, ...(sel ? {} : longPress(() => setMsgMenu({ id: m.id, text: m.text, mine, type: m.type, thumb: (m.extra && m.extra.thumb) || null, fileName: (m.extra && m.extra.name) || null, starred: m.starred, pinned: conversation.pinnedMessageId === m.id, viewOnce: !!m.viewOnce, deleted: !!m.deleted, by: m.senderUserId || null }))) },
                             m.replyToText && (React.createElement("div", { role: "button", onClick: (e) => { e.stopPropagation(); jumpToMessage(m.replyTo && m.replyTo.id, win, showToast); }, className: "rounded-xl px-2 py-1 mb-1 text-[10px] flex items-center gap-2 " + (isRTL() ? "border-r-2" : "border-l-2"), style: { backgroundColor: mine ? "rgba(255,255,255,0.15)" : colors.bg, borderColor: colors.accent, color: mine ? "#ffffffcc" : colors.textMuted, cursor: "pointer" } }, React.createElement("span", { className: "flex-1 min-w-0 truncate" }, m.replyToText), m.replyThumb && React.createElement("img", { src: m.replyThumb, alt: "", style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover", flexShrink: 0 } }))),
+                            (["image", "video", "file"].includes(m.type) && m.extra && m.extra.cap && !m.viewOnce && !m.deleted) ? React.createElement("p", { className: "text-sm px-2 pt-1 pb-2 whitespace-pre-wrap break-words", style: { color: mine ? "#fff" : colors.text, direction: isRTL() ? "rtl" : "ltr" } }, m.extra.cap) : null,   // C193: التعليق مع الوسيط
                             m.type === "sticker" ? (React.createElement("span", { className: "text-4xl" }, m.text)) : (m.type === "image" || m.type === "video") && m.viewOnce ? (m.viewedOnce ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-2 py-3`, style: { minWidth: 160 } },
                                 React.createElement("span", { style: { fontSize: 16 } }, "\uD83D\uDD25"),
                                 // C100: المرسل يرى «لم تُفتح بعد/فُتحت» (كان يرى «تم فتحها» فوراً)
@@ -1658,6 +1670,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                             React.createElement("span", { className: "w-1.5 h-1.5 rounded-full animate-bounce", style: { backgroundColor: colors.textMuted, animationDelay: "150ms" } }),
                             React.createElement("span", { className: "w-1.5 h-1.5 rounded-full animate-bounce", style: { backgroundColor: colors.textMuted, animationDelay: "300ms" } })))))),
             React.createElement(JumpDownButton, { jd })),
+        staged && React.createElement(CaptionSendSheet, { items: staged, colors, onCancel: () => setStaged(null), onSend: (cap) => { staged.forEach((it) => { window.__sawaCap = cap; onSendFile(it.file.name, it.file.size, null, it.kind, it.viewOnce, it.file); }); window.__sawaCap = ""; setStaged(null); } }),   // C193
         replyTo && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 py-2 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => setReplyTo(null) },
                 React.createElement(X, { size: 14, color: colors.textMuted })),
@@ -1687,6 +1700,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                     setViewOnceNext(false);
                     // كل صورة/فيديو تُقرأ وتُرسَل كرسالة منفصلة — نفس سلوك واتساب
                     // بالضبط عند اختيار عدة صور دفعة واحدة من المعرض
+                    if (conversation.cloud) { setStaged(validFiles.map((f) => ({ file: f, kind: f.type.startsWith("video/") ? "video" : "image", viewOnce: wasViewOnce }))); return; }   // C193
                     validFiles.forEach((file) => {
                         const isVideo = file.type.startsWith("video/");
                         // C91: في السحابة يُرفع الملفّ نفسه — لا قراءة dataURL لكلّ صورة (ذاكرة الهاتف مع عدّة صور)
@@ -1701,6 +1715,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                     const files = Array.from(e.target.files || []).slice(0, 20);
                     e.target.value = "";
                     setShowAttachMenu(false);
+                    if (conversation.cloud) { const ok = files.filter((f) => f.size <= MAX_FILE_SIZE_BYTES); if (ok.length) setStaged(ok.map((f) => ({ file: f, kind: /^image\/(jpeg|png|webp|gif|heic|heif)$/i.test(f.type) ? "image" : /^video\//i.test(f.type) ? "video" : "file", viewOnce: false }))); if (ok.length < files.length) showToast(tl("بعض الملفّات أكبر من الحدّ المسموح", "Some files are over the size limit"), "error"); return; }   // C193
                     files.forEach((file, i) => {
                         if (file.size > MAX_FILE_SIZE_BYTES) {
                             showToast(tl(`تعذّر إرسال ⁨${file.name}⁩ (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL}`, `Couldn't send ${file.name} (${formatFileSize(file.size)}) — max ${MAX_FILE_SIZE_LABEL} in preview`), "error");
@@ -2174,7 +2189,8 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
     const [groupMsgMenu, setGroupMsgMenu] = useState(null);
     const [sel, setSel] = useState(null);   // C119
     const toggleSel = (id) => setSel((cur) => { const a = cur || []; const n = a.indexOf(id) >= 0 ? a.filter((x) => x !== id) : a.concat([id]); return n.length ? n : null; });
-    const [gReply, setGReply] = useState(null);       // C3: ردٌّ حقيقيّ (معرّف الرسالة)
+    const [gReply, setGReply] = useState(null);
+    const [staged, setStaged] = useState(null);   // C193       // C3: ردٌّ حقيقيّ (معرّف الرسالة)
     const [gDel, setGDel] = useState(null);           // C3: تأكيد الحذف (عندي/للجميع)
     const [showGroupInfo, setShowGroupInfo] = useState(false);
     const [voiceChatActive, setVoiceChatActive] = useState(false);
@@ -2498,7 +2514,7 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
                     React.createElement(SenderAvatar, { name: (sender && sender.name) || t("gc_swal"), size: 20, photo: sender && sender.photo }),
                     React.createElement("button", { onClick: () => { if (sender && sender.uid && window.SawaChat && window.SawaChat.renameContact) window.SawaChat.renameContact(sender.uid); }, className: "text-[11px] font-bold", style: { color: senderColor((sender && sender.name) || t("gc_swal")), background: "none", border: 0, padding: 0 } }, sender === null || sender === void 0 ? void 0 : sender.name, sender && sender.unnamed ? React.createElement("span", { style: { marginInlineStart: 6, fontSize: 10, color: "#B45309", fontWeight: 800 } }, tl("＋ اسم", "+ name")) : null)),
                 m.replyToText && React.createElement("div", { role: "button", onClick: () => jumpToMessage(m.replyTo && (m.replyTo.id || m.replyTo), win, showToast), className: "max-w-[78%] text-[10px] px-2 py-1 mb-0.5 rounded-lg flex items-center gap-2 " + (isRTL() ? "border-r-2" : "border-l-2"), style: { backgroundColor: colors.card, borderColor: colors.accent, color: colors.textMuted, cursor: "pointer" } }, React.createElement("span", { className: "flex-1 min-w-0 truncate" }, "↩ " + m.replyToText), m.replyThumb && React.createElement("img", { src: m.replyThumb, alt: "", style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover", flexShrink: 0 } })),
-                React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["image", "video", "sticker"].includes(m.type) ? "" : "px-3 py-2"}`, style: { backgroundColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : mine ? colors.primary : colors.card, borderColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : colors.border, cursor: "pointer" }, ...(sel ? {} : longPress(() => setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "", type: m.type, thumb: (m.extra && m.extra.thumb) || null, viewOnce: !!m.viewOnce, deleted: !!m.deleted }))) }, m.type === "image" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "sticker" ? (React.createElement("span", { className: "text-4xl" }, m.text)) : m.type === "video" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "file" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2`, onClick: () => { if (m.cloudMid && window.SawaChat) window.SawaChat.openFile(m); }, style: { cursor: m.cloudMid ? "pointer" : "default" } },
+                React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["image", "video", "sticker"].includes(m.type) ? "" : "px-3 py-2"}`, style: { backgroundColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : mine ? colors.primary : colors.card, borderColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : colors.border, cursor: "pointer" }, ...(sel ? {} : longPress(() => setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "", type: m.type, thumb: (m.extra && m.extra.thumb) || null, viewOnce: !!m.viewOnce, deleted: !!m.deleted }))) }, (["image", "video", "file"].includes(m.type) && m.extra && m.extra.cap && !m.deleted) ? React.createElement("p", { className: "text-sm px-2 pt-1 pb-2 whitespace-pre-wrap break-words", style: { color: mine ? "#fff" : colors.text, direction: isRTL() ? "rtl" : "ltr" } }, m.extra.cap) : null, m.type === "image" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "sticker" ? (React.createElement("span", { className: "text-4xl" }, m.text)) : m.type === "video" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "file" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2`, onClick: () => { if (m.cloudMid && window.SawaChat) window.SawaChat.openFile(m); }, style: { cursor: m.cloudMid ? "pointer" : "default" } },
                     React.createElement(FileIconLucide, { size: 18, color: mine ? "#fff" : colors.primary, style: { flexShrink: 0 } }),
                     React.createElement("div", { className: "min-w-0", style: { maxWidth: "100%" } },   // C98: اسمٌ طويل يلتفّ داخل الفقاعة
                         React.createElement("div", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.text, overflowWrap: "anywhere", wordBreak: "break-word" } }, m.text),
@@ -2541,6 +2557,7 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
         showMentions && (React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 p-2 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } }, group.members.filter((m) => m.id !== myUserId).map((m) => (React.createElement("button", { key: m.id, onClick: () => insertMention(m.name), className: "text-xs rounded-full border px-2.5 py-1", style: { borderColor: colors.border, color: colors.text } },
             "@",
             m.name))))),
+        staged && React.createElement(CaptionSendSheet, { items: staged, colors, onCancel: () => setStaged(null), onSend: (cap) => { staged.forEach((it) => { window.__sawaCap = cap; onSendFile(it.file.name, it.file.size, null, it.kind, it.file); }); window.__sawaCap = ""; setStaged(null); } }),   // C193
         gReply && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 py-2 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement("div", { className: `flex-1 min-w-0 ${textStart()} ${isRTL() ? "border-r-2" : "border-l-2"} px-2`, style: { borderColor: colors.accent } },
                 React.createElement("div", { className: "text-[10px] font-bold", style: { color: colors.accent } }, t("c3_replying") + " " + (gReply.senderName || "")),
@@ -2660,6 +2677,7 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
                     setShowAttachMenu(false);
                     const big = files.filter((f) => f.size > MAX_FILE_SIZE_BYTES);
                     if (big.length) showToast(tl(`تعذّر إرسال ${big.length > 1 ? big.length + " ملفات" : big[0].name} — الحد الأقصى ${MAX_FILE_SIZE_LABEL}`, `Couldn't send ${big.length > 1 ? big.length + " files" : big[0].name} — max ${MAX_FILE_SIZE_LABEL}`), "error");
+                    if (group.cloud) { const ok = files.filter((f) => f.size <= MAX_FILE_SIZE_BYTES); if (ok.length) setStaged(ok.map((f) => ({ file: f, kind: f.type.startsWith("video/") ? "video" : "image" }))); return; }   // C193
                     files.filter((f) => f.size <= MAX_FILE_SIZE_BYTES).forEach((file) => {
                         const isVideo = file.type.startsWith("video/");
                         if (group.cloud) { onSendFile(file.name, file.size, null, isVideo ? "video" : "image", file); return; }
@@ -2673,6 +2691,7 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
                     const files = Array.from(e.target.files || []).slice(0, 20);
                     e.target.value = "";
                     setShowAttachMenu(false);
+                    if (group.cloud) { const ok = files.filter((f) => f.size <= MAX_FILE_SIZE_BYTES); if (ok.length) setStaged(ok.map((f) => ({ file: f, kind: /^image\/(jpeg|png|webp|gif|heic|heif)$/i.test(f.type) ? "image" : /^video\//i.test(f.type) ? "video" : "file" }))); if (ok.length < files.length) showToast(tl("بعض الملفّات أكبر من الحدّ المسموح", "Some files are over the size limit"), "error"); return; }   // C193
                     files.forEach((file, i) => {
                         if (file.size > MAX_FILE_SIZE_BYTES) {
                             showToast(tl(`تعذّر إرسال ⁨${file.name}⁩ (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL}`, `Couldn't send ${file.name} (${formatFileSize(file.size)}) — max ${MAX_FILE_SIZE_LABEL} in preview`), "error");
