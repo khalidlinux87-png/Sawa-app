@@ -175,7 +175,11 @@
   function sendOnce(op, payload) { return getToken().then(function (tok) { return sendWith(tok, op, payload); }); }
   function call(op, payload) { // كـsendOnce لكن يرمي عند الرفض
     return sendOnce(op, payload).then(function (b) {
-      if (!b || b.ok === false) throw new Error((b && b.error) || (op + " failed"));
+      if (!b || b.ok === false) {
+        var em = (b && b.error) || (op + " failed");
+        if (/^server_error/.test(em)) { LOG.warn("server.error", { op: op, err: em }); em = L("تعذّر إتمام الطلب في الخادم — حاول بعد قليل", "The server couldn't complete the request — try again shortly"); }   // C199: الخادم لا يعيد تفاصيل داخليّة
+        throw new Error(em);
+      }
       return b;
     });
   }
