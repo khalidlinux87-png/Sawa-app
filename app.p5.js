@@ -1889,7 +1889,7 @@ function TaskListCard({ m, myUserId, isAdmin, members, onToggle, onPatch, onAdd,
         return React.createElement("button", { onClick: () => (boss || mine) && setAssignFor(task), className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 truncate", style: { maxWidth: 96, color: mine ? "#fff" : colors.primary, backgroundColor: mine ? colors.primary : colors.primary + "14" } }, mine ? tl("أنت", "You") : (task.assigneeName || tl("عضو", "Member")));
     };
     const progRow = (task) => {   // C188: شريط نسبة المهمّة + فتح قائمة النِّسَب (0–100 بخطوة ١٠)
-        const v = effP(task), on = task.status === "done", can = canToggle(task) && !on;
+        const v = effP(task), on = task.status === "done", can = canToggle(task);   // C190: المنجزة يمكن تعديل نسبتها (١٠٠ ⇒ منجزة، وأقلّ ⇒ معلّقة)
         return React.createElement("div", { className: "mt-1" },
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
                 React.createElement("div", { className: "flex-1 h-1 rounded-full", style: { backgroundColor: colors.border } },

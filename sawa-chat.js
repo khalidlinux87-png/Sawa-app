@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c190";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c191";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -1356,7 +1356,7 @@
       var o = { id: m.id, day: x.day || null, createdAt: m.ts, text: m.del ? L("🚫 حُذفت هذه الرسالة", "🚫 This message was deleted") : (m.text || ""),
                 type: m.del ? "text" : (m.type === "text" ? undefined : m.type), deleted: !!m.del, edited: !!m.edited,
                 forwarded: !!m.fwd, reaction: mineRe || anyRe || null, reactions: re, replyTo: m.reply || null,
-                replyToText: m.reply ? (m.reply.missing ? L("رسالة غير متاحة", "Message unavailable") : m.reply.del ? L("🚫 رسالة محذوفة", "🚫 Deleted message") : (m.reply.text || replyLabel(cid, m.reply.id) || null)) : null, contact: m.contact || null, extra: m.extra || null, cloud: true,
+                replyToText: m.reply ? (m.reply.missing ? L("رسالة غير متاحة", "Message unavailable") : m.reply.del ? L("🚫 رسالة محذوفة", "🚫 Deleted message") : (m.reply.text || replyLabel(cid, m.reply.id) || (m.reply.id ? L("📎 وسيط", "📎 Media") : null))) : null, contact: m.contact || null, extra: m.extra || null, cloud: true,
                 starred: !!(prefs && prefs.starred && prefs.starred.some(function (s) { return s.id === m.id; })) };
       if (group) { o.senderId = appId(m.by); o.senderName = personName(m.by, c); if (o.type === undefined) o.type = "text"; if (!m.del) toolShape(m, o, c); }
       else { o.senderUserId = appId(m.by); if (m.type === "system") { o.type = "system"; o.text = sysText(m, c); } }   // C23: إشعارات المحادثة السرّيّة في المحادثة الفرديّة
@@ -1563,7 +1563,7 @@
       m.tstate = Object.assign({}, m.tstate); var s = Object.assign({}, m.tstate[taskId]);
       if (p.status) { s.status = p.status; if (p.status === "done") { s.doneBy = state.uid; s.doneAt = Date.now(); var t0 = ((m.extra && m.extra.tasks) || []).filter(function (x) { return x.id === taskId; })[0]; if (t0 && !taskEffId(t0, s) && p.owner === undefined) s.owner = state.uid; } else { delete s.doneBy; delete s.doneAt; } }
       if (p.note != null) s.note = p.note;
-      if (p.pct !== undefined) s.pct = p.pct;   // C188
+      if (p.pct !== undefined) { s.pct = p.pct; if (p.pct === 100 && s.status !== "done") { s.status = "done"; s.doneBy = state.uid; s.doneAt = Date.now(); } else if (p.pct < 100 && s.status === "done" && p.status === undefined) { s.status = "pending"; delete s.doneBy; delete s.doneAt; } }   // C188/C190
       if (p.owner !== undefined) s.owner = p.owner;
       if (p.claim === true) s.owner = state.uid; else if (p.claim === false) s.owner = "";
       m.tstate[taskId] = s; return m;

@@ -1628,7 +1628,7 @@ function AppInner() {
         if (cloudChat(groupId)) { cloudChat(groupId).setTask(groupId, listId, taskId, patch); return; }
         if (patch.pct !== undefined) {   // C188: نسبة المهمّة في المجموعة المحلّيّة
             const pv = Math.round(Number(patch.pct));
-            if (pv >= 0 && pv <= 100) setGroupMessages((prev) => ({ ...prev, [groupId]: (prev[groupId] || []).map((m) => m.id !== listId ? m : { ...m, tasks: m.tasks.map((tk) => tk.id === taskId ? { ...tk, pct: pv } : tk) }) }));
+            if (pv >= 0 && pv <= 100) setGroupMessages((prev) => ({ ...prev, [groupId]: (prev[groupId] || []).map((m) => m.id !== listId ? m : { ...m, tasks: m.tasks.map((tk) => tk.id === taskId ? { ...tk, pct: pv, status: pv === 100 ? "done" : (tk.status === "done" ? "pending" : tk.status) } : tk) }) }));   // C190: 100٪ ⇒ منجزة
             return;
         }
         const g = groups.find((x) => x.id === groupId);
