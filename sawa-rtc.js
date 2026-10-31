@@ -116,7 +116,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c195";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c196";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -379,6 +379,9 @@
     if (which === "ear") { wakeOff(); earArm(); } else { wakeOn(); earOff(); }
     paint(c);
   }
+  // C196: التوجيه من بداية المكالمة (لا عند الاتّصال فقط) — WebView يختار المكبّر افتراضيّاً حين يفتح الميكروفون، فكانت نغمة «يرنّ»
+  //       وأوّل الكلام يخرجان من المكبّر. الصوتيّة ⇒ سمّاعة الأذن · الفيديو ⇒ المكبّر. اختيار المستخدم قبل الاتّصال يبقى.
+  function earlyRoute(c) { if (!c || c.done || !RB() || c.out) return; nativeRoute(c, c.type === "video" ? "spk" : "ear"); }
   function toggleRoute() { var c = cur; if (!c) return; var w = c.out === "ear" ? "spk" : "ear"; if (c.routes) setRoute(c, w); else if (RB()) nativeRoute(c, w); }
   function stopStream(s) { try { s && s.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} }
   function mediaError(e) {
@@ -407,14 +410,22 @@
     } catch (e) {}
   }
   function vibrate(p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} }
+  // C196: نغمة «يرنّ» في تطبيق أندرويد من النظام على مسار المكالمة (سمّاعة الأذن) — WebAudio يخرج وسائطَ من المكبّر دائماً
+  function nTone() { var n = NB(); return n && n.callTone ? n : null; }
   function playTone(kind) {
     stopTone();
+    if (kind !== "ring" && nTone()) { try { nTone().callTone("ringback"); tone.native = true; return; } catch (e) {} }
     var cycle;
     if (kind === "ring") cycle = function () { beep([440, 480], 0.45, 0.22); setTimeout(function () { beep([440, 480], 0.45, 0.22); }, 650); vibrate([450, 200, 450]); };
     else cycle = function () { beep([425], 1.0, 0.08); };          // نغمة «يرنّ» عند المتّصل
     cycle(); tone.timer = setInterval(cycle, kind === "ring" ? 2600 : 4000);
   }
-  function stopTone() { if (tone.timer) clearInterval(tone.timer); tone.timer = null; vibrate(0); }
+  function stopTone() {
+    if (tone.timer) clearInterval(tone.timer); tone.timer = null; vibrate(0);
+    if (tone.native) { tone.native = false; try { nTone().callTone(""); } catch (e) {} }
+    // C196: في تطبيق أندرويد نوقف سياق WebAudio بعد النغمة — مخرجٌ وسائطيّ مفتوح طوال المكالمة يشدّ الصوت إلى المكبّر في بعض الهواتف
+    if (NB() && tone.ctx && tone.ctx.state === "running" && tone.ctx.suspend) { var cx = tone.ctx; setTimeout(function () { try { if (!tone.timer && cx.state === "running") cx.suspend(); } catch (e) {} }, 1200); }
+  }
   function endTone() { beep([480], 0.18, 0.1); setTimeout(function () { beep([480], 0.18, 0.1); }, 260); setTimeout(function () { beep([480], 0.18, 0.1); }, 520); }
 
   // ---------- إبقاء الشاشة مضاءة أثناء المكالمة ----------
@@ -937,7 +948,8 @@
     if (s === "connected") {
       clearTimeout(c.timers.conn); clearTimeout(c.timers.lost); delete c.timers.lost;
       if (!c.connectedAt) { c.connectedAt = Date.now(); engMark(c); softDrop(c); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); }); if (c.out === "ear" && RB()) setTimeout(earArm, 0);
-        if (RB()) nativeRoute(c, c.type === "video" ? "spk" : "ear");   // C92
+        if (RB()) { nativeRoute(c, c.out || (c.type === "video" ? "spk" : "ear"));   // C92 · C196: يبقى اختيار المستخدم
+          setTimeout(function () { if (cur === c && !c.done && RB()) nativeSpk(c.out === "spk"); }, 1500); }   // C196: WebView يعيد المكبّر حين يبدأ صوت الطرف الآخر
         if (!c.native && !RB()) audioRoutes().then(function (rt) {   // C177: مع التطبيق الأصليّ التوجيه له وحده — تبديل الميكروفون كان يُرجع الوضع «عاديّاً» في بعض أندرويد   // C15: المكالمة الصوتيّة تبدأ على سمّاعة الأذن كالهاتف، والفيديو على المكبّر
           if (!rt || c.done || cur !== c) return;
           c.routes = rt; c.out = "spk";
@@ -1063,7 +1075,7 @@
     warmAt = 0; warmUp("call");
     Promise.all([c.native ? Promise.resolve(nativeLocal()) : getMedia(type), getIce()]).then(function (r) {
       if (c.done) { stopStream(r[0]); return; }
-      c.local = r[0]; attachLocal(c); paint(c);
+      c.local = r[0]; earlyRoute(c); attachLocal(c); paint(c);
       c.pc = makePc(c, r[1]); addTracks(c);
       return c.pc.createOffer().then(function (o) { return c.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); }).then(function (o) {
         if (c.done) return;
@@ -1221,7 +1233,7 @@
       if (c.inbox) c.inbox.remove().catch(function () {});
       return mediaP.then(function (res) {
         if (c.done) { stopStream(res[0]); return; }
-        c.local = res[0]; attachLocal(c); paint(c);
+        c.local = res[0]; earlyRoute(c); attachLocal(c); paint(c);
         c.pc = makePc(c, res[1]);
         listen(c, c.ref.child("ic_caller"), "child_added", function (s) { addRemoteIce(c, s.val()); });
         return c.pc.setRemoteDescription(c.offer).then(function () {
