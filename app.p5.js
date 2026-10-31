@@ -1663,7 +1663,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                     const oversized = files.filter((f) => f.size > MAX_FILE_SIZE_BYTES);
                     const validFiles = files.filter((f) => f.size <= MAX_FILE_SIZE_BYTES);
                     if (oversized.length > 0) {
-                        showToast(tl(`تعذّر إرسال ${oversized.length > 1 ? `${oversized.length} ملفات` : oversized[0].name} — الحد الأقصى ${MAX_FILE_SIZE_LABEL} في المعاينة`, `Couldn't send ${oversized.length > 1 ? `${oversized.length} files` : oversized[0].name} — max ${MAX_FILE_SIZE_LABEL} in preview`), "error");
+                        showToast(tl(`تعذّر إرسال ${oversized.length > 1 ? `${oversized.length} ملفات` : `⁨${oversized[0].name}⁩`} — الحد الأقصى ${MAX_FILE_SIZE_LABEL}`, `Couldn't send ${oversized.length > 1 ? `${oversized.length} files` : oversized[0].name} — max ${MAX_FILE_SIZE_LABEL} in preview`), "error");
                     }
                     if (validFiles.length === 0)
                         return;
@@ -1687,7 +1687,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                     setShowAttachMenu(false);
                     files.forEach((file, i) => {
                         if (file.size > MAX_FILE_SIZE_BYTES) {
-                            showToast(tl(`تعذّر إرسال ${file.name} (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL} في المعاينة`, `Couldn't send ${file.name} (${formatFileSize(file.size)}) — max ${MAX_FILE_SIZE_LABEL} in preview`), "error");
+                            showToast(tl(`تعذّر إرسال ⁨${file.name}⁩ (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL}`, `Couldn't send ${file.name} (${formatFileSize(file.size)}) — max ${MAX_FILE_SIZE_LABEL} in preview`), "error");
                             return;
                         }
                         const kind = /^image\/(jpeg|png|webp|gif|heic|heif)$/i.test(file.type) ? "image" : /^video\//i.test(file.type) ? "video" : "file";
@@ -2643,7 +2643,7 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
                     setShowAttachMenu(false);
                     files.forEach((file, i) => {
                         if (file.size > MAX_FILE_SIZE_BYTES) {
-                            showToast(tl(`تعذّر إرسال ${file.name} (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL} في المعاينة`, `Couldn't send ${file.name} (${formatFileSize(file.size)}) — max ${MAX_FILE_SIZE_LABEL} in preview`), "error");
+                            showToast(tl(`تعذّر إرسال ⁨${file.name}⁩ (${formatFileSize(file.size)}) — الحد الأقصى ${MAX_FILE_SIZE_LABEL}`, `Couldn't send ${file.name} (${formatFileSize(file.size)}) — max ${MAX_FILE_SIZE_LABEL} in preview`), "error");
                             return;
                         }
                         const kind = /^image\/(jpeg|png|webp|gif|heic|heif)$/i.test(file.type) ? "image" : /^video\//i.test(file.type) ? "video" : "file";
