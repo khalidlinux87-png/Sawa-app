@@ -2443,7 +2443,7 @@ function ChatComposerInput({ value, onChange, placeholder, disabled, onEnter, on
         ref: ref,
         // الاتجاه يتبع اللغة: مع "rtl" مثبَّتة كان النصّ الإنجليزي
         // يُحاذى لليمين فيُقتطع أوّله («Type a…» بدل «Type a message…»)
-        dir: isRTL() ? "rtl" : "ltr",
+        dir: textDir(value),
         rows: 1,
         enterKeyHint: enterSends() ? "send" : "enter",
         value: value,
