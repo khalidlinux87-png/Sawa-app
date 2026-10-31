@@ -1894,9 +1894,10 @@ function TaskListCard({ m, myUserId, isAdmin, members, onToggle, onPatch, onAdd,
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
                 React.createElement("div", { className: "flex-1 h-1 rounded-full", style: { backgroundColor: colors.border } },
                     React.createElement("div", { className: "h-1 rounded-full", style: { width: v + "%", backgroundColor: on ? colors.success : colors.primary, transition: "width .3s" } })),
-                React.createElement("button", { "aria-label": tl("نسبة الإنجاز", "Progress"), onClick: () => can && setProgFor(progFor === task.id ? null : task.id), className: "text-[9.5px] font-bold shrink-0", style: { color: colors.textMuted, opacity: can ? 1 : 0.7 } }, v + "%")),
-            progFor === task.id && can && React.createElement("div", { className: `flex flex-wrap ${rowStart()} gap-1 mt-1` },
-                [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((n) => React.createElement("button", { key: n, onClick: () => { onPatch(task.id, { pct: n }); setProgFor(null); }, className: "text-[10px] font-bold px-2 py-0.5 rounded-full", style: { color: n === v ? "#fff" : colors.primary, backgroundColor: n === v ? colors.primary : colors.primary + "14" } }, n + "%"))));
+                can ? React.createElement("button", { "aria-label": tl("تغيير نسبة الإنجاز", "Change progress"), onClick: () => setProgFor(progFor === task.id ? null : task.id), className: "text-[10px] font-extrabold shrink-0 px-2 py-0.5 rounded-full border", style: { color: colors.primary, borderColor: colors.primary, backgroundColor: progFor === task.id ? colors.primary + "1f" : colors.card } }, tl("النسبة", "Progress") + " " + v + "% ▾")
+                    : React.createElement("span", { className: "text-[9.5px] font-bold shrink-0", style: { color: colors.textMuted } }, v + "%")),
+            progFor === task.id && can && React.createElement("div", { className: `flex flex-wrap ${rowStart()} gap-1.5 mt-1.5` },
+                [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((n) => React.createElement("button", { key: n, onClick: () => { onPatch(task.id, { pct: n }); setProgFor(null); }, className: "text-[10px] font-bold px-2 py-0.5 rounded-full", style: { color: n === v ? "#fff" : colors.primary, backgroundColor: n === v ? colors.primary : colors.primary + "14", minWidth: 44 } }, n + "%"))));
     };
     const taskRow = (task) => {
         const late = taskIsLate(task, now), on = task.status === "done";
