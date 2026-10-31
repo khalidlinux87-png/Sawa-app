@@ -1363,6 +1363,20 @@ function jumpToMessage(id, win, toast) {
 }
 function msgFirstUrl(text) { const mm = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+\.[^\s<>"']+)/i.exec(String(text || "")); return mm ? mm[0].replace(/[.,،؛)\]]+$/, "") : null; }
 // C185: قائمة المهامّ خارج سوا — نصٌّ بعنوانها وبنودها (✓ منجزة · ○ مفتوحة) مع المكلَّف إن وُجد
+// C187: نصّ الاقتباس عند الرّد على رسالةٍ بلا نصّ (صورة/فيديو/صوت/ملف/موقع/جهة) — كان الاقتباس يُرسَل فارغاً فيتعطّل الرّد
+function replyTextOf(m) {
+    if (!m) return "";
+    if (m.text) return String(m.text);
+    switch (m.type) {
+        case "image": return "📷 " + tl("صورة", "Photo");
+        case "video": return "🎥 " + tl("فيديو", "Video");
+        case "voice": return "🎤 " + tl("رسالة صوتية", "Voice message");
+        case "file": return "📎 " + tl("ملف", "File");
+        case "location": return "📍 " + tl("موقع", "Location");
+        case "contact": return "👤 " + tl("جهة اتصال", "Contact");
+        default: return "";
+    }
+}
 function taskListText(m) {
     const ex = m.extra || {};
     const title = m.title || ex.title || "";
@@ -1370,7 +1384,8 @@ function taskListText(m) {
     const lines = tasks.map((t) => {
         const done = t.status === "done" || t.done === true;
         const who = t.assigneeName ? " — " + t.assigneeName : "";
-        return (done ? "✓ " : "○ ") + String(t.text || "") + who;
+        const pc = !done && t.pct > 0 ? " · " + t.pct + "%" : "";   // C188
+        return (done ? "✓ " : "○ ") + String(t.text || "") + who + pc;
     });
     const doneN = tasks.filter((t) => t.status === "done" || t.done === true).length;
     return "✅ " + title + (tasks.length ? "\n" + lines.join("\n") + "\n" + doneN + "/" + tasks.length : "");
@@ -1743,7 +1758,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                             ? [{ icon: Trash2, label: t("hdhf"), act: () => setDeletingMsg({ id: msgMenu.id, mine: false }), danger: true }]
                             : [
                             { icon: CheckCircle2, label: tl("تحديد", "Select"), act: () => setSel([msgMenu.id]) },   // C119
-                            { icon: MessageCircle, label: t("rd"), act: () => setReplyTo({ id: msgMenu.id, text: msgMenu.text, by: msgMenu.by || null }) },
+                            { icon: MessageCircle, label: t("rd"), act: () => setReplyTo({ id: msgMenu.id, text: replyTextOf(msgMenu), by: msgMenu.by || null }) },
                             ...(msgMenu.viewOnce ? [] : [{ icon: Share2, label: t("twjyh_2"), act: () => setForwardingText({ id: msgMenu.id, text: msgMenu.text, cid: conversation.id }) }]),
                             ...(msgMenu.type !== "sticker" && !msgMenu.viewOnce ? [{ icon: ArrowUpRight, label: tl("مشاركة خارج سوا", "Share outside Sawa"), act: () => shareMessageOut(messages.find((x) => x.id === msgMenu.id), showToast) }] : []),
                             ...(msgFirstUrl(msgMenu.text) && (!msgMenu.type || msgMenu.type === "text") ? [{ icon: LinkIcon, label: tl("نسخ الرابط", "Copy link"), act: () => { copyText(msgFirstUrl(msgMenu.text)); showToast(t("gc_tm_alnskh"), "success"); } }] : []),
@@ -1848,6 +1863,7 @@ function TaskListCard({ m, myUserId, isAdmin, members, onToggle, onPatch, onAdd,
     const [noteFor, setNoteFor] = useState(null);
     const [noteDraft, setNoteDraft] = useState("");
     const [assignFor, setAssignFor] = useState(null);
+    const [progFor, setProgFor] = useState(null);   // C188: المهمّة التي تُفتح نسبتها للتعديل
     const now = Date.now();
     const boss = m.creatorId === myUserId || !!isAdmin;
     const tasks = m.tasks || [];
@@ -1857,7 +1873,8 @@ function TaskListCard({ m, myUserId, isAdmin, members, onToggle, onPatch, onAdd,
         if (!a.dueAt && !b.dueAt) return 0; if (!a.dueAt) return 1; if (!b.dueAt) return -1; return a.dueAt - b.dueAt;
     });
     const done = tasks.filter((x) => x.status === "done").sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
-    const pct = tasks.length ? Math.round(done.length / tasks.length * 100) : 0;
+    const effP = (x) => (x.status === "done" ? 100 : (x.pct || 0));   // C188: الإنجاز الكلّي = متوسّط نِسَب المهامّ
+    const pct = tasks.length ? Math.round(tasks.reduce((s, x) => s + effP(x), 0) / tasks.length) : 0;
     const canAdd = onAdd && (!m.secret || boss);
     const canToggle = (task) => task.assigneeId === myUserId || !task.assigneeId || boss;
     const box = (task) => {
@@ -1871,6 +1888,16 @@ function TaskListCard({ m, myUserId, isAdmin, members, onToggle, onPatch, onAdd,
         if (!task.assigneeId) return task.status === "done" ? null : React.createElement("button", { onClick: () => boss ? setAssignFor(task) : onPatch(task.id, { claim: true }), className: "text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0", style: { color: colors.primary, backgroundColor: colors.primary + "14" } }, boss ? tl("لأيّ عضو ▾", "Anyone ▾") : tl("أنا عليها ✋", "I'm on it ✋"));
         return React.createElement("button", { onClick: () => (boss || mine) && setAssignFor(task), className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 truncate", style: { maxWidth: 96, color: mine ? "#fff" : colors.primary, backgroundColor: mine ? colors.primary : colors.primary + "14" } }, mine ? tl("أنت", "You") : (task.assigneeName || tl("عضو", "Member")));
     };
+    const progRow = (task) => {   // C188: شريط نسبة المهمّة + فتح قائمة النِّسَب (0–100 بخطوة ١٠)
+        const v = effP(task), on = task.status === "done", can = canToggle(task) && !on;
+        return React.createElement("div", { className: "mt-1" },
+            React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
+                React.createElement("div", { className: "flex-1 h-1 rounded-full", style: { backgroundColor: colors.border } },
+                    React.createElement("div", { className: "h-1 rounded-full", style: { width: v + "%", backgroundColor: on ? colors.success : colors.primary, transition: "width .3s" } })),
+                React.createElement("button", { "aria-label": tl("نسبة الإنجاز", "Progress"), onClick: () => can && setProgFor(progFor === task.id ? null : task.id), className: "text-[9.5px] font-bold shrink-0", style: { color: colors.textMuted, opacity: can ? 1 : 0.7 } }, v + "%")),
+            progFor === task.id && can && React.createElement("div", { className: `flex flex-wrap ${rowStart()} gap-1 mt-1` },
+                [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((n) => React.createElement("button", { key: n, onClick: () => { onPatch(task.id, { pct: n }); setProgFor(null); }, className: "text-[10px] font-bold px-2 py-0.5 rounded-full", style: { color: n === v ? "#fff" : colors.primary, backgroundColor: n === v ? colors.primary : colors.primary + "14" } }, n + "%"))));
+    };
     const taskRow = (task) => {
         const late = taskIsLate(task, now), on = task.status === "done";
         return React.createElement("div", { key: task.id, className: "py-1.5 border-t", style: { borderColor: colors.border } },
@@ -1881,6 +1908,7 @@ function TaskListCard({ m, myUserId, isAdmin, members, onToggle, onPatch, onAdd,
                     (on && task.doneByName) ? React.createElement("p", { className: "text-[9.5px]", style: { color: colors.success } }, tl("✓ أنجزها ", "✓ Done by ") + task.doneByName + (task.doneAt ? " · " + taskDueLabel(task.doneAt) : ""))
                         : task.dueAt ? React.createElement("p", { className: `text-[9.5px] flex ${rowStart()} items-center gap-1`, style: { color: late ? colors.danger : colors.textMuted } }, late && React.createElement(AlertTriangle, { size: 9, color: colors.danger }), (late ? tl("متأخّرة · ", "Late · ") : tl("الموعد ", "Due ")) + taskDueLabel(task.dueAt)) : null),
                 who(task)),
+            progRow(task),
             task.note ? React.createElement("p", { className: `text-[10px] mt-0.5 ${me("8")} ${textStart()}`, style: { color: colors.textMuted } }, "📝 " + task.note)
                 : noteFor === task.id ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-1 ${me("8")}` },
                     React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: noteDraft, onChange: (e) => setNoteDraft(e.target.value), placeholder: t("mlahza_qsyra"), autoFocus: true, className: "flex-1 border rounded px-2 py-1 text-[10px]", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
@@ -1977,7 +2005,7 @@ function groupToolInfo(m, myUserId, now) {
     try {
         if (m.type === "taskList") {
             const ts = m.tasks || [], done = ts.filter((x) => x.status === "done").length;
-            return { m, ico: "✅", label: (m.title || tl("مهامّ", "Tasks")), stat: done + "/" + ts.length, active: ts.length > 0 && done < ts.length,
+            return { m, ico: "✅", label: (m.title || tl("مهامّ", "Tasks")), stat: done + "/" + ts.length + (ts.length ? " · " + Math.round(done / ts.length * 100) + "%" : ""), active: ts.length > 0 && done < ts.length,
                 need: ts.some((x) => x.assigneeId === myUserId && x.status !== "done") };
         }
         if (m.type === "poll") {
@@ -2042,6 +2070,7 @@ function GroupToolsBar({ groupId, messages, myUserId, win, toast }) {
 function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messages, myUserId, onSend, onSendFile, onSendVoice, onEditMessage, onReact, onDeleteMessage, onTyping, contactsForForward, onSendSticker, contacts = null, onInviteLink, onUpdateGroup, onCreatePoll, onEditPoll, onVotePoll, onCreateBillSplit, onPayBillSplit, onCreateFundraiser, onContributeFundraiser, onCreateTaskList, onToggleTaskStatus, onAddTaskNote, onForward, allConversations, allGroups, draft = "", onSaveDraft, unreadCount = 0, onBack, onRenameGroup, onAddGroupMembers, onRemoveGroupMember, onToggleGroupAdmin, onLeaveGroup }) {
     var _a, _b;
     const { colors } = useTheme();
+    useEffect(() => { try { if (group && group.id && window.SawaChat && window.SawaChat.clearNotifs) window.SawaChat.clearNotifs(group.id); } catch (e) { } }, [group && group.id]);   // C187: فتح المجموعة يزيل إشعارها
     const { showToast } = useToast();
     const [text, setText, clearDraft] = useChatDraft(draft, onSaveDraft);
     const initialUnreadRef = useRef(unreadCount);
@@ -2729,7 +2758,7 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
             onReact: onReact && !groupMsgMenu.deleted ? (e) => onReact(groupMsgMenu.id, e) : null,
             items: (groupMsgMenu.deleted ? [] : [
                     { icon: CheckCircle2, label: tl("تحديد", "Select"), act: () => setSel([groupMsgMenu.id]) },   // C119
-                    { icon: MessageCircle, label: t("rd"), act: () => setGReply({ id: groupMsgMenu.id, text: groupMsgMenu.text || "", senderId: groupMsgMenu.senderId, senderName: groupMsgMenu.senderName }) },
+                    { icon: MessageCircle, label: t("rd"), act: () => setGReply({ id: groupMsgMenu.id, text: replyTextOf(groupMsgMenu), senderId: groupMsgMenu.senderId, senderName: groupMsgMenu.senderName }) },
                     ...(groupMsgMenu.viewOnce ? [] : [
                         { icon: Share2, label: t("twjyh_2"), act: () => setForwardingText({ id: groupMsgMenu.id, text: groupMsgMenu.text, cid: group.id }) },
                         { icon: ArrowUpRight, label: tl("مشاركة خارج سوا", "Share outside Sawa"), act: () => shareMessageOut(messages.find((x) => x.id === groupMsgMenu.id), showToast) }]),

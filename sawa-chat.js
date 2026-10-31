@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c187";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c189";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -1548,7 +1548,7 @@
     s = s || {};
     return { id: t.id, text: t.text, assigneeId: eff ? appId(eff) : null, assigneeName: eff ? (eff === t.assigneeId && t.assigneeName ? t.assigneeName : personName(eff, c)) : "",
       origAssigneeId: t.assigneeId ? appId(t.assigneeId) : null, claimed: s.owner != null && !!s.owner && s.owner !== t.assigneeId,
-      dueAt: t.dueAt || null, status: s.status || "pending", note: s.note || "",
+      dueAt: t.dueAt || null, status: s.status || "pending", note: s.note || "", pct: s.pct != null ? Number(s.pct) : null,   // C188: نسبة الإنجاز
       doneById: s.doneBy ? appId(s.doneBy) : null, doneByName: s.doneBy ? personName(s.doneBy, c) : "", doneAt: s.doneAt || null,
       addedById: t.addedBy ? appId(t.addedBy) : null };
   }
@@ -1561,6 +1561,7 @@
       m.tstate = Object.assign({}, m.tstate); var s = Object.assign({}, m.tstate[taskId]);
       if (p.status) { s.status = p.status; if (p.status === "done") { s.doneBy = state.uid; s.doneAt = Date.now(); var t0 = ((m.extra && m.extra.tasks) || []).filter(function (x) { return x.id === taskId; })[0]; if (t0 && !taskEffId(t0, s) && p.owner === undefined) s.owner = state.uid; } else { delete s.doneBy; delete s.doneAt; } }
       if (p.note != null) s.note = p.note;
+      if (p.pct !== undefined) s.pct = p.pct;   // C188
       if (p.owner !== undefined) s.owner = p.owner;
       if (p.claim === true) s.owner = state.uid; else if (p.claim === false) s.owner = "";
       m.tstate[taskId] = s; return m;
@@ -6137,7 +6138,7 @@
     isBlocked: function (u) { return !!(prefs && prefs.blocked && prefs.blocked.indexOf(u) >= 0); },   // C6: المحظور لا يرنّ
     status: function () { return { loaded: state.loaded, error: state.error, count: state.people.length }; },
     // C2
-    isCloud: isCloud, enabled: function () { return !!state.uid; }, openChat: openChat, closeChat: closeChat,
+    isCloud: isCloud, enabled: function () { return !!state.uid; }, openChat: openChat, closeChat: closeChat, clearNotifs: clearChatNotifs,
     send: send, edit: edit, clearChat: clearChat,
     // C4
     enablePush: enablePush, disablePush: disablePush, pushEnabled: pushEnabled, pushSupported: pushSupported, pushState: pushState, pushHelp: helpSheet, pushCheckSheet: pushCheckSheet, updateSheet: updateSheet, checkUpdate: checkUpdate, forceUpdate: forceUpdate, updateAvailable: function () { return upd.available; },

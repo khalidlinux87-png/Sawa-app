@@ -1626,6 +1626,11 @@ function AppInner() {
     // C173: تولّي/تخلٍّ/إعادة إسناد · إضافة سريعة
     function patchGroupTask(groupId, listId, taskId, patch) {
         if (cloudChat(groupId)) { cloudChat(groupId).setTask(groupId, listId, taskId, patch); return; }
+        if (patch.pct !== undefined) {   // C188: نسبة المهمّة في المجموعة المحلّيّة
+            const pv = Math.round(Number(patch.pct));
+            if (pv >= 0 && pv <= 100) setGroupMessages((prev) => ({ ...prev, [groupId]: (prev[groupId] || []).map((m) => m.id !== listId ? m : { ...m, tasks: m.tasks.map((tk) => tk.id === taskId ? { ...tk, pct: pv } : tk) }) }));
+            return;
+        }
         const g = groups.find((x) => x.id === groupId);
         const owner = patch.owner !== undefined ? (patch.owner || null) : patch.claim === true ? myUserId : patch.claim === false ? null : undefined;
         if (owner === undefined) return;
