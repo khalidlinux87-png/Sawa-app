@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c193";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c195";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -4899,7 +4899,7 @@
       var kind = it.type === "moment" ? "🌿 " + L("لحظة", "Moment") : it.type === "moment-comment" ? "💬 " + L("تعليق في لحظة", "Moment comment")
         : (it.type === "group" || it.type === "family") ? "👥 " + L("مجموعة", "Group") : "👤 " + L("محادثة أو شخص", "Chat or person");
       c.appendChild(mk("div", "font:800 13.5px system-ui", kind + " · " + (RS[it.reason] || it.reason || "")));
-      c.appendChild(mk("div", "font:600 12px system-ui;color:#6b7280;margin-top:2px", L("المُبلِّغ: ", "By: ") + (it.byName || moName(it.by)) + " · " + L("عن: ", "About: ") + (it.target ? moName(it.target) : "—") + " · " + timeAgo(it.ts)));
+      c.appendChild(mk("div", "font:600 12px system-ui;color:#6b7280;margin-top:2px", it.by ? L("المُبلِّغ: ", "By: ") + (it.byName || moName(it.by)) + " · " + L("عن: ", "About: ") + (it.target ? moName(it.target) : "—") + " · " + timeAgo(it.ts) : timeAgo(it.ts)));
       if (it.note) c.appendChild(mk("div", "font:500 13px/1.6 system-ui;margin-top:6px;background:#fff7ed;border-radius:10px;padding:6px 8px", "📝 " + it.note));
       var smp = (it.sample || []).slice(-8);
       if (smp.length) {
@@ -4918,17 +4918,81 @@
         });
         btn(L("✓ لا مخالفة", "✓ No violation"), "#16a34a", function () { closeR(true).catch(err); });
       } else btn(L("إغلاق البلاغ", "Close report"), "#6b7280", function () { closeR(false).catch(err); });
-      c.appendChild(row);
+      if (canAct) c.appendChild(row);
       return c;
     }
+    var canAct = true;
     body.appendChild(note(L("جارٍ التحميل…", "Loading…")));
     call("admin.reports", {}).then(function (r) {
       body.innerHTML = "";
       if (!r || !r.admin) { body.appendChild(note(L("هذه الصفحة للمدير فقط.", "Admins only."), "#b42318")); return; }
       var items = r.items || [];
-      body.appendChild(note(items.length ? L("بلاغاتٌ مفتوحة: ", "Open reports: ") + items.length + L(" — راجعها خلال ٢٤ ساعة.", " — review within 24 h.") : L("لا بلاغات مفتوحة ✓", "No open reports ✓")));
+      canAct = !r.role || ADM_RANK[r.role] >= ADM_RANK.moderator;   // C195: المشاهد يرى بلا أزرار
+      if (!canAct) body.appendChild(note(L("👁 مشاهدة فقط — يظهر لك عدد البلاغات ونوعها وسببها، دون محتوى الرسائل.", "👁 View only — counts, type and reason without message content."), "#475569", "#f1f5f9"));
+      body.appendChild(note(items.length ? L("بلاغاتٌ مفتوحة: ", "Open reports: ") + items.length + (canAct ? L(" — راجعها خلال ٢٤ ساعة.", " — review within 24 h.") : "") : L("لا بلاغات مفتوحة ✓", "No open reports ✓")));
       items.forEach(function (it) { body.appendChild(card(it)); });
     }, function (e) { body.innerHTML = ""; body.appendChild(note(L("تعذّر التحميل: ", "Couldn't load: ") + codeErr(e), "#b42318")); });
+  }
+
+  // C195: فريق الإدارة — للمالك وحده: إضافة بريد بدور (مشاهد · مشرف · مدير) وتغييره وحذفه، وسجلّ ما فعله الفريق
+  function adminTeamSheet() {
+    if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return; }
+    var RL = { viewer: L("👁 مشاهد", "👁 Viewer"), moderator: L("🛡 مشرف", "🛡 Moderator"), admin: L("⭐ مدير", "⭐ Admin") };
+    var RD = { viewer: L("يرى صفحات الإدارة للقراءة فقط، والبلاغات بلا محتوى.", "Read-only; reports without content."),
+      moderator: L("يرى كلّ شيء ويعالج البلاغات (حذف · لا مخالفة).", "Sees everything and handles reports."),
+      admin: L("كلّ شيء ما عدا إدارة الفريق.", "Everything except managing the team.") };
+    var OPS = { team: L("الفريق", "Team"), reportClose: L("أغلق بلاغاً", "Closed a report"), momentDelete: L("حذف لحظة", "Deleted a moment"), commentDelete: L("حذف تعليقاً", "Deleted a comment"),
+      relay: L("غيّر الوسيط", "Changed relay"), qcfg: L("تنبيهات الجودة", "Quality alerts") };
+    var s = sheet(L("👥 فريق الإدارة", "👥 Admin team")), body = mk("div", ""); s.box.appendChild(body);
+    var em = mk("input", "width:100%;box-sizing:border-box;border:1px solid #dfe5ec;border-radius:12px;padding:10px 12px;font:600 14px system-ui;margin:4px 0 8px;direction:ltr;text-align:left");
+    em.type = "email"; em.placeholder = "name@gmail.com"; em.autocapitalize = "off";
+    var pick = "viewer", roleRow = mk("div", "display:flex;gap:6px;flex-wrap:wrap"), desc = mk("div", "font:600 12px/1.6 system-ui;color:#6b7280;margin:6px 2px 0");
+    function paintRoles() {
+      roleRow.innerHTML = "";
+      ["viewer", "moderator", "admin"].forEach(function (k) {
+        var b = mk("button", "border:1px solid " + (pick === k ? "#2F80C8" : "#dfe5ec") + ";border-radius:999px;padding:7px 12px;font:800 12.5px system-ui;background:" + (pick === k ? "#eaf3fc" : "#fff") + ";color:" + (pick === k ? "#1d5f9a" : "#334155"), RL[k]);
+        b.onclick = function () { pick = k; paintRoles(); }; roleRow.appendChild(b);
+      });
+      desc.textContent = RD[pick];
+    }
+    var add = mkBtn(L("إضافة", "Add"), "primary"); add.style.marginTop = "10px";
+    var list = mk("div", "margin-top:14px"), logBox = mk("div", "margin-top:14px");
+    body.appendChild(note(L("أضف بريد Google لمن تريد. تعمل الصلاحية حين يدخل سوا بالبريد نفسه (حتّى لو لم يسجّل بعد).", "Add a Google email. Access starts when they sign in with that email."), "#475569", "#f1f5f9"));
+    body.appendChild(em); body.appendChild(roleRow); body.appendChild(desc); body.appendChild(add); body.appendChild(list); body.appendChild(logBox);
+    paintRoles();
+    function errT(e) { var m = codeErr(e); return /bad email/.test(m) ? L("البريد غير صحيح", "Invalid email") : /owner/.test(m) ? L("هذا بريد المالك", "That's the owner's email") : /team full/.test(m) ? L("الفريق ممتلئ (٥٠)", "Team is full (50)") : m; }
+    function paint(r) {
+      list.innerHTML = ""; logBox.innerHTML = "";
+      if (!r || !r.admin) { list.appendChild(note(L("إدارة الفريق للمالك وحده.", "Owner only."), "#b42318")); add.disabled = true; return; }
+      var ms = r.members || [];
+      list.appendChild(mk("div", "font:800 13.5px system-ui;margin-bottom:4px", L("الأعضاء", "Members") + " (" + ms.length + ")"));
+      if (!ms.length) list.appendChild(mk("div", "font:600 12.5px system-ui;color:#6b7280", L("لا أحد بعد.", "No one yet.")));
+      ms.forEach(function (m) {
+        var row = mk("div", "display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px solid #eef2f6");
+        row.appendChild(mk("div", "flex:1;min-width:0;font:700 13px system-ui;direction:ltr;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", m.email));
+        var sel = mk("select", "border:1px solid #dfe5ec;border-radius:10px;padding:6px;font:700 12px system-ui;background:#fff");
+        ["viewer", "moderator", "admin"].forEach(function (k) { var o = mk("option", "", RL[k]); o.value = k; if (m.role === k) o.selected = true; sel.appendChild(o); });
+        sel.onchange = function () { sel.disabled = true; call("admin.team", { email: m.email, role: sel.value }).then(function (x) { toast(L("تمّ ✓", "Done ✓")); paint(x); }, function (e) { sel.disabled = false; toast(errT(e)); }); };
+        var del = mk("button", "border:0;background:#fdecec;color:#b42318;border-radius:10px;padding:6px 10px;font:800 12px system-ui", L("حذف", "Remove"));
+        del.onclick = function () { if (!global.confirm(L("إزالة " + m.email + " من الفريق؟", "Remove " + m.email + "?"))) return; del.disabled = true;
+          call("admin.team", { email: m.email, role: null }).then(function (x) { toast(L("أُزيل ✓", "Removed ✓")); paint(x); }, function (e) { del.disabled = false; toast(errT(e)); }); };
+        row.appendChild(sel); row.appendChild(del); list.appendChild(row);
+      });
+      var lg = r.log || [];
+      if (lg.length) {
+        logBox.appendChild(mk("div", "font:800 13.5px system-ui;margin-bottom:4px", L("السجلّ", "Activity")));
+        lg.forEach(function (x) { logBox.appendChild(mk("div", "font:600 12px/1.6 system-ui;color:#475569;padding:4px 0;border-bottom:1px dashed #eef2f6;word-break:break-word",
+          timeAgo(x.ts) + " · " + (x.email || "—") + " · " + (OPS[x.op] || x.op) + (x.d ? " — " + x.d : ""))); });
+      }
+    }
+    add.onclick = function () {
+      var e = em.value.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(e)) { toast(L("اكتب بريداً صحيحاً", "Enter a valid email")); return; }
+      add.disabled = true;
+      call("admin.team", { email: e, role: pick }).then(function (x) { add.disabled = false; em.value = ""; toast(L("أُضيف ✓", "Added ✓")); paint(x); }, function (err) { add.disabled = false; toast(errT(err)); });
+    };
+    list.appendChild(note(L("جارٍ التحميل…", "Loading…")));
+    call("admin.team", {}).then(paint, function (e) { list.innerHTML = ""; list.appendChild(note(L("تعذّر التحميل: ", "Couldn't load: ") + codeErr(e), "#b42318")); });
   }
 
   // ---------- حذف الحساب (شرط Google Play) ----------
@@ -5836,9 +5900,13 @@
   // C24: مدير التطبيق (الخادم يقرّر بـADMIN_EMAIL) — لإظهار «فحص الاتّصال» له وحده
   var adminP = null;
   function adminCached() { var a = lsGet("sawa_admin", null); return !!(a && a.uid === state.uid && a.v); }
+  // C195: الدور — owner (المالك) · admin · moderator · viewer (مشاهدة فقط). الخادم يقرّر، وهذا للواجهة فقط
+  var ADM_RANK = { viewer: 1, moderator: 2, admin: 3, owner: 4 };
+  function adminRoleCached() { var a = lsGet("sawa_admin", null); return a && a.uid === state.uid && a.v ? (a.role || "owner") : null; }
+  function adminAtLeast(need) { var r = adminRoleCached(); return !!(r && ADM_RANK[r] >= ADM_RANK[need]); }
   function checkAdmin() {
     if (!state.uid) return new Promise(function (res) { whenReady(function () { checkAdmin().then(res); }); });
-    if (!adminP) adminP = call("whoami", {}).then(function (b) { var v = !!(b && b.admin === true); lsSet("sawa_admin", { uid: state.uid, v: v }); return v; },
+    if (!adminP) adminP = call("whoami", {}).then(function (b) { var v = !!(b && b.admin === true); lsSet("sawa_admin", { uid: state.uid, v: v, role: v ? (b.role || "owner") : null }); try { global.dispatchEvent(new CustomEvent("sawa-admin-role", { detail: { role: v ? (b.role || "owner") : null } })); } catch (e) {} return v; },
       function () { adminP = null; return adminCached(); });
     return adminP;
   }
@@ -6169,6 +6237,7 @@
     scanAny: scanAny, routeScanned: routeScanned, signOutSheet: signOutSheet,   // C20
     e2eSupported: function () { return e2e.ok(); }, e2eStartDm: e2eStartDm, e2eNewSheet: e2eNewSheet, e2eAct: e2eAct, e2eSafety: e2eSafety,   // C23
     adminCached: adminCached, checkAdmin: checkAdmin, adminReports: adminReports, voipTest: voipTest,   // C24
+    adminRole: adminRoleCached, adminAtLeast: adminAtLeast, adminTeam: adminTeamSheet,   // C195
     setBlocked: setBlocked,
     sendLocation: sendLocation, mapsUrl: mapsUrl, sendCard: sendCard, cleanCard: cleanCard, cardText: cardText, phonePickKind: phonePickKind, readPhoneContacts: readPhoneContacts, invitePhone: invitePhone, myUid: function () { return state.uid || null; },   // C184
       // C32

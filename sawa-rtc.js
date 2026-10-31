@@ -116,7 +116,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c183";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c195";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -1404,7 +1404,7 @@
         qb.onclick = function () { qb.disabled = true; wcall("admin.qcfg", { off: !r.qoff }).then(function (x) { r.qoff = !!(x && x.qoff); qb.textContent = r.qoff ? L("متوقّف — تشغيل", "Off — turn on") : L("مفعّل — إيقاف", "On — turn off"); qb.style.background = r.qoff ? "transparent" : PRI; toast(r.qoff ? L("أُوقف الملخّص", "Digest off") : L("✓ الملخّص مفعّل", "✓ Digest on")); }).catch(function (e) { toast(String((e && e.message) || e)); }).then(function () { qb.disabled = false; }); };
         var qt = el("button", "flex:1;padding:9px;border-radius:10px;border:1px solid " + LINE + ";background:transparent;color:#fff;font:800 12.5px system-ui", L("أرسل ملخّصاً الآن", "Send a digest now"));
         qt.onclick = function () { qt.disabled = true; wcall("admin.qcfg", { test: true, off: !!r.qoff }).then(function (x) { toast(x && x.sent ? L("✓ أُرسل — انظر الإشعارات", "✓ Sent — check notifications") : L("لم يُرسل — فعّل الإشعارات على هذا الهاتف", "Not sent — enable notifications on this phone")); }).catch(function (e) { toast(String((e && e.message) || e)); }).then(function () { qt.disabled = false; }); };
-        qr.appendChild(qb); qr.appendChild(qt);
+        if (admOk(r)) { qr.appendChild(qb); qr.appendChild(qt); } else qr.appendChild(el("div", "font:700 12px system-ui;color:" + MUTED, (r.qoff ? L("متوقّف", "Off") : L("مفعّل", "On")) + " · " + L("👁 مشاهدة فقط", "👁 View only")));   // C195
         var c5 = card(L("آخر المكالمات", "Recent calls"));
         (r.recent || []).forEach(function (c) {
           var x = c.sides[0] || {}, ok = c.sides.some(function (y) { return y.ok; });
@@ -1433,6 +1433,7 @@
       var paint = function (r) {
         box.innerHTML = "";
         if (!r || !r.admin) { box.appendChild(el("div", "padding:20px;text-align:center;color:" + MUTED + ";font:600 13px system-ui", L("للمدير فقط", "Admin only"))); return; }
+        if (!admOk(r)) go.style.display = "none";   // C195: المشاهد والمشرف بلا «فحص الآن»
         var lb = r.labels || {}, keys = Object.keys(r.svc || {});
         var name = function (k) { return lb[k] || (k.indexOf("metered:") === 0 ? L("وسيط Metered (", "Metered relay (") + k.slice(8) + ")" : k); };
         box.appendChild(el("div", "font:600 12px system-ui;color:" + MUTED + ";margin-bottom:8px", r.at ? L("آخر فحص: ", "Last check: ") + new Date(r.at).toLocaleString(isAr() ? "ar" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }) : L("لم يُفحص بعد — اضغط «فحص الآن»", "Not checked yet — tap “Check now”")));
@@ -1464,6 +1465,8 @@
       wcall("admin.health", {}).then(paint).catch(function (e) { box.textContent = L("تعذّر التحميل: ", "Couldn't load: ") + ((e && e.message) || e); });
     });
   }
+  // C195: الدور من ردّ الخادم — التنفيذ للمدير والمالك؛ المشاهد والمشرف يرون فقط (والخادم يرفض على أيّ حال)
+  function admOk(r) { return !r || !r.role || r.role === "admin" || r.role === "owner"; }
   function relaySheet() { sheet(L("الوسيط الأساسيّ", "Primary relay"), function (body) { body.parentNode.parentNode.style.direction = isAr() ? "rtl" : "ltr"; body.appendChild(relaySwitchCard()); }); }
   function relaySwitchCard() {
     var card = el("div", "margin:0 14px 12px;padding:12px;border-radius:14px;background:rgba(47,128,200,.12);border:1px solid " + LINE);
@@ -1476,13 +1479,13 @@
     var paint = function (r) {
       row.innerHTML = "";
       var eff = r.primary || r.envDefault;
-      st.textContent = L("الآن: ", "Now: ") + (eff === "cf" ? "Cloudflare" : "Metered") + (r.primary ? "" : L(" (إعداد الخادم)", " (server default)")) + L(" · والآخر احتياطيّ إن فشل", " · the other is the fallback");
+      st.textContent = L("الآن: ", "Now: ") + (eff === "cf" ? "Cloudflare" : "Metered") + (r.primary ? "" : L(" (إعداد الخادم)", " (server default)")) + L(" · والآخر احتياطيّ إن فشل", " · the other is the fallback") + (admOk(r) ? "" : L(" · 👁 مشاهدة فقط", " · 👁 View only"));
       opts.forEach(function (o) {
         var on = (r.primary || "") === o[0], off = (o[0] === "m" && r.has && !r.has.m) || (o[0] === "cf" && r.has && !r.has.cf);
         var b = el("button", "flex:1;padding:9px 4px;border-radius:10px;border:1px solid " + (on ? PRI : LINE) + ";background:" + (on ? PRI : "transparent") + ";color:#fff;font:800 12.5px system-ui;opacity:" + (off ? ".4" : "1"), o[1]);
-        b.disabled = off;
+        b.disabled = off || !admOk(r);   // C195
         b.onclick = function () {
-          if (on) return;
+          if (on || !admOk(r)) return;
           st.textContent = L("جارٍ الحفظ…", "Saving…");
           wcall("admin.relay", { primary: o[0] }).then(function (r2) {
             if (!r2 || !r2.admin) { toast(L("للمدير فقط", "Admin only")); return; }

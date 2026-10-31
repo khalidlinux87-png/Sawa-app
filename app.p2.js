@@ -968,7 +968,11 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
     const [isAdm, setIsAdm] = useState(() => !!(SCm && SCm.adminCached && SCm.adminCached()));
     const [updAvail, setUpdAvail] = useState(() => !!(SCm && SCm.updateAvailable && SCm.updateAvailable()));
     useEffect(() => { const on = (e) => setUpdAvail(!!(e.detail && e.detail.available)); window.addEventListener("sawa-update-state", on); return () => window.removeEventListener("sawa-update-state", on); }, []);
-    useEffect(() => { let on = true; if (SCm && SCm.checkAdmin) SCm.checkAdmin().then((v) => { if (on) setIsAdm(!!v); }); return () => { on = false; }; }, [myProfile && myProfile.uid]);
+    // C195: الدور (owner · admin · moderator · viewer) — الخادم يقرّر؛ هنا لإظهار ما يناسبه فقط
+    const [admRole, setAdmRole] = useState(() => (SCm && SCm.adminRole ? SCm.adminRole() : null));
+    useEffect(() => { let on = true; if (SCm && SCm.checkAdmin) SCm.checkAdmin().then((v) => { if (on) { setIsAdm(!!v); setAdmRole(v && SCm.adminRole ? SCm.adminRole() : null); } }); return () => { on = false; }; }, [myProfile && myProfile.uid]);
+    const admRank = { viewer: 1, moderator: 2, admin: 3, owner: 4 }[admRole || (isAdm ? "owner" : "")] || 0;
+    const admTag = admRole === "viewer" ? tl(" (مشاهدة)", " (view)") : admRole === "moderator" ? tl(" (مشرف)", " (moderator)") : admRole === "admin" ? tl(" (مدير)", " (admin)") : tl(" (للمدير)", " (admin)");
     const myDisplayName = cloudMe ? (myProfile.name || myProfile.googleName || "") : "";
     const editMe = () => { if (cloudMe && window.SawaChat.editProfile()) return; onOpenSettings(); };
     // C13c: لا اسمَ ولا رقمَ وهميّين — حالةٌ صادقة حتّى يصل الحساب (تحميل · تعذّر · لم يُسجَّل الدخول)
@@ -1011,16 +1015,17 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         { key: "import", label: t("me_astyrad_alshjra"), icon: Upload, onPress: onImportTree, color: "#8B5CF6" },
         // الجسر (B5): لوحة السحابة والمشاركة (رفع، Google، روابط، استعادة) — sawa-sync.js
         // فحص الاتّصال (diag.html): يعمل داخل التطبيق المثبّت أيضاً — زرّ «رجوع إلى سوا» في أسفله
-        ...(isAdm ? [{ key: "diag", label: tl("فحص الاتّصال (للمدير)", "Connection check (admin)"), icon: Wifi, onPress: () => { location.href = "./diag.html"; }, color: "#64748B" }] : []),
+        ...(isAdm ? [{ key: "diag", label: tl("فحص الاتّصال", "Connection check") + admTag, icon: Wifi, onPress: () => { location.href = "./diag.html"; }, color: "#64748B" }] : []),
         // C132: تنزيل تطبيق أندرويد (APK) — لمن يفتح سوا من المتصفّح على غير آيفون
         ...(!window.SawaNativeBridge && !window.SawaIOS && !/iPhone|iPad|iPod/.test(navigator.userAgent || "") ? [{ key: "apk", label: tl("تنزيل تطبيق أندرويد (APK)", "Download the Android app (APK)"), icon: Download, onPress: () => { location.href = "/download"; }, color: "#16A34A" }] : []),
         // C131: نتائج تقييم المكالمات (المحرّك · النسخة · التأخير · الصدى…) — للمدير
-        ...(isAdm ? [{ key: "voip", label: tl("اختبار مكالمة الآيفون (للمدير)", "iPhone call test (admin)"), icon: Phone, onPress: () => { if (window.SawaChat && window.SawaChat.voipTest) window.SawaChat.voipTest(); }, color: "#2F80C8" }] : []),   // C151
-        ...(isAdm ? [{ key: "reports", label: tl("البلاغات (للمدير)", "Reports (admin)"), icon: Flag, onPress: () => { if (window.SawaChat && window.SawaChat.adminReports) window.SawaChat.adminReports(); }, color: "#DC2626" }] : []),   // C150
-        ...(isAdm ? [{ key: "tel", label: tl("سجلّ المكالمات (للمدير)", "Call log (admin)"), icon: BarChart3, onPress: () => { if (window.SawaRTC && window.SawaRTC.telReport) window.SawaRTC.telReport(); } }] : []),   // C179
-        ...(isAdm ? [{ key: "health", label: tl("حالة الخدمات (للمدير)", "Service health (admin)"), icon: Server, onPress: () => { if (window.SawaRTC && window.SawaRTC.healthSheet) window.SawaRTC.healthSheet(); } }] : []),   // C178
-        ...(isAdm ? [{ key: "relay", label: tl("الوسيط الأساسيّ للمكالمات (للمدير)", "Primary call relay (admin)"), icon: Radio, onPress: () => { if (window.SawaRTC && window.SawaRTC.relaySheet) window.SawaRTC.relaySheet(); } }] : []),   // C175
-        ...(isAdm ? [{ key: "qa", label: tl("تقييمات المكالمات (للمدير)", "Call ratings (admin)"), icon: Star, onPress: () => { if (window.SawaRTC && window.SawaRTC.qaReport) window.SawaRTC.qaReport(); }, color: "#F59E0B" }] : []),
+        ...(isAdm && admRank >= 4 ? [{ key: "team", label: tl("فريق الإدارة", "Admin team"), icon: UsersRound, onPress: () => { if (window.SawaChat && window.SawaChat.adminTeam) window.SawaChat.adminTeam(); }, color: "#7C3AED" }] : []),   // C195: للمالك وحده
+        ...(isAdm && admRank >= 3 ? [{ key: "voip", label: tl("اختبار مكالمة الآيفون", "iPhone call test") + admTag, icon: Phone, onPress: () => { if (window.SawaChat && window.SawaChat.voipTest) window.SawaChat.voipTest(); }, color: "#2F80C8" }] : []),   // C151
+        ...(isAdm ? [{ key: "reports", label: tl("البلاغات", "Reports") + admTag, icon: Flag, onPress: () => { if (window.SawaChat && window.SawaChat.adminReports) window.SawaChat.adminReports(); }, color: "#DC2626" }] : []),   // C150
+        ...(isAdm ? [{ key: "tel", label: tl("سجلّ المكالمات", "Call log") + admTag, icon: BarChart3, onPress: () => { if (window.SawaRTC && window.SawaRTC.telReport) window.SawaRTC.telReport(); } }] : []),   // C179
+        ...(isAdm ? [{ key: "health", label: tl("حالة الخدمات", "Service health") + admTag, icon: Server, onPress: () => { if (window.SawaRTC && window.SawaRTC.healthSheet) window.SawaRTC.healthSheet(); } }] : []),   // C178
+        ...(isAdm ? [{ key: "relay", label: tl("الوسيط الأساسيّ للمكالمات", "Primary call relay") + admTag, icon: Radio, onPress: () => { if (window.SawaRTC && window.SawaRTC.relaySheet) window.SawaRTC.relaySheet(); } }] : []),   // C175
+        ...(isAdm ? [{ key: "qa", label: tl("تقييمات المكالمات", "Call ratings") + admTag, icon: Star, onPress: () => { if (window.SawaRTC && window.SawaRTC.qaReport) window.SawaRTC.qaReport(); }, color: "#F59E0B" }] : []),
         // C83: تحديث التطبيق لكلّ مستخدم — النسخة، ما الجديد، وتحديثٌ قسريّ آمن
         ...(SCm && SCm.updateSheet ? [{ key: "update", label: updAvail ? tl("تحديث التطبيق • نسخةٌ جديدة ✨", "App update • new ✨") : tl("تحديث التطبيق", "App update"), icon: RotateCcw, onPress: () => SCm.updateSheet(), color: updAvail ? "#D97706" : "#2F80C8" }] : []),
         // C11: صفحاتٌ عامّة على الموقع (Google Play يطلب رابطيها)
