@@ -25,7 +25,31 @@
   function C() { return global.SawaChat; }
   function toast(m) { try { S().toast(m); } catch (e) {} }
   function wcall(op, payload) { return S().call(op, payload || {}); }
-  function log() { try { console.log.apply(console, ["[sawa-rtc]"].concat([].slice.call(arguments))); } catch (e) {} }
+  // C197: السجلّ المنظَّم المشترك (SawaLog) — أوّل وحدة تُحمَّل تعرّفه والبقيّة تستعمله.
+  //   LOG.info/warn/error/debug(event, { fields }) · آخر ٣٠٠ حدث في SawaLog.recent(n) · الحدّ الأدنى للعرض: localStorage "sawa-log" (debug|info|warn|error).
+  var SawaLog = global.SawaLog || (global.SawaLog = (function () {
+    var LV = { debug: 10, info: 20, warn: 30, error: 40 }, buf = [], MAX = 300;
+    function minLv() { try { return LV[localStorage.getItem("sawa-log")] || LV.info; } catch (e) { return LV.info; } }
+    function val(v) { return v instanceof Error ? (v.message || String(v)) : v; }
+    function emit(mod, lvl, ev, f) {
+      var r = { ts: Date.now(), lvl: lvl, mod: mod, ev: String(ev) }, has = false;
+      if (f) for (var k in f) if (Object.prototype.hasOwnProperty.call(f, k) && f[k] !== undefined && k !== "ts" && k !== "lvl" && k !== "mod" && k !== "ev") { r[k] = val(f[k]); has = true; }
+      buf.push(r); if (buf.length > MAX) buf.shift();
+      if (LV[lvl] < minLv()) return r;
+      try {
+        var c = global.console; if (!c) return r;
+        var fn = (lvl === "debug" ? c.debug : c[lvl]) || c.log, tag = "[" + mod + "] " + r.ev;
+        if (has) { var o = {}; for (var j in r) if (j !== "ts" && j !== "lvl" && j !== "mod" && j !== "ev") o[j] = r[j]; fn.call(c, tag, o); } else fn.call(c, tag);
+      } catch (e) {}
+      return r;
+    }
+    function make(mod) {
+      return { debug: function (ev, f) { return emit(mod, "debug", ev, f); }, info: function (ev, f) { return emit(mod, "info", ev, f); },
+               warn: function (ev, f) { return emit(mod, "warn", ev, f); }, error: function (ev, f) { return emit(mod, "error", ev, f); } };
+    }
+    return { make: make, recent: function (n) { return buf.slice(-(n || 50)); }, levels: LV };
+  })());
+  var LOG = SawaLog.make("sawa-rtc");
   function db() { try { return global.firebase && firebase.database ? firebase.database() : null; } catch (e) { return null; } }
   function TS() { return firebase.database.ServerValue.TIMESTAMP; }
   function now() { return Date.now() + (srvOffset || 0); }
@@ -107,7 +131,7 @@
         var l = b && Array.isArray(b.iceServers) && b.iceServers.length ? b.iceServers : STUN;
         iceRelays = b && Array.isArray(b.relays) && b.relays.length ? b.relays : null;
         relayPrimary = b && (b.primary === "m" || b.primary === "cf") ? b.primary : null;   // C165
-        iceCache = relayIce() || l; iceAt = Date.now(); log("ice", b && b.turn ? "TURN" : "STUN", iceRelays ? iceRelays.length + " relays" : ""); relayAuto(); return iceCache;
+        iceCache = relayIce() || l; iceAt = Date.now(); LOG.info("ice", { mode: b && b.turn ? "TURN" : "STUN", relays: iceRelays ? iceRelays.length : 0 }); relayAuto(); return iceCache;
       }),
       new Promise(function (r) { setTimeout(function () { r(iceCache || STUN); }, wait); })
     ]).catch(function () { return iceCache || STUN; });
@@ -116,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c196";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c197";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -166,7 +190,7 @@
       relayMs = ms; relayAt = Date.now(); relayNet = netKey(); relayBusy = null;
       lsSet("sawa-relay-ms2", JSON.stringify({ ms: ms, at: relayAt, net: relayNet }));
       var l = relayIce(); if (l) iceCache = l;
-      log("relays", JSON.stringify(ms), "→", (relayRank() || [])[0] && relayRank()[0].id);
+      LOG.info("relays", { ms: ms, best: (relayRank() || [])[0] && relayRank()[0].id });
       return ms;
     }, function () { relayBusy = null; return relayMs; });
     return relayBusy;
@@ -227,7 +251,7 @@
       return !(Date.now() - Number(lsGet("sawa-nrtc-fail") || 0) < 86400000);
     } catch (e) { return false; }
   }
-  function nativeFail(e) { log("native rtc failed", e && e.message); lsSet("sawa-nrtc-fail", String(Date.now())); }
+  function nativeFail(e) { LOG.warn("native.rtc.failed", { err: e && e.message }); lsSet("sawa-nrtc-fail", String(Date.now())); }
   function nativeLocal() {
     var t = { kind: "audio", id: "native-mic", readyState: "live", _en: true, stop: function () { t.readyState = "ended"; }, getSettings: function () { return { echoCancellation: "native", noiseSuppression: "native", autoGainControl: "native" }; } };
     Object.defineProperty(t, "enabled", { get: function () { return t._en; }, set: function (v) { t._en = !!v; try { RTCB().rtcMute(!v); } catch (e) {} } });
@@ -319,7 +343,7 @@
     try {
       var t = st && st.getAudioTracks()[0], g = t && t.getSettings ? t.getSettings() : {};
       lastAec = { aec: g.echoCancellation, ns: g.noiseSuppression, agc: g.autoGainControl };   // للتشخيص (applyConstraints على مسارٍ حيّ يُسكته في بعض المتصفّحات — لا نلمسه)
-      log("mic", "aec=" + g.echoCancellation, "ns=" + g.noiseSuppression, "agc=" + g.autoGainControl);
+      LOG.info("mic", { aec: g.echoCancellation, ns: g.noiseSuppression, agc: g.autoGainControl });
     } catch (e) {}
     return st;
   }
@@ -334,7 +358,7 @@
     // الكاميرا مشغولة (تبويبٌ آخر/تطبيق) أو مرفوضة وحدها ⇒ نكمل بالصوت بدل أن تفشل المكالمة
     return md.getUserMedia({ audio: audio, video: { facingMode: facing || "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } } })
       .catch(function (e) {
-        log("camera", e && e.name);
+        LOG.warn("camera", { err: e && e.name });
         return md.getUserMedia({ audio: audio, video: false }).then(function (st) {
           toast(L("الكاميرا غير متاحة — تستمرّ المكالمة بالصوت", "Camera unavailable — continuing with audio")); return st;
         });
@@ -367,7 +391,7 @@
         if (which === "ear") { wakeOff(); earArm(); } else { wakeOn(); earOff(); }
         return true;
       });
-    }).catch(function (e) { log("route", e && (e.name || e.message)); if (!quiet) toast(L("تعذّر تحويل الصوت على هذا الجهاز", "Couldn't switch audio output on this device")); return false; })
+    }).catch(function (e) { LOG.warn("route", { err: e && (e.name || e.message) }); if (!quiet) toast(L("تعذّر تحويل الصوت على هذا الجهاز", "Couldn't switch audio output on this device")); return false; })
       .then(function (x) { c.routing = false; return x; });
   }
   // C92: التطبيق الأصليّ يوجّه الصوت بنفسه (وضع الاتّصال) — يعمل ولو لم يكشف WebView مدخلَي «المكبّر/السمّاعة»
@@ -445,7 +469,7 @@
       if (kaEl) { kaEl.play().catch(function () {}); return; }
       kaEl = document.createElement("audio"); kaEl.id = "sawa-ka"; kaEl.loop = true; kaEl.volume = 0.05; kaEl.setAttribute("playsinline", ""); kaEl.src = KA_SRC;
       kaEl.style.display = "none"; document.body.appendChild(kaEl);
-      kaEl.play().catch(function (e) { log("keepalive", e && e.name); });
+      kaEl.play().catch(function (e) { LOG.warn("keepalive", { err: e && e.name }); });
     } catch (e) {}
   }
   function ongoingNote(on, title) {
@@ -792,7 +816,7 @@
     if (j.cands) { j.cands.forEach(function (x) { addRemoteIce(c, x); }); return; }   // C66: دفعة
     if (!j.candidate) return;
     if (!c.remoteSet) { c.iceIn.push(j); return; }
-    c.pc.addIceCandidate(j).catch(function (e) { log("ice add", e && e.message); });
+    c.pc.addIceCandidate(j).catch(function (e) { LOG.warn("ice.add", { err: e && e.message }); });
   }
   function flushIceIn(c) { c.remoteSet = true; var q = c.iceIn; c.iceIn = []; q.forEach(function (j) { addRemoteIce(c, j); }); }
   // C112: الصوت والصورة في «بثّين» منفصلين ⇒ المتصفّح لا يؤخّر الصوت ليُطابق الصورة (lip-sync). على شبكةٍ سيّئة كانت الصورة
@@ -874,7 +898,7 @@
     var i = c.abi || 0;
     if (c.bloatN >= 3 && i < ABR.length - 1) { i++; c.bloatN = 0; }
     else if (c.calmN >= 5 && i > 0) { i--; c.calmN = 0; }
-    if (i !== (c.abi || 0)) { c.abi = i; log("audio cap", ABR[i], "rtt", Math.round(rtt), "min", Math.round(c.rttMin)); audioCap(c, ABR[i]); }
+    if (i !== (c.abi || 0)) { c.abi = i; LOG.info("audio.cap", { bps: ABR[i], rtt: Math.round(rtt), rttMin: Math.round(c.rttMin) }); audioCap(c, ABR[i]); }
   }
   // C93: أقرب مركز Cloudflare لشبكة هذا الهاتف (الوسيط يسلك الطريق نفسه غالباً) — JED/CAI/FRA… يكشف بُعد المسار
   var cfColo = null, cfColoAt = 0;
@@ -913,7 +937,7 @@
         c.route = relay ? "relay" : "direct"; c.proto = String(lc.relayProtocol || lc.protocol || "").toLowerCase() || null;
         var rr = lc.candidateType === "relay" ? relayOfUrl(lc.url) : null; c.relayLbl = rr ? rr.label : null; c.relayId = rr ? rr.id : null;   // C94: أيّ وسيط
         if (!rr && rc.candidateType === "relay") c.relayLbl = L("وسيط الطرف الآخر", "peer's relay");   // C167: الوسيط من جهة الطرف الآخر (قد تكون نسخته أقدم)
-        log("route", lc.candidateType, "→", rc.candidateType, c.proto);
+        LOG.info("ice.pair", { local: lc.candidateType, remote: rc.candidateType, proto: c.proto });
         if (ui.sub && c === cur && isAdm()) ui.sub.textContent = relay ? L("عبر خادم وسيط", "via relay") : L("اتّصال مباشر", "direct");   // C115: للمدير فقط
       }).catch(function () {});
     } catch (e) {}
@@ -970,7 +994,7 @@
     var n = ++c.reN;
     c.pc.createOffer({ iceRestart: true }).then(function (o) { return c.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); })
       .then(function (o) { return c.ref.update({ reoffer: { type: o.type, sdp: o.sdp, n: n } }); })
-      .catch(function (e) { log("restart", e && e.message); });
+      .catch(function (e) { LOG.warn("restart", { err: e && e.message }); });
   }
 
   // ---------- C111: تحويل المكالمة الصوتيّة إلى فيديو ----------
@@ -990,7 +1014,7 @@
       if (c.done) { try { vt.stop(); } catch (e) {} return null; }
       try { c.local.addTrack(vt); } catch (e) {}
       return vt;
-    }).catch(function (e) { log("vin cam", e && e.name); toast(L("الكاميرا غير متاحة — يصلك فيديو الطرف الآخر ويبقى صوتك", "Camera unavailable — you'll still see them")); return null; });
+    }).catch(function (e) { LOG.warn("vin.cam", { err: e && e.name }); toast(L("الكاميرا غير متاحة — يصلك فيديو الطرف الآخر ويبقى صوتك", "Camera unavailable — you'll still see them")); return null; });
     c.vcamP.then(function (vt) {
       if (c.done) return;
       attachLocal(c); paint(c);
@@ -999,7 +1023,7 @@
       var n = ++c.reN;
       return c.pc.createOffer().then(function (o) { return c.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); })
         .then(function (o) { return c.ref.update({ reoffer: { type: o.type, sdp: o.sdp, n: n, v: 1 } }); });
-    }).then(function () { capVideo(c); }).catch(function (e) { log("vin offer", e && e.message); });
+    }).then(function () { capVideo(c); }).catch(function (e) { LOG.warn("vin.offer", { err: e && e.message }); });
     if (RB()) nativeRoute(c, "spk"); else if (c.routes) setRoute(c, "spk", true);
     wakeOn(); earOff(); paint(c);
     toast(L("صارت مكالمة فيديو 📹", "Switched to video 📹"));
@@ -1039,7 +1063,7 @@
     // C183: الطرفان على محرّك WebView ⇒ الفيديو يُضاف إلى المكالمة نفسها (إعادة تفاوض) بلا قطع. غير ذلك (المحرّك الأصليّ) ⇒ مكالمة فيديو جديدة كما في C111
     if (c.vreqOut && v.vok === c.vreqOut && !c.vupSent && !c.native && v[engKey(c, true)] === "web") {
       c.vupSent = true; var n0 = c.vreqOut;
-      c.ref.update({ vin: n0 }).then(function () { vInPlace(c); }).catch(function (e) { log("vin", e && e.message); c.vupSent = false; });
+      c.ref.update({ vin: n0 }).then(function () { vInPlace(c); }).catch(function (e) { LOG.warn("vin", { err: e && e.message }); c.vupSent = false; });
       return false;
     }
     if (v.vin && c.vAccepted && v.vin === c.vAccepted && !c.vin) { vInPlace(c); return false; }
@@ -1049,7 +1073,7 @@
       c.ref.update({ vup: nid }).then(function () {
         c.silent = true; finish(c, "upgraded");
         startCall(peer, name, "video", { id: nid, auto: true, from: oid });
-      }).catch(function (e) { log("vup", e && e.message); c.vupSent = false; });
+      }).catch(function (e) { LOG.warn("vup", { err: e && e.message }); c.vupSent = false; });
       return false;
     }
     if (v.vup && c.vAccepted && !c.vupSeen) {
@@ -1088,18 +1112,18 @@
         c.live = true;
         try { c.ref.onDisconnect().update({ state: "ended" }); } catch (e) {}
         c.inbox = d.ref("inbox/" + peer + "/" + c.id);
-        c.inbox.set({ from: me, fromName: myName() || "", type: type, ts: TS() }).catch(function (e) { log("inbox", e && e.message); });
+        c.inbox.set({ from: me, fromName: myName() || "", type: type, ts: TS() }).catch(function (e) { LOG.warn("inbox", { err: e && e.message }); });
         try { c.inbox.onDisconnect().remove(); } catch (e) {}
         flushIceOut(c);
         listen(c, c.ref, "value", function (s) { onCallerValue(c, s.val()); }, function () { finish(c, "remote", { remote: true }); });
         listen(c, c.ref.child("ic_callee"), "child_added", function (s) { addRemoteIce(c, s.val()); });
-        if (!opt.auto) wcall("call.ring", { to: peer, callId: c.id, type: type }).catch(function (e) { log("ring", e && e.message); });   // التحويل: هو أمام التطبيق الآن
+        if (!opt.auto) wcall("call.ring", { to: peer, callId: c.id, type: type }).catch(function (e) { LOG.warn("ring", { err: e && e.message }); });   // التحويل: هو أمام التطبيق الآن
         // C111: «يرنّ» فقط حين يؤكّد جهازه وصول المكالمة (rung) — قبلها «جارٍ الاتّصال…» (كان «يرنّ» دائماً ولو كان هاتفه مغلقاً)
         if (c.rung) { setState(c, "ringing"); playTone("back"); } else setState(c, "calling");
         c.timers.ring = setTimeout(function () { if (!c.accepted) finish(c, "noanswer"); }, RING_MS);
       });
     }).catch(function (e) {
-      log("start", e && (e.name || e.message), e && e.message); c.errName = String((e && (e.name || e.message)) || "").slice(0, 40);   // C183
+      LOG.warn("start", { err: e && (e.name || e.message), msg: e && e.message }); c.errName = String((e && (e.name || e.message)) || "").slice(0, 40);   // C183
       var m = mediaError(e);
       if (!m && e && /permission|denied/i.test(String(e.code || e.message))) m = L("لا يمكن الاتّصال بهذا الشخص — ليس في جهات اتّصالك بعد", "Can't call: not in your contacts yet");
       finish(c, "error", { text: m || L("تعذّر بدء المكالمة", "Couldn't start the call") });
@@ -1120,13 +1144,13 @@
     }
     if (v.answer && !c.answerSet && c.pc) {
       c.answerSet = true;   // الحدث يتكرّر (مرشّحو ICE يغيّرون السجلّ) — طبّق الردّ مرّةً واحدة
-      c.pc.setRemoteDescription(v.answer).then(function () { flushIceIn(c); }).catch(function (e) { log("answer", e && e.message); finish(c, "failed"); });
+      c.pc.setRemoteDescription(v.answer).then(function () { flushIceIn(c); }).catch(function (e) { LOG.warn("answer", { err: e && e.message }); finish(c, "failed"); });
     }
     if (v.reanswer && v.reanswer.n === c.reN && c.reSeen !== c.reN && c.pc) {
       c.reSeen = c.reN;
       c.pc.setRemoteDescription({ type: v.reanswer.type, sdp: v.reanswer.sdp })
         .then(function () { if (c.pc.connectionState === "connected") onConn(c, "connected"); })
-        .catch(function (e) { log("reanswer", e && e.message); });
+        .catch(function (e) { LOG.warn("reanswer", { err: e && e.message }); });
     }
     if (v.state === "declined") finish(c, "declined", { remote: true });
     else if (v.state === "busy") finish(c, "busy", { remote: true });
@@ -1146,7 +1170,7 @@
       var v = s.val() || {}, id = s.key;
       if (!v.ts || now() - v.ts > STALE_MS) { s.ref.remove().catch(function () {}); return; }
       if (v.gid) groupIncoming(id, v); else incoming(id);
-    }, function (e) { log("inbox listen", e && e.code); });
+    }, function (e) { LOG.warn("inbox.listen", { err: e && e.code }); });
   }
   function incoming(id) {
     var me = myUid(), d = db();
@@ -1177,7 +1201,7 @@
       listen(c, ref, "value", function (s) { onCalleeValue(c, s.val()); }, function () { finish(c, "remote", { remote: true }); });
       c.timers.ring = setTimeout(function () { if (c.state === "incoming") finish(c, "missed", { remote: true }); }, RING_MS + 5000);
       getIce();   // تجهيزٌ مسبق
-    }).catch(function (e) { log("incoming", e && e.message); inbox.remove().catch(function () {}); });
+    }).catch(function (e) { LOG.warn("incoming", { err: e && e.message }); inbox.remove().catch(function () {}); });
   }
   function onCalleeValue(c, v) {
     if (c.done) return;
@@ -1198,7 +1222,7 @@
         .then(function () { return c.pc.createAnswer(); })
         .then(function (a) { return c.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); })
         .then(function (a) { return c.ref.update({ reanswer: { type: a.type, sdp: a.sdp, n: n } }); })
-        .catch(function (e) { log("reoffer", e && e.message); });
+        .catch(function (e) { LOG.warn("reoffer", { err: e && e.message }); });
     }
     if (v.state === "ended" && softEnded(c, v)) return;
     if (v.state === "ended" || v.state === "missed") finish(c, c.connectedAt ? "remote" : "missed", { remote: true });
@@ -1217,7 +1241,7 @@
     // C183: الآيفون (متصفّح التطبيق) لا يفتح الميكروفون والتطبيق في الخلفيّة/الهاتف مقفل (الردّ من شاشة النظام) ⇒ ننتظر فتح التطبيق بدل إنهاء المكالمة
     var micP = c.native ? Promise.resolve(nativeLocal()) : getMedia(mediaType).catch(function (e) {
       if (!IOSB() || document.visibilityState === "visible") throw e;
-      log("mic hidden → wait visible", e && e.name);
+      LOG.warn("mic.hidden.wait", { err: e && e.name });
       try { setState(c, "connecting"); if (ui.sub) ui.sub.textContent = L("افتح سوا لإكمال المكالمة", "Open Sawa to finish connecting"); } catch (x) {}
       return new Promise(function (res, rej) {
         var done = false, t = setTimeout(function () { if (!done) { done = true; document.removeEventListener("visibilitychange", on); rej(e); } }, 25000);
@@ -1247,7 +1271,7 @@
         });
       });
     }).catch(function (e) {
-      log("accept", e && (e.name || e.message), e && e.message); c.errName = String((e && (e.name || e.message)) || "").slice(0, 40);   // C183
+      LOG.warn("accept", { err: e && (e.name || e.message), msg: e && e.message }); c.errName = String((e && (e.name || e.message)) || "").slice(0, 40);   // C183
       finish(c, "error", { text: mediaError(e) || L("تعذّر الردّ على المكالمة", "Couldn't answer the call") });
     });
   }
@@ -1287,7 +1311,7 @@
         attachLocal(c);
         return snd ? snd.replaceTrack(nt) : null;
       })
-      .catch(function (e) { log("switch", e && e.message); toast(L("تعذّر تبديل الكاميرا", "Couldn't switch camera")); })
+      .catch(function (e) { LOG.warn("switch", { err: e && e.message }); toast(L("تعذّر تبديل الكاميرا", "Couldn't switch camera")); })
       .then(function () { c.switching = false; });
   }
   // ============================================================
@@ -1324,7 +1348,7 @@
   var QA_TAGS = [["echo", "صدى", "Echo"], ["noise", "تشويش", "Noise"], ["cut", "تقطّع", "Cutting"], ["delay", "تأخير", "Delay"], ["low", "صوت منخفض", "Too quiet"], ["drop", "انقطعت", "Dropped"]];
   function qaAfter(secs, meta) {
     if (!secs || secs < 15 || !qaOn()) return;
-    setTimeout(function () { try { qaAsk(secs, meta); } catch (e) { log("qa", e && e.message); } }, 2200);
+    setTimeout(function () { try { qaAsk(secs, meta); } catch (e) { LOG.warn("qa", { err: e && e.message }); } }, 2200);
   }
   function qaAsk(secs, meta) {
     var stars = 0, tags = {}, sent = false;
@@ -1599,7 +1623,7 @@
       out: c.out || "", route: c.route || "", relay: c.relayLbl || c.relayId || "", proto: c.proto || "", s: c.qaS || null, reason: reason });
     if (cur === c) cur = null;
     var tx = opts.text || (END_TEXT[reason] && L(END_TEXT[reason][0], END_TEXT[reason][1])) || (c.connectedAt ? L("انتهت المكالمة", "Call ended") + " · " + fmt(Math.max(1, Math.round((Date.now() - c.connectedAt) / 1000))) : L("انتهت المكالمة", "Call ended"));
-    log("end", c.id, reason);
+    LOG.info("end", { id: c.id, reason: reason });
     if (c.silent || reason === "declinedByMe") { hide(); return; }
     if (c.connectedAt || c.role === "caller") endTone();
     c.endText = tx; c.state = "ended";
@@ -1666,7 +1690,7 @@
       seen[g.gid] = 1;
       gJoin(g);
     }).catch(function (e) {
-      log("gcall.start", e && e.message);
+      LOG.warn("gcall.start", { err: e && e.message });
       gFinish(g, "error", { text: /not a contact/.test(String(e && e.message)) ? L("ليسوا كلّهم في جهات اتّصالك", "Not all are your contacts") : L("تعذّر بدء المكالمة", "Couldn't start the call") });
     });
     return true;
@@ -1746,7 +1770,7 @@
       if (g.approval && g.by !== me && !(n.adm && n.adm[me] === true)) { gWait(g); return; }
       gEnter(g);
     }).catch(function (e) {
-      log("gjoin", e && (e.name || e.message), e && e.message);
+      LOG.warn("gjoin", { err: e && (e.name || e.message), msg: e && e.message });
       gFinish(g, "error", { text: mediaError(e) || L("تعذّر الانضمام للمكالمة", "Couldn't join the call") });
     });
   }
@@ -1754,7 +1778,7 @@
   function gWait(g) {
     var me = myUid();
     g.state = "waiting"; gPaint(g);
-    g.ref.child("req/" + me).set({ name: myName() || "", ts: TS() }).catch(function (e) { log("req", e && e.message); });
+    g.ref.child("req/" + me).set({ name: myName() || "", ts: TS() }).catch(function (e) { LOG.warn("req", { err: e && e.message }); });
     try { g.ref.child("req/" + me).onDisconnect().remove(); } catch (e) {}
     var h = function (s) {
       var v = s.val();
@@ -1798,7 +1822,7 @@
       gListen(g, g.ref.child("allow"), "value", function (s) { g.allow = s.val() || g.allow; });
       gListen(g, g.ref.child("room"), "value", function (s) { var code = s.val(); if (code && !g.done) gMoveTo(g, code); });   // C178
     }).catch(function (e) {
-      log("genter", e && e.message);
+      LOG.warn("genter", { err: e && e.message });
       gFinish(g, "error", { text: L("تعذّر الانضمام للمكالمة", "Couldn't join the call") });
     });
   }
@@ -1839,7 +1863,7 @@
       if (g.type === "audio") meta.audioOnly = true;
       return db().ref("rooms/" + code + "/meta").set(meta).then(function () { return wcall("gcall.room", { gid: g.gid, code: code }); })
         .then(function (r) { if (r && r.room && !g.done) gMoveTo(g, r.room); });
-    }).catch(function (e) { log("gcall sfu", e && e.message); g.moving = false; g.noSfu = true; });
+    }).catch(function (e) { LOG.warn("gcall.sfu", { err: e && e.message }); g.moving = false; g.noSfu = true; });
   }
   function gMoveTo(g, code) {
     if (g.done || g.movedTo) return;
@@ -1851,7 +1875,7 @@
   function gSend(g, to, toSess, payload) {
     var o = { from: myUid(), fs: g.sess, tsn: toSess, ts: TS() };
     for (var k in payload) o[k] = payload[k];
-    return g.ref.child("sig/" + to).push(o).catch(function (e) { log("gsig", e && e.message); });
+    return g.ref.child("sig/" + to).push(o).catch(function (e) { LOG.warn("gsig", { err: e && e.message }); });
   }
   function gPeer(g, uid, sess, offerer) {
     var me = myUid();
@@ -1890,7 +1914,7 @@
     p.pc.createOffer(restart ? { iceRestart: true } : undefined)
       .then(function (o) { return p.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); })
       .then(function (o) { gSend(g, p.uid, p.sess, { t: "offer", sdp: o.sdp }); })
-      .catch(function (e) { log("goffer", e && e.message); });
+      .catch(function (e) { LOG.warn("goffer", { err: e && e.message }); });
   }
   function gFlush(p) { p.remoteSet = true; var q = p.iceIn; p.iceIn = []; q.forEach(function (c) { p.pc.addIceCandidate(c).catch(function () {}); }); }
   function onGSig(g, msg) {
@@ -1905,10 +1929,10 @@
         .then(function () { gFlush(p); return p.pc.createAnswer(); })
         .then(function (a) { return p.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); })
         .then(function (a) { gSend(g, u, p.sess, { t: "answer", sdp: a.sdp }); })
-        .catch(function (e) { log("ganswer", e && e.message); });
+        .catch(function (e) { LOG.warn("ganswer", { err: e && e.message }); });
     } else if (msg.t === "answer") {
       if (!p || p.sess !== msg.fs || p.pc.signalingState !== "have-local-offer") return;
-      p.pc.setRemoteDescription({ type: "answer", sdp: msg.sdp }).then(function () { gFlush(p); }).catch(function (e) { log("gans", e && e.message); });
+      p.pc.setRemoteDescription({ type: "answer", sdp: msg.sdp }).then(function () { gFlush(p); }).catch(function (e) { LOG.warn("gans", { err: e && e.message }); });
     } else if (msg.t === "ice") {
       if (!p || p.sess !== msg.fs || !msg.cand) return;
       if (!p.remoteSet) p.iceIn.push(msg.cand); else p.pc.addIceCandidate(msg.cand).catch(function () {});
@@ -1956,7 +1980,7 @@
           return snd ? snd.replaceTrack(nt) : null;
         }));
       })
-      .catch(function (e) { log("gswitch", e && e.message); toast(L("تعذّر تبديل الكاميرا", "Couldn't switch camera")); })
+      .catch(function (e) { LOG.warn("gswitch", { err: e && e.message }); toast(L("تعذّر تبديل الكاميرا", "Couldn't switch camera")); })
       .then(function () { g.switching = false; });
   }
   function gAdmit(uid, yes) {
@@ -1970,7 +1994,7 @@
     var n = Object.keys(g.members).length;
     if (n >= GC_MAX[g.type]) { toast(L("المكالمة ممتلئة", "The call is full")); return; }
     wcall("gcall.add", { gid: g.gid, to: [uid] }).then(function () { toast(L("جارٍ الاتّصال بـ", "Calling ") + (name || "")); })
-      .catch(function (e) { log("gadd", e && e.message); toast(L("تعذّرت الإضافة", "Couldn't add")); });
+      .catch(function (e) { LOG.warn("gadd", { err: e && e.message }); toast(L("تعذّرت الإضافة", "Couldn't add")); });
   }
   // ترقية مكالمةٍ ثنائيّة إلى جماعيّة: Worker ينشئ المكالمة ويرنّ للجديد، والطرف الآخر ينتقل تلقائيّاً
   function upgrade(c, uid, name) {
@@ -1982,7 +2006,7 @@
         c.silent = true; finish(c, "upgraded", { remote: true });
         groupJoinDirect(r.gid, r.type || c.type, r.by, "starter");
       });
-    }).catch(function (e) { c.upgrading = false; log("upgrade", e && e.message); toast(L("تعذّرت الإضافة", "Couldn't add")); });
+    }).catch(function (e) { c.upgrading = false; LOG.warn("upgrade", { err: e && e.message }); toast(L("تعذّرت الإضافة", "Couldn't add")); });
   }
 
   // ---------- النهاية ----------
@@ -2031,7 +2055,7 @@
     if (gc === g) gc = null;
     if (g.gid && (g.live || g.role !== "incoming")) telSend({ id: g.gid, k: "group-" + g.type, mode: "mesh", role: g.role, ok: !!g.joinedAt, n: Object.keys(g.met || {}).length + 1,
       setup: g.joinedAt && g.t0 ? g.joinedAt - g.t0 : null, secs: g.joinedAt ? Math.round((Date.now() - g.joinedAt) / 1000) : 0, reason: reason });   // C179
-    log("gend", g.gid, reason);
+    LOG.info("gend", { gid: g.gid, reason: reason });
     if (g.live && g.joinedAt && reason !== "moved") qaAfter(Math.round((Date.now() - g.joinedAt) / 1000), { kind: g.type === "video" ? "group-video" : "group-audio", engine: "web",
       n: Object.keys(g.met || {}).length + 1, reason: reason });
     if (reason === "declined" || reason === "moved") { gHide(); return; }
@@ -2270,7 +2294,7 @@
     if (!myUid() || schedBusy || (!force && Date.now() - schedAt < 60000)) return Promise.resolve(schedItems);
     schedBusy = true;
     return wcall("sched.list", {}).then(function (b) { schedItems = (b && b.items) || []; schedAt = Date.now(); publishSched(); return schedItems; })
-      .catch(function (e) { log("sched.list", e && e.message); return schedItems; })
+      .catch(function (e) { LOG.warn("sched.list", { err: e && e.message }); return schedItems; })
       .then(function (r) { schedBusy = false; return r; });
   }
   // entry من شاشة الجدولة: { contactName, peerUid | cid, description, timestamp, endTime, callType, requireApproval, reminderMinutes }
@@ -2285,7 +2309,7 @@
   }
   function schedRemove(id) {
     schedItems = schedItems.filter(function (x) { return x.id !== id; }); publishSched();
-    return wcall("sched.delete", { id: id }).catch(function (e) { log("sched.delete", e && e.message); schedRefresh(true); });
+    return wcall("sched.delete", { id: id }).catch(function (e) { LOG.warn("sched.delete", { err: e && e.message }); schedRefresh(true); });
   }
   function schedStart(entry) {
     if (!entry || !entry.cloud || !enabled()) return false;
@@ -2323,7 +2347,7 @@
     r.autoBig = true;
     sfuReady().then(function (on) {
       if (!on || r.done || rBig(r) || !amHost(r)) { r.autoBig = false; return; }
-      rRef(r, "meta/big").set(true).catch(function (e) { r.autoBig = false; log("auto big", e && e.message); });
+      rRef(r, "meta/big").set(true).catch(function (e) { r.autoBig = false; LOG.warn("auto.big", { err: e && e.message }); });
     });
   }
   function rCap0(r) { return rBig(r) ? SFU_MAX : ROOM_MAX; }
@@ -2399,7 +2423,7 @@
       if (!x || r.done) return;
       if (x[0].val() === true) throw Object.assign(new Error("kicked"), { ui: L("أخرجك المضيف من هذه الغرفة", "The host removed you from this room") });
       r.ice = x[2];
-      if (r.meta.owner === me && r.meta.host !== me) { r.meta.host = me; rRef(r, "meta/host").set(me).catch(function (e) { log("reclaim", e && e.message); }); }
+      if (r.meta.owner === me && r.meta.host !== me) { r.meta.host = me; rRef(r, "meta/host").set(me).catch(function (e) { LOG.warn("reclaim", { err: e && e.message }); }); }
       var host = r.meta.host === me, admitted = x[1].val() === true;
       rListen(r, rRef(r, "meta"), "value", function (s) { rOnMeta(r, s.val()); });
       rListen(r, rRef(r, "kick/" + me), "value", function (s) { if (s.val() === true && !r.done) rLeave(r, "kicked"); });
@@ -2411,7 +2435,7 @@
       r.step = "media";
       return pinStep.then(function () { return r.mediaP ? r.mediaP.then(function () { if (r.mediaErr) throw r.mediaErr; }) : (r.mediaAt = Date.now(), rMedia(r).then(function () { r.mediaOk = true; })); }).then(function () { if (!r.done) { r.step = "enter"; rEnter(r); } });
     }).catch(function (e) {
-      log("room", e && (e.name || e.message), e && e.message);
+      LOG.warn("room", { err: e && (e.name || e.message), msg: e && e.message });
       rLeave(r, "error", { text: (e && e.ui) || mediaError(e) || L("تعذّر دخول الغرفة", "Couldn't join the room") });
     });
     return true;
@@ -2420,7 +2444,7 @@
     var t1 = setTimeout(function () {
       if (r.done || r.live || r.state === "live" || r.state === "waiting") return;
       var why = rStuckWhy(r);
-      log("join stuck at", r.step, why.key, Date.now() - r.t0, "ms");
+      LOG.warn("join.stuck", { step: r.step, why: why.key, ms: Date.now() - r.t0 });
       if (why.key === "db" && dbNudge("join stuck")) { /* الهزّة قد تكفي */ }
       if (why.key === "media") { try { stopStream(r.local); } catch (e) {} r.local = null; }
       // محاولةٌ واحدة من جديد بعد الهزّة
@@ -2486,7 +2510,7 @@
   function rWait(r) {
     var me = myUid();
     r.state = "waiting"; rPaint(r);
-    rRef(r, "req/" + me).set({ name: myName() || "", ts: TS(), knock: !!r.knock }).catch(function (e) { log("req", e && e.message); rLeave(r, "error", { text: L("الغرفة مقفلة", "The room is locked") }); });
+    rRef(r, "req/" + me).set({ name: myName() || "", ts: TS(), knock: !!r.knock }).catch(function (e) { LOG.warn("room.req", { err: e && e.message }); rLeave(r, "error", { text: L("الغرفة مقفلة", "The room is locked") }); });
     try { rRef(r, "req/" + me).onDisconnect().remove(); } catch (e) {}
     rListen(r, rRef(r, "adm/" + me), "value", function (s) {
       var v = s.val();
@@ -2507,7 +2531,7 @@
       r.live = true; r.joinedAt = Date.now();
       try { rRef(r, "members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
       r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }); if (IOSB()) iosRoute.setSpeaker(true);   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
-      log("room live in", Date.now() - (r.t0 || Date.now()), "ms");
+      LOG.info("room.live", { ms: Date.now() - (r.t0 || Date.now()) });
       // C66: المضيف ينشر جلسته في meta (مقروءة قبل العضويّة) ⇒ الوافد يعرض عليه فور دخوله بلا انتظار أوّل لقطةٍ من قائمة الأعضاء (رحلةٌ كاملة أقلّ حتى يُسمع الصوت)
       if (amHost(r)) rRef(r, "meta/hsess").set(r.sess).catch(function () {});
       else if (!rBig(r) && r.meta.hsess && r.meta.host && r.meta.host !== me && !r.peers[r.meta.host]) { r.earlyHost = r.meta.host; rOffer(r, r.meta.host, r.meta.hsess); }
@@ -2526,7 +2550,7 @@
       rWatchReqs(r);
       rLevelsStart(r);
     }).catch(function (e) {
-      log("renter", e && e.message);
+      LOG.warn("renter", { err: e && e.message });
       var denied = /PERMISSION_DENIED/i.test(String(e && (e.code || e.message)));
       rLeave(r, "error", { text: denied && r.pinTried ? L("رمز الدخول غير صحيح", "Wrong PIN") : denied ? L("الغرفة مقفلة أو تحتاج موافقة المضيف", "The room is locked or needs host approval") : L("تعذّر دخول الغرفة", "Couldn't join the room") });
     });
@@ -2538,7 +2562,7 @@
     if (r.memOffs) { r.memOffs.forEach(function (f) { try { f(); } catch (e) {} }); }
     var n0 = r.offs.length;
     var me = myUid(), first = !!firstTime;
-    var cancel = function () { if (r.done || !r.live) return; log("members listener cancelled → rejoin"); rRejoin(r); };
+    var cancel = function () { if (r.done || !r.live) return; LOG.warn("members.cancelled.rejoin"); rRejoin(r); };
     rListen(r, rRef(r, "members"), "value", function (x) {
       var mm = x.val() || {};
       if (first && Object.keys(mm).length > rMax(r)) { rLeave(r, "full", { text: L("الغرفة ممتلئة (الحدّ " + rMax(r) + ")", "The room is full (limit " + rMax(r) + ")") }); return; }   // C66
@@ -2598,7 +2622,7 @@
           try { rRef(r, "members/" + me).onDisconnect().remove(); rRef(r, "sig/" + me).onDisconnect().remove(); } catch (e) {}
           r.state = "live"; r.rejoining = false; r.softRejoins = (r.softRejoins || 0) + 1; rPaint(r);
           rWatchMembership(r, false);
-          log("soft rejoin (media alive)");
+          LOG.info("rejoin.soft");
         });
       }
       Object.keys(r.peers).forEach(function (u) { rDrop(r, u); });
@@ -2616,7 +2640,7 @@
         else Object.keys(r.members).forEach(function (u) { if (u !== me && r.members[u] && r.members[u].sess) rOffer(r, u, r.members[u].sess); });
       });
     }).catch(function (e) {
-      log("rejoin", e && e.message); r.rejoining = false;
+      LOG.warn("rejoin", { err: e && e.message }); r.rejoining = false;
       if (!r.done) { r.rejoinFails = (r.rejoinFails || 0) + 1; if (r.rejoinFails >= 4) rLeave(r, "error", { text: L("انقطع الاتّصال بالغرفة", "Lost connection to the room") }); else r.timers.rj = setTimeout(function () { delete r.timers.rj; rRejoin(r); }, 2500); }
     });
   }
@@ -2660,7 +2684,7 @@
       delete r.timers.claim;
       if (r.done || r.members[r.meta.host]) return;
       var oldest = Object.keys(r.members).sort(function (a, b) { return (r.members[a].ts || 0) - (r.members[b].ts || 0); })[0];
-      if (oldest === me) rRef(r, "meta/host").set(me).catch(function (e) { log("claim", e && e.message); });
+      if (oldest === me) rRef(r, "meta/host").set(me).catch(function (e) { LOG.warn("claim", { err: e && e.message }); });
     }, HOST_GRACE);
     rAutoBig(r);   // C178
     if (rBig(r)) sfuSync(r);
@@ -2696,7 +2720,7 @@
       if (s.state === "connected") { clearTimeout(s.lost); s.lost = null; s.restarts = 0; }
       else if ((s.state === "disconnected" || s.state === "failed") && !s.lost) s.lost = setTimeout(function () {
         s.lost = null; if (r.sfu !== s || r.done || pc.connectionState === "connected") return;
-        log("sfu: transport lost → new session"); sfuRestart(r);
+        LOG.warn("sfu.transport.lost"); sfuRestart(r);
       }, s.state === "failed" ? 500 : 5000);
       sfuPeers(r);
     };
@@ -2720,7 +2744,7 @@
         sfuSync(r);
       });
     }).catch(function (e) {
-      log("sfu start", e && e.message);
+      LOG.warn("sfu.start", { err: e && e.message });
       if (r.sfu !== s || r.done) return;
       var m = String(e && e.message || "");
       if (/not_configured|sfu_off/.test(m)) { toast(L("الغرف الكبيرة غير مفعّلة على الخادم بعد", "Large rooms aren't enabled on the server yet")); return; }
@@ -2792,7 +2816,7 @@
         if (p && p.sfu && x.track) { p.stream = new global.MediaStream(p.stream.getTracks().filter(function (t) { return t !== x.track; })); rTile(r, x.uid); }
       });
       if (!mids.length) return;
-      return wcall("sfu.close", { room: r.code, sid: s.sid, mids: mids }).then(function (b) { return sfuApplyOffer(r, s, b); }).catch(function (e) { log("sfu close", e && e.message); });
+      return wcall("sfu.close", { room: r.code, sid: s.sid, mids: mids }).then(function (b) { return sfuApplyOffer(r, s, b); }).catch(function (e) { LOG.warn("sfu.close", { err: e && e.message }); });
     });
     if (toPull.length) step = step.then(function () {
       if (r.sfu !== s) return;
@@ -2810,7 +2834,7 @@
         return sfuApplyOffer(r, s, b);
       });
     });
-    step.catch(function (e) { log("sfu sync", e && e.message); toPull.forEach(function (k) { if (!s.pulled[k]) s.fails[k] = (s.fails[k] || 0) + 1; }); })
+    step.catch(function (e) { LOG.warn("sfu.sync", { err: e && e.message }); toPull.forEach(function (k) { if (!s.pulled[k]) s.fails[k] = (s.fails[k] || 0) + 1; }); })
       .then(function () {
         s.busy = false; if (r.sfu !== s) return;
         sfuPeers(r);
@@ -2849,7 +2873,7 @@
       .then(function () { return wcall("sfu.push", { room: r.code, sid: s.sid, sdp: pc.localDescription.sdp, tracks: [{ mid: s.vtx.mid, trackName: s.vName }] }); })
       .then(function (b) { if (r.sfu !== s) return; return pc.setRemoteDescription({ type: "answer", sdp: b.sdp }); })
       .then(function () { if (r.sfu !== s) return; rMember(r, { sfu: { s: s.sid, a: s.aName, v: s.vName, sc: s.sc ? 1 : null } }); rCap(r); })
-      .catch(function (e) { log("sfu cam", e && e.message); s.vtx = null; })
+      .catch(function (e) { LOG.warn("sfu.cam", { err: e && e.message }); s.vtx = null; })
       .then(function () { s.vpush = false; s.busy = false; s.again = false; if (r.sfu === s) { sfuCam(r); sfuSync(r); } });
   }
   // جودة شبكتي في الغرفة الكبيرة: RTT للاتّصال الوحيد + فقد الحزم الواردة
@@ -2902,7 +2926,7 @@
   function rSend(r, to, toSess, payload) {
     var o = { from: myUid(), fs: r.sess, tsn: toSess, ts: TS() };
     for (var k in payload) o[k] = payload[k];
-    return rRef(r, "sig/" + to).push(o).catch(function (e) { log("rsig", e && e.message); });
+    return rRef(r, "sig/" + to).push(o).catch(function (e) { LOG.warn("rsig", { err: e && e.message }); });
   }
   function rSenders(r, p) {
     try {
@@ -2949,7 +2973,7 @@
     p.pc.createOffer(restart ? { iceRestart: true } : undefined)
       .then(function (o) { return p.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); })
       .then(function (o) { rSend(r, p.uid, p.sess, { t: "offer", sdp: o.sdp, pid: p.pid }); })
-      .catch(function (e) { log("roffer", e && e.message); });
+      .catch(function (e) { LOG.warn("roffer", { err: e && e.message }); });
   }
   function onRSig(r, msg) {
     if (r.done || msg.tsn !== r.sess || !msg.from) return;
@@ -2972,10 +2996,10 @@
         return p.pc.createAnswer();
       }).then(function (a) { return p.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); })
         .then(function (a) { rSend(r, u, p.sess, { t: "answer", sdp: a.sdp }); })
-        .catch(function (e) { log("ranswer", e && e.message); });
+        .catch(function (e) { LOG.warn("ranswer", { err: e && e.message }); });
     } else if (msg.t === "answer") {
       if (!p || p.sess !== msg.fs || p.pc.signalingState !== "have-local-offer") return;
-      p.pc.setRemoteDescription({ type: "answer", sdp: msg.sdp }).then(function () { gFlush(p); }).catch(function (e) { log("rans", e && e.message); });
+      p.pc.setRemoteDescription({ type: "answer", sdp: msg.sdp }).then(function () { gFlush(p); }).catch(function (e) { LOG.warn("rans", { err: e && e.message }); });
     } else if (msg.t === "ice") {
       if (!p || p.sess !== msg.fs) return;
       var cands = msg.cands || (msg.cand ? [msg.cand] : []);   // C66: دفعةٌ أو مرشّحٌ واحد
@@ -3056,7 +3080,7 @@
       var src = ctx.createMediaStreamSource(new global.MediaStream([tr])), an = ctx.createAnalyser();
       an.fftSize = 512; src.connect(an);
       p.an = { src: src, an: an, buf: new Uint8Array(an.fftSize) };
-    } catch (e) { log("level", e && e.message); }
+    } catch (e) { LOG.warn("level", { err: e && e.message }); }
   }
   function rLevelsStart(r) {
     if (r.local) rLevelWatch(r, "__me", r.local);
@@ -3073,7 +3097,7 @@
   }
 
   // ---------- أفعالي ----------
-  function rMember(r, patch) { if (!r.live) return; rRef(r, "members/" + myUid()).update(patch).catch(function (e) { log("rmember", e && e.message); }); }
+  function rMember(r, patch) { if (!r.live) return; rRef(r, "members/" + myUid()).update(patch).catch(function (e) { LOG.warn("rmember", { err: e && e.message }); }); }
   function rToggleMic(r) { r = r || rm; if (!r || !r.local) return; r.mic = !r.mic; r.local.getAudioTracks().forEach(function (t) { t.enabled = r.mic; }); if (r.mic) r.askUnmute = false; rMember(r, { mic: r.mic }); rTile(r, "__me"); rPaint(r); }
   // ---------- C115: مشاركة الشاشة في الغرفة ----------
   // خطوتان حتّى لا تُضغط خطأً: «المزيد ← مشاركة الشاشة» ثمّ نافذة تأكيد تشرح أنّ الشاشة كلّها ستظهر. أثناء المشاركة شريطٌ أحمر ثابت «إيقاف».
@@ -3112,7 +3136,7 @@
           }
           if (st.canvas.width !== bmp.width || st.canvas.height !== bmp.height) { st.canvas.width = bmp.width; st.canvas.height = bmp.height; }
           st.ctx.drawImage(bmp, 0, 0); bmp.close();
-        }).catch(function (e) { log("scr frame", e && e.message); }).then(function () { st.busy = false; st.n++; });
+        }).catch(function (e) { LOG.warn("scr.frame", { err: e && e.message }); }).then(function () { st.busy = false; st.n++; });
       };
       try { NB().screenStart(); } catch (e) { clearTimeout(to); nscrEnd(); rej(e); }
     });
@@ -3147,7 +3171,7 @@
       // C121: اتّصالٌ بلا مسار شاشة (بدأ قبل التحديث) والطرف محدَّث ⇒ نضيف المسار ونعيد التفاوض
       if (!viaCam) Object.keys(r.peers).forEach(function (u) {
         var p = r.peers[u];
-        if (p && p.pc && !p.sct && peerV(r, u) >= 120) { try { p.sct = p.pc.addTransceiver("video", { direction: "sendrecv" }); rNegotiate(r, p, false); } catch (e) { log("sct add", e && e.message); } }
+        if (p && p.pc && !p.sct && peerV(r, u) >= 120) { try { p.sct = p.pc.addTransceiver("video", { direction: "sendrecv" }); rNegotiate(r, p, false); } catch (e) { LOG.warn("sct.add", { err: e && e.message }); } }
       });
       Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); });
       if (viaCam) sfuCam(r);
@@ -3252,7 +3276,7 @@
     r = r || rm; text = String(text || "").trim(); if (!r || !r.live || !text) return;
     var o = { from: myUid(), name: myName() || "", text: text.slice(0, 1000), ts: TS() };
     if (kind && NOTE[kind]) o.kind = kind;
-    rRef(r, "chat").push(o).catch(function (e) { log("rchat", e && e.message); toast(L("تعذّر الإرسال", "Couldn't send")); });
+    rRef(r, "chat").push(o).catch(function (e) { LOG.warn("rchat", { err: e && e.message }); toast(L("تعذّر الإرسال", "Couldn't send")); });
   }
   function onRChat(r, id, v) {
     if (r.chat.some(function (x) { return x.id === id; })) return;
@@ -3277,9 +3301,9 @@
   function rMuteAll() { rHost(null, function (r) { Object.keys(r.members).forEach(function (u) { if (u !== myUid() && r.members[u].mic !== false) rCtl(u, "mute"); }); toast(L("كُتم الجميع", "Everyone muted")); }); }
   function rLowerAll() { rHost(null, function (r) { Object.keys(r.members).forEach(function (u) { if (r.members[u].hand) { if (u === myUid()) rToggleHand(r); else rCtl(u, "lower"); } }); }); }
   function rAdmit(uid, yes) { rHost(null, function (r) { rRef(r, "adm/" + uid).set(!!yes).catch(function () {}); rRef(r, "req/" + uid).remove().catch(function () {}); }); }
-  function rRemove(uid) { rHost(null, function (r) { (r.kicked = r.kicked || {})[uid] = 1; rRef(r, "kick/" + uid).set(true).then(function () { return rRef(r, "members/" + uid).remove(); }).catch(function (e) { log("kick", e && e.message); }); toast(L("أُزيل ", "Removed ") + rName(r, uid)); }); }
+  function rRemove(uid) { rHost(null, function (r) { (r.kicked = r.kicked || {})[uid] = 1; rRef(r, "kick/" + uid).set(true).then(function () { return rRef(r, "members/" + uid).remove(); }).catch(function (e) { LOG.warn("kick", { err: e && e.message }); }); toast(L("أُزيل ", "Removed ") + rName(r, uid)); }); }
   function rMakeHost(uid) { rHost(null, function (r) { rRef(r, "meta/host").set(uid).catch(function () {}); toast(L("انتقلت الاستضافة إلى ", "Host is now ") + rName(r, uid)); }); }
-  function rSetMeta(k, v) { rHost(null, function (r) { rRef(r, "meta/" + k).set(v).catch(function (e) { log("meta", e && e.message); }); }); }
+  function rSetMeta(k, v) { rHost(null, function (r) { rRef(r, "meta/" + k).set(v).catch(function (e) { LOG.warn("meta", { err: e && e.message }); }); }); }
   function rEndAll() { rHost(null, function (r) { rRef(r, "meta/ended").set(true).catch(function () {}); }); }
 
   // ---------- المغادرة ----------
@@ -3344,7 +3368,7 @@
       time: L("الآن", "Now"), duration: r.joinedAt ? fmt(Math.max(1, Math.round((Date.now() - r.joinedAt) / 1000))) : null, timestamp: Date.now(),
       participants: Object.keys(r.met).map(function (u) { return r.met[u]; }), cloud: true, room: r.code });
     if (rm === r) rm = null;
-    log("rend", r.code, reason);
+    LOG.info("rend", { code: r.code, reason: reason });
     // C119: «الرجوع إلى الغرفة» بعد مغادرتها (حتى لا تضيع) — لا بعد انتهائها أو الإخراج
     if (r.live && reason === "left") lastRoomSet({ code: r.code, title: r.title || "", at: Date.now() });
     else if (reason === "ended" || reason === "kicked" || reason === "denied" || (reason === "error" && lastRoom() && lastRoom().code === r.code)) lastRoomSet(null);
@@ -3369,8 +3393,8 @@
       rRef(r, "members/" + me0).once("value").then(function (x) {
         clearTimeout(tm); r.probing = false;
         if (r.done || !r.live || r.state !== "reconnecting" || r.rejoining) return;
-        if (x.val()) { r.state = "live"; rPaint(r); log("probe: db back, membership intact → live"); }
-        else { log("probe: membership gone → rejoin"); rRejoin(r); }
+        if (x.val()) { r.state = "live"; rPaint(r); LOG.info("probe.intact"); }
+        else { LOG.warn("probe.gone.rejoin"); rRejoin(r); }
       }).catch(function () { clearTimeout(tm); r.probing = false; });
     }
     // C65: دخلنا الغرفة بلا TURN (طلب الخوادم تجاوز ٦ ثوانٍ على شبكةٍ بطيئة فاكتفينا بـSTUN) ⇒ نطلبه في الخلفيّة ونرقّي الاتّصالات القائمة
@@ -3379,7 +3403,7 @@
       wcall("rtc.ice", {}).then(function (b) {
         var l = b && Array.isArray(b.iceServers) ? b.iceServers : null;
         if (!l || !hasTurn(l) || r.done) return;
-        iceCache = l; iceAt = Date.now(); r.ice = l; log("room: TURN arrived late → upgrading links");
+        iceCache = l; iceAt = Date.now(); r.ice = l; LOG.info("turn.late.upgrade");
         Object.keys(r.peers).forEach(function (u) { var p = r.peers[u]; if (!p.pc) return; try { p.pc.setConfiguration({ iceServers: l }); } catch (e) {} if (p.state !== "connected" && p.offerer) rNegotiate(r, p, true); });
       }).catch(function () {}).then(function () { r.iceBusy = false; });
     }
@@ -3392,13 +3416,13 @@
         var p = r.peers[u];
         if (!p) {
           if (!r.noPeer[u]) { r.noPeer[u] = nowT; return; }
-          if (nowT - r.noPeer[u] >= 8000 && !r.timers["o" + u]) { r.noPeer[u] = nowT; log("watchdog: no peer for", u, "→ offer"); r.retries = (r.retries || 0) + 1; rOffer(r, u, m.sess); }
+          if (nowT - r.noPeer[u] >= 8000 && !r.timers["o" + u]) { r.noPeer[u] = nowT; LOG.warn("watchdog.nopeer", { u: u }); r.retries = (r.retries || 0) + 1; rOffer(r, u, m.sess); }
           return;
         }
         delete r.noPeer[u];
         if (p.state === "connected" || p.sess !== m.sess) return;
         var age = nowT - (p.t0 || nowT);
-        if (age > 25000 && !p.wdAt) { p.wdAt = nowT; log("watchdog: stuck", p.state, "with", u); r.retries = (r.retries || 0) + 1; if (p.offerer) rNegotiate(r, p, true); else { rDrop(r, u); rOffer(r, u, m.sess); } }
+        if (age > 25000 && !p.wdAt) { p.wdAt = nowT; LOG.warn("watchdog.stuck", { state: p.state, u: u }); r.retries = (r.retries || 0) + 1; if (p.offerer) rNegotiate(r, p, true); else { rDrop(r, u); rOffer(r, u, m.sess); } }
         else if (p.wdAt && nowT - p.wdAt > 25000) { p.wdAt = 0; p.t0 = nowT; }
       });
     }
@@ -3575,7 +3599,7 @@
       mini.kind = null; return;
     }
     miniBuild(); mini.kind = kind;
-    var src = {}; try { src = miniSource(kind) || {}; } catch (e) { log("mini", e && e.message); }
+    var src = {}; try { src = miniSource(kind) || {}; } catch (e) { LOG.warn("mini", { err: e && e.message }); }
     if (src.s) {
       if (mini.v.srcObject !== src.s) { mini.v.srcObject = src.s; try { mini.v.play().catch(function () {}); } catch (e) {} }
       mini.v.style.objectFit = src.fit || "cover"; mini.v.style.display = "block"; mini.av.style.display = "none";
@@ -3708,7 +3732,7 @@
         p.camWait = null;
         if (r.done || r.peers[uid] !== p) return;
         var still = !p.stream.getVideoTracks().some(function (x) { return x.readyState === "live" && !x.muted; });
-        if (still && r.members[uid] && r.members[uid].cam) { p.camRetried = true; log("cam: no frames from", uid, "→ renegotiate"); if (p.sfu) sfuRepull(r, uid, "v"); else rNegotiate(r, p, true); rTile(r, uid); }
+        if (still && r.members[uid] && r.members[uid].cam) { p.camRetried = true; LOG.warn("cam.noframes", { uid: uid }); if (p.sfu) sfuRepull(r, uid, "v"); else rNegotiate(r, p, true); rTile(r, uid); }
       }, 8000);
       if (!wantV || showV) { clearTimeout(p.camWait); p.camWait = null; if (!m.cam) p.camRetried = false; }
     }
@@ -3962,7 +3986,7 @@
     if (rBig(r)) {
       var n = Object.keys(r.members).length;
       if (n > ROOM_MAX) { toast(L("في الغرفة " + n + " — الغرفة العاديّة تحتمل " + ROOM_MAX + " فقط", n + " here — a regular room holds " + ROOM_MAX)); return; }
-      rRef(r, "meta").update({ big: null, max: null, noAuto: true }).catch(function (e) { log("big off", e && e.message); });   // C178: لا يعيدها التلقائيّ
+      rRef(r, "meta").update({ big: null, max: null, noAuto: true }).catch(function (e) { LOG.warn("big.off", { err: e && e.message }); });   // C178: لا يعيدها التلقائيّ
       return;
     }
     wcall("sfu.cfg", {}).then(function (b) {
@@ -3993,7 +4017,7 @@
       go.onclick = function () {
         var v = String(inp.value || "").replace(/\D/g, "");
         if (v.length < 4 || v.length > 6) { toast(L("الرمز ٤ إلى ٦ أرقام", "PIN is 4–6 digits")); return; }
-        rRef(r, "pin").set(v).then(function () { return rRef(r, "meta/pinOn").set(true); }).then(function () { toast(L("فُعّل رمز الدخول: ", "PIN set: ") + v); close(); }).catch(function (e) { log("pin", e && e.message); toast(L("تعذّر حفظ الرمز", "Couldn't save PIN")); });
+        rRef(r, "pin").set(v).then(function () { return rRef(r, "meta/pinOn").set(true); }).then(function () { toast(L("فُعّل رمز الدخول: ", "PIN set: ") + v); close(); }).catch(function (e) { LOG.warn("pin", { err: e && e.message }); toast(L("تعذّر حفظ الرمز", "Couldn't save PIN")); });
       };
       body.appendChild(go);
       if (r.meta.pinOn) item(body, "🗑", L("إزالة الرمز", "Remove PIN"), function () { rRef(r, "pin").remove().then(function () { return rRef(r, "meta/pinOn").set(null); }).then(function () { toast(L("أُزيل رمز الدخول", "PIN removed")); }).catch(function () {}); close(); }, true);
@@ -4129,7 +4153,7 @@
         if (pr.thumb) file.thumb = pr.thumb;
         return rRef(r, "chat").push({ from: me, name: myName() || "", text: ("📎 " + up.name).slice(0, 1000), file: file, ts: TS() });
       }).then(function () { r.ups = (r.ups || []).filter(function (x) { return x !== up; }); rPaintChat(r); });
-    }).catch(function (e) { log("rfile", e && e.message); fail(L("تعذّر الرفع", "upload failed")); });
+    }).catch(function (e) { LOG.warn("rfile", { err: e && e.message }); fail(L("تعذّر الرفع", "upload failed")); });
   }
   function rFileGet(r, f) {
     if (rFileCache[f.fid]) return Promise.resolve(rFileCache[f.fid]);
@@ -4365,7 +4389,7 @@
         st.textContent = L("✓ أُضيفت إلى مواعيدك — سيصلك تذكير قبلها", "✓ Added to your schedule — you'll get a reminder");
         st.style.color = "#059669";
       } else st.textContent = b && b.reason === "full" ? L("اكتمل عدد المدعوّين", "Invite list is full") : "";
-    }).catch(function (e) { st.textContent = L("تعذّرت الإضافة إلى مواعيدك", "Couldn't add to your schedule"); log("sched.join", e && e.message); });
+    }).catch(function (e) { st.textContent = L("تعذّرت الإضافة إلى مواعيدك", "Couldn't add to your schedule"); LOG.warn("sched.join", { err: e && e.message }); });
   }
   function schedText(o) {
     return "📅 " + L("دعوة إلى غرفة سوا", "Invite to a Sawa room") + (o.title ? " «" + o.title + "»" : "") + "\n" +
@@ -4468,7 +4492,7 @@
   function dbNudge(why) {
     var d = db(); if (!d) return false;
     if (Date.now() - nudgeAt < 8000) return false;
-    nudgeAt = Date.now(); log("db nudge:", why);
+    nudgeAt = Date.now(); LOG.info("db.nudge", { why: why });
     try { d.goOffline(); } catch (e) {}
     try { setTimeout(function () { try { d.goOnline(); } catch (e) {} }, 300); } catch (e) {}
     return true;

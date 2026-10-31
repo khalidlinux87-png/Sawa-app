@@ -29,7 +29,7 @@
        "walletTransactions","dismissedReminders"].forEach(function(k) {
         localStorage.removeItem(k);
       });
-      console.log("Demo data cleared");
+      try { window.SawaLog.make("sawa-core").info("demo.cleared"); } catch (x) { }
     }
   } catch(e) {}
 })();

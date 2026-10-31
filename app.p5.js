@@ -487,7 +487,7 @@ function FamLinkSheet({ person, onClose }) {
         p0.then((b) => {
             if (b && b.found === false) { setErr(key === "phone" ? tl("لم يعد الرقم مطابقاً لحسابٍ موثَّق", "The number no longer matches a verified account") : tl("لا حساب بهذا الرمز (أو أخفى صاحبه رمزه)", "No account with this code (or it's hidden)")); return; }
             setSentTo((b && b.name) || label || "");
-        }).catch((e) => { const m = (e && e.message) || String(e); try { console.log("[famlink]", m); } catch (x) { } setErr(errText(m)); }).then(() => { setBusy(false); setPending(null); });
+        }).catch((e) => { const m = (e && e.message) || String(e); try { window.SawaLog.make("app").warn("famlink.fail", { err: m }); } catch (x) { } setErr(errText(m)); }).then(() => { setBusy(false); setPending(null); });
     };
     const box = { backgroundColor: colors.bg, border: `1px solid ${colors.border}`, color: colors.text };
     return React.createElement(FamSheet, { title: person.acctUid ? tl("حسابٌ جديد لـ«" + person.local_name + "»", "New account for «" + person.local_name + "»") : tl("ربط «" + person.local_name + "» بحساب سوا", "Link «" + person.local_name + "» to a Sawa account"), onClose, z: 45 },

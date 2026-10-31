@@ -162,7 +162,7 @@ function savePersisted(key, value) {
         // التخزين ممتلئ أو محظور — لا ننهار، لكن لا نصمت أيضاً
         if (!storageWarned) {
             storageWarned = true;
-            console.warn("سوا: تعذّر حفظ «" + key + "» — التخزين ممتلئ أو محظور.", e);
+            try { window.SawaLog.make("app").warn("storage.save.fail", { key: key, err: e && (e.name || e.message) }); } catch (x) { console.warn("سوا: تعذّر حفظ «" + key + "» — التخزين ممتلئ أو محظور.", e); }
             try {
                 window.dispatchEvent(new CustomEvent("sawa:storage-full", { detail: { key } }));
             }
@@ -208,7 +208,7 @@ class ErrorBoundary extends React.Component {
         return { error };
     }
     componentDidCatch(error, info) {
-        console.error("خطأ في سوا:", error, info === null || info === void 0 ? void 0 : info.componentStack);
+        try { window.SawaLog.make("app").error("render.crash", { err: error && (error.message || String(error)), stack: info === null || info === void 0 ? void 0 : info.componentStack }); } catch (x) { console.error("خطأ في سوا:", error, info === null || info === void 0 ? void 0 : info.componentStack); }
     }
     render() {
         var _a;

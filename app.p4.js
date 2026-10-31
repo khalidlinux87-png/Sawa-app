@@ -455,7 +455,7 @@ function MemberPersonPicker({ groupId, member, persons, onClose }) {
         setErr(""); setBusy(p.id);
         famLinkCall(groupId, { personId: p.id, uid: member.userId })
             .then(() => setSent(p.local_name))
-            .catch((e) => { const m = (e && e.message) || String(e); try { console.log("[famlink]", m); } catch (x) { } setErr(famLinkErr(m)); })
+            .catch((e) => { const m = (e && e.message) || String(e); try { window.SawaLog.make("app").warn("famlink.fail", { err: m }); } catch (x) { } setErr(famLinkErr(m)); })
             .then(() => setBusy(null));
     };
     const box = { backgroundColor: colors.bg, border: `1px solid ${colors.border}`, color: colors.text };

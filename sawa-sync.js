@@ -43,11 +43,31 @@
   var readyResolvers = [];
 
   // ---------- أدوات ----------
-  function log() {
-    if (global.console && console.log) {
-      try { console.log.apply(console, ["[sawa-sync]"].concat([].slice.call(arguments))); } catch (e) {}
+  // C197: السجلّ المنظَّم المشترك (SawaLog) — أوّل وحدة تُحمَّل تعرّفه والبقيّة تستعمله.
+  //   LOG.info/warn/error/debug(event, { fields }) · آخر ٣٠٠ حدث في SawaLog.recent(n) · الحدّ الأدنى للعرض: localStorage "sawa-log" (debug|info|warn|error).
+  var SawaLog = global.SawaLog || (global.SawaLog = (function () {
+    var LV = { debug: 10, info: 20, warn: 30, error: 40 }, buf = [], MAX = 300;
+    function minLv() { try { return LV[localStorage.getItem("sawa-log")] || LV.info; } catch (e) { return LV.info; } }
+    function val(v) { return v instanceof Error ? (v.message || String(v)) : v; }
+    function emit(mod, lvl, ev, f) {
+      var r = { ts: Date.now(), lvl: lvl, mod: mod, ev: String(ev) }, has = false;
+      if (f) for (var k in f) if (Object.prototype.hasOwnProperty.call(f, k) && f[k] !== undefined && k !== "ts" && k !== "lvl" && k !== "mod" && k !== "ev") { r[k] = val(f[k]); has = true; }
+      buf.push(r); if (buf.length > MAX) buf.shift();
+      if (LV[lvl] < minLv()) return r;
+      try {
+        var c = global.console; if (!c) return r;
+        var fn = (lvl === "debug" ? c.debug : c[lvl]) || c.log, tag = "[" + mod + "] " + r.ev;
+        if (has) { var o = {}; for (var j in r) if (j !== "ts" && j !== "lvl" && j !== "mod" && j !== "ev") o[j] = r[j]; fn.call(c, tag, o); } else fn.call(c, tag);
+      } catch (e) {}
+      return r;
     }
-  }
+    function make(mod) {
+      return { debug: function (ev, f) { return emit(mod, "debug", ev, f); }, info: function (ev, f) { return emit(mod, "info", ev, f); },
+               warn: function (ev, f) { return emit(mod, "warn", ev, f); }, error: function (ev, f) { return emit(mod, "error", ev, f); } };
+    }
+    return { make: make, recent: function (n) { return buf.slice(-(n || 50)); }, levels: LV };
+  })());
+  var LOG = SawaLog.make("sawa-sync");
   function lsGet(k, fb) { try { var r = localStorage.getItem(k); return r == null ? fb : JSON.parse(r); } catch (e) { return fb; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   function lsRead(key, fb) { return lsGet("sawa:" + key, fb); } // مخازن التطبيق (البادئة sawa:)
@@ -94,7 +114,7 @@
                   state.error = (e && e.message) || "تعذّر الدخول المجهول";
                   paintBadge(); if (tries === 0) resolve(null);
                   var wait = Math.min(60000, 4000 * Math.pow(2, Math.min(tries, 4))); tries++;
-                  log("anon sign-in failed, retry in", wait, "ms:", state.error);
+                  LOG.warn("anon.signin.fail", { retryMs: wait, err: state.error });
                   if (!anonTimer) anonTimer = setTimeout(function () { if (!auth.currentUser) tryAnon(); }, wait);
                 });
               };
@@ -116,7 +136,7 @@
         onReady(resolve);
       } catch (e) {
         state.error = (e && e.message) || String(e); state.ready = false;
-        paintBadge(); log("connect فشل:", state.error); resolve(null);
+        paintBadge(); LOG.warn("connect.fail", { err: state.error }); resolve(null);
       }
     });
   }
@@ -197,7 +217,7 @@
       if (!b || b.ok === false) {
         var f = lsGet(FAILED, []); f.push({ op: item.op, error: b && b.error, ts: Date.now(), payload: item.payload });
         lsSet(FAILED, f.slice(-20));
-        log("رُفض:", item.op, b && b.error);
+        LOG.warn("op.rejected", { op: item.op, err: b && b.error });
         state.lastAck = "✗ " + item.op;
       } else {
         state.lastAck = "✓ " + item.op;
@@ -206,7 +226,7 @@
       }
       state.sending = false; paintBadge(); drain();
     }).catch(function (e) {
-      log("شبكة — إعادة لاحقاً:", (e && e.message) || e);
+      LOG.warn("net.retry", { err: (e && e.message) || e });
       later(15000, String((e && e.message) || e).slice(0, 30));
     });
   }
@@ -375,7 +395,7 @@
       var base = firebase.firestore().collection("groups").doc(sg);
       var onErr = function (e) {
         w.err = (e && e.code) || "err"; w.note = "listen✗ " + w.err;
-        log("القراءة مرفوضة:", sg, w.err); paintBadge();
+        LOG.warn("read.denied", { sg: sg, err: w.err }); paintBadge();
         // C33: المستمع يموت بعد الخطأ (Firestore لا يعيده) ⇒ نعيده بعد ٣٠ ثانية (عودة صلاحيّة، أو عطلٌ عابر)
         if (!w.retryT) w.retryT = setTimeout(function () { if (watchers[sg] === w) { stopWatch(sg); rewatch(); } }, 30000);
       };
@@ -406,7 +426,7 @@
         applyPendingRemote();
       }, onErr);
       // الأعضاء وإعدادات العائلة: خطؤهما لا يعطّل مزامنة الشجرة
-      var softErr = function (what) { return function (e) { log("قراءة " + what + " مرفوضة:", sg, (e && e.code) || e); }; };
+      var softErr = function (what) { return function (e) { LOG.warn("read.denied", { what: what, sg: sg, err: (e && e.code) || e }); }; };
       var offM = base.collection("members").onSnapshot(function (snap) {
         if (watchers[sg] !== w) return;
         var arr = []; snap.forEach(function (d) { var x = d.data() || {};
@@ -470,7 +490,7 @@
     var ids = []; for (var sg in watchers) if (!helloDone[state.uid + ":" + sg]) ids.push(sg);
     if (!ids.length) return;
     ids.forEach(function (sg) { helloDone[state.uid + ":" + sg] = 1; });
-    call("member.hello", { groupIds: ids }).catch(function (e) { log("member.hello:", (e && e.message) || e); });
+    call("member.hello", { groupIds: ids }).catch(function (e) { LOG.warn("member.hello", { err: (e && e.message) || e }); });
   }
   function memberAction(lg, op, payload, okMsg) {
     var sg = serverGid(lg);
@@ -595,13 +615,13 @@
     var squeeze = job.data ? Promise.race([compressImpl(job.data), new Promise(function (r) { tmo = setTimeout(function () { state.photoWhy = "timeout"; r(null); }, 15000); })]) : Promise.resolve(null);
     squeeze = squeeze.then(function (v) { if (tmo) clearTimeout(tmo); return v; });
     squeeze.then(function (small) {
-      if (job.data && !small) { photoQueue.shift(); markPhotoFailed(job.sg, job.pid, job.data); state.photoNote = "ph✗" + (state.photoWhy || "img"); log("تعذّر تصغير الصورة:", state.photoWhy); return; }       // ليست صورة صالحة/كبيرة جداً: تُترك محلّية
+      if (job.data && !small) { photoQueue.shift(); markPhotoFailed(job.sg, job.pid, job.data); state.photoNote = "ph✗" + (state.photoWhy || "img"); LOG.warn("photo.shrink.fail", { err: state.photoWhy }); return; }       // ليست صورة صالحة/كبيرة جداً: تُترك محلّية
       state.photoNote = "ph↑" + (small ? Math.round(small.length / 1024) + "k" : "del");
       return sendOnce("photo.set", { groupId: job.sg, personId: job.pid, data: small }).then(function (b) {
         photoQueue.shift();
         if (b && b.ok !== false) { var s = photoStateFor(job.sg)[job.pid] || (photoStateFor(job.sg)[job.pid] = {}); s.r = psig(small); savePhotoState(); state.lastAck = "✓ photo"; state.photoNote = "ph✓"; state.lastPhotoAt = Date.now(); }
         else {
-          state.lastAck = "✗ photo"; state.photoNote = "ph✗"; log("photo.set رُفض:", b && b.error); markPhotoFailed(job.sg, job.pid, job.data);
+          state.lastAck = "✗ photo"; state.photoNote = "ph✗"; LOG.warn("photo.set.rejected", { err: b && b.error }); markPhotoFailed(job.sg, job.pid, job.data);
           var f = lsGet(FAILED, []); f.push({ op: "photo.set", error: b && b.error, ts: Date.now() }); lsSet(FAILED, f.slice(-20));
         }
       });
@@ -792,7 +812,7 @@
       if (i >= lgs.length) {
         state.contactNote = "ct " + clock() + (total ? " +" + total : ""); paintBadge();
         var jobs = schedQueue; schedQueue = [];
-        jobs.reduce(function (pr, j) { return pr.then(function () { return schedOne(j[0], j[1]).catch(function (e) { log("schedules.sync:", (e && e.message) || e); }); }); }, Promise.resolve())
+        jobs.reduce(function (pr, j) { return pr.then(function () { return schedOne(j[0], j[1]).catch(function (e) { LOG.warn("schedules.sync", { err: (e && e.message) || e }); }); }); }, Promise.resolve())
           .then(function () { contactBusy = false; if (contactAgain) { contactAgain = false; scheduleContactSync(500); } });
         return;
       }
@@ -812,7 +832,7 @@
             return o;
           });
         }
-      }).catch(function (e) { state.contactNote = "ct✗"; log("contacts.sync:", (e && e.message) || e); })
+      }).catch(function (e) { state.contactNote = "ct✗"; LOG.warn("contacts.sync", { err: (e && e.message) || e }); })
         .then(function () { next(i + 1); });
     };
     next(0);
@@ -1374,7 +1394,7 @@
           });
         }).catch(function (e) {
           var m = (e && e.message) || "";
-          log("join:", m);
+          LOG.warn("join.fail", { err: m });
           var t = joinErr(m); toast(t);
           if (/removed from this family/.test(m)) try { global.alert(t); } catch (x) {}
         }).then(function () {
@@ -1659,7 +1679,7 @@
     if (state.groupListeners && state.groupListeners.off) { try { state.groupListeners.off(); } catch (e) {} }
     try {
       var base = firebase.firestore().collection("groups").doc(gid);
-      var onErr = function (e) { log("مستمع:", (e && e.message) || e); if (cbs && cbs.onError) cbs.onError(e); };
+      var onErr = function (e) { LOG.warn("listener.fail", { err: (e && e.message) || e }); if (cbs && cbs.onError) cbs.onError(e); };
       var offP = base.collection("persons").onSnapshot(function (snap) {
         var arr = []; snap.forEach(function (d) { arr.push(personFromDoc(d.id, d.data())); });
         cbs && cbs.onPersons && cbs.onPersons(arr);
@@ -1671,7 +1691,7 @@
       var off = function () { try { offP(); } catch (e) {} try { offR(); } catch (e) {} };
       state.groupListeners = { gid: gid, off: off };
       return off;
-    } catch (e) { log("rawWatch فشل:", (e && e.message) || e); return function () {}; }
+    } catch (e) { LOG.warn("rawwatch.fail", { err: (e && e.message) || e }); return function () {}; }
   }
   function watchGroup(gid, cbs) { if (!enabled()) return function () {}; return rawWatch(gid, cbs); }
   function personFromDoc(id, data) {
@@ -1806,7 +1826,7 @@
     handleJoin();
     connect().then(function (uid) {
       paintBadge();
-      log(uid ? ("متّصل: " + uid) : "تعذّر الاتصال — التطبيق يعمل محلّياً");
+      (uid ? LOG.info("connected", { uid: uid }) : LOG.warn("offline.local"));
       if (uid && !indexedOnce) { indexedOnce = true; indexMine(); }
       rewatch();
       debugRun();

@@ -29,7 +29,31 @@
   function S() { return global.SawaSync; }
   function toast(m) { try { S().toast(m); } catch (e) {} }
   function call(op, payload) { return S().call(op, payload || {}); }
-  function log() { try { console.log.apply(console, ["[sawa-chat]"].concat([].slice.call(arguments))); } catch (e) {} }
+  // C197: السجلّ المنظَّم المشترك (SawaLog) — أوّل وحدة تُحمَّل تعرّفه والبقيّة تستعمله.
+  //   LOG.info/warn/error/debug(event, { fields }) · آخر ٣٠٠ حدث في SawaLog.recent(n) · الحدّ الأدنى للعرض: localStorage "sawa-log" (debug|info|warn|error).
+  var SawaLog = global.SawaLog || (global.SawaLog = (function () {
+    var LV = { debug: 10, info: 20, warn: 30, error: 40 }, buf = [], MAX = 300;
+    function minLv() { try { return LV[localStorage.getItem("sawa-log")] || LV.info; } catch (e) { return LV.info; } }
+    function val(v) { return v instanceof Error ? (v.message || String(v)) : v; }
+    function emit(mod, lvl, ev, f) {
+      var r = { ts: Date.now(), lvl: lvl, mod: mod, ev: String(ev) }, has = false;
+      if (f) for (var k in f) if (Object.prototype.hasOwnProperty.call(f, k) && f[k] !== undefined && k !== "ts" && k !== "lvl" && k !== "mod" && k !== "ev") { r[k] = val(f[k]); has = true; }
+      buf.push(r); if (buf.length > MAX) buf.shift();
+      if (LV[lvl] < minLv()) return r;
+      try {
+        var c = global.console; if (!c) return r;
+        var fn = (lvl === "debug" ? c.debug : c[lvl]) || c.log, tag = "[" + mod + "] " + r.ev;
+        if (has) { var o = {}; for (var j in r) if (j !== "ts" && j !== "lvl" && j !== "mod" && j !== "ev") o[j] = r[j]; fn.call(c, tag, o); } else fn.call(c, tag);
+      } catch (e) {}
+      return r;
+    }
+    function make(mod) {
+      return { debug: function (ev, f) { return emit(mod, "debug", ev, f); }, info: function (ev, f) { return emit(mod, "info", ev, f); },
+               warn: function (ev, f) { return emit(mod, "warn", ev, f); }, error: function (ev, f) { return emit(mod, "error", ev, f); } };
+    }
+    return { make: make, recent: function (n) { return buf.slice(-(n || 50)); }, levels: LV };
+  })());
+  var LOG = SawaLog.make("sawa-chat");
   function db() { try { return global.firebase && firebase.database ? firebase.database() : null; } catch (e) { return null; } }
   function lsGet(k, d) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
   // C13c: حسابي يظهر فوراً من آخر نسخةٍ محفوظة — قبل أن تجهز هويّة Firebase وردّ الخادم (كانت «حسابي» تعرض
@@ -181,7 +205,7 @@
       return pr.then(function () { return call("code.of", { uids: ch }).then(function (b) {
         var cs = (b && b.codes) || {}; ch.forEach(function (u) { if (u in cs) peerCodes[u] = { c: cs[u] || null, t: Date.now() }; });
       }); });
-    }, Promise.resolve()).then(function () { lsSet("sawa_codes_v1", peerCodes); publish(); }, function (e) { log("code.of", e && e.message); })
+    }, Promise.resolve()).then(function () { lsSet("sawa_codes_v1", peerCodes); publish(); }, function (e) { LOG.warn("code.of", { err: e && e.message }); })
       .then(function () { codesBusy = false; });
   }
   function nickOf(uid) { try { return (prefs && prefs.nick && prefs.nick[uid]) || null; } catch (e) { return null; } }
@@ -210,12 +234,12 @@
         var got = {}; snap.forEach(function (doc) { var x = doc.data() || {}; if (typeof x.d === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(x.d) && x.d.length <= 20000) got[doc.id] = x.d; });
         var all = avAll(), now = Date.now();
         ch.forEach(function (u) { all[u] = { d: got[u] || null, at: now }; });
-      }, function (e) { log("avatars:", e && e.code); var all = avAll(), now = Date.now(); ch.forEach(function (u) { all[u] = all[u] || { d: null, at: now - 11 * 3600000 }; }); });
+      }, function (e) { LOG.warn("avatars", { err: e && e.code }); var all = avAll(), now = Date.now(); ch.forEach(function (u) { all[u] = all[u] || { d: null, at: now - 11 * 3600000 }; }); });
     })).then(function () { ids.forEach(function (u) { delete avFetching[u]; }); avSave(); avChanged(); });
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c195";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c197";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -425,7 +449,7 @@
       applyPeople(b);
       return contacts();
     }).catch(function (e) {
-      state.error = (e && e.message) || String(e); log("people.list:", state.error);
+      state.error = (e && e.message) || String(e); LOG.warn("people.list", { err: state.error });
       return contacts();
     }).then(function (r) { state.loading = false; return r; });
   }
@@ -570,7 +594,7 @@
       var ref = d.ref("status/" + u);
       presenceRefs[u] = ref;
       ref.on("value", function (snap) { state.presence[u] = snap.val() || null; publish(); },
-        function (err) { log("presence", u, err && err.code); });   // بلا صلاحيّة بعد (acl يُكتب مع people.list)
+        function (err) { LOG.warn("presence", { u: u, err: err && err.code }); });   // بلا صلاحيّة بعد (acl يُكتب مع people.list)
     });
   }
   function setMine(stateName) {
@@ -593,7 +617,7 @@
     }, function () {});
   }
   function startMyPresence(uid) {
-    var d = db(); if (!d) { log("Realtime Database غير محمَّلة"); return; }
+    var d = db(); if (!d) { LOG.error("rtdb.missing"); return; }
     stopMyPresence();
     startSig(uid);
     myStatusRef = d.ref("status/" + uid);
@@ -735,7 +759,7 @@
         if (r.cancelled) return null;
         // C84: لا نُخفي سبب فشل ماسح Google — غالباً أوّل استعمال (يُنزَّل في الخلفيّة) أو خدمات Google قديمة
         var er = String(r.error || "");
-        log("native scan", er);
+        LOG.warn("native.scan", { err: er });
         toast(/download|unavailable|module|\b14\b/i.test(er) ? L("ماسح Google يُجهَّز لأوّل مرّة — نفتح الكاميرا الآن", "Google scanner is still downloading — using the camera")
                                                                : L("ماسح Google لم يعمل — نفتح الكاميرا", "Google scanner failed — using the camera"));
         lastScanErr = er;
@@ -984,7 +1008,7 @@
       if (!savedAsked && !Object.keys(chats).some(function (k) { return chats[k].type === "saved"; })) { savedAsked = true; openSaved(); }
       syncTyping();
       publishChats();
-    }, function (e) { log("chats:", e && e.code); });
+    }, function (e) { LOG.warn("chats", { err: e && e.code }); });
   }
   function stopChats() {
     try { if (chatsUnsub) chatsUnsub(); } catch (e) {}
@@ -1014,11 +1038,11 @@
       publishMessages(cid);
     };
     dayUnsubs[cid] = coll.orderBy(firebase.firestore.FieldPath.documentId(), "desc").limit(DAYS_WINDOW).onSnapshot(onDays, function (e) {
-      log("days", cid, e && e.code);
+      LOG.warn("days", { cid: cid, err: e && e.code });
       // احتياط: إن طلب Firestore فهرساً للترتيب التنازليّ نقرأ آخر ١٤ يوماً تصاعديّاً (لا يحتاج فهرساً)
       if (e && e.code === "failed-precondition") {
         var from = new Date(Date.now() - 14 * 86400000), key = from.getUTCFullYear() + String(from.getUTCMonth() + 1).padStart(2, "0") + String(from.getUTCDate()).padStart(2, "0");
-        dayUnsubs[cid] = coll.orderBy(firebase.firestore.FieldPath.documentId()).startAt(key).onSnapshot(onDays, function (e2) { log("days2", cid, e2 && e2.code); });
+        dayUnsubs[cid] = coll.orderBy(firebase.firestore.FieldPath.documentId()).startAt(key).onSnapshot(onDays, function (e2) { LOG.warn("days2", { cid: cid, err: e2 && e2.code }); });
       }
     });
   }
@@ -1056,7 +1080,7 @@
     var list = Object.keys(markQ).map(function (k) { return markQ[k]; }); markQ = {};
     if (!list.length || !state.uid) return;
     call("chat.mark", { marks: list }).then(function () { markFails = 0; }).catch(function (e) {   // C14: تُعاد (حتّى ٣ مرّات) بعد ٢٠ ثانية — كانت تضيع فلا تزرقّ علامات المرسل
-      log("chat.mark:", (e && e.message) || e);
+      LOG.warn("chat.mark", { err: (e && e.message) || e });
       if (++markFails <= 3) setTimeout(function () { list.forEach(function (x) { queueMark(x.cid, { r: x.r, rc: x.rc, d: x.d }); }); }, 20000);
     });
   }
@@ -1096,7 +1120,7 @@
   var draining = false, retryT = null;
   // حارس: إن علق طلبٌ (رغم المهلة) لا يبقى الطابور كلّه معلّقاً
   var drainAt = 0;
-  function unstickOutbox() { if (draining && Date.now() - drainAt > 35000) { log("outbox: unstick"); draining = false; } }
+  function unstickOutbox() { if (draining && Date.now() - drainAt > 35000) { LOG.info("outbox.unstick"); draining = false; } }
   setInterval(function () { unstickOutbox(); if (!draining && myOutbox().length) drainOutbox(); }, 15000);
   // C14: الطابور لكلّ حساب — رسائل حسابٍ سابق على الجهاز لا تُرسل باسم الحساب الجديد. القديم بلا uid يُنسب لصاحب الجهاز الأخير.
   var FAILED = "sawa_chat_failed";
@@ -1400,7 +1424,7 @@
       });
       prefsSent = JSON.stringify(normPrefs(applied));
       Object.keys(days).forEach(publishMessages); publishChats(); publish();   // التسميات تظهر في جهات الاتّصال
-    }).catch(function (e) { log("prefs:", (e && e.message) || e); });
+    }).catch(function (e) { LOG.warn("prefs", { err: (e && e.message) || e }); });
   }
   function normPrefs(o) {
     var out = {};
@@ -1418,7 +1442,7 @@
     clearTimeout(prefsT);
     prefsT = setTimeout(function () {
       var set = prefsPending; prefsPending = {};
-      call("chat.prefs", { set: set }).catch(function (e) { log("prefs save:", (e && e.message) || e); });
+      call("chat.prefs", { set: set }).catch(function (e) { LOG.warn("prefs.save", { err: (e && e.message) || e }); });
     }, 1500);
   }
   // يستدعيه التطبيق عند تغيّر أيٍّ من إعداداته (بعد التحميل الأوّل فقط — لا نكتب فوق الخادم بنسخةٍ قديمة)
@@ -2118,9 +2142,9 @@
       stState.unsub.push(d.collection("stories").where("aud", "array-contains", uid).onSnapshot(function (snap) {
         var o = {}; snap.forEach(function (doc) { var v = doc.data() || {}; if (doc.id !== uid) o[doc.id] = { owner: doc.id, name: v.name || "", items: v.items || [] }; });
         stState.others = o; stEmit();
-      }, function (e) { log("stories:", e && e.message); stState.unsub = []; clearTimeout(stState.rt); stState.rt = setTimeout(function () { if (state.uid === uid && !stState.unsub.length) startStories(uid); }, 15000); }));   // C133b
+      }, function (e) { LOG.warn("stories", { err: e && e.message }); stState.unsub = []; clearTimeout(stState.rt); stState.rt = setTimeout(function () { if (state.uid === uid && !stState.unsub.length) startStories(uid); }, 15000); }));   // C133b
       stState.unsub.push(d.collection("stories").doc(uid).onSnapshot(function (doc) { var v = doc && doc.exists ? doc.data() : null; stState.mine = v; stEmit(); }, function () {}));
-    } catch (e) { log("stories", e && e.message); }
+    } catch (e) { LOG.warn("stories", { err: e && e.message }); }
     // تحديث العدّاد والحلقات حين تنتهي قصّة
     if (!stState.tick) stState.tick = setInterval(stEmit, 60000);
   }
@@ -2209,10 +2233,10 @@
         mo.list = arr; mo.more = snap.size >= mo.limit; mo.loaded = true; mo.err = null; mo.retry = 0; moEmit();
       }, function (e) {
         // C133b: المستمع يموت عند الخطأ (مثلاً «لا صلاحيّة» قبل نشر القواعد أو انقطاع) ⇒ نعيده بمهلةٍ متزايدة بدل أن تبقى الخلاصة فارغةً حتّى إعادة التشغيل
-        mo.err = (e && e.message) || String(e); mo.loaded = true; mo.unsub = null; log("moments:", mo.err); moEmit();
+        mo.err = (e && e.message) || String(e); mo.loaded = true; mo.unsub = null; LOG.warn("moments", { err: mo.err }); moEmit();
         mo.retry = Math.min(60000, (mo.retry || 2500) * 2); clearTimeout(mo.rt); mo.rt = setTimeout(function () { if (state.uid === uid && !mo.unsub) startMoments(uid); }, mo.retry);
       });
-    } catch (e) { log("moments", e && e.message); }
+    } catch (e) { LOG.warn("moments", { err: e && e.message }); }
   }
   try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && state.uid) { if (!mo.unsub || mo.err) { mo.retry = 0; startMoments(state.uid); } if (!mo.nUnsub) startNotes(state.uid); if (!stState.unsub.length) startStories(state.uid); } }); } catch (e) {}
   function stopMoments() { if (mo.unsub) { try { mo.unsub(); } catch (e) {} } mo.unsub = null; }
@@ -2756,7 +2780,7 @@
         a.sort(function (x, y) { return (x.ts || 0) - (y.ts || 0); }); list = a;
         if (first) { first = false; if (o.focus) { stick = false; paint(); focusTo(o.focus); return; } stick = true; }
         paint();
-      }, function (e) { log("cm:", e && e.message); });
+      }, function (e) { LOG.warn("cm", { err: e && e.message }); });
     } catch (e) {}
     sb.onclick = function () {
       var tx = ta.value.trim(); if (!tx) return;
@@ -2855,8 +2879,8 @@
       mo.nUnsub = d.collection("mnote").doc(uid).collection("n").limit(50).onSnapshot(function (snap) {
         var a = []; snap.forEach(function (x) { var v = x.data() || {}; v.id = x.id; a.push(v); });
         a.sort(function (x, y) { return (y.ts || 0) - (x.ts || 0); }); mo.notes = a; moEmit();
-      }, function (e) { log("mnote:", e && e.message); mo.nUnsub = null; clearTimeout(mo.nrt); mo.nrt = setTimeout(function () { if (state.uid === uid && !mo.nUnsub) startNotes(uid); }, 30000); });
-    } catch (e) { log("mnote", e && e.message); }
+      }, function (e) { LOG.warn("mnote", { err: e && e.message }); mo.nUnsub = null; clearTimeout(mo.nrt); mo.nrt = setTimeout(function () { if (state.uid === uid && !mo.nUnsub) startNotes(uid); }, 30000); });
+    } catch (e) { LOG.warn("mnote", { err: e && e.message }); }
   }
   function stopNotes() { if (mo.nUnsub) { try { mo.nUnsub(); } catch (e) {} } mo.nUnsub = null; }
   function moMarkSeen() {
@@ -3091,7 +3115,7 @@
         var v = doc.data() || {}; v.id = pid;
         if ((v.held && v.by !== state.uid) || moHidden()[pid]) { gone(); return; }   // C150
         p = v; view.paint(); openCm();
-      }, function (e) { log("moment:", e && e.message); if (!p) gone(); });
+      }, function (e) { LOG.warn("moment", { err: e && e.message }); if (!p) gone(); });
     } catch (e) { if (!p) gone(); }
     return { close: close };
   }
@@ -3726,8 +3750,8 @@
     rotating = Promise.resolve().then(function () { return firebase.messaging().deleteToken().catch(function () {}); })
       .then(function () { lsSet("sawa_push", {}); return pushToken(); })
       .then(function (tok) { return registerToken(tok); })
-      .then(function () { clearResubFlag(); lsSet("sawa_push_rot", Date.now()); log("push rotated:", why); return true; })
-      .catch(function (e) { log("push rotate:", (e && e.message) || e); return false; })
+      .then(function () { clearResubFlag(); lsSet("sawa_push_rot", Date.now()); LOG.info("push.rotated", { why: why }); return true; })
+      .catch(function (e) { LOG.warn("push.rotate", { err: (e && e.message) || e }); return false; })
       .then(function (ok) { rotating = null; return ok; });
     return rotating;
   }
@@ -3747,10 +3771,10 @@
     return pushToken().then(function (tok) {
       return call("push.check", { token: tok, ua: (navigator.userAgent || "").slice(0, 150) }).then(function (b) {
         lsSet("sawa_push", { token: tok, uid: state.uid, ts: Date.now() });
-        if (b && b.healed) { var h = lsGet("sawa_push_heal", {}); lsSet("sawa_push_heal", { n: (h.n || 0) + 1, last: Date.now() }); log("push: device re-registered by self-check"); }
+        if (b && b.healed) { var h = lsGet("sawa_push_heal", {}); lsSet("sawa_push_heal", { n: (h.n || 0) + 1, last: Date.now() }); LOG.info("push.reregistered"); }
         return b;
       });
-    }).catch(function (e) { log("push.check", (e && e.message) || e); return null; });
+    }).catch(function (e) { LOG.warn("push.check", { err: (e && e.message) || e }); return null; });
   }
   try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") setTimeout(function () { pushSelfCheck(false); }, 1500); }); } catch (e) {}
   function refreshPush() {
@@ -3760,7 +3784,7 @@
     if (st === "default" || st === "denied") return maybeBanner(st);
     if (st !== "granted") return;
     var prev = lsGet("sawa_push", {});
-    if (NB() || IOSB()) { pushToken().then(registerToken).catch(function (e) { log("native token:", (e && e.message) || e); }); return; }   // C72: أندرويد يجدّد رمزه وحده (onNewToken)
+    if (NB() || IOSB()) { pushToken().then(registerToken).catch(function (e) { LOG.warn("native.token", { err: (e && e.message) || e }); }); return; }   // C72: أندرويد يجدّد رمزه وحده (onNewToken)
     resubFlagged().then(function (flag) {
       if (flag) return rotateToken("subscription changed");
       // C100: موعد التدوير من آخر تدوير (prev.ts يتجدّد مع كلّ فحص فلم يكن التدوير الأسبوعيّ يحدث)
@@ -3768,7 +3792,7 @@
       if (!lsGet("sawa_push_rot", 0) && prev.ts) lsSet("sawa_push_rot", prev.ts);
       if (prev.token && rot && Date.now() - rot > PUSH_ROTATE_MS && navigator.onLine !== false) return rotateToken("weekly");
       return pushToken().then(registerToken);
-    }).catch(function (e) { log("push token:", (e && e.message) || e); });
+    }).catch(function (e) { LOG.warn("push.token", { err: (e && e.message) || e }); });
   }
   // بطاقة «فعّل الإشعارات» (تحتاج ضغطة المستخدم — المتصفّحات تمنع الطلب التلقائيّ)
   //  · لم يُسأل بعد ⇒ تظهر كلّ فتحٍ، و«لاحقاً» يؤجّلها يوماً · محظورة ⇒ تظهر أسبوعيّاً مع طريقة الفتح
@@ -4205,7 +4229,7 @@
     return (pre ? Promise.resolve(pre) : call("code.requests", {})).then(function (b) {
       reqs = { incoming: b.incoming || [], outgoing: b.outgoing || [], vouches: b.vouches || [], at: Date.now() };
       publishReqs(); return reqs;
-    }).catch(function (e) { log("requests:", (e && e.message) || e); return reqs; });
+    }).catch(function (e) { LOG.warn("requests", { err: (e && e.message) || e }); return reqs; });
   }
   function respond(from, action) {
     return call("code.respond", { from: from, action: action }).then(function (b) {
@@ -5710,7 +5734,7 @@
         else whenReady(function () { setTimeout(function () { if (pendingDelete) { pendingDelete = false; deleteAccountSheet(); } }, 900); });
       }
     } catch (e) {}
-    try { if (onbNeeded()) onbStart(); } catch (e) { log("onboarding:", e && e.message); }
+    try { if (onbNeeded()) onbStart(); } catch (e) { LOG.warn("onboarding", { err: e && e.message }); }
     handleCodeParams();
     handleVerifiedParam();
     handleContactParam();
@@ -5993,7 +6017,7 @@
     var c = chats[cid]; if (!c) return;
     decQ[k] = 1;
     e2e.decrypt(c, m).then(function (p) { plain[k] = p; }, function (e) {
-      var s = (e && e.message) || ""; plain[k] = { err: /^(notforme|nokey|badsender)$/.test(s) ? s : "fail" }; log("e2e:", m.id, s);
+      var s = (e && e.message) || ""; plain[k] = { err: /^(notforme|nokey|badsender)$/.test(s) ? s : "fail" }; LOG.warn("e2e.decrypt", { id: m.id, err: s });
     }).then(function () { delete decQ[k]; notePreview(cid, m); publishMessages(cid); });
   }
   // الرسالة كما تُعرض: الحقول الموثوقة من الخادم (المعرّف، المرسل، الوقت، التفاعلات…) + المحتوى المفكوك
