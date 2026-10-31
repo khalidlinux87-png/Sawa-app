@@ -239,7 +239,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c197";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c198";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -4170,6 +4170,11 @@
     if (/no_targets/.test(m)) return L("اختر شخصاً واحداً على الأقلّ", "Pick at least one person");
     if (/not_eligible/.test(m)) return L("لتأكيد الآخرين يلزم حسابٌ بـGoogle أو بريدٍ مؤكَّد أو رقمٍ موثَّق", "To confirm others you need a Google / confirmed-email account or a verified number");
     if (/not_contact/.test(m)) return L("لستما جهتي اتّصال", "You're not contacts");
+    // C198
+    if (/guest_limited/.test(m)) return L("البحث بالرقم أو البريد يحتاج ربط حسابك بـGoogle أو Apple أو بريد — ويمكنك البحث بالرمز الآن", "Searching by phone or email needs a linked Google / Apple / email account — you can search by code now");
+    if (/voucher_too_new/.test(m)) return L("حسابك جديد — يمكنك تأكيد أرقام الآخرين بعد ٣٠ يوماً من إنشائه، أو بعد توثيق رقمك عبر واتساب", "Your account is new — you can confirm others' numbers 30 days after creating it, or after verifying your number via WhatsApp");
+    if (/contact_too_new/.test(m)) return L("يمكن التأكيد بعد ٧ أيّام من تواصلكما في سوا", "You can confirm 7 days after you connected on Sawa");
+    if (/vouch_quota/.test(m)) return L("أكّدت أرقاماً كثيرة هذا الشهر — حاول لاحقاً", "You've confirmed many numbers this month — try later");
     if (/bad_email/.test(m)) return L("البريد غير صحيح", "Invalid email");
     if (/^wait$/.test(m)) return L("غيّرتَ رمزك قبل قليل — انتظر ١٠ دقائق", "You changed your code a moment ago — wait 10 minutes");
     if (/fetch|network|timeout/i.test(m)) return L("تحقّق من الاتّصال بالإنترنت", "Check your internet connection");
