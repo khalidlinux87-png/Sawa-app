@@ -1896,6 +1896,7 @@ function ShareContactPicker({ colors, onPick }) {
                 picked.length ? tl("إرسال " + picked.length + (picked.length === 1 ? " جهة اتّصال" : " جهات اتّصال"), "Send " + picked.length) : tl("اختر جهة اتّصال أو أكثر", "Pick one or more"))));
 }
 function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, chatDrafts = {}, conversations, groups, broadcastLists, lockedConversationIds, connectionState, onOpenChat, onOpenGroup, onOpenBroadcastList, onNewConversation, onNewGroup, onNewBroadcastList, onOpenLockedChats, onOpenStarredMessages, onScanQr, onOpenSearch, onlineContacts, chatFolders, folderAssignments, onOpenChatSettings, typingConversations = [], momentsPosts = [], familyPersons = [], onOpenMoments, onOpenRoom, myName, groupPersons = {}, groupSchedules = {}, archivedConversations = [], mutedConversations = [], onArchiveConv, onMuteConv, showStoriesRow = true, showFamilyReminders = true, onOpenArchived, pinnedConversations = [], onPinConv, onDeleteConv, onToggleReadConv, onScheduleRoom, onJoinRoomCode, scheduledRooms = [], onJoinScheduled, onCancelScheduled, }) {
+    const [previewPhoto, setPreviewPhoto] = useState(null);   // C186
     const { colors } = useTheme();
     const { showToast } = useToast();
     const [showNewMenu, setShowNewMenu] = useState(false);
@@ -2006,6 +2007,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
     const [showTabs, setShowTabs] = useState(true);
     const lastScrollY = useRef(0);
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col", style: { backgroundColor: colors.bg } },
+        previewPhoto && React.createElement(PhotoViewer, { photo: previewPhoto, onClose: () => setPreviewPhoto(null) }),   // C186
         selectionMode && (React.createElement("div", { style: { display: "flex", flexDirection: "row", direction: "ltr", alignItems: "center", gap: 14, padding: "0.75rem 1rem", borderBottom: `1px solid ${colors.border}`, backgroundColor: colors.primaryLight } },
             React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => setSelectedIds([]), className: "shrink-0" },
                 React.createElement(X, { size: 19, color: colors.primary })),
@@ -2222,7 +2224,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                                         c.name.toLowerCase().includes(p.local_name.split(" ")[0].toLowerCase());
                                 });
                                 const overdue = matchedPerson && isContactOverdue(matchedPerson);
-                                return (React.createElement("div", { className: "w-12 h-12 rounded-full flex items-center justify-center relative shrink-0", style: {
+                                return (React.createElement("div", { className: "w-12 h-12 rounded-full flex items-center justify-center relative shrink-0", onClick: (e) => { if (c.photo && !c.isSavedMessages) { e.stopPropagation(); e.preventDefault(); setPreviewPhoto(c.photo); } }, style: { cursor: c.photo && !c.isSavedMessages ? "pointer" : undefined,   // C186: النقر على الصورة يفتحها لا المحادثة
                                         backgroundColor: c.isSavedMessages ? colors.accent : colors.primaryLight,
                                         outline: overdue ? `2px solid #ef4444` : matchedPerson ? `2px solid ${colors.accent}` : "none",
                                         outlineOffset: 1,

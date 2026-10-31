@@ -215,7 +215,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c185";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c186";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -1023,9 +1023,19 @@
     for (var day in dd) if (dd[day][id]) return { day: day, msg: dd[day][id] };
     return null;
   }
+  // C186: إشعار المحادثة يُزال عند فتحها — المتصفّح/PWA بالوسم (tag = cid)، وأندرويد بالمعرّف نفسه
+  function clearChatNotifs(cid) {
+    try { if (NB() && NB().clearChatNotif) NB().clearChatNotif(cid); } catch (e) {}
+    try {
+      if (global.navigator && navigator.serviceWorker && navigator.serviceWorker.ready) {
+        navigator.serviceWorker.ready.then(function (r) { return r.getNotifications ? r.getNotifications({ tag: cid }) : []; })
+          .then(function (list) { (list || []).forEach(function (n) { try { n.close(); } catch (e) {} }); }).catch(function () {});
+      }
+    } catch (e) {}
+  }
   function openChat(cid) {
     if (!isCloud(cid)) return;
-    openCid = cid; ensureDays(cid); markRead(cid); publishChats();
+    openCid = cid; ensureDays(cid); markRead(cid); publishChats(); clearChatNotifs(cid);
   }
   function closeChat(cid) { if (!cid || openCid === cid) openCid = null; }
 
@@ -2040,7 +2050,9 @@
         .then(function (r) { if (r && r.ok) return true; return saveBlob(blob, name, "share", mime); });
     }
     // C185: معاينةٌ داخل سوا للـPDF والصور والنصوص (المتصفّح) — بدل تبويبٍ جديد يحجبه مانع النوافذ المنبثقة
-    if (!NB() && /^(application\/pdf|image\/|text\/plain)/.test(mime) && global.dispatchEvent) {
+    // C186: أندرويد يعاين الصور والنصوص داخل سوا (WebView لا يعرض PDF) — الـPDF يُفتح بتطبيق النظام كما كان
+    var inPreview = NB() ? /^(image\/|text\/plain)/.test(mime) : /^(application\/pdf|image\/|text\/plain)/.test(mime);
+    if (inPreview && global.dispatchEvent) {
       var pu = URL.createObjectURL(new Blob([blob], { type: mime }));
       global.dispatchEvent(new CustomEvent("sawa-file-preview", { detail: { url: pu, name: name, mime: mime, blob: blob } }));
       return Promise.resolve(true);
