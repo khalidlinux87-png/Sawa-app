@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c216";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c217";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -995,6 +995,11 @@
         c.route = relay ? "relay" : "direct"; c.proto = String(lc.relayProtocol || lc.protocol || "").toLowerCase() || null;
         c.lct = lc.candidateType || null; c.rct = rc.candidateType || null;   // C215: نوع العنوانين المختارين (host · srflx · prflx · relay)
         var la = String(lc.address || lc.ip || ""); c.fam = la ? (la.indexOf(":") >= 0 ? "6" : "4") : null;
+        // C217: هل عرض كلّ طرفٍ عنوان IPv6 عامّاً في هذه المكالمة؟ (كلّ المرشّحين لا المختار وحده — من إحصاءات المحرّك نفسه،
+        //       فيصحّ على ⚡ أيضاً حيث يُخفي المتصفّح عناوين الهاتف). الطرفان v6 والمسار ليس v6 ⇒ جدار الشبكة يمنعه.
+        var g6 = function (x) { var ad = String((x && (x.address || x.ip)) || "").toLowerCase(); return ad.indexOf(":") >= 0 && !/^fe80:/.test(ad) && !/\.local$/.test(ad); };
+        var v6l = 0, v6r = 0; for (var ck in cands) { var cx = cands[ck]; if (g6(cx)) { if (cx.type === "local-candidate") v6l = 1; else v6r = 1; } }
+        c.v6l = Math.max(c.v6l || 0, v6l); c.v6r = Math.max(c.v6r || 0, v6r);
         var rr = lc.candidateType === "relay" ? relayOfUrl(lc.url) : null; c.relayLbl = rr ? rr.label : null; c.relayId = rr ? rr.id : null;   // C94: أيّ وسيط
         if (!rr && rc.candidateType === "relay") c.relayLbl = L("وسيط الطرف الآخر", "peer's relay");   // C167: الوسيط من جهة الطرف الآخر (قد تكون نسخته أقدم)
         LOG.info("ice.pair", { local: lc.candidateType, remote: rc.candidateType, proto: c.proto });
@@ -1400,7 +1405,8 @@
       setup: c.connectedAt ? c.connectedAt - (c.accAt || c.t0 || c.connectedAt) : null, secs: c.connectedAt ? Math.round((Date.now() - c.connectedAt) / 1000) : 0, reason: reason,
       route: c.route || "", proto: c.proto || "", relay: c.relayLbl || c.relayId || "", rst: c.reN || 0, err: c.errName || "", up: c.vin ? 1 : 0, ck: wantAnswerHit(c) ? 1 : 0, vis: document.visibilityState === "visible" ? 1 : 0,
       rtt: qaStat(S0.rtt), loss: qaStat(S0.loss), jb: qaStat(S0.jb), jit: qaStat(T0.jit), fps: qaStat(T0.fps), h: qaStat(T0.h),   // C179
-      lct: c.lct || "", rct: c.rct || "", fam: c.fam || "", nat: natTel().nat, nsx: natTel().nsx, v6: natTel().v6 });   // C215
+      lct: c.lct || "", rct: c.rct || "", fam: c.fam || "", nat: natTel().nat, nsx: natTel().nsx, v6: natTel().v6,   // C215
+      v6l: c.v6l || 0, v6r: c.v6r || 0 });   // C217
   }
   // C216: سجلّ المكالمة لا يضيع. كان يُرسل مرّةً واحدة ويُهمل الخطأ — فإن فشل الطلب (شبكةٌ مزدحمة، التطبيق في الخلفيّة، انتهاء المهلة)
   //        ضاع السجلّ بصمت (مكالمة 01:02: سجلّ المستقبِل ⚡ لم يصل). الآن: يُحفظ في الهاتف قبل الإرسال ويُحذف عند نجاحه،
@@ -1534,7 +1540,12 @@
         var a = r.all || {};
         var c1 = card(L("المكالمات الفرديّة", "1:1 calls"));
         kv(c1, L("العدد", "Calls"), String(a.n || 0));
-        kv(c1, L("نجح الاتّصال", "Connected"), pct(a.conn, a.n), a.n && a.conn / a.n < 0.85);
+        // C217: النجاح يُحسب من المكالمات التي رُدّ عليها — «لم يُجب/مشغول/رُفضت/أُلغيت» ليست فشلاً في الاتّصال (كانت تُنزل النسبة إلى ٤٨٪)
+        if (a.fail != null) {
+          var att = (a.conn || 0) + (a.fail || 0);
+          kv(c1, L("نجح الاتّصال بعد الردّ", "Connected after answer"), pct(a.conn, att) + " · " + (a.conn || 0) + "/" + att, att && a.conn / att < 0.9);
+          kv(c1, L("لم يُرَدّ عليها (لم يُجب · مشغول · رُفضت · أُلغيت)", "Not answered (no answer · busy · declined · cancelled)"), pct(a.unans || 0, a.n) + " · " + (a.unans || 0));
+        } else kv(c1, L("نجح الاتّصال", "Connected"), pct(a.conn, a.n), a.n && a.conn / a.n < 0.85);
         kv(c1, L("عبر الوسيط (TURN)", "Via TURN relay"), pct(a.relay, a.conn), a.conn && a.relay / a.conn > 0.4);
         kv(c1, L("عبر TCP/TLS (ليس UDP)", "Over TCP/TLS (not UDP)"), pct(a.tcp, a.conn), a.conn && a.tcp / a.conn > 0.15);
         kv(c1, L("زمن إنشاء الاتّصال (وسيط · ٩٠٪)", "Setup time (median · p90)"), ms(a.setup) + " · " + ms(a.setup90), a.setup > 3000);
@@ -1552,6 +1563,8 @@
           kv(c1n, L("ثابت (EIM) — المباشر ممكن", "Endpoint-independent — direct possible"), pct(nt.eim || 0, nN) + " · " + (nt.eim || 0));
           kv(c1n, L("بلا STUN (UDP محجوب)", "No STUN (UDP blocked)"), pct(nt.none || 0, nN) + " · " + (nt.none || 0), (nt.none || 0) > 0);
           if (nt.v6) kv(c1n, L("لديه IPv6", "Has IPv6"), pct(nt.v6, nN) + " · " + nt.v6);
+          // C217: من المكالمات نفسها (أدقّ من الفحص): كم مكالمةً عرض فيها الطرفان IPv6، وكم منها اتّصل عبره فعلاً
+          if (a.v6both != null) kv(c1n, L("مكالمات عرض فيها الطرفان IPv6 · اتّصلت عبره", "Calls where both offered IPv6 · used it"), (a.v6both || 0) + " · " + (a.v6used || 0), a.v6both > 0 && (a.v6used || 0) < a.v6both);
           if (nt.unk) kv(c1n, L("لم يُقَس (نسخة أقدم)", "Not measured (older build)"), String(nt.unk));
           c1n.appendChild(el("div", "font:600 11px system-ui;color:" + MUTED + ";margin-top:4px", L("إن كان الطرفان «متماثل» فلا اتّصال مباشر ممكن، والوسيط ضروريّ. يكفي أن يكون أحدهما «ثابت» ليُستعمل وسيطٌ واحد فقط.", "If both sides are symmetric, a direct path is impossible and a relay is required. One endpoint-independent side lets a single relay suffice.")));
         }
@@ -1579,7 +1592,7 @@
           row.firstChild.appendChild(el("span", "color:" + MUTED + ";direction:ltr", new Date(c.ts).toLocaleString(isAr() ? "ar" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })));
           c.sides.forEach(function (y) {
             row.appendChild(el("div", "color:" + MUTED + ";direction:ltr;text-align:start;margin-top:2px;word-break:break-word",
-              [y.role, y.plat, y.eng, y.ck ? "📲sys" : "", y.vis === 0 ? "bg" : "", y.ok ? ms(y.setup) : (TEL_REASON[y.reason] ? L(TEL_REASON[y.reason][0], TEL_REASON[y.reason][1]) : y.reason), y.err ? "err " + y.err : "", y.up ? "📹+" : "", y.route ? y.route + "/" + (y.proto || "?") + (y.relay ? " " + y.relay : "") : "", y.lct ? y.lct + "↔" + (y.rct || "?") + (y.fam === "6" ? " IPv6" : "") : "", y.nat ? "NAT " + (NAT_TX[y.nat] ? L(NAT_TX[y.nat][0], NAT_TX[y.nat][1]) : y.nat) + (y.v6 ? " +v6" : "") : "", y.rtt ? "RTT " + y.rtt.med : "", y.loss ? "loss " + y.loss.med + "%" : "", y.secs ? y.secs + "s" : "", y.qd ? "⏳" + (y.qd >= 60 ? Math.round(y.qd / 60) + "h" : y.qd + "m") : ""].filter(Boolean).join(" · ")));
+              [y.role, y.plat, y.eng, y.ck ? "📲sys" : "", y.vis === 0 ? "bg" : "", y.ok ? ms(y.setup) : (TEL_REASON[y.reason] ? L(TEL_REASON[y.reason][0], TEL_REASON[y.reason][1]) : y.reason), y.err ? "err " + y.err : "", y.up ? "📹+" : "", y.route ? y.route + "/" + (y.proto || "?") + (y.relay ? " " + y.relay : "") : "", y.lct ? y.lct + "↔" + (y.rct || "?") + (y.fam === "6" ? " IPv6" : "") : "", y.nat ? "NAT " + (NAT_TX[y.nat] ? L(NAT_TX[y.nat][0], NAT_TX[y.nat][1]) : y.nat) + (y.v6 ? " +v6" : "") : "", y.v6l || y.v6r ? "IPv6 " + (y.v6l ? "✓" : "✗") + "/" + (y.v6r ? "✓" : "✗") : "", y.rtt ? "RTT " + y.rtt.med : "", y.loss ? "loss " + y.loss.med + "%" : "", y.secs ? y.secs + "s" : "", y.qd ? "⏳" + (y.qd >= 60 ? Math.round(y.qd / 60) + "h" : y.qd + "m") : ""].filter(Boolean).join(" · ")));
           });
           if (c.srv) row.appendChild(el("div", "color:" + MUTED + ";font-size:11px", L("الخادم: رنين ", "Server: ring ") + (c.srv.sent || 0)));
           row.appendChild(el("div", "color:#64748b;font-size:10.5px;direction:ltr;text-align:start", "call_id " + c.cid));
