@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c215";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c216";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -913,6 +913,7 @@
       if (dN > 0) c.jb = Math.round(dD / dN * 1000);
       c.lagHist = (c.lagHist || []).concat([Math.round((rtt || 0) / 2 + (c.jb || 0))]).slice(-40);
       qaSample(c, rtt, c.jb, loss, pair);   // C131
+      c.snapN = (c.snapN || 0) + 1; if (c.snapN % 5 === 1) telLive(c);   // C216: لقطة كلّ ~١٥ث
       telSample(c, jitS, fpsS, hS);   // C179
       if (c === cur && ui.sub && c.type !== "video") ui.sub.textContent = netLine(c);
       c.qHist = (c.qHist || []).concat([q]).slice(-6);
@@ -1393,7 +1394,64 @@
   }
   function wantAnswerHit(c) { return !!c.fromSys; }
   function telNet() { try { var n = navigator.connection; return n ? String(n.type || n.effectiveType || "") : ""; } catch (e) { return ""; } }
-  function telSend(o) { try { o.plat = qaPlat(); o.model = qaModel(); o.ver = RTC_BUILD; o.net = telNet(); wcall("call.tel", o).catch(function () {}); } catch (e) {} }
+  function telObj(c, reason) {   // C216: سجلّ المكالمة (عند الانتهاء، وفي اللقطة الدوريّة)
+    var S0 = c.qaS || {}, T0 = c.telS || {};
+    return ({ id: c.id, k: c.type === "video" ? "video" : "audio", role: c.role, eng: c.native ? (RTCB() && RTCB().ios ? "native-ios" : "native") : "web", ok: !!c.connectedAt,
+      setup: c.connectedAt ? c.connectedAt - (c.accAt || c.t0 || c.connectedAt) : null, secs: c.connectedAt ? Math.round((Date.now() - c.connectedAt) / 1000) : 0, reason: reason,
+      route: c.route || "", proto: c.proto || "", relay: c.relayLbl || c.relayId || "", rst: c.reN || 0, err: c.errName || "", up: c.vin ? 1 : 0, ck: wantAnswerHit(c) ? 1 : 0, vis: document.visibilityState === "visible" ? 1 : 0,
+      rtt: qaStat(S0.rtt), loss: qaStat(S0.loss), jb: qaStat(S0.jb), jit: qaStat(T0.jit), fps: qaStat(T0.fps), h: qaStat(T0.h),   // C179
+      lct: c.lct || "", rct: c.rct || "", fam: c.fam || "", nat: natTel().nat, nsx: natTel().nsx, v6: natTel().v6 });   // C215
+  }
+  // C216: سجلّ المكالمة لا يضيع. كان يُرسل مرّةً واحدة ويُهمل الخطأ — فإن فشل الطلب (شبكةٌ مزدحمة، التطبيق في الخلفيّة، انتهاء المهلة)
+  //        ضاع السجلّ بصمت (مكالمة 01:02: سجلّ المستقبِل ⚡ لم يصل). الآن: يُحفظ في الهاتف قبل الإرسال ويُحذف عند نجاحه،
+  //        ويُعاد عند فتح التطبيق وعودة الشبكة وبعد كلّ مكالمة (حتّى ١٢ محاولة · ٣ أيّام · ٢٠ سجلّاً). qd = دقائق التأخير.
+  //        ولقطةٌ كلّ ~١٥ث أثناء المكالمة: إن توقّف التطبيق قبل الإنهاء (أُغلق أو قتله النظام) تُرسل في الفتح التالي بسبب «unfinished».
+  var TELQ = "sawa-tel-q", TELL = "sawa-tel-live", telBusy = false;
+  function lsJ(k, d) { try { var v = JSON.parse(global.localStorage.getItem(k) || "null"); return v == null ? d : v; } catch (e) { return d; } }
+  function lsW(k, v) { try { if (v == null) global.localStorage.removeItem(k); else global.localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  function telQueue(o, at) {
+    var q = lsJ(TELQ, []).filter(function (x) { return x && x.o && x.o.id !== o.id; });
+    q.push({ o: o, at: at || Date.now(), n: 0 });
+    return lsW(TELQ, q.slice(-20)) && lsJ(TELQ, []).some(function (x) { return x && x.o && x.o.id === o.id; });
+  }
+  function telFlush() {
+    if (telBusy) return;
+    var now = Date.now(), q = lsJ(TELQ, []).filter(function (x) { return x && x.o && x.o.id && now - (x.at || 0) < 3 * 86400000 && (x.n || 0) < 12; });
+    lsW(TELQ, q.length ? q : null);
+    if (!q.length) return;
+    var it = q[0], o = {}; for (var k in it.o) o[k] = it.o[k];
+    var qd = Math.round((now - (it.at || now)) / 60000); if (qd >= 1) o.qd = qd;
+    telBusy = true;
+    var done = function (ok) {
+      var q2 = lsJ(TELQ, []);
+      if (ok) q2 = q2.filter(function (x) { return !(x && x.o && x.o.id === it.o.id); });
+      else q2.forEach(function (x) { if (x && x.o && x.o.id === it.o.id) x.n = (x.n || 0) + 1; });
+      lsW(TELQ, q2.length ? q2 : null); telBusy = false;
+      if (ok) telFlush();
+      else LOG.warn("tel.retry", { id: it.o.id, n: (it.n || 0) + 1 });
+    };
+    try { wcall("call.tel", o).then(function () { done(true); }, function () { done(false); }); } catch (e) { done(false); }
+  }
+  function telSend(o) {
+    try {
+      o.plat = qaPlat(); o.model = qaModel(); o.ver = RTC_BUILD; o.net = telNet();
+      if (telQueue(o)) telFlush(); else wcall("call.tel", o).catch(function () {});   // بلا تخزين: كما كان
+    } catch (e) {}
+  }
+  // لقطة المكالمة الجارية (null = امسحها)
+  function telLive(c) {
+    if (!c) { lsW(TELL, null); return; }
+    try { var o = telObj(c, "unfinished"); o.plat = qaPlat(); o.model = qaModel(); o.ver = RTC_BUILD; o.net = telNet(); lsW(TELL, { o: o, at: Date.now() }); } catch (e) {}
+  }
+  // عند الفتح: لقطةٌ باقية لمكالمةٍ ليست جارية ⇒ توقّف التطبيق أثناءها ⇒ إلى الطابور
+  function telRecover() {
+    var sn = lsJ(TELL, null);
+    if (sn && sn.o && sn.o.id && !(cur && cur.id === sn.o.id) && Date.now() - (sn.at || 0) > 20000) {
+      lsW(TELL, null); sn.o.reason = "unfinished"; telQueue(sn.o, sn.at); LOG.warn("tel.unfinished", { id: sn.o.id });
+    }
+    telFlush();
+  }
+  try { setTimeout(telRecover, 10000); global.addEventListener("online", function () { setTimeout(telFlush, 3000); }); } catch (e) {}
   function qaStat(a) {
     if (!a || !a.length) return null;
     var b = a.slice().sort(function (x, y) { return x - y; });
@@ -1457,7 +1515,7 @@
   // C175: مفتاح المدير — الوسيط الأساسيّ (Metered / Cloudflare / تلقائيّ = إعداد الـWorker) · يصل الكلّ خلال دقائق
   // C179: سجلّ المكالمات (للمدير) — من سجلّات كلّ المكالمات مجمّعةً بمعرّف المكالمة: نسبة المرور عبر TURN · UDP · زمن الاتّصال · الجودة · أسباب الفشل
   var NAT_TX = { sym: ["متماثل", "symmetric"], eim: ["ثابت", "EIM"], none: ["بلا STUN", "no STUN"] };   // C215
-  var TEL_REASON = { hangup: ["أُنهيت", "Hung up"], remote: ["أنهاها الآخر", "Remote"], noanswer: ["لم يُجب", "No answer"], declined: ["رُفضت", "Declined"], cancel: ["أُلغيت", "Cancelled"], failed: ["فشل الاتّصال", "Failed"], lost: ["انقطعت", "Lost"], error: ["خطأ", "Error"], busy: ["مشغول", "Busy"], missed: ["فائتة", "Missed"], left: ["غادر", "Left"], moved: ["انتقلت إلى SFU", "Moved to SFU"] };
+  var TEL_REASON = { unfinished: ["توقّف التطبيق أثناءها", "App stopped mid-call"], hangup: ["أُنهيت", "Hung up"], remote: ["أنهاها الآخر", "Remote"], noanswer: ["لم يُجب", "No answer"], declined: ["رُفضت", "Declined"], cancel: ["أُلغيت", "Cancelled"], failed: ["فشل الاتّصال", "Failed"], lost: ["انقطعت", "Lost"], error: ["خطأ", "Error"], busy: ["مشغول", "Busy"], missed: ["فائتة", "Missed"], left: ["غادر", "Left"], moved: ["انتقلت إلى SFU", "Moved to SFU"] };
   function telReport(days) {
     days = days || 7;
     sheet(L("سجلّ المكالمات", "Call log (all calls)"), function (body, close) {
@@ -1521,7 +1579,7 @@
           row.firstChild.appendChild(el("span", "color:" + MUTED + ";direction:ltr", new Date(c.ts).toLocaleString(isAr() ? "ar" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })));
           c.sides.forEach(function (y) {
             row.appendChild(el("div", "color:" + MUTED + ";direction:ltr;text-align:start;margin-top:2px;word-break:break-word",
-              [y.role, y.plat, y.eng, y.ck ? "📲sys" : "", y.vis === 0 ? "bg" : "", y.ok ? ms(y.setup) : (TEL_REASON[y.reason] ? L(TEL_REASON[y.reason][0], TEL_REASON[y.reason][1]) : y.reason), y.err ? "err " + y.err : "", y.up ? "📹+" : "", y.route ? y.route + "/" + (y.proto || "?") + (y.relay ? " " + y.relay : "") : "", y.lct ? y.lct + "↔" + (y.rct || "?") + (y.fam === "6" ? " IPv6" : "") : "", y.nat ? "NAT " + (NAT_TX[y.nat] ? L(NAT_TX[y.nat][0], NAT_TX[y.nat][1]) : y.nat) + (y.v6 ? " +v6" : "") : "", y.rtt ? "RTT " + y.rtt.med : "", y.loss ? "loss " + y.loss.med + "%" : "", y.secs ? y.secs + "s" : ""].filter(Boolean).join(" · ")));
+              [y.role, y.plat, y.eng, y.ck ? "📲sys" : "", y.vis === 0 ? "bg" : "", y.ok ? ms(y.setup) : (TEL_REASON[y.reason] ? L(TEL_REASON[y.reason][0], TEL_REASON[y.reason][1]) : y.reason), y.err ? "err " + y.err : "", y.up ? "📹+" : "", y.route ? y.route + "/" + (y.proto || "?") + (y.relay ? " " + y.relay : "") : "", y.lct ? y.lct + "↔" + (y.rct || "?") + (y.fam === "6" ? " IPv6" : "") : "", y.nat ? "NAT " + (NAT_TX[y.nat] ? L(NAT_TX[y.nat][0], NAT_TX[y.nat][1]) : y.nat) + (y.v6 ? " +v6" : "") : "", y.rtt ? "RTT " + y.rtt.med : "", y.loss ? "loss " + y.loss.med + "%" : "", y.secs ? y.secs + "s" : "", y.qd ? "⏳" + (y.qd >= 60 ? Math.round(y.qd / 60) + "h" : y.qd + "m") : ""].filter(Boolean).join(" · ")));
           });
           if (c.srv) row.appendChild(el("div", "color:" + MUTED + ";font-size:11px", L("الخادم: رنين ", "Server: ring ") + (c.srv.sent || 0)));
           row.appendChild(el("div", "color:#64748b;font-size:10.5px;direction:ltr;text-align:start", "call_id " + c.cid));
@@ -1685,12 +1743,8 @@
     stopStream(c.local);
     try { if (c.pc) c.pc.close(); } catch (e) {}
     logCall(c);
-    var S0 = c.qaS || {}, T0 = c.telS || {};
-    telSend({ id: c.id, k: c.type === "video" ? "video" : "audio", role: c.role, eng: c.native ? (RTCB() && RTCB().ios ? "native-ios" : "native") : "web", ok: !!c.connectedAt,
-      setup: c.connectedAt ? c.connectedAt - (c.accAt || c.t0 || c.connectedAt) : null, secs: c.connectedAt ? Math.round((Date.now() - c.connectedAt) / 1000) : 0, reason: reason,
-      route: c.route || "", proto: c.proto || "", relay: c.relayLbl || c.relayId || "", rst: c.reN || 0, err: c.errName || "", up: c.vin ? 1 : 0, ck: wantAnswerHit(c) ? 1 : 0, vis: document.visibilityState === "visible" ? 1 : 0,
-      rtt: qaStat(S0.rtt), loss: qaStat(S0.loss), jb: qaStat(S0.jb), jit: qaStat(T0.jit), fps: qaStat(T0.fps), h: qaStat(T0.h),   // C179
-      lct: c.lct || "", rct: c.rct || "", fam: c.fam || "", nat: natTel().nat, nsx: natTel().nsx, v6: natTel().v6 });   // C215
+    telLive(null);   // C216: انتهت كما يجب — لا لقطة «unfinished»
+    telSend(telObj(c, reason));
     setTimeout(function () { if (!cur && !gc && !rm && global.RTCPeerConnection) natProbe(true).catch(function () {}); }, 4000);   // C215: قياسٌ جديد بعد كلّ مكالمة (الشبكة قد تتغيّر) — للمكالمة التالية
     qaAfter(c.connectedAt ? Math.round((Date.now() - c.connectedAt) / 1000) : 0, { kind: c.type === "video" ? "video" : "audio", engine: c.native ? (RTCB() && RTCB().ios ? "native-ios" : "native") : "web", osr: c.osRoute || "",
       out: c.out || "", route: c.route || "", relay: c.relayLbl || c.relayId || "", proto: c.proto || "", s: c.qaS || null, reason: reason });
