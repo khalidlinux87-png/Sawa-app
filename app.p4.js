@@ -476,7 +476,7 @@ function MemberPersonPicker({ groupId, member, persons, onClose }) {
                     React.createElement("span", { className: `flex-1 min-w-0 truncate text-[13.5px] font-bold ${textStart()}`, style: { color: colors.text } }, p.local_name),
                     React.createElement("span", { className: "text-[11px] font-extrabold shrink-0", style: { color: colors.primary } }, busy === p.id ? tl("…جارٍ الإرسال", "…sending") : tl("هو هذا", "That's them")))))));
 }
-function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, settings, onCycleRole, onToggleSetting, onRemove, onShare, onOpenActivityLog, onBack, persons, canEdit, onOpenPerson }) {
+function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, settings, onCycleRole, onToggleSetting, onRemove, onTransfer, onShare, onOpenActivityLog, onBack, persons, canEdit, onOpenPerson }) {
     var _a, _b;
     const { colors } = useTheme();
     // ⛔ لا سيرفر، فلا عضوية حقيقية: كانت «دعوة عضو» تُلحق الاسم بالقائمة فوراً
@@ -487,6 +487,7 @@ function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, se
     // عائلةٌ على السحابة: القائمة من الخادم (من انضمّ فعلاً عبر الروابط)، والإدارة تمرّ بالخادم
     const [confirmingRemove, setConfirmingRemove] = useState(null);
     const [pickFor, setPickFor] = useState(null);   // C109
+    const [transferFor, setTransferFor] = useState(null);   // C206: نقل الملكيّة
     // دعوةٌ إلى التطبيق لا إلى المجموعة: رابط الموقع نفسه، يبدأ به القريب
     // شجرته على جهازه. ⛔ t() هنا عند النقر لا عند التحميل.
     function inviteRelative() {
@@ -535,7 +536,7 @@ function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, se
             React.createElement("div", null,
                 cloud && React.createElement("div", { className: `text-[13px] font-extrabold mb-2 px-0.5 ${textStart()}`, style: { color: colors.text } }, t("mb_alaada", { n: list.length })),
                 cloud && canManage && list.length > 1 && React.createElement("p", { className: `text-[10.5px] mb-2 px-0.5 ${textStart()}`, style: { color: colors.textMuted } }, t("mb_tap_role")),
-                list.map((m) => (React.createElement(FamCard, { key: m.userId, className: `flex ${rowStart()} items-center gap-3` },
+                list.map((m) => React.createElement(React.Fragment, { key: m.userId }, React.createElement(FamCard, { className: `flex ${rowStart()} items-center gap-3` },
                 React.createElement(FamAvatar, { name: (m.me || m.userId === "u-1" ? (m.name && !m.anon && m.name !== "أنت" ? m.name : (myAccountName() || "؟")) : m.name) || "؟", size: 42 }),
                 React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
                     React.createElement("span", { className: "block truncate text-[14px]", style: { color: colors.text, fontWeight: m.me ? 800 : 600 } }, (m.userId === "u-1" || m.me) ? t("ant") + (m.me && m.name && !m.anon ? " · " + m.name : "") : m.name),
@@ -551,7 +552,17 @@ function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, se
                 cloud && canManage && onRemove && m.role !== "owner" && !m.me && (confirmingRemove === m.userId
                     ? React.createElement("button", { onClick: () => { setConfirmingRemove(null); onRemove(groupId, m.userId); }, className: "text-[10px] font-bold rounded-xl px-2 py-1.5 text-white shrink-0", style: { backgroundColor: colors.danger } }, t("mb_remove_q"))
                     : React.createElement("button", { "aria-label": t("mb_remove"), onClick: () => setConfirmingRemove(m.userId), className: "w-8 h-8 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.bg } },
-                        React.createElement(Trash2, { size: 13, color: colors.danger }))))))))));
+                        React.createElement(Trash2, { size: 13, color: colors.danger }))),
+                // C206: «اجعله المالك» — لعضوٍ بحساب (لا ضيف) في عائلةٍ على السحابة
+                cloud && canManage && onTransfer && m.role !== "owner" && !m.me && !m.anon && React.createElement("button", { "aria-label": tl("اجعله مالك العائلة", "Make owner"), title: tl("اجعله مالك العائلة", "Make owner"), onClick: () => setTransferFor(transferFor === m.userId ? null : m.userId), className: "w-8 h-8 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: transferFor === m.userId ? colors.accent + "22" : colors.bg } },
+                    React.createElement(Crown, { size: 14, color: colors.accent }))),
+                transferFor === m.userId && React.createElement(FamCard, { style: { border: `1px solid ${colors.accent}55` } },
+                    React.createElement("div", { className: `text-[13px] font-extrabold ${textStart()}`, style: { color: colors.text } }, tl("نقل ملكيّة العائلة إلى «" + (m.name || "") + "»؟", "Make “" + (m.name || "") + "” the owner?")),
+                    React.createElement("p", { className: `text-[11.5px] mt-1 mb-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, tl("سيصير هو المالك الوحيد: يدير الأعضاء والأدوار ويستطيع حذف العائلة. اختر دورك بعد النقل — لا تستعيد الملكيّة إلّا إن نقلها إليك.", "They become the only owner: they manage members and roles and can delete the family. Choose your role after the transfer — you get ownership back only if they give it back.")),
+                    React.createElement("div", { className: `flex ${rowStart()} gap-2` },
+                        React.createElement("button", { onClick: () => { setTransferFor(null); onTransfer(groupId, m.userId, "editor"); }, className: "flex-1 rounded-2xl px-3 py-2.5 text-xs font-extrabold", style: { background: famGrad(colors), color: "#fff" } }, tl("أصير محرّراً", "Become editor")),
+                        React.createElement("button", { onClick: () => { setTransferFor(null); onTransfer(groupId, m.userId, "viewer"); }, className: "flex-1 rounded-2xl px-3 py-2.5 text-xs font-bold", style: { backgroundColor: colors.primary + "14", color: colors.primary } }, tl("أصير مشاهداً", "Become viewer")),
+                        React.createElement("button", { onClick: () => setTransferFor(null), className: "rounded-2xl px-3 py-2.5 text-xs font-bold", style: { backgroundColor: colors.bg, color: colors.textMuted } }, tl("إلغاء", "Cancel"))))))))));
 }
 // ============================================================================
 // C37: منازل الأقارب وتنبيه القرب — «منزل عمّك على بعد ٥٠٠ م: فرصةٌ للزيارة أو للاتّصال»

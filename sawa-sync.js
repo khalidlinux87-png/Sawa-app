@@ -503,6 +503,8 @@
     return call(op, payload).then(function () { if (okMsg) toast(okMsg); return true; }).catch(function (e) {
       var m = (e && e.message) || String(e);
       if (/only the owner/.test(m)) m = L("هذا لمالك العائلة وحده", "Only the family's owner can do this");
+      else if (/guest can't own/.test(m)) m = L("لا يمكن نقل الملكيّة إلى ضيف — يربط حسابه بـGoogle أو Apple أو بريد أوّلاً", "Ownership can't go to a guest — they need to link a Google / Apple / email account first");   // C206
+      else if (/not a member/.test(m)) m = L("لم يعد عضواً في العائلة", "No longer a member of this family");
       toast(L("تعذّر: ", "Failed: ") + m); return false;
     });
   }
@@ -512,6 +514,10 @@
     var next = m.role === "editor" ? "viewer" : "editor";
     return memberAction(lg, "member.setRole", { uid: uid, role: next },
       next === "editor" ? L("صار محرّراً ✓", "Now an editor ✓") : L("صار مشاهداً ✓", "Now a viewer ✓"));
+  }
+  // C206: نقل ملكيّة العائلة إلى عضو، وأصير محرّراً أو مشاهداً (دوري الجديد يصل عبر مستمع الأعضاء)
+  function transferOwner(lg, uid, myRole) {
+    return memberAction(lg, "member.transferOwner", { uid: uid, myRole: myRole === "viewer" ? "viewer" : "editor" }, L("نُقلت ملكيّة العائلة ✓", "Family ownership transferred ✓"));
   }
   function removeMember(lg, uid) { return memberAction(lg, "member.remove", { uid: uid }, L("أُزيل من العائلة ✓", "Removed from the family ✓")); }
   function setAllowMemberEvents(lg, v) { return memberAction(lg, "group.settings", { allowMemberEvents: !!v }, null); }
@@ -1502,6 +1508,7 @@
       else what = L(a + " و" + b + " إخوة", a + " and " + b + " as siblings");
       var why = /parent slot/.test(d.conflict || "") ? L("لـ" + b + " والدٌ من الجنس نفسه مسجّلٌ مسبقاً", b + " already has a parent of that gender")
               : /cycle/.test(d.conflict || "") ? L("تُنشئ دورة: " + b + " من أسلاف " + a, "creates a loop: " + b + " is an ancestor of " + a)
+              : /two parents/.test(d.conflict || "") ? L("لـ" + b + " والدان مسجّلان مسبقاً", b + " already has two parents")   // C205
               : esc(d.conflict || "");
       return { title: L("صلة: ", "Link: ") + what, why: why, actions: ["apply", "reject"] };
     }
@@ -1801,7 +1808,7 @@
     claim: function (lg, personId, target) { var sg = serverGid(lg); if (!sg) return Promise.resolve(null); return call("fam.claim", { groupId: sg, personId: personId == null ? null : personId, target: target || undefined }); },
     isCloud: function (lg) { return !!serverGid(lg); },
     call: function (op, payload) { return call(op, payload); }, toast: function (m) { toast(m); },
-    cycleMemberRole: cycleMemberRole, removeMember: removeMember, setAllowMemberEvents: setAllowMemberEvents,
+    cycleMemberRole: cycleMemberRole, transferOwner: transferOwner, removeMember: removeMember, setAllowMemberEvents: setAllowMemberEvents,
     personToFields: personToFields, relToServer: relToServer,
     uid: function () { return state.uid; },
     isReady: function () { return !!(state.ready && state.uid); },

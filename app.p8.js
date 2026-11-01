@@ -3852,6 +3852,7 @@ function AppInner() {
             onCycleRole: cloud ? (gid, uid) => SS.cycleMemberRole(gid, uid) : cycleMemberRole,
             onToggleSetting: cloud ? (gid, val) => { toggleGroupSetting(gid, val); SS.setAllowMemberEvents(gid, val); } : toggleGroupSetting,
             onRemove: cloud ? (gid, uid) => SS.removeMember(gid, uid) : null,
+            onTransfer: cloud && SS.transferOwner ? (gid, uid, myRole) => SS.transferOwner(gid, uid, myRole) : null,   // C206
             onShare: cloud ? (role) => SS.shareLink(role, group.id) : null, onOpenActivityLog: () => setDiscoverStack([...discoverStack, { type: "activityLog", data: group }]), onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
     }
     else if (discoverTop.type === "activityLog") {
