@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c197";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c215";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -196,11 +196,68 @@
     return relayBusy;
   }
   function relayAuto() {
+    natAuto();   // C215
     if (!iceRelays || iceRelays.length < 2 || cur || gc || rm) return;
     loadColo();
     setTimeout(function () { if (!cur && !gc && !rm) probeRelays(false); }, 1500);
   }
-  try { var nc = global.navigator && global.navigator.connection; if (nc && nc.addEventListener) nc.addEventListener("change", function () { relayAt = 0; setTimeout(relayAuto, 3000); }); } catch (e) {}
+  try { var nc = global.navigator && global.navigator.connection; if (nc && nc.addEventListener) nc.addEventListener("change", function () { relayAt = 0; natAt = 0; setTimeout(relayAuto, 3000); }); } catch (e) {}
+
+  // ---------- C215: نوع NAT في شبكة هذا الهاتف — لماذا لا يتّصل الهاتفان مباشرة ----------
+  // نسأل خادمَي STUN مختلفين (Google وCloudflare) من المنفذ نفسه:
+  //   • عنوانٌ خارجيّ واحد للاثنين ⇒ «eim» (التعيين لا يتغيّر بتغيّر الوجهة — الاتّصال المباشر ممكن)
+  //   • عنوانان مختلفان للمنفذ نفسه ⇒ «sym» (متماثل: المنفذ يتغيّر مع كلّ وجهة — المباشر يفشل غالباً، والوسيط ضروريّ)
+  //   • لا عنوان خارجيّ ⇒ «none» (UDP أو STUN محجوب)
+  // ملاحظة: المتصفّح يدمج العنوانين المتطابقين، فـ«eim» تعني أيضاً «أجاب خادمٌ واحد فقط» — الأدقّ هو «sym».
+  // يُقاس خارج المكالمات فقط، عند تغيّر الشبكة أو كلّ ٣٠ دقيقة، ويُرفق بسجلّ المكالمة (call.tel).
+  var NAT_STUN = [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun.cloudflare.com:3478" }];
+  var natInfo = null, natAt = 0, natBusy = null;
+  function natClassify(cands) {
+    var keys = {}, n = 0, bases = {}, v6 = 0, hidden = 0;
+    (cands || []).forEach(function (s) {
+      var p = String(s || "").replace(/^a=/, "").split(" "), i = p.indexOf("typ");
+      if (i < 0 || String(p[2] || "").toLowerCase() !== "udp") return;
+      var typ = p[i + 1], addr = String(p[4] || "").toLowerCase(), port = p[5] || "";
+      if (addr.indexOf(":") >= 0 && !/^fe80:/.test(addr) && !/\.local$/.test(addr)) v6 = 1;   // IPv6 عامّ (لا NAT عادةً)
+      if (typ !== "srflx" || addr.indexOf(":") >= 0) return;
+      var ri = p.indexOf("rport"), rp = ri > 0 ? String(p[ri + 1] || "0") : "0";
+      if (rp === "0") hidden++;
+      var k = addr + ":" + port;
+      if (!keys[k]) { keys[k] = 1; n++; }
+      (bases[rp] = bases[rp] || {})[k] = 1;
+    });
+    var sym = Object.keys(bases).some(function (b) { return Object.keys(bases[b]).length > 1 && (b !== "0" || Object.keys(bases).length === 1); });
+    return { t: n === 0 ? "none" : sym ? "sym" : "eim", n: n, v6: v6 };
+  }
+  function natProbe(force) {
+    if (natBusy) return natBusy;
+    if (!force && natInfo && Date.now() - natAt < 30 * 60 * 1000) return Promise.resolve(natInfo);
+    var p = new Promise(function (res) {
+      var pc = null, done = false, cands = [];
+      var fin = function () {
+        if (done) return; done = true;
+        try { if (pc) pc.close(); } catch (e) {}
+        if (cands.length || pc) { natInfo = natClassify(cands); natAt = Date.now(); LOG.info("nat", natInfo); }
+        res(natInfo);
+      };
+      try { pc = new global.RTCPeerConnection({ iceServers: NAT_STUN }); } catch (e) { pc = null; return fin(); }
+      pc.onicecandidate = function (e) { if (!e.candidate) return fin(); if (e.candidate.candidate) cands.push(e.candidate.candidate); };
+      pc.onicegatheringstatechange = function () { if (pc.iceGatheringState === "complete") fin(); };
+      try { pc.createDataChannel("nat"); pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).catch(fin); } catch (e) { fin(); }
+      setTimeout(fin, 6000);
+    });
+    natBusy = p;
+    p.then(function () { natBusy = null; }, function () { natBusy = null; });
+    return p;
+  }
+  function natAuto() {
+    if (cur || gc || rm || !global.RTCPeerConnection) return;
+    if (natInfo && Date.now() - natAt < 30 * 60 * 1000) return;
+    setTimeout(function () { if (!cur && !gc && !rm) natProbe(false).catch(function () {}); }, 2500);
+  }
+  // ما يُرفق بسجلّ المكالمة: النوع إن قيس في آخر ساعة
+  function natTel() { return natInfo && Date.now() - natAt < 60 * 60 * 1000 ? { nat: natInfo.t, nsx: natInfo.n, v6: natInfo.v6 } : {}; }
+  try { setTimeout(natAuto, 8000); } catch (e) {}
   function relayOfUrl(u) {
     if (!u || !iceRelays) return null;
     var h = String(u).replace(/^turns?:/, "").split(/[:?]/)[0];
@@ -935,6 +992,8 @@
         var lc = cands[pair.localCandidateId] || {}, rc = cands[pair.remoteCandidateId] || {};
         var relay = lc.candidateType === "relay" || rc.candidateType === "relay";
         c.route = relay ? "relay" : "direct"; c.proto = String(lc.relayProtocol || lc.protocol || "").toLowerCase() || null;
+        c.lct = lc.candidateType || null; c.rct = rc.candidateType || null;   // C215: نوع العنوانين المختارين (host · srflx · prflx · relay)
+        var la = String(lc.address || lc.ip || ""); c.fam = la ? (la.indexOf(":") >= 0 ? "6" : "4") : null;
         var rr = lc.candidateType === "relay" ? relayOfUrl(lc.url) : null; c.relayLbl = rr ? rr.label : null; c.relayId = rr ? rr.id : null;   // C94: أيّ وسيط
         if (!rr && rc.candidateType === "relay") c.relayLbl = L("وسيط الطرف الآخر", "peer's relay");   // C167: الوسيط من جهة الطرف الآخر (قد تكون نسخته أقدم)
         LOG.info("ice.pair", { local: lc.candidateType, remote: rc.candidateType, proto: c.proto });
@@ -1397,6 +1456,7 @@
   }
   // C175: مفتاح المدير — الوسيط الأساسيّ (Metered / Cloudflare / تلقائيّ = إعداد الـWorker) · يصل الكلّ خلال دقائق
   // C179: سجلّ المكالمات (للمدير) — من سجلّات كلّ المكالمات مجمّعةً بمعرّف المكالمة: نسبة المرور عبر TURN · UDP · زمن الاتّصال · الجودة · أسباب الفشل
+  var NAT_TX = { sym: ["متماثل", "symmetric"], eim: ["ثابت", "EIM"], none: ["بلا STUN", "no STUN"] };   // C215
   var TEL_REASON = { hangup: ["أُنهيت", "Hung up"], remote: ["أنهاها الآخر", "Remote"], noanswer: ["لم يُجب", "No answer"], declined: ["رُفضت", "Declined"], cancel: ["أُلغيت", "Cancelled"], failed: ["فشل الاتّصال", "Failed"], lost: ["انقطعت", "Lost"], error: ["خطأ", "Error"], busy: ["مشغول", "Busy"], missed: ["فائتة", "Missed"], left: ["غادر", "Left"], moved: ["انتقلت إلى SFU", "Moved to SFU"] };
   function telReport(days) {
     days = days || 7;
@@ -1426,6 +1486,17 @@
         if (a.fps != null) kv(c1, L("إطارات الفيديو", "Video fps"), a.fps + " fps", a.fps < 12);
         if (a.ringN) kv(c1, L("وصل إشعار الرنين", "Ring push delivered"), pct(a.ringOk, a.ringN), a.ringOk / a.ringN < 0.9);
         c1.appendChild(el("div", "font:600 11px system-ui;color:" + MUTED + ";margin-top:4px", L("المعتاد عالميّاً: ١٥–٤٠٪ عبر الوسيط. الأصفر يستحقّ المراجعة.", "Typical: 15–40% relayed. Yellow deserves a look.")));
+        // C215: نوع NAT لكلّ طرف (من قياس الهاتف قبل المكالمة) — يفسّر نسبة الوسيط
+        var nt = a.nat || {}, nN = (nt.sym || 0) + (nt.eim || 0) + (nt.none || 0);
+        if (nN) {
+          var c1n = card(L("نوع NAT في شبكات الهواتف", "NAT type on phone networks"));
+          kv(c1n, L("متماثل (symmetric) — المباشر يفشل غالباً", "Symmetric — direct usually fails"), pct(nt.sym || 0, nN) + " · " + (nt.sym || 0), (nt.sym || 0) / nN > 0.5);
+          kv(c1n, L("ثابت (EIM) — المباشر ممكن", "Endpoint-independent — direct possible"), pct(nt.eim || 0, nN) + " · " + (nt.eim || 0));
+          kv(c1n, L("بلا STUN (UDP محجوب)", "No STUN (UDP blocked)"), pct(nt.none || 0, nN) + " · " + (nt.none || 0), (nt.none || 0) > 0);
+          if (nt.v6) kv(c1n, L("لديه IPv6", "Has IPv6"), pct(nt.v6, nN) + " · " + nt.v6);
+          if (nt.unk) kv(c1n, L("لم يُقَس (نسخة أقدم)", "Not measured (older build)"), String(nt.unk));
+          c1n.appendChild(el("div", "font:600 11px system-ui;color:" + MUTED + ";margin-top:4px", L("إن كان الطرفان «متماثل» فلا اتّصال مباشر ممكن، والوسيط ضروريّ. يكفي أن يكون أحدهما «ثابت» ليُستعمل وسيطٌ واحد فقط.", "If both sides are symmetric, a direct path is impossible and a relay is required. One endpoint-independent side lets a single relay suffice.")));
+        }
         var rs = Object.keys(a.reasons || {}).sort(function (x, y) { return a.reasons[y] - a.reasons[x]; });
         if (rs.length) { var c2 = card(L("لم تتّصل — الأسباب", "Not connected — reasons")); rs.forEach(function (k) { kv(c2, TEL_REASON[k] ? L(TEL_REASON[k][0], TEL_REASON[k][1]) : k, String(a.reasons[k])); }); }
         var ps = Object.keys(r.byPlat || {});
@@ -1450,7 +1521,7 @@
           row.firstChild.appendChild(el("span", "color:" + MUTED + ";direction:ltr", new Date(c.ts).toLocaleString(isAr() ? "ar" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })));
           c.sides.forEach(function (y) {
             row.appendChild(el("div", "color:" + MUTED + ";direction:ltr;text-align:start;margin-top:2px;word-break:break-word",
-              [y.role, y.plat, y.eng, y.ck ? "📲sys" : "", y.vis === 0 ? "bg" : "", y.ok ? ms(y.setup) : (TEL_REASON[y.reason] ? L(TEL_REASON[y.reason][0], TEL_REASON[y.reason][1]) : y.reason), y.err ? "err " + y.err : "", y.up ? "📹+" : "", y.route ? y.route + "/" + (y.proto || "?") + (y.relay ? " " + y.relay : "") : "", y.rtt ? "RTT " + y.rtt.med : "", y.loss ? "loss " + y.loss.med + "%" : "", y.secs ? y.secs + "s" : ""].filter(Boolean).join(" · ")));
+              [y.role, y.plat, y.eng, y.ck ? "📲sys" : "", y.vis === 0 ? "bg" : "", y.ok ? ms(y.setup) : (TEL_REASON[y.reason] ? L(TEL_REASON[y.reason][0], TEL_REASON[y.reason][1]) : y.reason), y.err ? "err " + y.err : "", y.up ? "📹+" : "", y.route ? y.route + "/" + (y.proto || "?") + (y.relay ? " " + y.relay : "") : "", y.lct ? y.lct + "↔" + (y.rct || "?") + (y.fam === "6" ? " IPv6" : "") : "", y.nat ? "NAT " + (NAT_TX[y.nat] ? L(NAT_TX[y.nat][0], NAT_TX[y.nat][1]) : y.nat) + (y.v6 ? " +v6" : "") : "", y.rtt ? "RTT " + y.rtt.med : "", y.loss ? "loss " + y.loss.med + "%" : "", y.secs ? y.secs + "s" : ""].filter(Boolean).join(" · ")));
           });
           if (c.srv) row.appendChild(el("div", "color:" + MUTED + ";font-size:11px", L("الخادم: رنين ", "Server: ring ") + (c.srv.sent || 0)));
           row.appendChild(el("div", "color:#64748b;font-size:10.5px;direction:ltr;text-align:start", "call_id " + c.cid));
@@ -1618,7 +1689,9 @@
     telSend({ id: c.id, k: c.type === "video" ? "video" : "audio", role: c.role, eng: c.native ? (RTCB() && RTCB().ios ? "native-ios" : "native") : "web", ok: !!c.connectedAt,
       setup: c.connectedAt ? c.connectedAt - (c.accAt || c.t0 || c.connectedAt) : null, secs: c.connectedAt ? Math.round((Date.now() - c.connectedAt) / 1000) : 0, reason: reason,
       route: c.route || "", proto: c.proto || "", relay: c.relayLbl || c.relayId || "", rst: c.reN || 0, err: c.errName || "", up: c.vin ? 1 : 0, ck: wantAnswerHit(c) ? 1 : 0, vis: document.visibilityState === "visible" ? 1 : 0,
-      rtt: qaStat(S0.rtt), loss: qaStat(S0.loss), jb: qaStat(S0.jb), jit: qaStat(T0.jit), fps: qaStat(T0.fps), h: qaStat(T0.h) });   // C179
+      rtt: qaStat(S0.rtt), loss: qaStat(S0.loss), jb: qaStat(S0.jb), jit: qaStat(T0.jit), fps: qaStat(T0.fps), h: qaStat(T0.h),   // C179
+      lct: c.lct || "", rct: c.rct || "", fam: c.fam || "", nat: natTel().nat, nsx: natTel().nsx, v6: natTel().v6 });   // C215
+    setTimeout(function () { if (!cur && !gc && !rm && global.RTCPeerConnection) natProbe(true).catch(function () {}); }, 4000);   // C215: قياسٌ جديد بعد كلّ مكالمة (الشبكة قد تتغيّر) — للمكالمة التالية
     qaAfter(c.connectedAt ? Math.round((Date.now() - c.connectedAt) / 1000) : 0, { kind: c.type === "video" ? "video" : "audio", engine: c.native ? (RTCB() && RTCB().ios ? "native-ios" : "native") : "web", osr: c.osRoute || "",
       out: c.out || "", route: c.route || "", relay: c.relayLbl || c.relayId || "", proto: c.proto || "", s: c.qaS || null, reason: reason });
     if (cur === c) cur = null;
