@@ -2458,7 +2458,7 @@ function AppInner() {
         if (!amount || amount <= 0 || amount > walletBalance)
             return;
         setWalletBalance((prev) => prev - amount);
-        setWalletTransactions((prev) => [{ id: `w-${Date.now()}`, type: "debit", amount, note: t("thwyl_mrsl_ila", { toName }), ts: Date.now() }, ...prev]);
+        setWalletTransactions((prev) => [{ id: `w-${Date.now()}`, type: "debit", amount, note: t("thwyl_mrsl_ila", { toName }), ts: Date.now(), to: toName }, ...prev]);   // C221: to = للمستلمين الأخيرين
         showToast(`تم الإرسال ✓ — ${amount.toLocaleString(loc())} ج.س إلى ${toName}`, "success");
     }
     function scanPay(merchantName, amount) {

@@ -801,7 +801,7 @@ function TaqaScreen({ balance, colors, onBack }) {
 function WalletNavBar({ navTab, setNavTab, colors }) {
     const TABS = [
         { id: "home", Icon: Wallet, label: t("almhfza") },
-        { id: "history", Icon: ArrowUpRight, label: t("alhrkat") },
+        { id: "history", Icon: Clock, label: t("alhrkat") },
         { id: "services", Icon: Grid3x3, label: t("alkhdmat") },
         { id: "settings", Icon: SettingsIcon, label: t("aliadadat") },
     ];
@@ -890,7 +890,24 @@ function walletMaskCard(num) {
     const last4 = digits.slice(-4) || "0000";
     return `•••• •••• •••• ${last4}`;
 }
+// C221: مبلغٌ بإشارته — الإشارة يسار الأرقام دائماً (عزلٌ ثنائيّ الاتّجاه؛ كانت «٣٬٠٠٠-» في العربيّة) والعملة بعده بخطٍّ أصغر
+function walletAmt(sign, n, cur) {
+    return React.createElement("span", { className: "inline-flex items-baseline gap-1 whitespace-nowrap" },
+        React.createElement("span", { dir: "ltr", style: { unicodeBidi: "isolate" } }, (sign || "") + Number(n || 0).toLocaleString(loc())),
+        cur !== false && React.createElement("span", { className: "text-[10px] font-bold", style: { opacity: 0.75 } }, tl("ج.س", "SDG")));
+}
+// C221: «منذ ساعتين» بدل «منذ 2 س» — كلماتٌ عربيّة بالعدد الصحيح، وأرقامٌ بلغة الواجهة (كانت لاتينيّة بجانب مبالغ عربيّة)
+function walletAgoAr(n, one, two, few, many) { const d = n.toLocaleString(loc()); return n === 1 ? "منذ " + one : n === 2 ? "منذ " + two : n <= 10 ? "منذ " + d + " " + few : "منذ " + d + " " + many; }
 function walletTimeAgo(ts) {
+    const mins0 = Math.floor((Date.now() - ts) / 60000);
+    if (isRTL()) {
+        if (mins0 < 1) return "الآن";
+        if (mins0 < 60) return walletAgoAr(mins0, "دقيقة", "دقيقتين", "دقائق", "دقيقة");
+        const h0 = Math.floor(mins0 / 60);
+        if (h0 < 24) return walletAgoAr(h0, "ساعة", "ساعتين", "ساعات", "ساعة");
+        const d0 = Math.floor(h0 / 24);
+        return d0 === 1 ? "أمس" : walletAgoAr(d0, "يوم", "يومين", "أيّام", "يوماً");
+    }
     const diffMs = Date.now() - ts;
     const mins = Math.floor(diffMs / 60000);
     if (mins < 1)
@@ -1569,6 +1586,7 @@ function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, 
     const { colors } = useTheme();
     const [view, setView] = useState("home");
     const WALLET_SERVICES = buildWalletServices(colors, setView);
+    if (canIntl) WALLET_SERVICES.unshift({ id: "intl", label: tl("تحويل دوليّ", "International transfer"), desc: tl("تجريبيّ — للمشرف والمدير", "Demo — moderators & admins"), Icon: Globe, bgColor: colors.primaryLight, iconColor: colors.primary, onPress: () => setView("intl") });   // C221
     const [selectedBank, setSelectedBank] = useState(WALLET_BANKS[0]);
     const [transferTo, setTransferTo] = useState("");
     const [transferPhone, setTransferPhone] = useState("");
@@ -1597,9 +1615,9 @@ function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, 
     const recentRecipients = useMemo(() => {
         const seen = new Set();
         return transactions
-            .filter((t) => t.type === "debit" && t.note && !seen.has(t.note) && seen.add(t.note))
+            .filter((t) => t.type === "debit" && t.to && !seen.has(t.to) && seen.add(t.to))   // C221: المستلمون من التحويلات وحدها (كانت أيّ حركة خصمٍ تظهر «مستلماً»)
             .slice(0, 4)
-            .map((t) => ({ name: t.note, initial: t.note.charAt(0) }));
+            .map((t) => ({ name: t.to, initial: String(t.to).trim().charAt(0) }));
     }, [transactions]);
     const now = new Date();
     const monthlySpent = transactions
@@ -1697,10 +1715,7 @@ function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, 
             React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
                 React.createElement(Card, { className: "items-center flex flex-col py-6 mb-4" },
                     React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center mb-3", style: { backgroundColor: colors.primaryLight } }, txn.type === "credit" ? React.createElement(ArrowDownLeft, { size: 24, color: colors.success }) : React.createElement(ArrowUpRight, { size: 24, color: colors.danger })),
-                    React.createElement("span", { className: "text-2xl font-extrabold", style: { color: txn.type === "credit" ? colors.success : colors.danger } },
-                        txn.type === "credit" ? "+" : "-",
-                        txn.amount.toLocaleString(loc()),
-                        t("w_sdg_sp")),
+                    React.createElement("span", { className: "text-2xl font-extrabold", style: { color: txn.type === "credit" ? colors.success : colors.danger } }, walletAmt(txn.type === "credit" ? "+" : "\u2212", txn.amount)),   // C221
                     React.createElement("span", { className: "text-sm mt-2", style: { color: colors.text } }, txn.note)),
                 React.createElement(Card, { className: "p-0 overflow-hidden" },
                     React.createElement("div", { className: `flex ${rowStart()} items-center justify-between p-3 border-b`, style: { borderColor: colors.border } },
@@ -1841,17 +1856,17 @@ ${txn.note}
     }
     const NAV_TABS = [
         { id: "home", iconName: "Wallet", label: t("w_almhfza") },
-        { id: "history", iconName: "ArrowUpRight", label: t("w_alhrkat") },
+        { id: "history", iconName: "Clock", label: t("w_alhrkat") },   // C221: كان سهم «مدفوع» نفسه
         { id: "services", iconName: "Grid3x3", label: t("w_alkhdmat_nav") },
         { id: "settings", iconName: "SettingsIcon", label: t("w_aliadadat") },
     ];
-    const NAV_ICONS = { Wallet, ArrowUpRight, Grid3x3, SettingsIcon };
+    const NAV_ICONS = { Wallet, ArrowUpRight, Clock, Grid3x3, SettingsIcon };
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
         navTab === "home" && (React.createElement(React.Fragment, null,
             React.createElement(TopBar, { title: t("almhfza"), onBack: onBack }),
             React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
                 React.createElement("div", { className: "rounded-2xl p-5 mb-4 relative overflow-hidden", style: { background: `linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)` } },
-                    React.createElement("div", { style: { position: "absolute", left: -20, bottom: -20, fontSize: 90, opacity: 0.05, lineHeight: 1 } }, "\uD83D\uDCB0"),
+                    React.createElement("div", { style: { position: "absolute", insetInlineEnd: -14, top: -18, opacity: 0.06, lineHeight: 0, pointerEvents: "none" } }, React.createElement(Wallet, { size: 104, color: "#fff" })),   // C221: كان 💰 (كيس دولار) خلف أزرار محفظةٍ بالجنيه
                     walletFrozen && (React.createElement("div", { className: "absolute inset-0 flex flex-col items-center justify-center rounded-2xl", style: { backgroundColor: "rgba(0,0,0,0.65)", zIndex: 2 } },
                         React.createElement(Snowflake, { size: 28, color: "#fff" }),
                         React.createElement("span", { className: "text-sm font-extrabold text-white mt-2" }, t("almhfza_mjmda")),
@@ -1869,7 +1884,7 @@ ${txn.note}
                             { label: t("tghdhya"), Icon: CreditCard, action: () => setView("topup"), bg: "rgba(255,255,255,0.2)" },
                             { label: t("irsal_mal"), Icon: Send, action: () => setView("transfer"), bg: "rgba(255,255,255,0.2)" },
                             { label: t("msh_wdfa"), Icon: QrCode, action: () => setView("scanPay"), bg: "rgba(255,255,255,0.2)" },
-                            canIntl && { label: tl("دوليّ", "Abroad"), Icon: Globe, action: () => setView("intl"), bg: "rgba(255,255,255,0.28)" },   // C220
+                            canIntl && { label: tl("دوليّ", "Abroad"), Icon: Globe, action: () => setView("intl"), bg: "rgba(255,255,255,0.2)" },   // C220 · C221: بلون بقيّة الأزرار
                         ].filter(Boolean).map((btn) => (React.createElement("button", { key: btn.label, onClick: btn.action, className: "flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3 px-1", style: { backgroundColor: btn.bg, backdropFilter: "blur(4px)" } },
                             React.createElement(btn.Icon, { size: 18, color: "#fff" }),
                             React.createElement("span", { className: "text-[10px] font-extrabold text-white" }, btn.label))))))),
@@ -1887,15 +1902,14 @@ ${txn.note}
                     kycStatus !== "pending" && React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => onDismissKyc && onDismissKyc(), className: "w-7 h-7 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.bg } },
                         React.createElement(X, { size: 13, color: colors.textMuted })))),
                 React.createElement("h4", { className: "text-sm font-extrabold mt-4 mb-2", style: { color: colors.text } }, t("akhr_alhrkat")),
-                transactions.slice(0, 5).map((txn) => (React.createElement("button", { key: txn.id, onClick: () => { setSelectedTransaction(txn); setView("transactionDetail"); }, className: `w-full ${textStart()} block` },
-                    React.createElement(Card, { className: `flex ${rowStart()} items-center` },
-                        React.createElement("div", { className: `w-9 h-9 rounded-full flex items-center justify-center ${ms("2.5")}`, style: { backgroundColor: colors.primaryLight } }, txn.type === "credit" ? React.createElement(ArrowDownLeft, { size: 15, color: colors.success }) : React.createElement(ArrowUpRight, { size: 15, color: colors.danger })),
-                        React.createElement("div", { className: "flex-1" },
-                            React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, txn.note),
+                transactions.slice(0, 5).map((txn) => (React.createElement("button", { key: txn.id, onClick: () => { setSelectedTransaction(txn); setView("transactionDetail"); }, className: `w-full ${textStart()} block mb-1.5` },
+                    // C221: صفّ الحركة كما في «الحركات»: لونٌ بحسب النوع · العنوان سطران على الأكثر لا يلتصق بالمبلغ · المبلغ بإشارته وعملته
+                    React.createElement("div", { className: `flex ${rowStart()} items-center gap-3 rounded-2xl p-3`, style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
+                        React.createElement("div", { className: "w-10 h-10 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: txn.type === "credit" ? colors.success + "18" : colors.danger + "18" } }, txn.type === "credit" ? React.createElement(ArrowDownLeft, { size: 16, color: colors.success }) : React.createElement(ArrowUpRight, { size: 16, color: colors.danger })),
+                        React.createElement("div", { className: "flex-1 min-w-0" },
+                            React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.35 } }, txn.note),
                             React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, walletTimeAgo(txn.ts))),
-                        React.createElement("span", { className: "text-sm font-bold", style: { color: txn.type === "credit" ? colors.success : colors.danger } },
-                            txn.type === "credit" ? "+" : "-",
-                            txn.amount.toLocaleString(loc())))))),
+                        React.createElement("span", { className: "text-sm font-extrabold tabular-nums shrink-0", style: { color: txn.type === "credit" ? colors.success : colors.danger } }, walletAmt(txn.type === "credit" ? "+" : "\u2212", txn.amount)))))),
                 transactions.length > 5 && (React.createElement("button", { onClick: () => setNavTab("history"), className: "w-full py-3 text-center" },
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.primary } }, t("ard_kl_alhrkat"))))))),
         navTab === "history" && (React.createElement(React.Fragment, null,
@@ -1923,8 +1937,7 @@ ${txn.note}
                                 ].map((box) => React.createElement("div", { key: box.label, className: "flex-1 rounded-xl px-2 py-2 text-center", style: { backgroundColor: colors.bg } },
                                     React.createElement("div", { className: "text-[9px] mb-0.5", style: { color: colors.textMuted } }, box.label),
                                     React.createElement("div", { className: "text-[11px] font-extrabold tabular-nums", style: { color: box.color } },
-                                        (box.value > 0 && box.label === t("w_alsafy") ? "+" : ""),
-                                        box.value.toLocaleString(loc())))))));
+                                        walletAmt(box.value > 0 && box.label === t("w_alsafy") ? "+" : box.value < 0 ? "\u2212" : "", Math.abs(box.value), false)))))));   // C221
                 })(),
                 spendingLimit && (React.createElement("div", { className: "mx-4 mb-3 rounded-xl p-3", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                     React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-1.5` },
@@ -2015,9 +2028,7 @@ ${txn.note}
                                 React.createElement("div", { className: "flex-1 min-w-0" },
                                     React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.35 } }, txn.note),
                                     React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, new Date(txn.ts).toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" }))),
-                                React.createElement("span", { className: "text-sm font-extrabold tabular-nums shrink-0", style: { color: txn.type === "credit" ? colors.success : colors.danger } },
-                                    txn.type === "credit" ? "+" : "-",
-                                    txn.amount.toLocaleString(loc())))))))));
+                                React.createElement("span", { className: "text-sm font-extrabold tabular-nums shrink-0", style: { color: txn.type === "credit" ? colors.success : colors.danger } }, walletAmt(txn.type === "credit" ? "+" : "\u2212", txn.amount)))))))));
                 })())))),
         navTab === "services" && (React.createElement(React.Fragment, null,
             React.createElement(TopBar, { title: t("alkhdmat"), onBack: onBack }),
@@ -2042,7 +2053,7 @@ ${txn.note}
                     React.createElement("div", { className: "text-[10px]", style: { color: "rgba(255,255,255,0.6)" } }, kycStatus === "verified" ? t("hsabk_mwthq") : t("wthq_hwytk_lfth"))),
                 [
                     { label: t("hd_alinfaq_alshhry"), desc: spendingLimit ? `${spendingLimit.toLocaleString(isRTL() ? "ar-SD" : "en-US")} ${t("j_s")}` : t("ghyr_mhdd"), Icon: SlidersHorizontal, bg: "#E3F2FD", ic: "#1565C0", onPress: () => setView("limit") },
-                    { label: t("wsayl_aldfa_almrbwta"), desc: `${(linkedMethods || []).length} ${t("wsyla")}`, Icon: CreditCard, bg: "#E8F5E9", ic: "#1B5E20", onPress: () => setView("paymentMethods") },
+                    { label: t("wsayl_aldfa_almrbwta"), desc: (() => { const n = (linkedMethods || []).length; return isRTL() ? (n === 0 ? "لا وسائل بعد" : n === 1 ? "وسيلةٌ واحدة" : n === 2 ? "وسيلتان" : n.toLocaleString(loc()) + (n <= 10 ? " وسائل" : " وسيلة")) : n + " " + (n === 1 ? "method" : "methods"); })(), /* C221: كان «0 وسيلة» */ Icon: CreditCard, bg: "#E8F5E9", ic: "#1B5E20", onPress: () => setView("paymentMethods") },
                     { label: t("twthyq_alhwya_kyc"), desc: kycStatus === "verified" ? t("mwthq") : kycStatus === "pending" ? t("qyd_almrajaa") : t("ghyr_mwthq"), Icon: ShieldCheck, bg: "#FFF3E0", ic: "#E65100", onPress: () => setView("kyc") },
                     { label: t("ihsayyat_alinfaq"), desc: `${monthlySpent.toLocaleString(isRTL() ? "ar-SD" : "en-US")} ${t("j_s")} ${t("hdha_alshhr")}`, Icon: BarChart3, bg: "#F3E5F5", ic: "#6A1B9A", onPress: () => setNavTab("history") },
                 ].map((item, idx) => (React.createElement("button", { key: idx, onClick: item.onPress, className: `w-full flex ${rowStart()} items-center gap-3 rounded-2xl p-4 border mb-2 text-start`, style: { backgroundColor: colors.card, borderColor: colors.border } },
