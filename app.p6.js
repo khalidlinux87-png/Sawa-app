@@ -1292,7 +1292,9 @@ function ErsalScreen({ shipments, onCreateShipment, onMarkFailed, onBulkCreateSh
     const themeColors = ERSAL_THEMES[ersalThemeKey];
     const ersalTheme = {
         ...outerTheme,
-        colors: { ...outerTheme.colors, primary: themeColors.primary, primaryDark: themeColors.primaryDark, primaryLight: themeColors.primaryLight, accent: themeColors.accent, bg: themeColors.bg },
+        colors: outerTheme.isDark   // C225: في الوضع الداكن تبقى خلفيّة سوا الداكنة — كانت خلفيّة إرسال الفاتحة تُفرض فيصير النصّ الفاتح على خلفيّةٍ فاتحة
+            ? { ...outerTheme.colors, primary: themeColors.primary, primaryDark: themeColors.primaryDark, accent: themeColors.accent }
+            : { ...outerTheme.colors, primary: themeColors.primary, primaryDark: themeColors.primaryDark, primaryLight: themeColors.primaryLight, accent: themeColors.accent, bg: themeColors.bg },
         ersalThemeKey, setErsalThemeKey,
     };
     return (React.createElement(ThemeContext.Provider, { value: ersalTheme },
@@ -1387,6 +1389,13 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
     const insuranceFee = insuranceEnabled ? Math.round((Number(declaredValue) || 0) * ERSAL_INSURANCE_RATE) : 0;
     const total = ERSAL_BASE_PRICE + weightFee + city.fee + type.surcharge + handlingSurcharge + insuranceFee;
     const needsDriverConfirm = paymentMethod === "cash" || paymentMethod === "bank";
+    // C225: بلاطةٌ مدمجة (أيقونة · اسم · رسم) — اختيارٌ واحد للنوع، ومتعدّد للحالة (علامة صحّ)
+    const erTile = (o, active, onPress, multi) => React.createElement("button", { key: o.key, onClick: onPress, "aria-pressed": active, className: `relative flex ${rowStart()} items-center gap-2 rounded-xl border-2 p-2.5 ${textStart()}`, style: { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primaryLight : colors.card, minWidth: 0 } },
+        React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: active ? colors.primary : colors.bg } }, React.createElement(o.icon, { size: 15, color: active ? "#fff" : colors.textMuted })),
+        React.createElement("div", { className: "flex-1 min-w-0" },
+            React.createElement("div", { className: "text-xs font-bold leading-tight", style: { color: colors.text } }, o.label),
+            React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: o.surcharge > 0 ? colors.textMuted : colors.success } }, o.surcharge > 0 ? "+" + erN(o.surcharge) + t("w_sdg_sp") : tl("بلا رسوم", "No fee"))),
+        multi && active && React.createElement("div", { className: "absolute top-1.5 w-4 h-4 rounded flex items-center justify-center", style: { insetInlineEnd: 6, backgroundColor: colors.primary } }, React.createElement(Check, { size: 11, color: "#fff" })));
     function toggleHandling(key) {
         setHandlingKeys((prev) => {
             if (key === "normal")
@@ -1395,7 +1404,8 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
             return prev.includes(key) ? withoutNormal.filter((k) => k !== key) : [...withoutNormal, key];
         });
     }
-    const activeShipments = shipments.filter((s) => s.stageIdx < s.stages.length - 1 && !s.failed);
+    const erN = (x) => Number(x || 0).toLocaleString(loc());   // C225: الأرقام بخطّ الواجهة (كانت تختلط ١٢ و12)
+    const activeShipments = shipments.filter((s) => s.stageIdx < s.stages.length - 1 && !s.failed && !s.cancelled);
     const onTimeCount = shipments.filter((s) => s.stageIdx >= s.stages.length - 1 && !s.failed).length;
     const showBottomNav = mainTab !== "ship" || shipFlowView === "goods";
     function renderContent() {
@@ -1403,8 +1413,7 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
             if (shipFlowView === "goods") {
                 return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col" },
                     React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
-                        React.createElement("h2", { className: "text-lg font-extrabold mb-3", style: { color: colors.text } }, t("shhna_jdyda")),
-                        React.createElement("label", { className: "text-xs font-bold mb-2 block", style: { color: colors.text } }, t("anwan_alastlam")),
+                                                React.createElement("label", { className: "text-xs font-bold mb-2 block", style: { color: colors.text } }, t("anwan_alastlam")),
                         React.createElement("button", { onClick: () => setMapModalFor("pickup"), className: `w-full ${textStart()}` },
                             React.createElement(Card, { className: `flex ${rowStart()} items-center justify-between` },
                                 React.createElement("div", { className: "flex-1" },
@@ -1427,8 +1436,8 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                             React.createElement(UserCircle, { size: 12, color: colors.textMuted }),
                             React.createElement("span", { className: "text-[10px] font-bold", style: { color: colors.text } }, r.name)))))),
                         React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-2` },
-                            React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: recipientName, onChange: (e) => setRecipientName(e.target.value), placeholder: t("asm_almstlm"), className: "flex-1 border rounded-xl px-3 py-2 text-sm", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
-                            React.createElement("input", { value: recipientPhone, onChange: (e) => setRecipientPhone(e.target.value.replace(/\D/g, "")), placeholder: t("rqm_alhatf"), inputMode: "numeric", className: "flex-1 border rounded-xl px-3 py-2 text-sm", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card }, dir: "ltr" })),
+                            React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: recipientName, onChange: (e) => setRecipientName(e.target.value), placeholder: t("asm_almstlm"), className: "flex-1 min-w-0 border rounded-xl px-3 py-2 text-sm", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
+                            React.createElement("input", { value: recipientPhone, onChange: (e) => setRecipientPhone(e.target.value.replace(/\D/g, "")), placeholder: t("rqm_alhatf"), inputMode: "numeric", className: "flex-1 min-w-0 border rounded-xl px-3 py-2 text-sm", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card }, dir: "ltr" })),
                         recipientName.trim() && recipientPhone.trim() && !savedRecipients.some((r) => r.name === recipientName && r.phone === recipientPhone) && (React.createElement("button", { onClick: saveCurrentRecipient, className: `flex ${rowStart()} items-center gap-1 mb-4` },
                             React.createElement(Bookmark, { size: 11, color: colors.primary }),
                             React.createElement("span", { className: "text-[10px] font-bold", style: { color: colors.primary } }, t("hfz_bdftr_alanawyn_lastkhdamh")))),
@@ -1470,30 +1479,9 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                                     t("er_lkhdmat")),
                                 React.createElement("div", { className: "text-[10px]", style: { color: colors.textMuted } }, t("mwqa_thabt_astlm_trdk"))))),
                         React.createElement("label", { className: "text-xs font-bold mb-2 block", style: { color: colors.text } }, t("nwa_alshhna")),
-                        React.createElement("div", { className: "mb-4" }, ERSAL_SHIPMENT_TYPES.map((stype) => {
-                            const active = typeKey === stype.key;
-                            return (React.createElement("button", { key: stype.key, onClick: () => setTypeKey(stype.key), className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl border-2 p-3 mb-2`, style: { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primaryLight : colors.card } },
-                                React.createElement("div", { className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: active ? colors.primary : colors.bg } }, React.createElement(stype.icon, { size: 16, color: active ? "#fff" : colors.textMuted })),
-                                React.createElement("span", { className: `flex-1 text-sm font-bold ${textStart()}`, style: { color: colors.text } }, stype.label),
-                                stype.surcharge > 0 && React.createElement("span", { className: "text-[11px]", style: { color: colors.textMuted } },
-                                    "+",
-                                    stype.surcharge.toLocaleString(loc()),
-                                    t("w_sdg_sp")),
-                                React.createElement("div", { className: "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0", style: { borderColor: active ? colors.primary : colors.border } }, active && React.createElement("div", { className: "w-2.5 h-2.5 rounded-full", style: { backgroundColor: colors.primary } }))));
-                        })),
+                        React.createElement("div", { className: "grid grid-cols-2 gap-2 mb-4" }, ERSAL_SHIPMENT_TYPES.map((stype) => erTile(stype, typeKey === stype.key, () => setTypeKey(stype.key), false))),
                         React.createElement("label", { className: "text-xs font-bold mb-2 block", style: { color: colors.text } }, t("hala_alshhna_akhtr_ma")),
-                        React.createElement("div", { className: "mb-4" }, ERSAL_HANDLING.map((h) => {
-                            const active = handlingKeys.includes(h.key);
-                            return (React.createElement("button", { key: h.key, onClick: () => toggleHandling(h.key), className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl border-2 p-3 mb-2`, style: { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primaryLight : colors.card } },
-                                React.createElement("div", { className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: active ? colors.primary : colors.bg } },
-                                    React.createElement(h.icon, { size: 16, color: active ? "#fff" : colors.textMuted })),
-                                React.createElement("span", { className: `flex-1 text-sm font-bold ${textStart()}`, style: { color: colors.text } }, h.label),
-                                h.surcharge > 0 && React.createElement("span", { className: "text-[11px]", style: { color: colors.textMuted } },
-                                    "+",
-                                    h.surcharge.toLocaleString(loc()),
-                                    t("w_sdg_sp")),
-                                React.createElement("div", { className: "w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0", style: { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primary : "transparent" } }, active && React.createElement(Check, { size: 13, color: "#fff" }))));
-                        })),
+                        React.createElement("div", { className: "grid grid-cols-2 gap-2 mb-4" }, ERSAL_HANDLING.map((h) => erTile(h, handlingKeys.includes(h.key), () => toggleHandling(h.key), true))),
                         React.createElement("label", { className: "text-xs font-bold mb-2 block", style: { color: colors.text } }, t("alwzn_kjm")),
                         React.createElement("input", { dir: "ltr", value: weight, onChange: (e) => setWeight(e.target.value), type: "number", placeholder: "0", className: "w-full border rounded-xl px-3 py-2.5 text-sm mb-3", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
                         React.createElement("label", { className: "text-[11px] font-bold mb-1 block", style: { color: colors.text } }, t("wsf_mkhtsr_llmhtwa")),
@@ -1510,7 +1498,7 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                                 React.createElement("input", { dir: "ltr", value: dimensions[key], onChange: (e) => setDimensions((prev) => ({ ...prev, [key]: e.target.value })), type: "number", placeholder: label, className: "w-full border rounded-xl px-2 py-2 text-xs text-center", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
                                 React.createElement("span", { className: "text-[9px] block text-center mt-0.5", style: { color: colors.textMuted } }, label))))),
                             React.createElement("label", { className: "text-[11px] mb-1 block", style: { color: colors.textMuted } }, t("rqm_mrjay_dakhly_akhtyary")),
-                            React.createElement("input", { dir: "ltr", value: shipmentReference, onChange: (e) => setShipmentReference(e.target.value), placeholder: t("mthal_rqm_tlb_almtjr"), className: "w-full border rounded-xl px-3 py-2 text-xs", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } })))),
+                            React.createElement("input", { dir: "ltr", value: shipmentReference, onChange: (e) => setShipmentReference(e.target.value), placeholder: t("mthal_rqm_tlb_almtjr"), className: "w-full border rounded-xl px-3 py-2 text-xs", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }))),
                     React.createElement("button", { onClick: () => setInsuranceEnabled(!insuranceEnabled), className: `w-full flex ${rowStart()} items-center justify-between rounded-xl border p-2.5 mb-3`, style: { borderColor: insuranceEnabled ? colors.primary : colors.border, backgroundColor: insuranceEnabled ? colors.primaryLight : "transparent" } },
                         React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
                             React.createElement(ShieldCheck, { size: 15, color: insuranceEnabled ? colors.primary : colors.textMuted }),
@@ -1519,10 +1507,10 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                             React.createElement("span", { className: "absolute top-0.5 w-4 h-4 rounded-full bg-white", style: { [insuranceEnabled ? "right" : "left"]: 2 } }))),
                     insuranceEnabled && (React.createElement("div", { className: "mb-3" }, Number(declaredValue) > 0 ? (React.createElement("p", { className: "text-[10px]", style: { color: colors.textMuted } },
                         t("er_rsm_altamyn"),
-                        ERSAL_INSURANCE_RATE * 100,
+                        erN(ERSAL_INSURANCE_RATE * 100),
                         t("er_mn_alqyma"),
                         insuranceFee.toLocaleString(loc()),
-                        t("er_ywdk"))) : (React.createElement("p", { className: "text-[10px]", style: { color: colors.danger } }, t("adkhl_alqyma_almsrh_bha"))))),
+                        t("er_ywdk"))) : (React.createElement("p", { className: "text-[10px]", style: { color: colors.danger } }, t("adkhl_alqyma_almsrh_bha")))))),
                     React.createElement("div", { className: "p-3 border-t", style: { borderColor: colors.border, backgroundColor: colors.card } },
                         React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-2` },
                             React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } }, t("alijmaly_altqdyry")),
@@ -1533,7 +1521,6 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
             }
             if (shipFlowView === "price") {
                 return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
-                    React.createElement(TopBar, { title: t("ard_alsar"), onBack: () => setShipFlowView("goods") }),
                     React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
                         React.createElement(Card, { style: { padding: 14 } },
                             React.createElement("div", { className: `flex ${rowStart()} justify-between text-xs mb-1.5`, style: { color: colors.textMuted } },
@@ -1544,7 +1531,7 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                             React.createElement("div", { className: `flex ${rowStart()} justify-between text-xs mb-1.5`, style: { color: colors.textMuted } },
                                 React.createElement("span", null,
                                     t("er_rswm_alwzn"),
-                                    weightNum,
+                                    erN(weightNum),
                                     t("er_kjm")),
                                 React.createElement("span", { style: { color: colors.text } },
                                     weightFee.toLocaleString(loc()),
@@ -1573,7 +1560,7 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                                 React.createElement("span", { className: `flex ${rowStart()} items-center gap-1` },
                                     React.createElement(ShieldCheck, { size: 11, color: colors.primary }),
                                     t("er_tamyn"),
-                                    ERSAL_INSURANCE_RATE * 100,
+                                    erN(ERSAL_INSURANCE_RATE * 100),
                                     t("er_pct")),
                                 React.createElement("span", { style: { color: colors.text } },
                                     insuranceFee.toLocaleString(loc()),
@@ -1598,7 +1585,6 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                         React.createElement(Button, { label: t("almtabaa_ila_aldfa"), onPress: () => setShipFlowView("payment"), className: "mt-4" }))));
             }
             return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
-                React.createElement(TopBar, { title: t("aldfa"), onBack: () => setShipFlowView("price") }),
                 React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
                     React.createElement("label", { className: "text-xs font-bold mb-2 block", style: { color: colors.text } }, t("tryqa_aldfa")),
                     React.createElement("div", { className: "mb-4" }, ERSAL_PAYMENT_METHODS.map((m) => {
@@ -1641,7 +1627,8 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                             React.createElement("span", null,
                                 total.toLocaleString(loc()),
                                 t("w_sdg_sp")))),
-                    React.createElement(Button, { label: `تأكيد الطلب • ادفع ${total.toLocaleString(loc())} ج.س ${paymentTiming === "pickup" || !needsDriverConfirm ? t("er_and_alastlam") : t("er_and_altslym")}`, disabled: !packagePhoto, onPress: () => {
+                    React.createElement(WalletDemoNote, { ar: "طلبٌ تجريبيّ — لا يُخصم أيّ مبلغ ولا يُرسَل مندوبٌ حقيقيّ.", en: "Demo order — nothing is charged and no real courier is sent." }),
+                    React.createElement(Button, { label: paymentMethod === "card" ? tl("تأكيد الطلب • ادفع " + erN(total) + " ج.س الآن", "Confirm • pay " + erN(total) + " SDG now") : paymentMethod === "corporate" ? tl("تأكيد الطلب • يُضاف إلى فاتورة الشركة", "Confirm • add to company invoice") : tl("تأكيد الطلب • ادفع " + erN(total) + " ج.س ", "Confirm • pay " + erN(total) + " SDG ") + (paymentTiming === "pickup" ? t("er_and_alastlam") : t("er_and_altslym")), disabled: !packagePhoto, onPress: () => {
                             const stagesData = ersalBuildStages(paymentTiming, paymentMethod, city.name, deliveryMethod);
                             onCreateShipment({
                                 destination: city.name, category: type.label, categoryKey: type.key,
@@ -1665,6 +1652,7 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                             setShipmentReference("");
                             setRecipientName("");
                             setRecipientPhone("");
+                            setShipmentSearchQuery(""); setShipmentStatusFilter("all");   // C225: تظهر الشحنة الجديدة حتى لو بقي بحثٌ سابق
                             setMainTab("track");
                         }, className: "mt-4" }),
                     needsDriverConfirm && (React.createElement("p", { className: "text-[10px] text-center mt-2", style: { color: colors.textMuted } },
@@ -1721,7 +1709,7 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                             } },
                             React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-1` },
                                 React.createElement("span", { className: "text-sm font-extrabold font-mono text-white" }, s.id),
-                                React.createElement(Badge, { size: "sm", variant: "neutral", label: s.cancelled ? t("er_alghyt") : s.failed ? t("er_fshl_altslym") : isDelivered ? t("er_tm_altslym") : t("er_qyd_altwsyl") })),
+                                React.createElement(Badge, { size: "sm", variant: "neutral", label: s.cancelled ? t("er_alghyt") : s.failed ? t("er_fshl_altslym") : isDelivered ? t("er_tm_altslym") : tl("المرحلة " + erN(stageIdx + 1) + " من " + erN(stages.length), "Step " + (stageIdx + 1) + " of " + stages.length) })),
                             React.createElement("div", { className: "text-xs", style: { color: "#ffffffdd" } },
                                 s.category,
                                 " \u2190 ",
@@ -1767,7 +1755,7 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                                         React.createElement(RotateCcw, { size: 16, color: colors.textMuted }),
                                         React.createElement("span", { className: "text-xs font-bold", style: { color: colors.textMuted } },
                                             t("er_mrtjaa"),
-                                            ERSAL_RETURN_DEADLINE_DAYS,
+                                            erN(ERSAL_RETURN_DEADLINE_DAYS),
                                             t("er_ayam_bdwn"))));
                                 }
                                 return (React.createElement("div", { className: "rounded-xl p-3 mb-2", style: { backgroundColor: isDark ? "#3A1F1F" : "#FBE9E7" } },
@@ -1775,13 +1763,13 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                                         React.createElement(AlertTriangle, { size: 14, color: colors.danger }),
                                         React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.danger } }, t("ijra_mtlwb"))),
                                     React.createElement("div", { className: "text-[11px] font-bold mb-2", style: { color: colors.danger } }, storageDays > 0
-                                        ? `رسوم تخزين مستحقة: ${storageDays} يوم × ${(ERSAL_STORAGE_FEES[s.categoryKey] || 1500).toLocaleString(loc())} = ${storageFee.toLocaleString(loc())} ج.س`
+                                        ? `رسوم تخزين مستحقة: ${erN(storageDays)} يوم × ${(ERSAL_STORAGE_FEES[s.categoryKey] || 1500).toLocaleString(loc())} = ${storageFee.toLocaleString(loc())} ج.س`
                                         : t("ftra_smah_ayam_qbl", { ERSAL_STORAGE_GRACE_DAYS })),
                                     React.createElement("div", { className: "text-[11px] mb-2", style: { color: colors.textMuted } },
                                         t("mtbqy"),
-                                        React.createElement("b", { style: { color: colors.danger } }, daysRemaining),
+                                        React.createElement("b", { style: { color: colors.danger } }, erN(daysRemaining)),
                                         " \u0645\u0646 ",
-                                        ERSAL_RETURN_DEADLINE_DAYS,
+                                        erN(ERSAL_RETURN_DEADLINE_DAYS),
                                         t("er_ayam_qbl")),
                                     React.createElement("div", { className: `flex ${rowStart()} gap-1 mb-3` }, Array.from({ length: ERSAL_RETURN_DEADLINE_DAYS }).map((_, i) => (React.createElement("div", { key: i, className: "flex-1 h-1.5 rounded-full", style: { backgroundColor: i < daysSinceFail ? colors.danger : colors.border } })))),
                                     s.pendingChoice === "pickup_confirmed" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 rounded-xl p-2`, style: { backgroundColor: colors.card } },
@@ -1804,8 +1792,8 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                             })(),
                             isDelivered && !s.failed && (React.createElement(React.Fragment, null,
                                 React.createElement("div", { className: `flex ${rowStart()} gap-2 mt-1` },
-                                    React.createElement(Button, { label: t("ard_ithbat_altslym"), variant: "outline", onPress: () => setViewingProofId(s.id), style: { flex: 1 } }),
-                                    React.createElement(Button, { icon: RotateCcw, label: t("iaada_altlb"), onPress: () => onReorderShipment(s), style: { flex: 1 } })),
+                                    React.createElement("button", { onClick: () => setViewingProofId(s.id), className: `flex-1 flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2.5 border`, style: { borderColor: colors.primary } }, React.createElement(FileText, { size: 14, color: colors.primary }), React.createElement("span", { className: "text-xs font-bold", style: { color: colors.primary } }, t("ard_ithbat_altslym"))),
+                                    React.createElement("button", { onClick: () => onReorderShipment(s), className: `flex-1 flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2.5`, style: { backgroundColor: colors.primary } }, React.createElement(RotateCcw, { size: 14, color: "#fff" }), React.createElement("span", { className: "text-xs font-bold text-white" }, t("iaada_altlb")))),
                                 !s.courierRating ? (React.createElement("div", { className: "rounded-xl border mt-2 p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
                                     React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.text } },
                                         t("er_kyf_kant"), (_b = s.deliveryDriver) === null || _b === void 0 ? void 0 :
@@ -1815,9 +1803,10 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                                         React.createElement(Star, { size: 22, color: colors.accent, fill: "none" }))))))) : (React.createElement("div", { className: `flex ${rowStart()} items-center justify-center gap-1 mt-2` },
                                     [1, 2, 3, 4, 5].map((n) => (React.createElement(Star, { key: n, size: 14, color: colors.accent, fill: n <= s.courierRating ? colors.accent : "none" }))),
                                     React.createElement("span", { className: `text-[10px] ${me("1")}`, style: { color: colors.textMuted } }, t("qymt_hdha_altslym")))))),
-                            !isDelivered && !s.failed && !s.cancelled && (React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-1.5` }, ERSAL_FAILURE_REASON_KEYS.map((reasonKey) => (React.createElement("button", { key: reasonKey, onClick: () => onMarkFailed(s.id, t(reasonKey)), className: "text-[10px] rounded-full border px-2 py-1", style: { borderColor: colors.border, color: colors.textMuted } },
-                                t("er_tadhr"),
-                                t(reasonKey)))))),
+                            !isDelivered && !s.failed && !s.cancelled && (React.createElement("div", { className: "rounded-xl border border-dashed p-2 mt-2", style: { borderColor: colors.border } },
+                                React.createElement("div", { className: `text-[10px] font-bold mb-1.5 ${textStart()}`, style: { color: colors.textMuted } }, tl("أدوات المحاكاة (للمشرف): تعذّر التسليم لأنّ…", "Simulation tools (moderators): delivery failed because…")),
+                                React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-1.5` }, ERSAL_FAILURE_REASON_KEYS.map((reasonKey) => (React.createElement("button", { key: reasonKey, onClick: () => onMarkFailed(s.id, t(reasonKey)), className: "text-[10px] rounded-full border px-2 py-1", style: { borderColor: colors.border, color: colors.textMuted } },
+                                t(reasonKey))))))),
                             !s.cancelled && (React.createElement("div", { className: `flex ${rowStart()} gap-2 mt-2` },
                                 React.createElement("button", { onClick: async () => {
                                         const text = `تتبّع شحنتي بسوا\nرقم الشحنة: ${s.id}\nالحالة: ${s.failed ? t("er_fshl_altslym") : stages[stageIdx]}\nالوجهة: ${s.destination}`;
@@ -1936,35 +1925,40 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                     React.createElement("span", { className: `flex-1 text-sm font-bold ${textStart()} ${ms("2")}`, style: { color: colors.text } }, item.label),
                     React.createElement(ChevronLeft, { size: 16, color: colors.textMuted, style: { transform: isRTL() ? "none" : "scaleX(-1)" } }))))));
         }
-        // home
+        // home — C225: تحيّةٌ بحسب الوقت · ملاحظةٌ تجريبيّة · التتبّع يبحث فعلاً · أرقامٌ بخطّ الواجهة · آخر الشحنات قابلةٌ للّمس
+        const hr = new Date().getHours();
+        const goTrack = (q) => { setShipmentSearchQuery(q || ""); setShipmentStatusFilter("all"); setMainTab("track"); };
+        const stLabel = (s) => s.cancelled ? t("er_alghyt") : s.failed ? t("er_fshl_altslym") : s.stageIdx >= s.stages.length - 1 ? t("er_tm_altslym") : s.stages[s.stageIdx];
+        const stColor = (s) => s.cancelled ? colors.textMuted : s.failed ? colors.danger : s.stageIdx >= s.stages.length - 1 ? colors.success : colors.primary;
         return (React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
-            React.createElement("h2", { className: "text-lg font-extrabold mb-1", style: { color: colors.text } }, t("sbah_alkhyr")),
-            React.createElement(Card, { style: { padding: 14 } },
-                React.createElement("p", { className: "text-sm font-bold mb-2", style: { color: colors.text } }, t("jahz_lnql_shy")),
-                React.createElement(Button, { icon: Package, label: t("shhna_jdyda"), onPress: () => { setMainTab("ship"); setShipFlowView("goods"); } })),
+            React.createElement(WalletDemoNote, { ar: "نموذجٌ تجريبيّ للمشرف والمدير — لا شحن ولا دفع حقيقيّ.", en: "Demo for moderators and admins — no real shipping or payment." }),
+            React.createElement("div", { className: "rounded-2xl p-4 mb-3 relative overflow-hidden", style: { background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryDark} 100%)` } },
+                React.createElement("div", { style: { position: "absolute", insetInlineEnd: -10, bottom: -16, opacity: 0.12, lineHeight: 0, pointerEvents: "none" } }, React.createElement(Truck, { size: 96, color: "#fff" })),
+                React.createElement("div", { className: "text-xs font-bold", style: { color: "rgba(255,255,255,0.75)" } }, hr < 12 ? t("sbah_alkhyr") : tl("مساء الخير", "Good evening")),
+                React.createElement("div", { className: "text-lg font-extrabold text-white mb-3" }, t("jahz_lnql_shy")),
+                React.createElement("button", { onClick: () => { setMainTab("ship"); setShipFlowView("goods"); }, className: `flex ${rowStart()} items-center gap-2 rounded-xl px-4 py-2.5 font-extrabold text-sm`, style: { backgroundColor: "#fff", color: colors.primaryDark } }, React.createElement(Package, { size: 16, color: colors.primaryDark }), t("shhna_jdyda"))),
             React.createElement(Card, { style: { padding: 12 } },
                 React.createElement("label", { className: "text-xs font-bold mb-2 block", style: { color: colors.text } }, t("ttba_ay_shhna_brqmha")),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
-                    React.createElement("input", { dir: "ltr", value: trackingNumber, onChange: (e) => setTrackingNumber(e.target.value), placeholder: "FR-10462", className: "flex-1 border rounded-xl px-3 py-2 text-sm", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
-                    React.createElement(Button, { label: t("ttba"), onPress: () => setMainTab("track"), style: { width: 90 } }))),
-            React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-3` },
-                React.createElement(Card, { style: { flex: 1, padding: 10, textAlign: "center" } },
-                    React.createElement("div", { className: "text-lg font-extrabold", style: { color: colors.primary } }, onTimeCount),
-                    React.createElement("div", { className: "text-[10px]", style: { color: colors.textMuted } }, t("alaltzam_balwqt"))),
-                React.createElement(Card, { style: { flex: 1, padding: 10, textAlign: "center" } },
-                    React.createElement("div", { className: "text-lg font-extrabold", style: { color: colors.primary } }, activeShipments.length),
-                    React.createElement("div", { className: "text-[10px]", style: { color: colors.textMuted } }, t("nshta"))),
-                React.createElement(Card, { style: { flex: 1, padding: 10, textAlign: "center" } },
-                    React.createElement("div", { className: "text-lg font-extrabold", style: { color: colors.primary } }, shipments.length),
-                    React.createElement("div", { className: "text-[10px]", style: { color: colors.textMuted } }, t("alijmaly")))),
-            React.createElement("h4", { className: "text-sm font-extrabold mb-2", style: { color: colors.text } }, t("alshhnat")),
+                    React.createElement("input", { dir: "ltr", value: trackingNumber, onChange: (e) => setTrackingNumber(e.target.value.toUpperCase()), onKeyDown: (e) => { if (e.key === "Enter") goTrack(trackingNumber.trim()); }, placeholder: "FR-10462", className: "flex-1 min-w-0 border rounded-xl px-3 py-2 text-sm", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
+                    React.createElement("button", { onClick: () => goTrack(trackingNumber.trim()), className: `shrink-0 flex ${rowStart()} items-center gap-1.5 rounded-xl px-4 text-sm font-bold text-white`, style: { backgroundColor: colors.primary } }, React.createElement(Search, { size: 14, color: "#fff" }), t("ttba")))),
+            React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-3` }, [
+                { v: activeShipments.length, l: t("nshta"), c: colors.primary },
+                { v: onTimeCount, l: tl("مُسلَّمة", "Delivered"), c: colors.success },
+                { v: shipments.length, l: t("alijmaly"), c: colors.text },
+            ].map((x, k) => React.createElement(Card, { key: k, style: { flex: 1, padding: 10, textAlign: "center", marginBottom: 0 } },
+                React.createElement("div", { className: "text-lg font-extrabold tabular-nums", style: { color: x.c } }, erN(x.v)),
+                React.createElement("div", { className: "text-[10px]", style: { color: colors.textMuted } }, x.l)))),
+            React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-2` },
+                React.createElement("h4", { className: "text-sm font-extrabold", style: { color: colors.text } }, t("alshhnat")),
+                shipments.length > 3 && React.createElement("button", { onClick: () => goTrack(""), className: "text-xs font-bold", style: { color: colors.primary } }, tl("عرض الكلّ", "See all"))),
             shipments.length === 0 && React.createElement(EmptyState, { icon: Truck, label: t("la_twjd_shhnat_bad_2") }),
-            shipments.slice(0, 3).map((s) => (React.createElement(Card, { key: s.id, className: `flex ${rowStart()} items-center justify-between` },
-                React.createElement("span", { className: "text-xs", style: { color: colors.text } },
-                    s.category,
-                    " \u2190 ",
-                    s.destination),
-                React.createElement(Badge, { size: "sm", variant: s.stageIdx >= s.stages.length - 1 ? "success" : "warning", label: s.stages[s.stageIdx] }))))));
+            shipments.slice(0, 3).map((s) => React.createElement("button", { key: s.id, onClick: () => goTrack(s.id), className: `w-full flex ${rowStart()} items-center gap-3 rounded-2xl p-3 mb-2 border ${textStart()}`, style: { backgroundColor: colors.card, borderColor: colors.border } },
+                React.createElement("div", { className: "w-10 h-10 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: stColor(s) + "1A" } }, React.createElement(Truck, { size: 17, color: stColor(s) })),
+                React.createElement("div", { className: "flex-1 min-w-0" },
+                    React.createElement("div", { className: "text-sm font-bold truncate", style: { color: colors.text } }, s.category + " \u2190 " + s.destination),
+                    React.createElement("div", { className: "text-[11px] mt-0.5 truncate", style: { color: stColor(s) } }, stLabel(s))),
+                React.createElement("span", { className: "text-[10px] font-mono font-bold shrink-0", dir: "ltr", style: { color: colors.textMuted } }, s.id)))));
     }
     // الشاشات الفرعية (كشف الحساب/الرفع بالجملة/المواقع المحفوظة) عندها
     // TopBar كامل خاص بها فيه زر رجوع صحيح لمستوى t("er_alhsab") — لو عرضنا شريط
@@ -1975,7 +1969,9 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
         return renderContent();
     }
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
-        React.createElement(TopBar, { title: t("irsal_iksbrys"), onBack: onBack }),
+        React.createElement(TopBar, { title: mainTab === "ship" && shipFlowView === "price" ? t("ard_alsar") : mainTab === "ship" && shipFlowView === "payment" ? t("aldfa") : mainTab === "ship" ? t("shhna_jdyda") : t("irsal_iksbrys"), onBack: mainTab === "ship" && shipFlowView === "price" ? () => setShipFlowView("goods") : mainTab === "ship" && shipFlowView === "payment" ? () => setShipFlowView("price") : mainTab !== "home" ? () => setMainTab("home") : onBack }),
+        // C225: كانت «عرض السعر» و«الدفع» تضيفان شريطاً ثانياً تحت «إرسال إكسبريس» — صار شريطاً واحداً يتبع الخطوة، ومعه مؤشّر الخطوات
+        mainTab === "ship" && React.createElement(ErsalStepper, { step: shipFlowView === "goods" ? 0 : shipFlowView === "price" ? 1 : 2 }),
         renderContent(),
         // ⚠️ اتجاه الشريط ثابت لا يتبع اللغة: خاصية dir على <html> تقلب المحور
                 // أصلاً، فتبديل flex-direction بحسب اللغة يُلغي القلب ويُبقي الترتيب
@@ -2055,6 +2051,17 @@ function SignaturePad({ onSigned }) {
     return (React.createElement("div", null,
         React.createElement("canvas", { ref: canvasRef, width: 300, height: 140, className: "w-full rounded-xl border", style: { borderColor: colors.border, backgroundColor: "#fff", touchAction: "none" }, onMouseDown: startDraw, onMouseMove: draw, onMouseUp: endDraw, onMouseLeave: endDraw, onTouchStart: startDraw, onTouchMove: draw, onTouchEnd: endDraw }),
         hasSignature && (React.createElement("button", { onClick: clear, className: "text-[11px] font-bold underline mt-1", style: { color: colors.primary } }, t("msh_waltwqya_mn_jdyd")))));
+}
+// C225: مؤشّر خطوات الشحنة — الشحنة · عرض السعر · الدفع
+function ErsalStepper({ step }) {
+    const { colors } = useTheme();
+    const steps = [tl("الشحنة", "Shipment"), t("ard_alsar"), t("aldfa")];
+    return React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-4 py-2.5 border-b`, style: { backgroundColor: colors.card, borderColor: colors.border } },
+        steps.map((l, i) => React.createElement(React.Fragment, { key: i },
+            i > 0 && React.createElement("div", { className: "flex-1 h-0.5 rounded-full", style: { backgroundColor: i <= step ? colors.primary : colors.border } }),
+            React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 shrink-0` },
+                React.createElement("span", { className: "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold", style: { backgroundColor: i <= step ? colors.primary : colors.border, color: i <= step ? "#fff" : colors.textMuted } }, i < step ? React.createElement(Check, { size: 11, color: "#fff" }) : (i + 1).toLocaleString(loc())),
+                React.createElement("span", { className: "text-[11px] font-bold", style: { color: i === step ? colors.text : colors.textMuted } }, l)))));
 }
 function ErsalProofOfDeliveryScreen({ shipment, onBack }) {
     var _a;

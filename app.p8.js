@@ -3680,8 +3680,9 @@ function AppInner() {
     else if (discoverTop.type === "moments") {
         discoverContent = React.createElement(MomentsHost, { broadcastLists: broadcastLists, conversations: conversations, legacy: { posts: momentsPosts, myUserId: myUserId, onAddPost: addMomentPost, onToggleLike: toggleMomentLike, onAddComment: addMomentComment, onDeletePost: deleteMomentPost, onViewPost: viewMomentPost, onReplyPrivately: replyToMomentPrivately, onVotePoll: voteMomentPoll }, onBack: () => { setDiscoverStack([]); if (momentsReturnTab) { const back = momentsReturnTab; setMomentsReturnTab(null); setTab(back); } } });
     }
-    else if (discoverTop.type === "ersal") {
-        discoverContent = (React.createElement(ErsalScreen, { shipments: shipments, onCreateShipment: createShipment, onMarkFailed: markShipmentFailed, onBulkCreateShipments: bulkCreateShipments, onChangeAddress: changeShipmentAddress, onConfirmPickup: confirmShipmentPickup, onSimulateDays: simulateShipmentDays, onCancelShipment: cancelShipment, onRateCourier: rateCourier, onReorderShipment: reorderShipment, onBack: () => setDiscoverStack([]) }));
+    else if (discoverTop.type === "ersal") {   // C225: للمشرف والمدير فقط — غير المخوَّل يعود إلى «استكشف»
+        if (!canIntl) { setTimeout(() => setDiscoverStack([]), 0); }
+        else discoverContent = (React.createElement(ErsalScreen, { shipments: shipments, onCreateShipment: createShipment, onMarkFailed: markShipmentFailed, onBulkCreateShipments: bulkCreateShipments, onChangeAddress: changeShipmentAddress, onConfirmPickup: confirmShipmentPickup, onSimulateDays: simulateShipmentDays, onCancelShipment: cancelShipment, onRateCourier: rateCourier, onReorderShipment: reorderShipment, onBack: () => setDiscoverStack([]) }));
     }
     else if (discoverTop.type === "taxi") {
         discoverContent = (React.createElement(TaxiScreen, { ride: taxiRide, tripsHistory: taxiTripsHistory, scheduledRides: scheduledTaxiRides, onRequestRide: requestTaxiRide, onScheduleRide: scheduleRide, onCancelScheduledRide: cancelScheduledRide, onTriggerScheduledRide: triggerScheduledRide, onCancelRide: cancelTaxiRide, onNewRide: () => setTaxiRide(null), onRateDriver: rateDriverTrip, onBack: () => setDiscoverStack([]) }));
