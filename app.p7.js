@@ -1773,11 +1773,229 @@ function IntlTransferScreen({ balance, walletPinForConfirm, kycStatus, history, 
             (err || (f.amount && e0)) && React.createElement("div", { className: "text-xs font-bold mb-3 text-center", style: { color: colors.danger } }, err || e0),
             React.createElement(Button, { label: tl("متابعة للمراجعة", "Continue to review"), disabled: !!e0, onPress: () => { const e = intlValidate({ ...f, balance }); if (e) { setErr(e); return; } setStep("review"); } }))));
 }
-function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, kycStatus, kycDismissed, onDismissKyc, onSubmitKyc, onTopUp, onTransfer, onScanPay, onBack, linkedMethods, onAddPaymentMethod, onRemovePaymentMethod, spendingLimit, onSetSpendingLimit, jamiyaList, onPayJamiya, onCreateJamiya, CURRENT_USER_ID, canIntl = false, intlHistory = [], onIntlTransfer, kycMeta = null }) {
+// ============================================================================
+// C224: حسابات العملات والبطاقات الافتراضيّة — نموذجٌ تجريبيّ داخل «محفظة سوا» (لا أموال حقيقيّة)
+// • حسابٌ لكلّ عملة برقمٍ تجريبيّ بصيغة SAWA-USD-…(ليس IBAN) · تحويلٌ بين العملات بأسعارٍ ثابتة ورسوم ١٪
+// • بطاقاتٌ افتراضيّة: أرقامها تبدأ بـ0000 (لا تطابق أيّ بطاقةٍ حقيقيّة) · إظهار التفاصيل برمز المحفظة · تجميد · حدٌّ شهريّ · حذف
+// الربط الحقيقيّ يحتاج مصرفاً شريكاً أو مُصدِر بطاقاتٍ مرخَّصاً — يُستبدل FX_CURS والدوالّ في AppInner فقط.
+// ============================================================================
+const FX_CURS = [
+    { cur: "USD", flag: "🇺🇸", ar: "دولار أمريكيّ", en: "US dollar", rate: 600 },
+    { cur: "SAR", flag: "🇸🇦", ar: "ريال سعوديّ", en: "Saudi riyal", rate: 160 },
+    { cur: "AED", flag: "🇦🇪", ar: "درهم إماراتيّ", en: "UAE dirham", rate: 163 },
+    { cur: "EUR", flag: "🇪🇺", ar: "يورو", en: "Euro", rate: 650 },
+    { cur: "GBP", flag: "🇬🇧", ar: "جنيه إسترلينيّ", en: "British pound", rate: 760 },
+    { cur: "QAR", flag: "🇶🇦", ar: "ريال قطريّ", en: "Qatari riyal", rate: 165 },
+    { cur: "EGP", flag: "🇪🇬", ar: "جنيه مصريّ", en: "Egyptian pound", rate: 12 },
+];
+const FX_FEE = 0.01;   // ١٪ (تجريبيّ)
+const VCARD_MAX = 5;
+const VCARD_COLORS = [["#1E3A63", "#2F80C8"], ["#0C4854", "#187854"], ["#5F3F78", "#8B5FA8"], ["#7A431E", "#E8823D"]];
+function fxInfo(cur) { return cur === "SDG" ? { cur: "SDG", flag: "🇸🇩", ar: "جنيه سودانيّ", en: "Sudanese pound", rate: 1 } : (FX_CURS.find((c) => c.cur === cur) || null); }
+function fxRate(cur) { const c = fxInfo(cur); return c ? c.rate : 0; }
+function fxFmt(n, cur) { const d = cur === "SDG" ? 0 : 2; return Number(n || 0).toLocaleString(loc(), { minimumFractionDigits: d, maximumFractionDigits: d }); }
+function fxCode(cur) { return cur === "SDG" ? tl("ج.س", "SDG") : cur; }
+function fxRound(n, cur) { return cur === "SDG" ? Math.round(n) : Math.round(n * 100) / 100; }
+// المبلغ بعملة المصدر ⇒ { fee (بعملة المصدر), out (بعملة الهدف) }
+function fxQuote(amt, from, to) {
+    const a = Number(amt) || 0, rf = fxRate(from), rt = fxRate(to);
+    if (!(a > 0) || !rf || !rt || from === to) return { fee: 0, out: 0 };
+    const fee = fxRound(a * FX_FEE, from), net = a - fee;
+    const out = to === "SDG" ? Math.floor(net * rf / rt) : Math.floor(net * rf / rt * 100) / 100;
+    return { fee, out };
+}
+function fxDigits(n) { let s = ""; for (let i = 0; i < n; i++) s += Math.floor(Math.random() * 10); return s; }
+function vcardNew(name, cur, colorIx) {
+    const num = "0000" + fxDigits(12), d = new Date(); d.setFullYear(d.getFullYear() + 3);
+    return { id: "vc" + Date.now().toString(36) + fxDigits(3), name: String(name || "").trim().slice(0, 24), cur, num, exp: String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getFullYear()).slice(2), cvv: fxDigits(3), color: colorIx || 0, frozen: false, limit: 0, createdAt: Date.now(), demo: true };
+}
+function vcardGroup(num) { return String(num).replace(/(\d{4})(?=\d)/g, "$1 "); }
+function WalletDemoNote({ ar, en }) {
+    const { colors } = useTheme();
+    return React.createElement("div", { className: `flex ${rowStart()} items-start gap-2 rounded-xl border p-2.5 mb-3`, style: { borderColor: colors.accent, backgroundColor: colors.card } },
+        React.createElement(Info, { size: 15, color: colors.accent, className: "shrink-0 mt-0.5" }),
+        React.createElement("span", { className: `text-[11px] font-bold leading-snug ${textStart()}`, style: { color: colors.accent } }, tl(ar, en)));
+}
+// البطاقة كما تظهر (الرقم مخفيّ إلّا عند الإظهار)
+function VirtualCardFace({ card, reveal, small }) {
+    const c = VCARD_COLORS[card.color] || VCARD_COLORS[0];
+    return React.createElement("div", { className: "relative rounded-2xl overflow-hidden text-white", style: { background: `linear-gradient(135deg, ${c[0]} 0%, ${c[1]} 100%)`, aspectRatio: "1.586 / 1", padding: small ? 12 : 18 } },
+        React.createElement("div", { className: "flex items-center justify-between", dir: "ltr" },
+            React.createElement("span", { className: small ? "text-xs font-black tracking-widest" : "text-sm font-black tracking-widest" }, "SAWA"),
+            React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full", style: { backgroundColor: "rgba(255,255,255,0.18)" } }, card.cur)),
+        React.createElement("div", { className: "rounded-md mt-3", style: { width: small ? 26 : 36, height: small ? 18 : 26, background: "linear-gradient(135deg,#E9D8A6,#B8955A)" } }),
+        React.createElement("div", { className: small ? "text-sm font-bold mt-2 tracking-widest" : "text-lg font-bold mt-3 tracking-widest", dir: "ltr", style: { fontVariantNumeric: "tabular-nums" } }, reveal ? vcardGroup(card.num) : "•••• •••• •••• " + card.num.slice(-4)),
+        React.createElement("div", { className: "flex items-end justify-between mt-2", dir: "ltr" },
+            React.createElement("span", { className: "text-[11px] font-bold truncate", style: { maxWidth: "60%" } }, card.name || "SAWA"),
+            React.createElement("span", { className: "text-[11px] font-bold" }, (reveal ? card.exp + "  CVV " + card.cvv : card.exp))),
+        React.createElement("div", { className: "absolute text-[9px] font-bold", style: { bottom: small ? 6 : 8, insetInlineStart: small ? 12 : 18, opacity: 0.6 } }, tl("افتراضيّة · تجريبيّة", "Virtual · demo")),
+        card.frozen && React.createElement("div", { className: "absolute inset-0 flex flex-col items-center justify-center", style: { backgroundColor: "rgba(10,20,40,0.6)" } },
+            React.createElement(Snowflake, { size: small ? 18 : 26, color: "#fff" }),
+            React.createElement("span", { className: "text-xs font-extrabold mt-1" }, tl("مجمَّدة", "Frozen"))));
+}
+// شاشات العملات والبطاقات — تُفتح من WalletScreen بحسب view
+function FxCardsScreens({ view, setView, balance, fxAccounts, cards, walletPinForConfirm, selFx, setSelFx, selCard, setSelCard, onOpenFx, onExchange, onCardsChange, holder }) {
+    const { colors } = useTheme();
+    const [from, setFrom] = useState("SDG");
+    const [to, setTo] = useState((fxAccounts[0] && fxAccounts[0].cur) || "");
+    const [amt, setAmt] = useState("");
+    const [cName, setCName] = useState("");
+    const [cCur, setCCur] = useState("SDG");
+    const [cColor, setCColor] = useState(0);
+    const [pin, setPin] = useState("");
+    const [revealUntil, setRevealUntil] = useState(0);
+    const [limitIn, setLimitIn] = useState("");
+    const [confirmDel, setConfirmDel] = useState(false);
+    const [, tick] = useState(0);
+    useEffect(() => { if (!revealUntil) return; const t = setInterval(() => { tick((x) => x + 1); if (Date.now() > revealUntil) setRevealUntil(0); }, 1000); return () => clearInterval(t); }, [revealUntil]);
+    const balOf = (cur) => cur === "SDG" ? balance : ((fxAccounts.find((a) => a.cur === cur) || {}).bal || 0);
+    const owned = ["SDG"].concat(fxAccounts.map((a) => a.cur));
+    const shell = (title, body, back) => React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
+        React.createElement(TopBar, { title, onBack: back || (() => setView("home")) }),
+        React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } }, body));
+    const curChip = (cur, on, onClick, key) => { const c = fxInfo(cur); return React.createElement("button", { key: key || cur, onClick, className: `flex ${rowStart()} items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold`, style: { borderColor: on ? colors.primary : colors.border, borderWidth: on ? 2 : 1, color: on ? colors.primary : colors.text, backgroundColor: colors.card } }, React.createElement("span", null, c.flag), cur); };
+    const row = (k, v, strong) => React.createElement("div", { className: `flex ${rowStart()} items-center justify-between gap-3 p-3 border-b`, style: { borderColor: colors.border } },
+        React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } }, k),
+        React.createElement("span", { className: `text-xs ${strong ? "font-extrabold" : "font-bold"}`, style: { color: colors.text } }, v));
+    const copy = (txt) => { try { navigator.clipboard.writeText(txt); } catch (e) {} };
+    // ---------- فتح حساب عملة ----------
+    if (view === "fxAdd") {
+        const avail = FX_CURS.filter((c) => !fxAccounts.some((a) => a.cur === c.cur));
+        return shell(tl("حساب عملةٍ جديد", "New currency account"), React.createElement("div", null,
+            React.createElement(WalletDemoNote, { ar: "حساباتٌ تجريبيّة — أرقامها للعرض وليست أرقاماً مصرفيّة، ولا تستقبل أموالاً حقيقيّة.", en: "Demo accounts — numbers are for display, not bank numbers, and can't receive real money." }),
+            !avail.length && React.createElement("div", { className: "text-center text-xs py-8", style: { color: colors.textMuted } }, tl("فتحتَ كلّ العملات المتاحة", "You've opened every available currency")),
+            avail.map((c) => React.createElement("button", { key: c.cur, onClick: () => { onOpenFx(c.cur); setSelFx(c.cur); setView("fxAcct"); }, className: `w-full flex ${rowStart()} items-center gap-3 rounded-2xl border p-3 mb-2 ${textStart()}`, style: { backgroundColor: colors.card, borderColor: colors.border } },
+                React.createElement("span", { className: "text-2xl shrink-0" }, c.flag),
+                React.createElement("div", { className: "flex-1 min-w-0" },
+                    React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, tl(c.ar, c.en) + " · " + c.cur),
+                    React.createElement("div", { className: "text-[11px] mt-0.5", dir: "ltr", style: { color: colors.textMuted, textAlign: isRTL() ? "right" : "left" } }, "1 " + c.cur + " = " + fxFmt(c.rate, "SDG") + " " + fxCode("SDG"))),
+                React.createElement(Plus, { size: 18, color: colors.primary, className: "shrink-0" })))));
+    }
+    // ---------- حساب عملة ----------
+    if (view === "fxAcct") {
+        const a = fxAccounts.find((x) => x.cur === selFx), c = a && fxInfo(a.cur);
+        if (!a) return shell(tl("حساب العملة", "Currency account"), null);
+        return shell(tl(c.ar, c.en), React.createElement("div", null,
+            React.createElement("div", { className: "rounded-2xl p-5 mb-3 text-white", style: { background: "linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%)" } },
+                React.createElement("div", { className: "text-xs mb-1", style: { color: "rgba(255,255,255,0.65)" } }, c.flag + " " + tl("رصيد ", "Balance · ") + a.cur),
+                React.createElement("div", { className: "text-3xl font-black", dir: "ltr", style: { textAlign: isRTL() ? "right" : "left" } }, fxFmt(a.bal, a.cur) + " " + a.cur),
+                React.createElement("div", { className: "text-[11px] mt-1", dir: "ltr", style: { color: "rgba(255,255,255,0.6)", textAlign: isRTL() ? "right" : "left" } }, "≈ " + fxFmt(a.bal * c.rate, "SDG") + " " + fxCode("SDG"))),
+            React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-3` },
+                React.createElement("button", { onClick: () => { setFrom("SDG"); setTo(a.cur); setAmt(""); setView("fxConvert"); }, className: "flex-1 flex flex-col items-center gap-1 rounded-2xl border py-3", style: { borderColor: colors.border, backgroundColor: colors.card } }, React.createElement(ArrowDownLeft, { size: 18, color: colors.primary }), React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, tl("تحويلٌ إليه", "Convert in"))),
+                React.createElement("button", { onClick: () => { setFrom(a.cur); setTo("SDG"); setAmt(""); setView("fxConvert"); }, className: "flex-1 flex flex-col items-center gap-1 rounded-2xl border py-3", style: { borderColor: colors.border, backgroundColor: colors.card } }, React.createElement(ArrowUpRight, { size: 18, color: colors.primary }), React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, tl("تحويلٌ منه", "Convert out"))),
+                React.createElement("button", { onClick: () => { setCCur(a.cur); setCName(""); setView("cardNew"); }, className: "flex-1 flex flex-col items-center gap-1 rounded-2xl border py-3", style: { borderColor: colors.border, backgroundColor: colors.card } }, React.createElement(CreditCard, { size: 18, color: colors.primary }), React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, tl("بطاقةٌ بالعملة", "Card in " + a.cur)))),
+            React.createElement("h4", { className: `text-sm font-extrabold mb-2 ${textStart()}`, style: { color: colors.text } }, tl("تفاصيل الحساب", "Account details")),
+            React.createElement(Card, { className: "p-0 overflow-hidden" },
+                row(tl("صاحب الحساب", "Holder"), holder || tl("أنت", "You")),
+                row(tl("رقم الحساب (تجريبيّ)", "Account no. (demo)"), React.createElement("span", { className: `flex ${rowStart()} items-center gap-2`, dir: "ltr" }, a.acct, React.createElement("button", { onClick: () => copy(a.acct), "aria-label": tl("نسخ", "Copy") }, React.createElement(Copy, { size: 13, color: colors.primary })))),
+                row(tl("العملة", "Currency"), a.cur + " · " + tl(c.ar, c.en)),
+                row(tl("سعر الصرف (تجريبيّ)", "Rate (demo)"), "⁦" + "1 " + a.cur + "⁩" + " = " + fxFmt(c.rate, "SDG") + " " + fxCode("SDG"))),
+            React.createElement(WalletDemoNote, { ar: "رقم الحساب للعرض فقط — ليس رقماً مصرفيّاً ولا يستقبل تحويلاتٍ حقيقيّة.", en: "The account number is for display only — not a bank number and can't receive real transfers." }),
+            React.createElement("h4", { className: `text-sm font-extrabold mb-2 ${textStart()}`, style: { color: colors.text } }, tl("الحركات", "Activity")),
+            !(a.hist || []).length && React.createElement("div", { className: "text-center text-xs py-6", style: { color: colors.textMuted } }, tl("لا حركات بعد", "No activity yet")),
+            (a.hist || []).map((h, i) => React.createElement("div", { key: i, className: `flex ${rowStart()} items-center gap-3 rounded-2xl p-3 mb-1.5`, style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
+                React.createElement("div", { className: "flex-1 min-w-0 text-xs font-bold", style: { color: colors.text } }, h.note),
+                React.createElement("span", { className: "text-xs font-extrabold shrink-0", dir: "ltr", style: { color: h.amt >= 0 ? colors.success : colors.danger } }, (h.amt >= 0 ? "+" : "−") + fxFmt(Math.abs(h.amt), a.cur) + " " + a.cur)))));
+    }
+    // ---------- تحويل بين العملات ----------
+    if (view === "fxConvert") {
+        const q = fxQuote(amt, from, to), a0 = Number(amt) || 0, have = balOf(from);
+        const err = !to || from === to ? tl("اختر عملتين مختلفتين", "Pick two different currencies") : a0 > have ? tl("الرصيد لا يكفي", "Insufficient balance") : null;
+        return shell(tl("تحويل العملات", "Convert currency"), React.createElement("div", null,
+            React.createElement(WalletDemoNote, { ar: "أسعارٌ ثابتة للتجربة وليست أسعار السوق · رسوم ١٪.", en: "Fixed demo rates, not market rates · 1% fee." }),
+            fxAccounts.length === 0 && React.createElement(Card, null,
+                React.createElement("div", { className: `text-xs mb-2 ${textStart()}`, style: { color: colors.textMuted } }, tl("افتح حساب عملةٍ أوّلاً لتحوّل إليه.", "Open a currency account first.")),
+                React.createElement(Button, { label: tl("فتح حساب عملة", "Open a currency account"), onPress: () => setView("fxAdd") })),
+            fxAccounts.length > 0 && React.createElement(React.Fragment, null,
+                React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, tl("من", "From")),
+                React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mb-1` }, owned.map((cur) => curChip(cur, from === cur, () => { setFrom(cur); if (to === cur) setTo(owned.find((x) => x !== cur) || ""); }, "f" + cur))),
+                React.createElement("div", { className: `text-[11px] mb-3 ${textStart()}`, style: { color: colors.textMuted } }, tl("المتاح: ", "Available: ") + fxFmt(have, from) + " " + fxCode(from)),
+                React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, tl("إلى", "To")),
+                React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mb-3` }, owned.filter((cur) => cur !== from).map((cur) => curChip(cur, to === cur, () => setTo(cur), "t" + cur))),
+                React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, tl("المبلغ بـ", "Amount in ") + fxCode(from)),
+                React.createElement("input", { dir: "ltr", value: amt, onChange: (e) => setAmt(e.target.value.replace(from === "SDG" ? /[^0-9]/g : /[^0-9.]/g, "")), inputMode: "decimal", placeholder: "0", className: "w-full border rounded-xl px-3 py-3 text-lg font-bold text-center mb-3", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
+                a0 > 0 && to && from !== to && React.createElement(Card, { className: "p-0 overflow-hidden" },
+                    row(tl("السعر (تجريبيّ)", "Rate (demo)"), "⁦" + "1 " + (from === "SDG" ? to : from) + "⁩" + " = " + fxFmt(fxRate(from === "SDG" ? to : from) / fxRate(from === "SDG" ? "SDG" : to), from === "SDG" || to === "SDG" ? "SDG" : to) + " " + fxCode(from === "SDG" || to === "SDG" ? "SDG" : to)),
+                    row(tl("الرسوم ١٪", "Fee 1%"), fxFmt(q.fee, from) + " " + fxCode(from)),
+                    row(tl("تستلم", "You get"), fxFmt(q.out, to) + " " + fxCode(to), true)),
+                err && a0 > 0 && React.createElement("div", { className: "text-xs font-bold text-center mb-3", style: { color: colors.danger } }, err),
+                React.createElement(Button, { label: tl("تحويل", "Convert"), disabled: !!err || !(a0 > 0) || !(q.out > 0), onPress: () => { onExchange({ from, to, amt: fxRound(a0, from), fee: q.fee, out: q.out }); setAmt(""); setSelFx(from === "SDG" ? to : from); setView(to === "SDG" && from === "SDG" ? "home" : "fxAcct"); } }))));
+    }
+    // ---------- البطاقات ----------
+    if (view === "cards") {
+        return shell(tl("البطاقات الافتراضيّة", "Virtual cards"), React.createElement("div", null,
+            React.createElement(WalletDemoNote, { ar: "بطاقاتٌ تجريبيّة — أرقامها تبدأ بـ0000 ولا تعمل في أيّ متجر.", en: "Demo cards — numbers start with 0000 and don't work at any merchant." }),
+            !cards.length && React.createElement("div", { className: "text-center py-8" },
+                React.createElement(CreditCard, { size: 34, color: colors.textMuted }),
+                React.createElement("div", { className: "text-xs mt-2", style: { color: colors.textMuted } }, tl("لا بطاقات بعد — أنشئ بطاقةً للشراء عبر الإنترنت", "No cards yet — create one for online purchases"))),
+            cards.map((cd) => React.createElement("button", { key: cd.id, onClick: () => { setSelCard(cd.id); setRevealUntil(0); setPin(""); setConfirmDel(false); setLimitIn(cd.limit ? String(cd.limit) : ""); setView("cardDetail"); }, className: "w-full block mb-3" }, React.createElement(VirtualCardFace, { card: cd }))),
+            React.createElement(Button, { label: cards.length >= VCARD_MAX ? tl("الحدّ ٥ بطاقات", "Limit: 5 cards") : tl("بطاقةٌ جديدة", "New card"), icon: Plus, disabled: cards.length >= VCARD_MAX, onPress: () => { setCName(""); setCCur("SDG"); setCColor(cards.length % VCARD_COLORS.length); setView("cardNew"); } })));
+    }
+    if (view === "cardNew") {
+        const preview = { name: cName || tl("بطاقتي", "My card"), cur: cCur, num: "0000000000000000", exp: "••/••", color: cColor, frozen: false };
+        return shell(tl("بطاقةٌ افتراضيّة جديدة", "New virtual card"), React.createElement("div", null,
+            React.createElement("div", { className: "mb-4" }, React.createElement(VirtualCardFace, { card: preview })),
+            React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, tl("اسم البطاقة", "Card name")),
+            React.createElement("input", { value: cName, onChange: (e) => setCName(e.target.value.slice(0, 24)), placeholder: tl("مثال: مشتريات الإنترنت", "e.g. Online shopping"), dir: isRTL() ? "rtl" : "ltr", className: "w-full border rounded-xl px-3 py-3 text-sm mb-3", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
+            React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, tl("عملة البطاقة", "Card currency")),
+            React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mb-1` }, owned.map((cur) => curChip(cur, cCur === cur, () => setCCur(cur), "c" + cur))),
+            React.createElement("div", { className: `text-[11px] mb-3 ${textStart()}`, style: { color: colors.textMuted } }, tl("تُخصم مشتريات البطاقة من حساب عملتها.", "Purchases are charged to the card's currency account.")),
+            React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, tl("اللون", "Colour")),
+            React.createElement("div", { className: `flex ${rowStart()} gap-3 mb-4` }, VCARD_COLORS.map((c, i) => React.createElement("button", { key: i, onClick: () => setCColor(i), "aria-label": tl("لون ", "Colour ") + (i + 1), className: "w-9 h-9 rounded-full", style: { background: `linear-gradient(135deg, ${c[0]}, ${c[1]})`, outline: cColor === i ? `3px solid ${colors.primary}` : "none", outlineOffset: 2 } }))),
+            React.createElement(Button, { label: tl("إنشاء البطاقة", "Create card"), disabled: !cName.trim() || cards.length >= VCARD_MAX, onPress: () => { const cd = vcardNew(cName, cCur, cColor); onCardsChange([cd].concat(cards)); setSelCard(cd.id); setRevealUntil(0); setPin(""); setLimitIn(""); setView("cardDetail"); } })), () => setView("cards"));
+    }
+    if (view === "cardDetail") {
+        const cd = cards.find((x) => x.id === selCard);
+        if (!cd) return shell(tl("البطاقة", "Card"), null, () => setView("cards"));
+        const reveal = revealUntil > Date.now();
+        const upd = (patch) => onCardsChange(cards.map((x) => x.id === cd.id ? Object.assign({}, x, patch) : x));
+        return shell(cd.name || tl("البطاقة", "Card"), React.createElement("div", null,
+            React.createElement("div", { className: "mb-3" }, React.createElement(VirtualCardFace, { card: cd, reveal })),
+            !reveal && React.createElement(Card, null,
+                React.createElement("div", { className: `text-xs font-bold mb-2 ${textStart()}`, style: { color: colors.text } }, tl("إظهار رقم البطاقة ورمز CVV", "Show card number and CVV")),
+                !walletPinForConfirm ? React.createElement("div", { className: "text-xs", style: { color: colors.danger } }, tl("عيّن رمز المحفظة أوّلاً", "Set a wallet PIN first"))
+                    : React.createElement("div", { className: `flex ${rowStart()} gap-2` },
+                        React.createElement("input", { dir: "ltr", type: "password", inputMode: "numeric", maxLength: 6, value: pin, onChange: (e) => setPin(e.target.value.replace(/[^0-9]/g, "")), placeholder: tl("رمز المحفظة", "Wallet PIN"), className: "flex-1 min-w-0 border rounded-xl px-3 py-2.5 text-sm text-center tracking-widest", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
+                        React.createElement("button", { disabled: pin !== walletPinForConfirm, onClick: () => { setRevealUntil(Date.now() + 30000); setPin(""); }, className: "shrink-0 flex items-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white", style: { backgroundColor: colors.primary, opacity: pin === walletPinForConfirm ? 1 : 0.5 } }, React.createElement(Eye, { size: 14, color: "#fff" }), tl("إظهار", "Show"))),
+                pin.length >= 4 && pin !== walletPinForConfirm && React.createElement("div", { className: "text-[11px] font-bold mt-1.5", style: { color: colors.danger } }, tl("رمز المحفظة غير صحيح", "Incorrect wallet PIN"))),
+            reveal && React.createElement("div", { className: `flex ${rowStart()} items-center justify-between rounded-xl p-3 mb-3`, style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
+                React.createElement("span", { className: "text-xs font-bold", style: { color: colors.textMuted } }, tl("تُخفى التفاصيل بعد ", "Hidden again in ") + Math.max(0, Math.ceil((revealUntil - Date.now()) / 1000)).toLocaleString(loc()) + tl(" ث", "s")),
+                React.createElement("div", { className: `flex ${rowStart()} gap-3` },
+                    React.createElement("button", { onClick: () => copy(cd.num), className: "flex items-center gap-1 text-xs font-bold", style: { color: colors.primary } }, React.createElement(Copy, { size: 13, color: colors.primary }), tl("نسخ الرقم", "Copy number")),
+                    React.createElement("button", { onClick: () => setRevealUntil(0), className: "flex items-center gap-1 text-xs font-bold", style: { color: colors.textMuted } }, React.createElement(Lock, { size: 13, color: colors.textMuted }), tl("إخفاء", "Hide")))),
+            React.createElement(Card, { className: "p-0 overflow-hidden" },
+                React.createElement("button", { onClick: () => upd({ frozen: !cd.frozen }), className: `w-full flex ${rowStart()} items-center justify-between gap-3 p-3 border-b ${textStart()}`, style: { borderColor: colors.border } },
+                    React.createElement("span", { className: `flex ${rowStart()} items-center gap-2 text-sm font-bold`, style: { color: colors.text } }, React.createElement(cd.frozen ? Unlock : Snowflake, { size: 16, color: colors.primary }), cd.frozen ? tl("إلغاء التجميد", "Unfreeze") : tl("تجميد البطاقة", "Freeze card")),
+                    React.createElement("span", { className: "text-[11px] font-bold px-2 py-0.5 rounded-full", style: { backgroundColor: (cd.frozen ? colors.accent : colors.success) + "1A", color: cd.frozen ? colors.accent : colors.success } }, cd.frozen ? tl("مجمَّدة", "Frozen") : tl("نشطة", "Active"))),
+                React.createElement("div", { className: "p-3 border-b", style: { borderColor: colors.border } },
+                    React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 text-sm font-bold mb-2`, style: { color: colors.text } }, React.createElement(SlidersHorizontal, { size: 16, color: colors.primary }), tl("الحدّ الشهريّ (", "Monthly limit (") + fxCode(cd.cur) + ")"),
+                    React.createElement("div", { className: `flex ${rowStart()} gap-2` },
+                        React.createElement("input", { dir: "ltr", value: limitIn, onChange: (e) => setLimitIn(e.target.value.replace(/[^0-9]/g, "")), inputMode: "numeric", placeholder: tl("بلا حدّ", "No limit"), className: "flex-1 min-w-0 border rounded-xl px-3 py-2.5 text-sm text-center", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
+                        React.createElement("button", { onClick: () => upd({ limit: Number(limitIn) || 0 }), disabled: (Number(limitIn) || 0) === (cd.limit || 0), className: "shrink-0 rounded-xl px-4 text-xs font-bold text-white", style: { backgroundColor: colors.primary, opacity: (Number(limitIn) || 0) === (cd.limit || 0) ? 0.5 : 1 } }, tl("حفظ", "Save"))),
+                    React.createElement("div", { className: `text-[11px] mt-1.5 ${textStart()}`, style: { color: colors.textMuted } }, cd.limit ? tl("الحدّ الحاليّ: ", "Current limit: ") + fxFmt(cd.limit, cd.cur) + " " + fxCode(cd.cur) : tl("لا حدّ حاليّاً", "No limit set"))),
+                React.createElement("div", { className: "p-3" },
+                    !confirmDel ? React.createElement("button", { onClick: () => setConfirmDel(true), className: `flex ${rowStart()} items-center gap-2 text-sm font-bold`, style: { color: colors.danger } }, React.createElement(Trash2, { size: 16, color: colors.danger }), tl("حذف البطاقة", "Delete card"))
+                        : React.createElement("div", null,
+                            React.createElement("div", { className: `text-xs font-bold mb-2 ${textStart()}`, style: { color: colors.danger } }, tl("حذف نهائيّ — لا يمكن استعادة البطاقة.", "Permanent — the card can't be restored.")),
+                            React.createElement("div", { className: `flex ${rowStart()} gap-2` },
+                                React.createElement("button", { onClick: () => { onCardsChange(cards.filter((x) => x.id !== cd.id)); setView("cards"); }, className: "flex-1 rounded-xl py-2.5 text-xs font-bold text-white", style: { backgroundColor: colors.danger } }, tl("نعم، احذفها", "Yes, delete")),
+                                React.createElement("button", { onClick: () => setConfirmDel(false), className: "flex-1 rounded-xl py-2.5 text-xs font-bold border", style: { borderColor: colors.border, color: colors.text } }, tl("إلغاء", "Cancel")))))),
+            React.createElement(WalletDemoNote, { ar: "بطاقةٌ تجريبيّة — لا تعمل في أيّ متجر.", en: "Demo card — doesn't work at any merchant." })), () => setView("cards"));
+    }
+    return null;
+}
+function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, kycStatus, kycDismissed, onDismissKyc, onSubmitKyc, onTopUp, onTransfer, onScanPay, onBack, linkedMethods, onAddPaymentMethod, onRemovePaymentMethod, spendingLimit, onSetSpendingLimit, jamiyaList, onPayJamiya, onCreateJamiya, CURRENT_USER_ID, canIntl = false, intlHistory = [], onIntlTransfer, kycMeta = null, fxAccounts = [], onOpenFx, onExchange, cards = [], onCardsChange, holder = "" }) {
     const { colors } = useTheme();
     const [view, setView] = useState("home");
+    const [selFx, setSelFx] = useState("");   // C224
+    const [selCard, setSelCard] = useState("");
     const WALLET_SERVICES = buildWalletServices(colors, setView);
     if (canIntl) WALLET_SERVICES.unshift({ id: "intl", label: tl("تحويل دوليّ", "International transfer"), desc: tl("تجريبيّ — للمشرف والمدير", "Demo — moderators & admins"), Icon: Globe, bgColor: colors.primaryLight, iconColor: colors.primary, onPress: () => setView("intl") });   // C221
+    // C224: العملات والبطاقات الافتراضيّة — بعد «تحويل دوليّ» وقبل باقي الخدمات
+    if (canIntl) WALLET_SERVICES.splice(1, 0,
+        { id: "fx", label: tl("حسابات العملات", "Currency accounts"), desc: tl("دولار · ريال · درهم · يورو", "USD · SAR · AED · EUR"), Icon: Banknote, bgColor: "#E8F5E9", iconColor: "#2E7D32", onPress: () => { if (fxAccounts.length) { setSelFx(fxAccounts[0].cur); setView("fxAcct"); } else setView("fxAdd"); } },
+        { id: "fxconv", label: tl("تحويل العملات", "Convert currency"), desc: tl("بين الجنيه والعملات", "Between SDG and currencies"), Icon: RotateCcw, bgColor: "#E3F2FD", iconColor: "#1565C0", onPress: () => setView("fxConvert") },
+        { id: "vcards", label: tl("البطاقات الافتراضيّة", "Virtual cards"), desc: tl("للشراء عبر الإنترنت", "For online purchases"), Icon: CreditCard, bgColor: "#EDE7F6", iconColor: "#5E35B1", onPress: () => setView("cards") });
     const [selectedBank, setSelectedBank] = useState(WALLET_BANKS[0]);
     const [transferTo, setTransferTo] = useState("");
     const [transferPhone, setTransferPhone] = useState("");
@@ -1857,6 +2075,10 @@ function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, 
                 React.createElement(Button, { label: Number(transferAmount) > 0 ? `تغذية ${Number(transferAmount).toLocaleString(loc())} ج.س ←` : t("w_adkhl_almblgh"), disabled: !(Number(transferAmount) > 0), onPress: () => { onTopUp(selectedBank, Number(transferAmount)); setTransferAmount(""); setView("home"); } }))));
     }
     // C220: التحويل الدوليّ (تجريبيّ) — للمشرف والمدير فقط
+    // C224: حسابات العملات والبطاقات الافتراضيّة (تجريبيّة)
+    if (canIntl && ["fxAdd", "fxAcct", "fxConvert", "cards", "cardNew", "cardDetail"].indexOf(view) >= 0) {
+        return React.createElement(FxCardsScreens, { view, setView, balance, fxAccounts, cards, walletPinForConfirm, selFx, setSelFx, selCard, setSelCard, onOpenFx: (c) => onOpenFx && onOpenFx(c), onExchange: (x) => onExchange && onExchange(x), onCardsChange: (l) => onCardsChange && onCardsChange(l), holder });
+    }
     if (view === "intl" && canIntl) {
         return React.createElement(IntlTransferScreen, { balance, walletPinForConfirm, kycStatus, history: intlHistory, onSend: (rec) => onIntlTransfer && onIntlTransfer(rec), onBack: () => setView("home") });
     }
@@ -2085,6 +2307,21 @@ ${txn.note}
                         t("w_rsydk_mnkhfd"),
                         balance.toLocaleString(loc()),
                         t("w_fkr_btghdhya")))),
+                // C224: «حساباتي» — الجنيه ثمّ حسابات العملات ثمّ البطاقات
+                canIntl && React.createElement("div", { className: "mt-4" },
+                    React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-2` },
+                        React.createElement("h4", { className: "text-sm font-extrabold", style: { color: colors.text } }, tl("حساباتي", "My accounts")),
+                        React.createElement("button", { onClick: () => setView("cards"), className: `flex ${rowStart()} items-center gap-1 text-xs font-bold`, style: { color: colors.primary } }, React.createElement(CreditCard, { size: 13, color: colors.primary }), tl("البطاقات", "Cards") + (cards.length ? " (" + cards.length.toLocaleString(loc()) + ")" : ""))),
+                    React.createElement("div", { className: `flex ${rowStart()} gap-2 overflow-x-auto pb-1`, style: { scrollbarWidth: "none" } },
+                        React.createElement("div", { className: "shrink-0 rounded-2xl border px-3 py-2.5", style: { minWidth: 112, backgroundColor: colors.card, borderColor: colors.primary } },
+                            React.createElement("div", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, "🇸🇩 SDG"),
+                            React.createElement("div", { className: "text-sm font-extrabold tabular-nums", style: { color: colors.text } }, fxFmt(balance, "SDG"))),
+                        fxAccounts.map((a) => React.createElement("button", { key: a.cur, onClick: () => { setSelFx(a.cur); setView("fxAcct"); }, className: `shrink-0 rounded-2xl border px-3 py-2.5 ${textStart()}`, style: { minWidth: 112, backgroundColor: colors.card, borderColor: colors.border } },
+                            React.createElement("div", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, (fxInfo(a.cur) || {}).flag + " " + a.cur),
+                            React.createElement("div", { className: "text-sm font-extrabold tabular-nums", style: { color: colors.text } }, fxFmt(a.bal, a.cur)))),
+                        fxAccounts.length < FX_CURS.length && React.createElement("button", { onClick: () => setView("fxAdd"), className: "shrink-0 flex flex-col items-center justify-center gap-0.5 rounded-2xl border border-dashed px-3 py-2.5", style: { minWidth: 88, borderColor: colors.primary, backgroundColor: colors.primaryLight } },
+                            React.createElement(Plus, { size: 16, color: colors.primary }),
+                            React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.primary } }, tl("عملة", "Currency"))))),
                 kycStatus !== "verified" && (kycStatus === "pending" || !kycDismissed) && (React.createElement("div", { className: `w-full flex ${rowStart()} items-center gap-2 rounded-xl p-3 border mt-3`, style: { backgroundColor: colors.card, borderColor: colors.accent } },
                     React.createElement("button", { onClick: () => setView("kyc"), className: `flex-1 flex ${rowStart()} items-center gap-2`, style: { minWidth: 0 } },
                         React.createElement(ShieldCheck, { size: 18, color: colors.accent, className: "shrink-0" }),
