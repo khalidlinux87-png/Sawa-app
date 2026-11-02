@@ -107,6 +107,7 @@ const RELIGIOUS_OCCASIONS = [
 const SHOW_SOON_SERVICES = false;
 function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOpenMoments, onOpenErsal, onOpenTaxi, onOpenWallet }) {
     const { colors } = useTheme();
+    const intlAdm = useAdminAtLeast("moderator");   // C220: المحفظة (والتحويل الدوليّ التجريبيّ) للمشرف والمدير فقط
     const { showToast } = useToast();
     // الخدمات غير الجاهزة: «قريباً» بدل شاشاتٍ تجريبيّة توهم بأنها تعمل — صلة الرحم وحدها مفعّلة
     const soon = () => showToast(tl("قريباً في سوا ✨", "Coming soon to Sawa ✨"));
@@ -190,6 +191,13 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
                         React.createElement("span", { className: "block text-[11px] mt-0.5", style: { color: "rgba(255,255,255,0.75)" } }, momNotes > 0 ? tl("🔔 إشعارات جديدة على لحظاتك: " + momNotes, "🔔 New activity on your moments: " + momNotes) : momNew > 0 ? tl(momNew + " لحظة جديدة من أصدقائك", momNew + " new from your friends") : tl("شارك صورك وأفكارك مع أصدقائك وأهلك", "Share photos and thoughts with friends and family"))),
                     (momNew + momNotes) > 0 && React.createElement("span", { className: "rounded-full px-2 py-0.5 text-[11px] font-extrabold shrink-0", style: { backgroundColor: "#fff", color: "#7C3AED" } }, (momNew + momNotes) > 9 ? "9+" : (momNew + momNotes)),
                     React.createElement(ChevronLeft, { size: 18, color: "rgba(255,255,255,0.6)", className: "shrink-0", style: { transform: isRTL() ? "none" : "scaleX(-1)" } }))),
+            intlAdm && onOpenWallet && React.createElement("button", { onClick: onOpenWallet, className: `w-full flex ${rowStart()} items-center gap-3 rounded-2xl p-4 border mb-4 ${textStart()}`, style: { backgroundColor: colors.card, borderColor: colors.primary, borderStyle: "dashed" } },
+                React.createElement("div", { className: "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primaryLight } },
+                    React.createElement(Globe, { size: 24, color: colors.primary })),
+                React.createElement("div", { className: "flex-1", style: { minWidth: 0 } },
+                    React.createElement("span", { className: "block text-sm font-extrabold", style: { color: colors.text } }, tl("محفظة سوا · التحويل الدوليّ", "Sawa Wallet · International transfer")),
+                    React.createElement("span", { className: "block text-[11px] mt-0.5", style: { color: colors.textMuted } }, tl("تجريبيّ — للمشرف والمدير فقط، بلا أموالٍ حقيقيّة", "Demo — moderators and admins only, no real money"))),
+                React.createElement(ChevronLeft, { size: 18, color: colors.textMuted, className: "shrink-0", style: { transform: isRTL() ? "none" : "scaleX(-1)" } })),
             SHOW_SOON_SERVICES && React.createElement("div", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("alkhdmat")),
             SHOW_SOON_SERVICES && React.createElement("div", { className: "grid grid-cols-2 gap-3" },
                 React.createElement("button", { onClick: soon, "aria-disabled": true, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { position: "relative", opacity: 0.55, backgroundColor: colors.card, borderColor: colors.border, minHeight: 138, justifyContent: "center" } },

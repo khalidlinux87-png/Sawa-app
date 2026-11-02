@@ -1373,7 +1373,199 @@ function ScanPayScreen({ onBack, onPay }) {
             React.createElement("button", { onClick: () => setScannedMerchant(null), className: "w-full text-center mt-3" },
                 React.createElement("span", { className: "text-xs font-bold", style: { color: colors.textMuted } }, t("msh_rmz_akhr"))))));
 }
-function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, kycStatus, kycDismissed, onDismissKyc, onSubmitKyc, onTopUp, onTransfer, onScanPay, onBack, linkedMethods, onAddPaymentMethod, onRemovePaymentMethod, spendingLimit, onSetSpendingLimit, jamiyaList, onPayJamiya, onCreateJamiya, CURRENT_USER_ID }) {
+// ============================================================================
+// C220: التحويل الدوليّ — نموذجٌ تجريبيّ داخل «محفظة سوا» (لا أموال حقيقيّة)
+// يظهر للمشرف والمدير والمالك فقط (useAdminAtLeast("moderator")) — مخفيٌّ عن المستخدمين ومراجعي المتاجر.
+// الأسعار والرسوم والحالات كلّها ثابتةٌ للتجربة، ومعلَّمةٌ «تجريبيّ» في كلّ شاشة. الربط بمزوّدٍ مرخَّص لاحقاً يستبدل
+// INTL_DEMO_* وonSend فقط (الشاشات والتحقّق تبقى).
+// ============================================================================
+const INTL_DEMO_COUNTRIES = [
+    { code: "SA", flag: "🇸🇦", ar: "السعوديّة", en: "Saudi Arabia", cur: "SAR", rate: 160, methods: ["bank", "mobile"] },
+    { code: "AE", flag: "🇦🇪", ar: "الإمارات", en: "UAE", cur: "AED", rate: 163, methods: ["bank", "mobile", "cash"] },
+    { code: "QA", flag: "🇶🇦", ar: "قطر", en: "Qatar", cur: "QAR", rate: 165, methods: ["bank", "cash"] },
+    { code: "EG", flag: "🇪🇬", ar: "مصر", en: "Egypt", cur: "EGP", rate: 12, methods: ["bank", "mobile", "cash"] },
+    { code: "OM", flag: "🇴🇲", ar: "عُمان", en: "Oman", cur: "OMR", rate: 1560, methods: ["bank"] },
+    { code: "KW", flag: "🇰🇼", ar: "الكويت", en: "Kuwait", cur: "KWD", rate: 1950, methods: ["bank"] },
+    { code: "TR", flag: "🇹🇷", ar: "تركيا", en: "Türkiye", cur: "TRY", rate: 17, methods: ["bank", "cash"] },
+    { code: "GB", flag: "🇬🇧", ar: "المملكة المتّحدة", en: "United Kingdom", cur: "GBP", rate: 760, methods: ["bank"] },
+    { code: "DE", flag: "🇩🇪", ar: "ألمانيا", en: "Germany", cur: "EUR", rate: 650, methods: ["bank"] },
+    { code: "US", flag: "🇺🇸", ar: "الولايات المتّحدة", en: "United States", cur: "USD", rate: 600, methods: ["bank"] },
+];
+const INTL_DEMO_FEE = { pct: 0.015, min: 2000 };   // ١٫٥٪ وحدّ أدنى ٢٬٠٠٠ ج.س (تجريبيّ)
+const INTL_DEMO_LIMITS = { min: 5000, max: 2000000 };   // لكلّ تحويل (تجريبيّ)
+const INTL_METHODS = {
+    bank: { ar: "حساب مصرفيّ", en: "Bank account", Icon: Landmark },
+    mobile: { ar: "محفظة جوّال", en: "Mobile wallet", Icon: Smartphone },
+    cash: { ar: "استلام نقديّ", en: "Cash pickup", Icon: Banknote },
+};
+const INTL_PURPOSES = [
+    ["family", "إعالة الأسرة", "Family support"], ["education", "رسوم دراسيّة", "Education"], ["medical", "علاج", "Medical"],
+    ["business", "تجارة", "Business"], ["other", "أخرى", "Other"],
+];
+function intlFee(amount) { return amount > 0 ? Math.max(INTL_DEMO_FEE.min, Math.round(amount * INTL_DEMO_FEE.pct)) : 0; }
+function intlRecv(amount, rate) { return rate > 0 ? Math.floor((amount / rate) * 100) / 100 : 0; }
+// الحالة محاكاةٌ بالزمن منذ الإرسال (للعرض فقط): قيد المراجعة ← أُرسل ← وصل
+function intlStatus(rec, now) {
+    const m = ((now || Date.now()) - (rec.ts || 0)) / 60000;
+    return m < 1 ? "review" : m < 5 ? "sent" : "delivered";
+}
+const INTL_STATUS_TX = { review: ["قيد المراجعة", "Under review"], sent: ["أُرسل", "Sent"], delivered: ["وصل", "Delivered"] };
+// التحقّق من حقول المستلم بحسب طريقة الاستلام — يعيد رسالة الخطأ الأولى أو null
+function intlValidate(f) {
+    if (!f.country) return tl("اختر الدولة", "Choose a country");
+    if (!f.method) return tl("اختر طريقة الاستلام", "Choose how they receive it");
+    const nm = String(f.name || "").trim();
+    if (nm.split(/\s+/).filter(Boolean).length < 2 || nm.length < 5) return tl("اكتب اسم المستلم الكامل كما في هويّته", "Enter the recipient's full legal name");
+    if (!/^\+?[0-9]{8,15}$/.test(String(f.phone || "").replace(/[\s-]/g, ""))) return tl("رقم هاتف المستلم غير صحيح (مع رمز الدولة)", "Invalid recipient phone (with country code)");
+    if (f.method === "bank" && !/^[A-Za-z0-9]{8,34}$/.test(String(f.account || "").replace(/\s/g, ""))) return tl("رقم الحساب أو IBAN غير صحيح", "Invalid account number or IBAN");
+    if (f.method === "cash" && String(f.city || "").trim().length < 2) return tl("اكتب مدينة الاستلام", "Enter the pickup city");
+    if (!f.purpose) return tl("اختر الغرض من التحويل", "Choose the purpose");
+    const a = Number(f.amount) || 0;
+    if (a < INTL_DEMO_LIMITS.min) return tl("الحدّ الأدنى ", "Minimum ") + INTL_DEMO_LIMITS.min.toLocaleString(loc()) + tl(" ج.س", " SDG");
+    if (a > INTL_DEMO_LIMITS.max) return tl("الحدّ الأعلى للتحويل الواحد ", "Maximum per transfer ") + INTL_DEMO_LIMITS.max.toLocaleString(loc()) + tl(" ج.س", " SDG");
+    if (a + intlFee(a) > (Number(f.balance) || 0)) return tl("الرصيد لا يكفي للمبلغ والرسوم", "Balance doesn't cover amount + fee");
+    return null;
+}
+function IntlDemoBanner() {
+    const { colors } = useTheme();
+    return React.createElement("div", { className: `flex ${rowStart()} items-start gap-2 rounded-xl border p-2.5 mb-3`, style: { borderColor: colors.accent, backgroundColor: colors.card } },
+        React.createElement(Info, { size: 15, color: colors.accent, className: "shrink-0 mt-0.5" }),
+        React.createElement("span", { className: `text-[11px] font-bold leading-snug ${textStart()}`, style: { color: colors.accent } },
+            tl("نموذجٌ تجريبيّ — لا تُحوَّل أموالٌ حقيقيّة، والأسعار والرسوم ثابتةٌ للاختبار. ظاهرٌ للمشرف والمدير فقط.",
+                "Demo only — no real money moves; rates and fees are fixed test values. Visible to moderators and admins only.")));
+}
+function IntlTransferScreen({ balance, walletPinForConfirm, kycStatus, history, onSend, onBack }) {
+    const { colors } = useTheme();
+    const [step, setStep] = useState("form");   // form | review | done | history
+    const [f, setF] = useState({ country: "", method: "", name: "", phone: "", account: "", city: "", purpose: "", amount: "" });
+    const [pin, setPin] = useState("");
+    const [err, setErr] = useState(null);
+    const [last, setLast] = useState(null);
+    const [, tick] = useState(0);
+    useEffect(() => { const t = setInterval(() => tick((x) => x + 1), 30000); return () => clearInterval(t); }, []);   // تحديث الحالة المحاكاة
+    const set = (k, v) => { setErr(null); setF((p) => ({ ...p, [k]: v })); };
+    const ctry = INTL_DEMO_COUNTRIES.find((c) => c.code === f.country) || null;
+    const amt = Number(f.amount) || 0, fee = intlFee(amt), total = amt + fee, recv = ctry ? intlRecv(amt, ctry.rate) : 0;
+    const fmt = (n) => Number(n || 0).toLocaleString(loc());
+    const inputCls = "w-full border rounded-xl px-3 py-3 text-sm mb-3";
+    const inputSt = { borderColor: colors.border, color: colors.text, backgroundColor: colors.card };
+    const label = (txt) => React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, txt);
+    const row = (k, v, strong) => React.createElement("div", { className: `flex ${rowStart()} items-center justify-between gap-3 p-3 border-b`, style: { borderColor: colors.border } },
+        React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } }, k),
+        React.createElement("span", { className: `text-xs ${strong ? "font-extrabold" : "font-bold"} ${textStart()}`, style: { color: colors.text } }, v));
+    const histBtn = React.createElement("button", { key: "h", onClick: () => setStep("history"), className: "text-xs font-bold px-3 py-1.5 rounded-full", style: { backgroundColor: colors.primaryLight, color: colors.primary } },
+        tl("السجلّ", "History") + (history.length ? " (" + history.length + ")" : ""));
+    if (step === "history") {
+        return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
+            React.createElement(TopBar, { title: tl("التحويلات الدوليّة", "International transfers"), onBack: () => setStep("form") }),
+            React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
+                React.createElement(IntlDemoBanner, null),
+                !history.length && React.createElement("div", { className: "text-center text-xs py-10", style: { color: colors.textMuted } }, tl("لا تحويلات بعد", "No transfers yet")),
+                history.map((r) => {
+                    const st = intlStatus(r), c = INTL_DEMO_COUNTRIES.find((x) => x.code === r.country) || {};
+                    const stColor = st === "delivered" ? colors.success : st === "sent" ? colors.primary : colors.accent;
+                    return React.createElement(Card, { key: r.ref },
+                        React.createElement("div", { className: `flex ${rowStart()} items-center justify-between gap-2` },
+                            React.createElement("span", { className: `text-sm font-extrabold ${textStart()}`, style: { color: colors.text } }, (c.flag || "") + " " + r.name),
+                            React.createElement("span", { className: "text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0", style: { backgroundColor: colors.bg, color: stColor } }, tl(INTL_STATUS_TX[st][0], INTL_STATUS_TX[st][1]))),
+                        React.createElement("div", { className: `text-xs mt-1 ${textStart()}`, style: { color: colors.textMuted } },
+                            fmt(r.amount) + tl(" ج.س ← ", " SDG → ") + fmt(r.recv) + " " + r.cur + " · " + tl(INTL_METHODS[r.method].ar, INTL_METHODS[r.method].en)),
+                        React.createElement("div", { className: `text-[10px] mt-1 ${textStart()}`, style: { color: colors.textMuted }, dir: "ltr" },
+                            r.ref + " · " + new Date(r.ts).toLocaleString(loc(), { day: "numeric", month: "short", hour: "numeric", minute: "numeric" })));
+                }))));
+    }
+    if (step === "done" && last) {
+        return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
+            React.createElement(TopBar, { title: tl("تحويل دوليّ", "International transfer"), onBack }),
+            React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
+                React.createElement(IntlDemoBanner, null),
+                React.createElement(Card, { className: "items-center flex flex-col py-6" },
+                    React.createElement(CheckCircle2, { size: 44, color: colors.success }),
+                    React.createElement("div", { className: "text-base font-extrabold mt-3", style: { color: colors.text } }, tl("أُرسل طلب التحويل (تجريبيّ)", "Transfer submitted (demo)")),
+                    React.createElement("div", { className: "text-xs mt-1 text-center", style: { color: colors.textMuted } },
+                        fmt(last.recv) + " " + last.cur + tl(" إلى ", " to ") + last.name),
+                    React.createElement("div", { className: "text-xs font-bold mt-3 px-3 py-1.5 rounded-full", dir: "ltr", style: { backgroundColor: colors.bg, color: colors.text } }, last.ref)),
+                React.createElement(Button, { label: tl("سجلّ التحويلات الدوليّة", "International transfer history"), onPress: () => setStep("history") }),
+                React.createElement("div", { className: "h-2" }),
+                React.createElement(Button, { label: tl("تحويلٌ جديد", "New transfer"), variant: "outline", onPress: () => { setF({ country: "", method: "", name: "", phone: "", account: "", city: "", purpose: "", amount: "" }); setPin(""); setStep("form"); } }))));
+    }
+    if (step === "review" && ctry) {
+        const pinOk = !!walletPinForConfirm && pin === walletPinForConfirm;
+        const m = INTL_METHODS[f.method];
+        return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
+            React.createElement(TopBar, { title: tl("مراجعة التحويل", "Review transfer"), onBack: () => { setPin(""); setStep("form"); } }),
+            React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
+                React.createElement(IntlDemoBanner, null),
+                React.createElement(Card, { className: "p-0 overflow-hidden" },
+                    row(tl("المستلم", "Recipient"), f.name.trim(), true),
+                    row(tl("الدولة", "Country"), ctry.flag + " " + tl(ctry.ar, ctry.en)),
+                    row(tl("طريقة الاستلام", "Receive method"), tl(m.ar, m.en)),
+                    f.method === "bank" && row(tl("الحساب / IBAN", "Account / IBAN"), React.createElement("span", { dir: "ltr" }, f.account.replace(/\s/g, "").toUpperCase())),
+                    f.method === "cash" && row(tl("مدينة الاستلام", "Pickup city"), f.city.trim()),
+                    row(tl("هاتف المستلم", "Recipient phone"), React.createElement("span", { dir: "ltr" }, f.phone.replace(/[\s-]/g, ""))),
+                    row(tl("الغرض", "Purpose"), (() => { const p = INTL_PURPOSES.find((x) => x[0] === f.purpose); return p ? tl(p[1], p[2]) : ""; })()),
+                    row(tl("المبلغ المُرسَل", "You send"), fmt(amt) + tl(" ج.س", " SDG")),
+                    row(tl("الرسوم (تجريبيّة)", "Fee (demo)"), fmt(fee) + tl(" ج.س", " SDG")),
+                    row(tl("سعر الصرف (تجريبيّ)", "Rate (demo)"), "\u2066" + "1 " + ctry.cur + "\u2069" + " = " + fmt(ctry.rate) + tl(" ج.س", " SDG")),   // عزلٌ ثنائيّ الاتّجاه: «1 SAR» لا ينقلب في العربيّة
+                    row(tl("يُخصَم من رصيدك", "Total debited"), fmt(total) + tl(" ج.س", " SDG"), true),
+                    row(tl("يستلم", "They receive"), fmt(recv) + " " + ctry.cur, true)),
+                kycStatus !== "verified" && React.createElement("div", { className: `flex ${rowStart()} items-start gap-2 rounded-xl border p-2.5 mb-3`, style: { borderColor: colors.border, backgroundColor: colors.card } },
+                    React.createElement(ShieldCheck, { size: 15, color: colors.textMuted, className: "shrink-0 mt-0.5" }),
+                    React.createElement("span", { className: `text-[11px] leading-snug ${textStart()}`, style: { color: colors.textMuted } }, tl("في الإطلاق الحقيقيّ يُشترط توثيق الهويّة قبل أيّ تحويلٍ دوليّ.", "A real launch would require identity verification before any international transfer."))),
+                label(tl("رمز المحفظة للتأكيد", "Wallet PIN to confirm")),
+                !walletPinForConfirm
+                    ? React.createElement("div", { className: "text-xs font-bold mb-3", style: { color: colors.danger } }, tl("عيّن رمز المحفظة أوّلاً من إعداداتها", "Set a wallet PIN first in wallet settings"))
+                    : React.createElement("input", { dir: "ltr", value: pin, onChange: (e) => setPin(e.target.value.replace(/[^0-9]/g, "")), type: "password", inputMode: "numeric", maxLength: 6, placeholder: tl("رمز المحفظة", "Wallet PIN"), className: inputCls + " text-center tracking-widest", style: inputSt }),
+                pin.length >= 4 && !pinOk && React.createElement("div", { className: "text-xs font-bold mb-3 text-center", style: { color: colors.danger } }, tl("رمز المحفظة غير صحيح", "Incorrect wallet PIN")),
+                React.createElement(Button, { label: tl("تأكيد التحويل", "Confirm transfer"), disabled: !pinOk, onPress: () => {
+                        const e = intlValidate({ ...f, balance });
+                        if (e) { setErr(e); setStep("form"); return; }
+                        const rec = { ref: "SW-INT-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).slice(2, 6).toUpperCase(), ts: Date.now(),
+                            country: ctry.code, cur: ctry.cur, rate: ctry.rate, method: f.method, name: f.name.trim(), phone: f.phone.replace(/[\s-]/g, ""),
+                            account: f.method === "bank" ? f.account.replace(/\s/g, "").toUpperCase() : "", city: f.method === "cash" ? f.city.trim() : "",
+                            purpose: f.purpose, amount: amt, fee, total, recv, demo: true };
+                        onSend(rec); setLast(rec); setPin(""); setStep("done");
+                    } }))));
+    }
+    // ---------- النموذج ----------
+    const e0 = intlValidate({ ...f, balance });
+    return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
+        React.createElement(TopBar, { title: tl("تحويل دوليّ", "International transfer"), onBack, actions: [histBtn] }),
+        React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
+            React.createElement(IntlDemoBanner, null),
+            label(tl("إلى أيّ دولة؟", "To which country?")),
+            React.createElement("div", { className: "grid grid-cols-2 gap-2 mb-3" }, INTL_DEMO_COUNTRIES.map((c) => React.createElement("button", { key: c.code, onClick: () => { set("country", c.code); if (f.method && c.methods.indexOf(f.method) < 0) set("method", ""); }, className: `flex ${rowStart()} items-center gap-2 rounded-xl border px-3 py-2.5 ${textStart()}`, style: { borderColor: f.country === c.code ? colors.primary : colors.border, borderWidth: f.country === c.code ? 2 : 1, backgroundColor: colors.card } },
+                React.createElement("span", { className: "text-lg" }, c.flag),
+                React.createElement("span", { className: "flex-1 min-w-0" },
+                    React.createElement("span", { className: "block text-xs font-extrabold truncate", style: { color: colors.text } }, tl(c.ar, c.en)),
+                    React.createElement("span", { className: "block text-[10px]", style: { color: colors.textMuted }, dir: "ltr" }, c.cur))))),
+            ctry && label(tl("طريقة الاستلام", "How they receive it")),
+            ctry && React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-3` }, ctry.methods.map((k) => { const m = INTL_METHODS[k]; const on = f.method === k; return React.createElement("button", { key: k, onClick: () => set("method", k), className: "flex-1 flex flex-col items-center gap-1 rounded-xl border py-2.5", style: { borderColor: on ? colors.primary : colors.border, borderWidth: on ? 2 : 1, backgroundColor: colors.card } },
+                React.createElement(m.Icon, { size: 18, color: on ? colors.primary : colors.textMuted }),
+                React.createElement("span", { className: "text-[11px] font-bold", style: { color: on ? colors.primary : colors.text } }, tl(m.ar, m.en))); })),
+            ctry && f.method && React.createElement(React.Fragment, null,
+                label(tl("اسم المستلم الكامل (كما في هويّته)", "Recipient's full legal name")),
+                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: f.name, onChange: (e) => set("name", e.target.value), placeholder: tl("مثال: أحمد محمّد علي", "e.g. Ahmed Mohamed Ali"), className: inputCls, style: inputSt }),
+                label(tl("هاتف المستلم (مع رمز الدولة)", "Recipient phone (with country code)")),
+                React.createElement("input", { dir: "ltr", value: f.phone, onChange: (e) => set("phone", e.target.value.replace(/[^0-9+\s-]/g, "")), inputMode: "tel", placeholder: "+966 5X XXX XXXX", className: inputCls + " text-center font-bold", style: inputSt }),
+                f.method === "bank" && label(tl("رقم الحساب أو IBAN", "Account number or IBAN")),
+                f.method === "bank" && React.createElement("input", { dir: "ltr", value: f.account, onChange: (e) => set("account", e.target.value.replace(/[^0-9A-Za-z\s]/g, "")), placeholder: "SA00 0000 0000 0000 0000 0000", className: inputCls + " font-bold tracking-wider", style: inputSt }),
+                f.method === "cash" && label(tl("مدينة الاستلام", "Pickup city")),
+                f.method === "cash" && React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: f.city, onChange: (e) => set("city", e.target.value), className: inputCls, style: inputSt }),
+                label(tl("الغرض من التحويل", "Purpose of transfer")),
+                React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mb-3` }, INTL_PURPOSES.map((p) => React.createElement("button", { key: p[0], onClick: () => set("purpose", p[0]), className: "text-[11px] font-bold px-3 py-1.5 rounded-full border", style: { borderColor: f.purpose === p[0] ? colors.primary : colors.border, color: f.purpose === p[0] ? colors.primary : colors.text, backgroundColor: colors.card } }, tl(p[1], p[2])))),
+                label(tl("المبلغ المُرسَل (ج.س)", "Amount you send (SDG)")),
+                React.createElement("input", { dir: "ltr", value: f.amount, onChange: (e) => set("amount", e.target.value.replace(/[^0-9]/g, "")), inputMode: "numeric", placeholder: "0", className: inputCls + " text-lg font-bold text-center", style: inputSt }),
+                amt > 0 && React.createElement(Card, { className: "p-0 overflow-hidden" },
+                    row(tl("الرسوم (تجريبيّة)", "Fee (demo)"), fmt(fee) + tl(" ج.س", " SDG")),
+                    row(tl("يُخصَم من رصيدك", "Total debited"), fmt(total) + tl(" ج.س", " SDG"), true),
+                    row(tl("يستلم", "They receive"), fmt(recv) + " " + ctry.cur, true)),
+                React.createElement("div", { className: "text-[10px] text-center mb-3", style: { color: colors.textMuted } },
+                    tl("رصيدك ", "Your balance ") + fmt(balance) + tl(" ج.س · الحدّ ", " SDG · limits ") + fmt(INTL_DEMO_LIMITS.min) + "–" + fmt(INTL_DEMO_LIMITS.max) + tl(" ج.س", " SDG"))),
+            (err || (f.amount && e0)) && React.createElement("div", { className: "text-xs font-bold mb-3 text-center", style: { color: colors.danger } }, err || e0),
+            React.createElement(Button, { label: tl("متابعة للمراجعة", "Continue to review"), disabled: !!e0, onPress: () => { const e = intlValidate({ ...f, balance }); if (e) { setErr(e); return; } setStep("review"); } }))));
+}
+function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, kycStatus, kycDismissed, onDismissKyc, onSubmitKyc, onTopUp, onTransfer, onScanPay, onBack, linkedMethods, onAddPaymentMethod, onRemovePaymentMethod, spendingLimit, onSetSpendingLimit, jamiyaList, onPayJamiya, onCreateJamiya, CURRENT_USER_ID, canIntl = false, intlHistory = [], onIntlTransfer }) {
     const { colors } = useTheme();
     const [view, setView] = useState("home");
     const WALLET_SERVICES = buildWalletServices(colors, setView);
@@ -1454,6 +1646,10 @@ function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, 
                             React.createElement(Plus, { size: 18, color: colors.primary })),
                         React.createElement("div", { className: "text-xs font-bold", style: { color: colors.primary } }, t("rbt_bnk_jdyd")))),
                 React.createElement(Button, { label: Number(transferAmount) > 0 ? `تغذية ${Number(transferAmount).toLocaleString(loc())} ج.س ←` : t("w_adkhl_almblgh"), disabled: !(Number(transferAmount) > 0), onPress: () => { onTopUp(selectedBank, Number(transferAmount)); setTransferAmount(""); setView("home"); } }))));
+    }
+    // C220: التحويل الدوليّ (تجريبيّ) — للمشرف والمدير فقط
+    if (view === "intl" && canIntl) {
+        return React.createElement(IntlTransferScreen, { balance, walletPinForConfirm, kycStatus, history: intlHistory, onSend: (rec) => onIntlTransfer && onIntlTransfer(rec), onBack: () => setView("home") });
     }
     if (view === "transfer") {
         const amountNum = Number(transferAmount) || 0;
@@ -1673,7 +1869,8 @@ ${txn.note}
                             { label: t("tghdhya"), Icon: CreditCard, action: () => setView("topup"), bg: "rgba(255,255,255,0.2)" },
                             { label: t("irsal_mal"), Icon: Send, action: () => setView("transfer"), bg: "rgba(255,255,255,0.2)" },
                             { label: t("msh_wdfa"), Icon: QrCode, action: () => setView("scanPay"), bg: "rgba(255,255,255,0.2)" },
-                        ].map((btn) => (React.createElement("button", { key: btn.label, onClick: btn.action, className: "flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3 px-1", style: { backgroundColor: btn.bg, backdropFilter: "blur(4px)" } },
+                            canIntl && { label: tl("دوليّ", "Abroad"), Icon: Globe, action: () => setView("intl"), bg: "rgba(255,255,255,0.28)" },   // C220
+                        ].filter(Boolean).map((btn) => (React.createElement("button", { key: btn.label, onClick: btn.action, className: "flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3 px-1", style: { backgroundColor: btn.bg, backdropFilter: "blur(4px)" } },
                             React.createElement(btn.Icon, { size: 18, color: "#fff" }),
                             React.createElement("span", { className: "text-[10px] font-extrabold text-white" }, btn.label))))))),
                 balance < LOW_BALANCE_THRESHOLD && (React.createElement(Card, { className: `flex ${rowStart()} items-center gap-2.5 mt-3`, style: { borderColor: colors.accent } },

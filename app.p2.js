@@ -1093,6 +1093,19 @@ const SHOW_E2E_UI = false;
 const RELEASE_UI = true;
 // C10: نصٌّ بلغتين لما يُضاف حديثاً (العربيّة افتراضيّاً)
 function tl(ar, en) { return isRTL() ? arCountFix(ar) : en; }
+// C220: هل دور الإدارة لهذا الحساب ≥ need (viewer · moderator · admin · owner)؟ للواجهة فقط — الخادم يقرّر في عمليّاته.
+//       يتحدّث عند وصول الدور من الخادم (حدث sawa-admin-role).
+function useAdminAtLeast(need) {
+    const calc = () => { try { const S = window.SawaChat; return !!(S && S.adminAtLeast && S.adminAtLeast(need)); } catch (e) { return false; } };
+    const [ok, setOk] = useState(calc);
+    useEffect(() => {
+        let on = true; const f = () => { if (on) setOk(calc()); };
+        window.addEventListener("sawa-admin-role", f);
+        try { const S = window.SawaChat; if (S && S.checkAdmin) S.checkAdmin().then(f, f); } catch (e) {}
+        return () => { on = false; window.removeEventListener("sawa-admin-role", f); };
+    }, [need]);
+    return ok;
+}
 // C10: عدد طلبات التواصل الواردة (من SawaChat — حدث sawa-requests)
 function useSawaRequests() {
     const [n, setN] = React.useState(() => { try { return window.SawaChat && window.SawaChat.requestCount ? window.SawaChat.requestCount() : 0; } catch (e) { return 0; } });
