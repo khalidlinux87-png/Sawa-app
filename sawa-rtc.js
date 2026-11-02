@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c217";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c218";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -834,12 +834,12 @@
   }
   function clearTimers(c) { for (var k in c.timers) { clearTimeout(c.timers[k]); } c.timers = {}; if (c.tick) clearInterval(c.tick); c.tick = null; }
 
-  function makePc(c, ice) {
-    var pc = c.native ? new NativePC(ice) : new global.RTCPeerConnection({ iceServers: ice });   // C95
+  function makePc(c, ice, pre) {
+    var pc = pre || (c.native ? new NativePC(ice) : new global.RTCPeerConnection({ iceServers: ice }));   // C95 · C218: أو اتّصالٌ جُهِّز أثناء الرنين
     var side = c.role === "caller" ? "ic_caller" : "ic_callee";
     // C66: المرشّحات دفعةً كلّ ١٢٠ ms بدل كتابةٍ لكلّ مرشّح
     c.iceBuf = [];
-    var flushBuf = function () { c.iceT = null; if (!c.iceBuf.length) return; var b = c.iceBuf; c.iceBuf = []; var j = b.length === 1 ? b[0] : { cands: b }; if (c.ref && c.live) c.ref.child(side).push(j).catch(function () {}); else c.iceOut.push(j); };
+    var flushBuf = function () { c.iceT = null; if (!c.iceBuf.length) return; var b = c.iceBuf; c.iceBuf = []; var j = b.length === 1 ? b[0] : { cands: b }; if (c.ref && c.live && !c.iceHold) c.ref.child(side).push(j).catch(function () {}); else c.iceOut.push(j); };   // C218: iceHold = لا شيء للمتّصل قبل حجز الردّ
     pc.onicecandidate = function (e) {
       if (!e.candidate || !e.candidate.candidate) { flushBuf(); return; }
       c.iceBuf.push(iceJson(e.candidate));
@@ -853,6 +853,8 @@
       e.track.onended = function () { attachRemote(c); };
       attachRemote(c);
     };
+    // C218: مسارات الطرف الآخر التي وصلت أثناء التجهيز المسبق (setRemoteDescription قبل الردّ) — تُعاد الآن على المعالج الحقيقيّ
+    if (pre && c.preTracks) { var pt = c.preTracks; c.preTracks = null; pt.forEach(function (e) { try { pc.ontrack(e); } catch (x) {} }); }
     pc.onconnectionstatechange = function () { onConn(c, pc.connectionState); };
     pc.oniceconnectionstatechange = function () {
       // متصفّحات لا تدعم connectionState (Safari قديم)
@@ -1266,6 +1268,7 @@
       listen(c, ref, "value", function (s) { onCalleeValue(c, s.val()); }, function () { finish(c, "remote", { remote: true }); });
       c.timers.ring = setTimeout(function () { if (c.state === "incoming") finish(c, "missed", { remote: true }); }, RING_MS + 5000);
       getIce();   // تجهيزٌ مسبق
+      setTimeout(function () { prewarm(c); }, 300);   // C218: بعد ظهور شاشة الرنين
     }).catch(function (e) { LOG.warn("incoming", { err: e && e.message }); inbox.remove().catch(function () {}); });
   }
   function onCalleeValue(c, v) {
@@ -1292,6 +1295,27 @@
     if (v.state === "ended" && softEnded(c, v)) return;
     if (v.state === "ended" || v.state === "missed") finish(c, c.connectedAt ? "remote" : "missed", { remote: true });
   }
+  // ---------- C218: تجهيز الاتّصال أثناء الرنين ----------
+  // كان كلّ شيءٍ يبدأ بعد «ردّ»: إنشاء الاتّصال، ثمّ حجز عناوين الوسيط (TURN — جولتان أو ثلاث إلى الخادم)، ثمّ الردّ.
+  // الآن أثناء الرنين: اتّصالٌ بلا ميكروفون مع iceCandidatePoolSize (يحجز الوسيط ويجمع العناوين مسبقاً) + عرض المتّصل
+  // + مرشّحوه. عند «ردّ» يُضاف الميكروفون ويُكتب الردّ فوراً. الخصوصيّة: لا يُرسل للمتّصل أيّ عنوانٍ ولا تبدأ فحوص ICE قبل الردّ
+  // (لا وصفٌ محلّيّ قبل الردّ). المحرّك الأصليّ ⚡ لا يدعمه بعد (يحتاج تعديل Java/Swift) — يأخذ التحسين الثاني وحده.
+  function prewarm(c) {
+    if (!c || c.done || c.pre || c.pc || c.state !== "incoming" || !c.offer || !global.RTCPeerConnection) return;
+    if (c.type === "audio" && nativeAudioOk("audio")) return;
+    getIce(2500).then(function (ice) {
+      if (c.done || c.pre || c.pc || c.state !== "incoming") return;
+      var pc; try { pc = new global.RTCPeerConnection({ iceServers: ice, iceCandidatePoolSize: 1 }); } catch (e) { return; }
+      c.preTracks = [];
+      pc.ontrack = function (e) { if (c.preTracks) c.preTracks.push(e); };
+      var pre = c.pre = { pc: pc, ice: ice, at: Date.now() };
+      pre.remP = pc.setRemoteDescription(c.offer).then(function () { pre.ok = true; }, function (e) { pre.bad = true; LOG.warn("prewarm", { err: e && e.message }); });
+      // مرشّحو المتّصل يُجمعون الآن (يُضافون بعد وصف الطرف الآخر) — لا انتظار جولةٍ إلى القاعدة بعد الردّ
+      if (!c.icOn && c.ref) { c.icOn = true; listen(c, c.ref.child("ic_caller"), "child_added", function (sn) { var j = sn.val(); if (c.pc) addRemoteIce(c, j); else if (j) c.iceIn.push(j); }); }
+      LOG.info("prewarm", { id: c.id });
+    }).catch(function () {});
+  }
+  function dropPre(c) { var p = c && c.pre; if (!p) return; c.pre = null; c.preTracks = null; if (p.pc && p.pc !== c.pc) try { p.pc.close(); } catch (e) {} }
   function accept(audioOnly) {
     var c = cur; if (!c || c.role !== "callee" || c.state !== "incoming") return;
     c.accAt = Date.now();   // C179
@@ -1316,29 +1340,41 @@
     });
     var mediaP = Promise.all([micP, getIce(2500)]);
     mediaP.catch(function () {});
-    c.ref.child("acc").transaction(function (v) { return v ? undefined : devId; }).then(function (r) {
-      if (c.done) { mediaP.then(function (res) { stopStream(res[0]); }, function () {}); return; }
-      if (!r.committed || r.snapshot.val() !== devId) { c.silent = true; finish(c, "elsewhere", { remote: true }); mediaP.then(function (res) { stopStream(res[0]); }, function () {}); return; }
+    // C218: الردّ يُبنى بالتوازي مع حجزه (كان يُبنى بعد جولةٍ إلى القاعدة لحجز acc) — ولا يصل المتّصلَ شيءٌ قبل الحجز (iceHold)
+    c.iceHold = true;
+    var accP = c.ref.child("acc").transaction(function (v) { return v ? undefined : devId; });
+    // ننتظر اكتمال وصف المتّصل في الاتّصال المُجهَّز (يكتمل عادةً أثناء الرنين) — إن فشل نعود إلى اتّصالٍ جديد كما كان
+    var ansP = mediaP.then(function (res) { return Promise.resolve(!c.native && c.pre ? c.pre.remP : null).then(function () { return res; }); }).then(function (res) {
+      if (c.done) { stopStream(res[0]); return null; }
+      c.local = res[0]; earlyRoute(c); attachLocal(c); paint(c);
+      var pre = !c.native && c.pre && c.pre.pc && c.pre.ok && !c.pre.bad ? c.pre : null;
+      if (!pre) dropPre(c); else c.pre = null;
+      c.pw = pre ? 1 : 0;   // للسجلّ: هل استُعمل التجهيز المسبق
+      c.pc = makePc(c, res[1], pre ? pre.pc : null);
+      if (!c.icOn) { c.icOn = true; listen(c, c.ref.child("ic_caller"), "child_added", function (s) { addRemoteIce(c, s.val()); }); }
+      return (pre ? Promise.resolve() : c.pc.setRemoteDescription(c.offer)).then(function () {
+        flushIceIn(c); addTracks(c);
+        return c.pc.createAnswer();
+      }).then(function (a) { return c.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); });
+    });
+    ansP.catch(function () {});
+    accP.then(function (r) {
+      if (c.done) return;
+      if (!r.committed || r.snapshot.val() !== devId) { c.silent = true; finish(c, "elsewhere", { remote: true }); return; }
       if (c.inbox) c.inbox.remove().catch(function () {});
-      return mediaP.then(function (res) {
-        if (c.done) { stopStream(res[0]); return; }
-        c.local = res[0]; earlyRoute(c); attachLocal(c); paint(c);
-        c.pc = makePc(c, res[1]);
-        listen(c, c.ref.child("ic_caller"), "child_added", function (s) { addRemoteIce(c, s.val()); });
-        return c.pc.setRemoteDescription(c.offer).then(function () {
-          flushIceIn(c); addTracks(c);
-          return c.pc.createAnswer();
-        }).then(function (a) { return c.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); }).then(function (a) {
-          try { c.ref.onDisconnect().update({ state: "ended" }); } catch (e) {}
-          flushIceOut(c);
-          c.timers.conn = setTimeout(function () { if (!c.connectedAt) finish(c, "failed"); }, CONNECT_MS);
-          return c.ref.update({ answer: sdpOf(a), state: "accepted" });
-        });
+      return ansP.then(function (a) {
+        if (c.done || !a) return;
+        try { c.ref.onDisconnect().update({ state: "ended" }); } catch (e) {}
+        c.iceHold = false; flushIceOut(c);
+        c.timers.conn = setTimeout(function () { if (!c.connectedAt) finish(c, "failed"); }, CONNECT_MS);
+        return c.ref.update({ answer: sdpOf(a), state: "accepted" });
       });
     }).catch(function (e) {
       LOG.warn("accept", { err: e && (e.name || e.message), msg: e && e.message }); c.errName = String((e && (e.name || e.message)) || "").slice(0, 40);   // C183
       finish(c, "error", { text: mediaError(e) || L("تعذّر الردّ على المكالمة", "Couldn't answer the call") });
     });
+    // تأخّر الحجز وانتهت المكالمة قبله ⇒ أوقف الميكروفون الذي فُتح
+    ansP.then(function () { if (c.done) { stopStream(c.local); } }, function () {});
   }
   function decline() {
     var c = cur; if (!c || c.role !== "callee" || c.state !== "incoming") return;
@@ -1406,7 +1442,7 @@
       route: c.route || "", proto: c.proto || "", relay: c.relayLbl || c.relayId || "", rst: c.reN || 0, err: c.errName || "", up: c.vin ? 1 : 0, ck: wantAnswerHit(c) ? 1 : 0, vis: document.visibilityState === "visible" ? 1 : 0,
       rtt: qaStat(S0.rtt), loss: qaStat(S0.loss), jb: qaStat(S0.jb), jit: qaStat(T0.jit), fps: qaStat(T0.fps), h: qaStat(T0.h),   // C179
       lct: c.lct || "", rct: c.rct || "", fam: c.fam || "", nat: natTel().nat, nsx: natTel().nsx, v6: natTel().v6,   // C215
-      v6l: c.v6l || 0, v6r: c.v6r || 0 });   // C217
+      v6l: c.v6l || 0, v6r: c.v6r || 0, pw: c.pw || 0 });   // C217 · C218
   }
   // C216: سجلّ المكالمة لا يضيع. كان يُرسل مرّةً واحدة ويُهمل الخطأ — فإن فشل الطلب (شبكةٌ مزدحمة، التطبيق في الخلفيّة، انتهاء المهلة)
   //        ضاع السجلّ بصمت (مكالمة 01:02: سجلّ المستقبِل ⚡ لم يصل). الآن: يُحفظ في الهاتف قبل الإرسال ويُحذف عند نجاحه،
@@ -1549,6 +1585,8 @@
         kv(c1, L("عبر الوسيط (TURN)", "Via TURN relay"), pct(a.relay, a.conn), a.conn && a.relay / a.conn > 0.4);
         kv(c1, L("عبر TCP/TLS (ليس UDP)", "Over TCP/TLS (not UDP)"), pct(a.tcp, a.conn), a.conn && a.tcp / a.conn > 0.15);
         kv(c1, L("زمن إنشاء الاتّصال (وسيط · ٩٠٪)", "Setup time (median · p90)"), ms(a.setup) + " · " + ms(a.setup90), a.setup > 3000);
+        // C218: أثر التجهيز أثناء الرنين — زمن المستقبِل من «ردّ» إلى الاتّصال
+        if (a.setupPwN) kv(c1, L("بعد الردّ: مُجهَّز مسبقاً · بدونه", "After answer: pre-warmed · without"), ms(a.setupPw) + " (" + a.setupPwN + ") · " + ms(a.setupNoPw) + " (" + (a.setupNoPwN || 0) + ")");
         kv(c1, "RTT", ms(a.rtt), a.rtt > 300);
         kv(c1, L("فقد الحزم", "Packet loss"), a.loss == null ? "–" : a.loss + "%", a.loss > 3);
         kv(c1, L("التذبذب (jitter)", "Jitter"), ms(a.jit), a.jit > 40);
@@ -1736,6 +1774,7 @@
     if (c.role === "callee") nativeCallDone(c.id);   // C72
     if (c.role === "callee") ckEnd(c.id, c.connectedAt ? "ended" : reason === "declinedByMe" ? "declined" : "remote");   // C151
     opts = opts || {}; c.done = true; clearCallNotifications(); earOff(); bgAudio(false); vPromptClose(c);
+    dropPre(c);   // C218
     clearTimers(c); stopTone(); wakeOff();
     c.offs.forEach(function (f) { f(); }); c.offs = [];
     // أخبر الطرف الآخر
