@@ -1675,9 +1675,10 @@ function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, 
         return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
             React.createElement(TopBar, { title: t("irsal_mal"), onBack: () => setView("home") }),
             React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
-                React.createElement("div", { className: "rounded-2xl p-4 mb-4", style: { background: "linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%)" } },
-                    React.createElement("div", { className: "text-xs font-bold text-white mb-0.5" }, t("irsal_mal")),
-                    React.createElement("div", { className: "text-[10px]", style: { color: "rgba(255,255,255,0.6)" } }, t("adkhl_rqm_almstlm"))),
+                // C222: لا يتكرّر عنوان الشريط العلويّ — البطاقة تحمل التعليمة
+                React.createElement("div", { className: `flex ${rowStart()} items-center gap-3 rounded-2xl p-4 mb-4`, style: { background: "linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%)" } },
+                    React.createElement("div", { className: "w-10 h-10 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: "rgba(255,255,255,0.12)" } }, React.createElement(Send, { size: 18, color: "#fff" })),
+                    React.createElement("div", { className: "flex-1 min-w-0 text-sm font-bold text-white" }, t("adkhl_rqm_almstlm"))),   // الرصيد يبقى تحت حقل المبلغ وحده (بلا تكرار)
                 recentRecipients.length > 0 && (React.createElement("div", { className: "mb-4" },
                     React.createElement("div", { className: "text-xs font-bold mb-2", style: { color: colors.textMuted } }, t("alakhyrwn")),
                     React.createElement("div", { className: `flex ${rowStart()} gap-3 overflow-x-auto pb-1` }, recentRecipients.map((r, i) => (React.createElement("button", { key: i, onClick: () => setTransferTo(r.name), className: "flex flex-col items-center gap-1 shrink-0" },
@@ -1884,7 +1885,6 @@ ${txn.note}
                             { label: t("tghdhya"), Icon: CreditCard, action: () => setView("topup"), bg: "rgba(255,255,255,0.2)" },
                             { label: t("irsal_mal"), Icon: Send, action: () => setView("transfer"), bg: "rgba(255,255,255,0.2)" },
                             { label: t("msh_wdfa"), Icon: QrCode, action: () => setView("scanPay"), bg: "rgba(255,255,255,0.2)" },
-                            canIntl && { label: tl("دوليّ", "Abroad"), Icon: Globe, action: () => setView("intl"), bg: "rgba(255,255,255,0.2)" },   // C220 · C221: بلون بقيّة الأزرار
                         ].filter(Boolean).map((btn) => (React.createElement("button", { key: btn.label, onClick: btn.action, className: "flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3 px-1", style: { backgroundColor: btn.bg, backdropFilter: "blur(4px)" } },
                             React.createElement(btn.Icon, { size: 18, color: "#fff" }),
                             React.createElement("span", { className: "text-[10px] font-extrabold text-white" }, btn.label))))))),
@@ -1937,7 +1937,7 @@ ${txn.note}
                                 ].map((box) => React.createElement("div", { key: box.label, className: "flex-1 rounded-xl px-2 py-2 text-center", style: { backgroundColor: colors.bg } },
                                     React.createElement("div", { className: "text-[9px] mb-0.5", style: { color: colors.textMuted } }, box.label),
                                     React.createElement("div", { className: "text-[11px] font-extrabold tabular-nums", style: { color: box.color } },
-                                        walletAmt(box.value > 0 && box.label === t("w_alsafy") ? "+" : box.value < 0 ? "\u2212" : "", Math.abs(box.value), false)))))));   // C221
+                                        walletAmt(box.value > 0 && box.label === t("w_alsafy") ? "+" : (box.value < 0 || (box.value > 0 && box.label === t("w_msrwf"))) ? "\u2212" : "", Math.abs(box.value), false)   /* C222: «مصروف» بإشارة الطرح */))))));   // C221
                 })(),
                 spendingLimit && (React.createElement("div", { className: "mx-4 mb-3 rounded-xl p-3", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                     React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-1.5` },
@@ -1963,16 +1963,17 @@ ${txn.note}
                             React.createElement(X, { size: 13, color: colors.textMuted })))),
                 React.createElement("div", { dir: "rtl", className: "px-4 mb-3 overflow-x-auto", style: { scrollbarWidth: "none", msOverflowStyle: "none" } },
                     React.createElement("div", { className: "flex gap-2", style: { width: "max-content" } }, [
+                        // C222: أيقونات Lucide بدل الرموز التعبيريّة (📥 📤 ⚡ 🤍) — كبقيّة التطبيق
                         { id: "all", label: t("w_alkl") },
-                        { id: "credit", label: t("w_f_iyda") },
-                        { id: "debit", label: t("w_f_shb") },
-                        { id: "services", label: t("w_f_khdmat") },
-                        { id: "family", label: t("w_f_aayla") },
-                    ].map((f) => (React.createElement("button", { key: f.id, onClick: () => setTxFilter(f.id), className: "rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap", style: {
+                        { id: "credit", label: tl("إيداع", "Deposits"), Icon: ArrowDownLeft },
+                        { id: "debit", label: tl("سحب", "Withdrawals"), Icon: ArrowUpRight },
+                        { id: "services", label: tl("خدمات", "Services"), Icon: Zap },
+                        { id: "family", label: tl("عائلة", "Family"), Icon: Users },
+                    ].map((f) => (React.createElement("button", { key: f.id, onClick: () => setTxFilter(f.id), className: "inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap", style: {
                             backgroundColor: txFilter === f.id ? colors.primary : colors.card,
                             color: txFilter === f.id ? "#fff" : colors.textMuted,
                             border: `1px solid ${txFilter === f.id ? colors.primary : colors.border}`,
-                        } }, f.label))))),
+                        } }, f.Icon && React.createElement(f.Icon, { size: 12, color: txFilter === f.id ? "#fff" : colors.textMuted }), f.label))))),
                 React.createElement("div", { className: "px-4 pb-6" }, (() => {
                     const now2 = new Date();
                     const today = new Date(now2.getFullYear(), now2.getMonth(), now2.getDate());
@@ -2034,7 +2035,7 @@ ${txn.note}
             React.createElement(TopBar, { title: t("alkhdmat"), onBack: onBack }),
             React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
                 React.createElement("div", { className: "rounded-2xl p-4 mb-4 relative overflow-hidden", style: { background: `linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%)` } },
-                    React.createElement("div", { style: { position: "absolute", left: -10, bottom: -10, fontSize: 60, opacity: 0.07 } }, "\u26A1"),
+                    React.createElement("div", { style: { position: "absolute", insetInlineEnd: -12, bottom: -14, opacity: 0.08, lineHeight: 0, pointerEvents: "none" } }, React.createElement(Zap, { size: 72, color: "#fff" })),   // C222
                     React.createElement("div", { className: "text-xs font-bold text-white mb-0.5" }, t("khdmat_swa")),
                     React.createElement("div", { className: "text-[10px]", style: { color: "rgba(255,255,255,0.6)" } }, t("kl_khdmatk_almalya"))),
                 React.createElement("div", { className: "grid grid-cols-2 gap-3 mb-4" }, WALLET_SERVICES.map((svc) => (React.createElement("button", { key: svc.id, onClick: svc.onPress ? svc.onPress : undefined, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center w-full", style: { backgroundColor: colors.card, borderColor: colors.border } },
@@ -2048,9 +2049,11 @@ ${txn.note}
             React.createElement(TopBar, { title: t("iadadat_almhfza"), onBack: onBack }),
             React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
                 React.createElement("div", { className: "rounded-2xl p-4 mb-4 relative overflow-hidden", style: { background: "linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%)" } },
-                    React.createElement("div", { style: { position: "absolute", left: -10, bottom: -10, fontSize: 60, opacity: 0.07 } }, "\u2699\uFE0F"),
-                    React.createElement("div", { className: "text-xs font-bold text-white mb-0.5" }, t("iadadat_almhfza")),
-                    React.createElement("div", { className: "text-[10px]", style: { color: "rgba(255,255,255,0.6)" } }, kycStatus === "verified" ? t("hsabk_mwthq") : t("wthq_hwytk_lfth"))),
+                    React.createElement("div", { style: { position: "absolute", insetInlineEnd: -12, bottom: -14, opacity: 0.08, lineHeight: 0, pointerEvents: "none" } }, React.createElement(SettingsIcon, { size: 72, color: "#fff" })),
+                    // C222: الحالة هي العنوان (كان «إعدادات المحفظة» مكرّراً تحت الشريط العلويّ)
+                    React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 relative` },
+                        React.createElement(ShieldCheck, { size: 18, color: kycStatus === "verified" ? "#5CD692" : "#E8A93D", className: "shrink-0" }),
+                        React.createElement("div", { className: "text-sm font-bold text-white" }, kycStatus === "verified" ? t("hsabk_mwthq") : t("wthq_hwytk_lfth")))),
                 [
                     { label: t("hd_alinfaq_alshhry"), desc: spendingLimit ? `${spendingLimit.toLocaleString(isRTL() ? "ar-SD" : "en-US")} ${t("j_s")}` : t("ghyr_mhdd"), Icon: SlidersHorizontal, bg: "#E3F2FD", ic: "#1565C0", onPress: () => setView("limit") },
                     { label: t("wsayl_aldfa_almrbwta"), desc: (() => { const n = (linkedMethods || []).length; return isRTL() ? (n === 0 ? "لا وسائل بعد" : n === 1 ? "وسيلةٌ واحدة" : n === 2 ? "وسيلتان" : n.toLocaleString(loc()) + (n <= 10 ? " وسائل" : " وسيلة")) : n + " " + (n === 1 ? "method" : "methods"); })(), /* C221: كان «0 وسيلة» */ Icon: CreditCard, bg: "#E8F5E9", ic: "#1B5E20", onPress: () => setView("paymentMethods") },
