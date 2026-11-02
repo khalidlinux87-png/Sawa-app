@@ -1982,9 +1982,16 @@ function AppInner() {
     function simulateShipmentDays(shipmentId, days) {
         setShipments((prev) => prev.map((s) => (s.id === shipmentId && s.failedAt ? { ...s, failedAt: s.failedAt - days * 24 * 60 * 60 * 1000 } : s)));
     }
-    function createShipment({ destination, category, categoryKey, weight, dimensions, handlingKeys, photoName, total, stagesData, insured = false, declaredValue = 0, insuranceFee = 0, deliveryWindow = null, contentDescription = "", shipmentReference = "", recipientName = "", recipientPhone = "" }) {
+    function createShipment({ paidBy = "", destination, category, categoryKey, weight, dimensions, handlingKeys, photoName, total, stagesData, insured = false, declaredValue = 0, insuranceFee = 0, deliveryWindow = null, contentDescription = "", shipmentReference = "", recipientName = "", recipientPhone = "" }) {
         const newId = `FR-${Math.floor(10000 + Math.random() * 89999)}`;
+        // C226: الدفع من محفظة سوا — يُخصم الآن ويُسجَّل في حركات المحفظة
+        if (paidBy === "wallet") {
+            if (!(total > 0) || total > walletBalance) { showToast(tl("رصيد المحفظة لا يكفي", "Insufficient wallet balance"), "error"); return null; }
+            setWalletBalance((prev) => prev - total);
+            setWalletTransactions((prev) => [{ id: "w-" + newId, type: "debit", amount: total, note: tl("دفع من المحفظة — إرسال إكسبريس ", "Wallet payment — Ersal Express ") + newId, ts: Date.now(), ersal: newId }, ...prev]);
+        }
         const newShipment = {
+            paidBy,
             id: newId, category, categoryKey, destination, weight, dimensions, handlingKeys, photoName,
             stageIdx: 0, stages: stagesData.stages, pickupEndIdx: stagesData.pickupEndIdx, deliveryStartIdx: stagesData.deliveryStartIdx,
             total, pickupDriver: null, deliveryDriver: null, failed: false, cancelled: false,
@@ -2034,8 +2041,15 @@ function AppInner() {
     function cancelShipment(shipmentId) {
         (shipmentTimeoutsRef.current[shipmentId] || []).forEach((tmr) => clearTimeout(tmr));
         delete shipmentTimeoutsRef.current[shipmentId];
-        setShipments((prev) => prev.map((s) => (s.id === shipmentId ? { ...s, cancelled: true } : s)));
-        showToast(t("tm_ilgha_alshhna"), "success");
+        const sh = shipments.find((x) => x.id === shipmentId);
+        setShipments((prev) => prev.map((s) => (s.id === shipmentId ? { ...s, cancelled: true, refunded: s.paidBy === "wallet" ? true : s.refunded } : s)));
+        // C226: ما دُفع من المحفظة يعود إليها عند الإلغاء
+        if (sh && sh.paidBy === "wallet" && !sh.refunded && !sh.cancelled) {
+            setWalletBalance((prev) => prev + sh.total);
+            setWalletTransactions((prev) => [{ id: "w-r-" + sh.id, type: "credit", amount: sh.total, note: tl("استرداد — إلغاء الشحنة ", "Refund — cancelled shipment ") + sh.id, ts: Date.now(), ersal: sh.id }, ...prev]);
+            showToast(tl("أُلغيت الشحنة وأُعيد " + sh.total.toLocaleString(loc()) + " ج.س إلى محفظتك", "Shipment cancelled — " + sh.total.toLocaleString(loc()) + " SDG refunded to your wallet"), "success");
+        }
+        else showToast(t("tm_ilgha_alshhna"), "success");
     }
     function reorderShipment(oldShipment) {
         const cityMatch = ERSAL_CITIES.find((c) => c.name === oldShipment.destination) || ERSAL_CITIES[0];
@@ -3682,7 +3696,7 @@ function AppInner() {
     }
     else if (discoverTop.type === "ersal") {   // C225: للمشرف والمدير فقط — غير المخوَّل يعود إلى «استكشف»
         if (!canIntl) { setTimeout(() => setDiscoverStack([]), 0); }
-        else discoverContent = (React.createElement(ErsalScreen, { shipments: shipments, onCreateShipment: createShipment, onMarkFailed: markShipmentFailed, onBulkCreateShipments: bulkCreateShipments, onChangeAddress: changeShipmentAddress, onConfirmPickup: confirmShipmentPickup, onSimulateDays: simulateShipmentDays, onCancelShipment: cancelShipment, onRateCourier: rateCourier, onReorderShipment: reorderShipment, onBack: () => setDiscoverStack([]) }));
+        else discoverContent = (React.createElement(ErsalScreen, { walletBalance: walletBalance, walletPin: walletPin, canWallet: canIntl, shipments: shipments, onCreateShipment: createShipment, onMarkFailed: markShipmentFailed, onBulkCreateShipments: bulkCreateShipments, onChangeAddress: changeShipmentAddress, onConfirmPickup: confirmShipmentPickup, onSimulateDays: simulateShipmentDays, onCancelShipment: cancelShipment, onRateCourier: rateCourier, onReorderShipment: reorderShipment, onBack: () => setDiscoverStack([]) }));
     }
     else if (discoverTop.type === "taxi") {
         discoverContent = (React.createElement(TaxiScreen, { ride: taxiRide, tripsHistory: taxiTripsHistory, scheduledRides: scheduledTaxiRides, onRequestRide: requestTaxiRide, onScheduleRide: scheduleRide, onCancelScheduledRide: cancelScheduledRide, onTriggerScheduledRide: triggerScheduledRide, onCancelRide: cancelTaxiRide, onNewRide: () => setTaxiRide(null), onRateDriver: rateDriverTrip, onBack: () => setDiscoverStack([]) }));

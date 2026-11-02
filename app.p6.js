@@ -1286,7 +1286,7 @@ function AnimatedTrackingMap({ progress, icon: TrackIcon = Car, pickup, destinat
 }
 // ملاحظة: نظام الألوان الفعلي بإرسال أصبح 3 ثيمات (ERSAL_THEMES أعلاه)
 // حسب المستند الرسمي، بدل لون أخضر ثابت واحد كان مفترضاً سابقاً
-function ErsalScreen({ shipments, onCreateShipment, onMarkFailed, onBulkCreateShipments, onChangeAddress, onConfirmPickup, onSimulateDays, onCancelShipment, onRateCourier, onReorderShipment, onBack }) {
+function ErsalScreen({ walletBalance = 0, walletPin = null, canWallet = false, shipments, onCreateShipment, onMarkFailed, onBulkCreateShipments, onChangeAddress, onConfirmPickup, onSimulateDays, onCancelShipment, onRateCourier, onReorderShipment, onBack }) {
     const outerTheme = useTheme();
     const [ersalThemeKey, setErsalThemeKey] = useState("default"); // 3 ثيمات خاصة بمنصة إرسال نفسها (موثّقة رسمياً)
     const themeColors = ERSAL_THEMES[ersalThemeKey];
@@ -1298,7 +1298,7 @@ function ErsalScreen({ shipments, onCreateShipment, onMarkFailed, onBulkCreateSh
         ersalThemeKey, setErsalThemeKey,
     };
     return (React.createElement(ThemeContext.Provider, { value: ersalTheme },
-        React.createElement(ErsalScreenInner, { shipments: shipments, onCreateShipment: onCreateShipment, onMarkFailed: onMarkFailed, onBulkCreateShipments: onBulkCreateShipments, onChangeAddress: onChangeAddress, onConfirmPickup: onConfirmPickup, onSimulateDays: onSimulateDays, onCancelShipment: onCancelShipment, onRateCourier: onRateCourier, onReorderShipment: onReorderShipment, onBack: onBack })));
+        React.createElement(ErsalScreenInner, { walletBalance, walletPin, canWallet, shipments: shipments, onCreateShipment: onCreateShipment, onMarkFailed: onMarkFailed, onBulkCreateShipments: onBulkCreateShipments, onChangeAddress: onChangeAddress, onConfirmPickup: onConfirmPickup, onSimulateDays: onSimulateDays, onCancelShipment: onCancelShipment, onRateCourier: onRateCourier, onReorderShipment: onReorderShipment, onBack: onBack })));
 }
 const ERSAL_BOTTOM_NAV = [
     { key: "home", label: t("er_alrysya"), icon: Compass },
@@ -1307,7 +1307,7 @@ const ERSAL_BOTTOM_NAV = [
     { key: "billing", label: t("er_alfwatyr"), icon: CreditCard },
     { key: "account", label: t("er_alhsab"), icon: UserCircle },
 ];
-function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCreateShipments, onChangeAddress, onConfirmPickup, onSimulateDays, onCancelShipment, onRateCourier, onReorderShipment, onBack }) {
+function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = false, shipments, onCreateShipment, onMarkFailed, onBulkCreateShipments, onChangeAddress, onConfirmPickup, onSimulateDays, onCancelShipment, onRateCourier, onReorderShipment, onBack }) {
     const { colors, isDark, ersalThemeKey, setErsalThemeKey } = useTheme();
     const { showToast } = useToast();
     const [confirmingCancelId, setConfirmingCancelId] = useState(null);
@@ -1371,7 +1371,10 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
     const [newAddressInput, setNewAddressInput] = useState("");
     const [showExtraDetails, setShowExtraDetails] = useState(false);
     const [deliveryMethod, setDeliveryMethod] = useState("address");
-    const [paymentMethod, setPaymentMethod] = useState("card");
+    const [paymentMethod, setPaymentMethod] = useState(canWallet ? "wallet" : "card");   // C226: محفظة سوا أوّلاً لمن تظهر له
+    const [walletPinIn, setWalletPinIn] = useState("");
+    // C226: الدفع من «محفظة سوا» — يُخصم فوراً من رصيد المحفظة برمزها، ويُستردّ عند إلغاء الشحنة
+    const payMethods = canWallet ? [{ key: "wallet", label: tl("محفظة سوا", "Sawa Wallet"), icon: Wallet, badge: tl("الرصيد: ", "Balance: ") + Number(walletBalance || 0).toLocaleString(loc()) + t("w_sdg_sp") + tl(" · يُخصم فوراً", " · charged now") }].concat(ERSAL_PAYMENT_METHODS) : ERSAL_PAYMENT_METHODS;
     const [paymentTiming, setPaymentTiming] = useState("pickup");
     const [packagePhoto, setPackagePhoto] = useState(null);
     const [viewingProofId, setViewingProofId] = useState(null);
@@ -1389,6 +1392,9 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
     const insuranceFee = insuranceEnabled ? Math.round((Number(declaredValue) || 0) * ERSAL_INSURANCE_RATE) : 0;
     const total = ERSAL_BASE_PRICE + weightFee + city.fee + type.surcharge + handlingSurcharge + insuranceFee;
     const needsDriverConfirm = paymentMethod === "cash" || paymentMethod === "bank";
+    const walletShort = total > (Number(walletBalance) || 0);
+    const walletPinOk = !!walletPin && walletPinIn === walletPin;
+    const walletReady = paymentMethod !== "wallet" || (!walletShort && walletPinOk);
     // C225: بلاطةٌ مدمجة (أيقونة · اسم · رسم) — اختيارٌ واحد للنوع، ومتعدّد للحالة (علامة صحّ)
     const erTile = (o, active, onPress, multi) => React.createElement("button", { key: o.key, onClick: onPress, "aria-pressed": active, className: `relative flex ${rowStart()} items-center gap-2 rounded-xl border-2 p-2.5 ${textStart()}`, style: { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primaryLight : colors.card, minWidth: 0 } },
         React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: active ? colors.primary : colors.bg } }, React.createElement(o.icon, { size: 15, color: active ? "#fff" : colors.textMuted })),
@@ -1587,7 +1593,7 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
             return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
                 React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
                     React.createElement("label", { className: "text-xs font-bold mb-2 block", style: { color: colors.text } }, t("tryqa_aldfa")),
-                    React.createElement("div", { className: "mb-4" }, ERSAL_PAYMENT_METHODS.map((m) => {
+                    React.createElement("div", { className: "mb-4" }, payMethods.map((m) => {
                         const isSelected = paymentMethod === m.key;
                         const methodNeedsConfirm = m.key === "cash" || m.key === "bank";
                         return (React.createElement("div", { key: m.key, className: "mb-2" },
@@ -1598,6 +1604,14 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                                     React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, m.label),
                                     React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, m.badge)),
                                 isSelected ? React.createElement(CheckCircle2, { size: 20, color: colors.primary }) : React.createElement("div", { className: "w-5 h-5 rounded-full border-2", style: { borderColor: colors.border } })),
+                            isSelected && m.key === "wallet" && React.createElement("div", { className: "rounded-xl border-2 border-t-0 rounded-t-none p-3", style: { borderColor: colors.primary, backgroundColor: colors.card, marginTop: -8, paddingTop: 12 } },
+                                walletShort ? React.createElement("div", { className: `flex ${rowStart()} items-start gap-1.5 text-[11px] font-bold`, style: { color: colors.danger } }, React.createElement(AlertTriangle, { size: 13, color: colors.danger, className: "shrink-0 mt-0.5" }), tl("الرصيد لا يكفي — ينقص " + (total - walletBalance).toLocaleString(loc()) + " ج.س. اشحن محفظتك من «محفظة سوا» في استكشف.", "Insufficient balance — short by " + (total - walletBalance).toLocaleString(loc()) + " SDG. Top up from Sawa Wallet in Discover."))
+                                    : !walletPin ? React.createElement("div", { className: `flex ${rowStart()} items-start gap-1.5 text-[11px] font-bold`, style: { color: colors.danger } }, React.createElement(Lock, { size: 13, color: colors.danger, className: "shrink-0 mt-0.5" }), tl("عيّن رمز المحفظة أوّلاً من «محفظة سوا» في استكشف.", "Set a wallet PIN first from Sawa Wallet in Discover."))
+                                    : React.createElement(React.Fragment, null,
+                                        React.createElement("label", { className: "text-[11px] font-bold mb-1.5 block", style: { color: colors.text } }, tl("رمز المحفظة لتأكيد الدفع", "Wallet PIN to confirm payment")),
+                                        React.createElement("input", { dir: "ltr", type: "password", inputMode: "numeric", maxLength: 6, value: walletPinIn, onChange: (e) => setWalletPinIn(e.target.value.replace(/[^0-9]/g, "")), placeholder: "••••", "aria-label": tl("رمز المحفظة", "Wallet PIN"), className: "w-full border rounded-xl px-3 py-2.5 text-sm text-center tracking-widest", style: { borderColor: walletPinIn.length >= 4 && !walletPinOk ? colors.danger : colors.border, color: colors.text, backgroundColor: colors.bg } }),
+                                        walletPinIn.length >= 4 && !walletPinOk && React.createElement("div", { className: "text-[11px] font-bold mt-1.5", style: { color: colors.danger } }, tl("رمز المحفظة غير صحيح", "Incorrect wallet PIN")),
+                                        React.createElement("div", { className: "text-[10px] mt-1.5", style: { color: colors.textMuted } }, tl("الرصيد بعد الدفع: ", "Balance after payment: ") + (walletBalance - total).toLocaleString(loc()) + t("w_sdg_sp")))),
                             isSelected && methodNeedsConfirm && (React.createElement("div", { className: "rounded-xl border-2 border-t-0 rounded-t-none p-3", style: { borderColor: colors.primary, backgroundColor: colors.card, marginTop: -8, paddingTop: 12 } },
                                 React.createElement("label", { className: "text-[11px] font-bold mb-2 block", style: { color: colors.text } }, t("mta_tryd_aldfa")),
                                 React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-2` }, ERSAL_PAYMENT_TIMINGS.map((ptiming) => React.createElement(Chip, { key: ptiming.key, label: t(ptiming.labelKey), active: paymentTiming === ptiming.key, onPress: () => setPaymentTiming(ptiming.key) }))),
@@ -1628,9 +1642,10 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                                 total.toLocaleString(loc()),
                                 t("w_sdg_sp")))),
                     React.createElement(WalletDemoNote, { ar: "طلبٌ تجريبيّ — لا يُخصم أيّ مبلغ ولا يُرسَل مندوبٌ حقيقيّ.", en: "Demo order — nothing is charged and no real courier is sent." }),
-                    React.createElement(Button, { label: paymentMethod === "card" ? tl("تأكيد الطلب • ادفع " + erN(total) + " ج.س الآن", "Confirm • pay " + erN(total) + " SDG now") : paymentMethod === "corporate" ? tl("تأكيد الطلب • يُضاف إلى فاتورة الشركة", "Confirm • add to company invoice") : tl("تأكيد الطلب • ادفع " + erN(total) + " ج.س ", "Confirm • pay " + erN(total) + " SDG ") + (paymentTiming === "pickup" ? t("er_and_alastlam") : t("er_and_altslym")), disabled: !packagePhoto, onPress: () => {
+                    React.createElement(Button, { label: paymentMethod === "wallet" ? tl("تأكيد الطلب • ادفع " + erN(total) + " ج.س من محفظة سوا", "Confirm • pay " + erN(total) + " SDG from Sawa Wallet") : paymentMethod === "card" ? tl("تأكيد الطلب • ادفع " + erN(total) + " ج.س الآن", "Confirm • pay " + erN(total) + " SDG now") : paymentMethod === "corporate" ? tl("تأكيد الطلب • يُضاف إلى فاتورة الشركة", "Confirm • add to company invoice") : tl("تأكيد الطلب • ادفع " + erN(total) + " ج.س ", "Confirm • pay " + erN(total) + " SDG ") + (paymentTiming === "pickup" ? t("er_and_alastlam") : t("er_and_altslym")), disabled: !packagePhoto || !walletReady, onPress: () => {
                             const stagesData = ersalBuildStages(paymentTiming, paymentMethod, city.name, deliveryMethod);
-                            onCreateShipment({
+                            const newId = onCreateShipment({
+                                paidBy: paymentMethod,
                                 destination: city.name, category: type.label, categoryKey: type.key,
                                 weight: weightNum, dimensions, handlingKeys, photoName: packagePhoto === null || packagePhoto === void 0 ? void 0 : packagePhoto.name,
                                 total, stagesData,
@@ -1640,6 +1655,8 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                                 insured: insuranceEnabled, insuranceFee,
                                 deliveryWindow: deliveryMethod === "address" ? deliveryWindow : null,
                             });
+                            if (!newId) return;   // C226: رُفض الدفع من المحفظة (الرصيد تغيّر) — يبقى النموذج كما هو
+                            setWalletPinIn("");
                             setShipFlowView("goods");
                             setWeight("");
                             setDimensions({ height: "", width: "", length: "" });
@@ -1717,6 +1734,9 @@ function ErsalScreenInner({ shipments, onCreateShipment, onMarkFailed, onBulkCre
                             s.recipientName && (React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: "#ffffffcc" } },
                                 t("er_almstlm"),
                                 s.recipientName)),
+                            s.paidBy === "wallet" && React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 mt-1` },   // C226
+                                React.createElement(Wallet, { size: 11, color: "#fff" }),
+                                React.createElement("span", { className: "text-[10px] font-bold", style: { color: "#fff" } }, s.cancelled ? tl("أُعيد المبلغ إلى محفظة سوا", "Refunded to Sawa Wallet") : tl("مدفوعة من محفظة سوا", "Paid from Sawa Wallet"))),
                             s.insured && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 mt-1` },
                                 React.createElement(ShieldCheck, { size: 11, color: "#fff" }),
                                 React.createElement("span", { className: "text-[10px] font-bold", style: { color: "#fff" } },
