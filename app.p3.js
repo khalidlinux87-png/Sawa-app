@@ -1019,7 +1019,7 @@ function AdvancedSearchScreen({ persons, relations = [], onBack, onOpenPerson })
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 rounded-xl px-3 py-2.5 mb-3`, style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                 React.createElement(Search, { size: 15, color: colors.textMuted }),
                 React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: query, onChange: (e) => setQuery(e.target.value), placeholder: t("abhth_balasm_aw_alnsb_2"), className: `flex-1 bg-transparent text-xs outline-none ${textStart()}`, style: { color: colors.text } }),
-                query && (React.createElement("button", { onClick: () => setQuery("") },
+                query && (React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: () => setQuery("") },
                     React.createElement(X, { size: 14, color: colors.textMuted })))),
             React.createElement(Group, { icon: Users2, title: t("drja_alqraba") }, proximityOptions.map((o) => (React.createElement(Pill, { key: o.k, active: proximity === o.k, label: o.label, sub: o.days ? t("y_days", { days: o.days }) : null, onPress: () => setProximity(o.k) })))),
             React.createElement(Group, { icon: GitBranch, title: t("fra_alaayla") }, branchOptions.map((o) => (React.createElement(Pill, { key: o.k, active: branch === o.k, label: o.label, onPress: () => setBranch(o.k) })))),

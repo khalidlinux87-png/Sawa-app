@@ -737,7 +737,7 @@ function SawaTooltip({ id, text, seen, onDismiss, position = "bottom" }) {
     return (React.createElement("div", { className: "absolute z-50 left-4 right-4", style: { [position === "bottom" ? "top" : "bottom"]: "100%", marginTop: position === "bottom" ? 4 : 0, marginBottom: position === "top" ? 4 : 0 } },
         React.createElement("div", { className: "rounded-2xl px-4 py-3 shadow-lg relative", style: { backgroundColor: colors.primaryDark, maxWidth: 300, margin: "0 auto" } },
             React.createElement("p", { className: "text-xs text-white leading-relaxed" }, text),
-            React.createElement("button", { onClick: onDismiss, className: "absolute top-2 left-2 w-5 h-5 flex items-center justify-center rounded-full", style: { backgroundColor: "rgba(255,255,255,0.2)" } },
+            React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: onDismiss, className: "absolute top-2 left-2 w-5 h-5 flex items-center justify-center rounded-full", style: { backgroundColor: "rgba(255,255,255,0.2)" } },
                 React.createElement(X, { size: 10, color: "#fff" })),
             React.createElement("div", { className: "absolute " + (position === "bottom" ? "-top-1.5" : "-bottom-1.5") + " left-1/2 -translate-x-1/2 w-3 h-3 rotate-45", style: { backgroundColor: colors.primaryDark } }))));
 }

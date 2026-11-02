@@ -155,7 +155,7 @@ function GroupCallOverlay({ groupName, members, callType, onEnd }) {
                 React.createElement(MicOff, { size: 20, color: "#fff" })),
             React.createElement("button", { "aria-label": t("inha_almkalma"), onClick: () => onEnd(duration, true), className: "w-16 h-16 rounded-full flex items-center justify-center", style: { backgroundColor: colors.danger } },
                 React.createElement(PhoneOff, { size: 24, color: "#fff" })),
-            React.createElement("button", { onClick: () => setSpeakerOn(!speakerOn), className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: speakerOn ? colors.primary : "#262B33" } },
+            React.createElement("button", { "aria-label": tl("الصوت", "Sound"), onClick: () => setSpeakerOn(!speakerOn), className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: speakerOn ? colors.primary : "#262B33" } },
                 React.createElement(Volume2, { size: 20, color: "#fff" })))));
 }
 function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, failed = false, cid = null, mid = null }) {
@@ -284,7 +284,7 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
                 editingName
                     ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 w-full` },
                         React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: nameDraft, autoFocus: true, onChange: (e) => setNameDraft(e.target.value), className: `flex-1 rounded-xl border px-3 py-2 text-sm ${textStart()}`, style: { borderColor: colors.primary, color: colors.text, backgroundColor: colors.bg } }),
-                        React.createElement("button", { onClick: saveName, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary } },
+                        React.createElement("button", { "aria-label": tl("تأكيد", "Confirm"), onClick: saveName, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary } },
                             React.createElement(Check, { size: 16, color: "#fff" })))
                     : React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
                         React.createElement("span", { className: "text-lg font-extrabold", style: { color: colors.text } }, group.name),
@@ -315,7 +315,7 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
                     ? React.createElement("button", { onClick: () => (isAdmin || !group.infoAdminsOnly) && setDescDraft(group.desc || ""), className: `w-full ${textStart()} text-sm`, style: { color: group.desc ? colors.text : colors.textMuted } }, group.desc || t("c3_desc_ph"))
                     : React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                         React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: descDraft, autoFocus: true, onChange: (e) => setDescDraft(e.target.value), className: "flex-1 rounded-xl border px-3 py-2 text-sm", style: { borderColor: colors.border, backgroundColor: colors.bg, color: colors.text } }),
-                        React.createElement("button", { onClick: () => { onUpdate({ desc: descDraft }); setDescDraft(null); }, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary } }, React.createElement(Check, { size: 16, color: "#fff" }))),
+                        React.createElement("button", { "aria-label": tl("تأكيد", "Confirm"), onClick: () => { onUpdate({ desc: descDraft }); setDescDraft(null); }, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary } }, React.createElement(Check, { size: 16, color: "#fff" }))),
                 isAdmin && React.createElement("button", { onClick: () => onUpdate({ adminsOnly: !group.adminsOnly }), className: `w-full flex ${rowStart()} items-center justify-between mt-3 pt-3 border-t`, style: { borderColor: colors.border } },
                     React.createElement("span", { className: "text-sm", style: { color: colors.text } }, t("c3_admins_only")),
                     React.createElement("span", { className: "w-10 h-6 rounded-full relative", style: { backgroundColor: group.adminsOnly ? colors.primary : colors.border } },
@@ -435,7 +435,7 @@ function DailyReminderCard({ card, onClose, onFamily }) {
             // الرأس
             React.createElement("div", { style: { position: "relative", padding: "20px 20px 18px", textAlign: "center", color: "#fff", background: `${pattern}, linear-gradient(135deg, #2774BA 0%, #1E3A63 100%)` } },
                 React.createElement("button", { onClick: onClose, "aria-label": t("ighlaq"), style: { position: "absolute", zIndex: 3, top: 10, left: 10, width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.16)", color: "#fff", fontSize: 18, lineHeight: "32px" } }, "×"),
-                React.createElement("div", { style: { fontSize: 13, opacity: 0.85, letterSpacing: 0.2 } }, "🌙 " + t("dr_title")),
+                React.createElement("div", { style: { fontSize: 13, opacity: 0.85, letterSpacing: 0.2, display: "inline-flex", alignItems: "center", gap: 5 } }, React.createElement(Moon, { size: 14, "aria-hidden": true }), t("dr_title")),
                 hijri && React.createElement("div", { style: { fontSize: 18, fontWeight: 800, marginTop: 4 } }, hijri),
                 greg && React.createElement("div", { style: { fontSize: 11.5, opacity: 0.8, marginTop: 2 } }, greg)),
             // النصّ
@@ -447,7 +447,7 @@ function DailyReminderCard({ card, onClose, onFamily }) {
                     React.createElement("span", { style: { width: 22, height: 1, backgroundColor: colors.border } }), card.source, React.createElement("span", { style: { width: 22, height: 1, backgroundColor: colors.border } }))),
             // الأزرار
             React.createElement("div", { style: { display: "flex", gap: 10, padding: "14px 18px 18px" } },
-                React.createElement("button", { onClick: onFamily, className: "flex-1", style: { padding: "12px 8px", borderRadius: 14, background: "linear-gradient(135deg,#2774BA,#1E3A63)", color: "#fff", fontSize: 14, fontWeight: 800 } }, "🤍 " + t("sla_alrhm")),
+                React.createElement("button", { onClick: onFamily, className: "flex-1", style: { padding: "12px 8px", borderRadius: 14, background: "linear-gradient(135deg,#2774BA,#1E3A63)", color: "#fff", fontSize: 14, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 } }, React.createElement(Heart, { size: 16, "aria-hidden": true }), t("sla_alrhm")),
                 React.createElement("button", { onClick: share, "aria-label": tl("مشاركة", "Share"), style: { padding: "12px 16px", borderRadius: 14, backgroundColor: colors.bg, color: colors.text, fontSize: 14, fontWeight: 800, border: `1px solid ${colors.border}` } }, tl("مشاركة", "Share")))));
 }
 // C107: ربط قريبٍ بحسابه في سوا — برمزه · من جهات اتّصالي · أو دعوةٌ لمن ليس في سوا (رابطٌ باسمه في الشجرة)
@@ -2649,7 +2649,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                         React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5` },
                             React.createElement(BarChart3, { size: 14, color: colors.primary }),
                             React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, m.question)),
-                        canEdit && (React.createElement("button", { onClick: () => { setEditingPollId(m.id); setPollQuestion(m.question); setPollOptions(m.options.map((o) => o.text)); openTool("poll"); } },
+                        canEdit && (React.createElement("button", { "aria-label": tl("تعديل", "Edit"), onClick: () => { setEditingPollId(m.id); setPollQuestion(m.question); setPollOptions(m.options.map((o) => o.text)); openTool("poll"); } },
                             React.createElement(Edit3, { size: 12, color: colors.textMuted })))),
                     (m.deadline || m.editedAt) && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-2` },
                         m.deadline && (React.createElement("span", { className: "text-[10px] font-bold", style: { color: isExpired ? colors.danger : colors.textMuted } }, isExpired ? t("gc_anthat_almhla") : tl(`تنتهي ${new Date(m.deadline).toLocaleString(loc(), { day: "numeric", month: "short", hour: "numeric", minute: "numeric" })}`, `Ends ${new Date(m.deadline).toLocaleString(loc(), { day: "numeric", month: "short", hour: "numeric", minute: "numeric" })}`))),

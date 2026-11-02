@@ -24,6 +24,10 @@ window.__sawaParts=(function(){var N=9,jobs=[];for(var i=1;i<=N;i++)(function(k)
 <meta name="apple-mobile-web-app-title" content="سوا">
 <meta name="mobile-web-app-capable" content="yes">
 
+<script>
+  // C190: شاشة التحميل بمظهر التطبيق المحفوظ (sawa:ui.dark) قبل أن يرسم أيّ شيء — كانت فاتحةً دائماً فيرى مستخدم الوضع الداكن ومضةً بيضاء.
+  try { if (JSON.parse(localStorage.getItem('sawa:ui.dark') || 'false') === true) { document.documentElement.setAttribute('data-theme', 'dark'); document.documentElement.style.colorScheme = 'dark'; var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', '#0E1116'); } } catch (e) {}
+</script>
 <link rel="preload" href="./fonts/plex-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./tw.css">
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
@@ -48,6 +52,12 @@ window.__sawaParts=(function(){var N=9,jobs=[];for(var i=1;i<=N;i++)(function(k)
   .spin{width:26px;height:26px;border:3px solid #BFE0F5;border-top-color:#2774BA;
     border-radius:50%;animation:sp .8s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
+  /* C190: الوضع الداكن لشاشتَي التحميل والخطأ (القيم من darkColors) */
+  :root[data-theme=dark],:root[data-theme=dark] body,:root[data-theme=dark] #root,:root[data-theme=dark] #boot,:root[data-theme=dark] #err{background:#0E1116}
+  :root[data-theme=dark] #boot p,:root[data-theme=dark] #err p{color:#8A93A0!important}
+  :root[data-theme=dark] #err h2{color:#E5695C}
+  :root[data-theme=dark] #err pre{background:#171B21;border-color:#262B33;color:#EDEFF2}
+  :root[data-theme=dark] .spin{border-color:#173049;border-top-color:#5AA9E6}
   #err{display:none;position:fixed;inset:0;padding:28px;background:#F5F7FA;z-index:10000;
     overflow:auto;direction:rtl;text-align:right}
   #err h2{color:#B42318;font-size:17px}

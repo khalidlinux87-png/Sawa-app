@@ -2387,7 +2387,7 @@ ${txn.note}
                     React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 rounded-xl px-3 py-2`, style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                         React.createElement(Search, { size: 14, color: colors.textMuted }),
                         React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: txSearch, onChange: (e) => setTxSearch(e.target.value), placeholder: t("abhth_fy_alhrkat"), className: "flex-1 text-sm bg-transparent outline-none", style: { color: colors.text } }),
-                        txSearch && React.createElement("button", { onClick: () => setTxSearch("") },
+                        txSearch && React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: () => setTxSearch("") },
                             React.createElement(X, { size: 13, color: colors.textMuted })))),
                 React.createElement("div", { dir: "rtl", className: "px-4 mb-3 overflow-x-auto", style: { scrollbarWidth: "none", msOverflowStyle: "none" } },
                     React.createElement("div", { className: "flex gap-2", style: { width: "max-content" } }, [
