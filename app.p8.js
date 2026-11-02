@@ -1830,17 +1830,19 @@ function AppInner() {
     }
     function togglePinMessage(conversationId, messageId) {
         if (cloudChat(conversationId)) { cloudChat(conversationId).pin(conversationId, messageId); return; }
-        setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, pinnedMessageId: c.pinnedMessageId === messageId ? null : messageId } : c)));
+        // C227: حتّى ٣ رسائل مثبّتة (محلّيّاً كما في السحابة)
+        setConversations((prev) => prev.map((c) => { if (c.id !== conversationId) return c; const cur = pinIdsOf(c); const next = cur.indexOf(messageId) >= 0 ? cur.filter((x) => x !== messageId) : [messageId].concat(cur).slice(0, 3); return { ...c, pinnedMessageIds: next, pinnedMessageId: next[0] || null }; }));
     }
     function toggleStarMessage(conversationId, messageId, text) {
         var _a, _b, _c;
-        const alreadyStarred = (_b = (_a = messagesByConversation[conversationId]) === null || _a === void 0 ? void 0 : _a.find((m) => m.id === messageId)) === null || _b === void 0 ? void 0 : _b.starred;
+        // C227: المرجع قائمة المفضّلة نفسها — كانت تُقرأ من رسائل المحادثات المحلّيّة فتُضاف رسالة السحابة مرّتين ولا تُلغى
+        const alreadyStarred = starredMessages.some((s) => s.id === messageId);
         setMessagesByConversation((prev) => ({
             ...prev,
             [conversationId]: (prev[conversationId] || []).map((m) => (m.id === messageId ? { ...m, starred: !alreadyStarred } : m)),
         }));
         if (!alreadyStarred) {
-            const convName = ((_c = conversations.find((c) => c.id === conversationId)) === null || _c === void 0 ? void 0 : _c.name) || t("ai_mhadtha");
+            const convName = ((_c = conversations.find((c) => c.id === conversationId) || groups.find((g) => g.id === conversationId)) === null || _c === void 0 ? void 0 : _c.name) || t("ai_mhadtha");
             setStarredMessages((prev) => [{ id: messageId, conversationId, conversationName: convName, text, ts: Date.now() }, ...prev]);
             showToast(t("tm_hfz_alrsala"), "success");
         }
@@ -4010,6 +4012,7 @@ function AppInner() {
                                 const conv = conversations.find((c) => c.id === conversationId);
                                 if (conv)
                                     setChatsStack([{ type: "chat", data: conv }]);
+                                else { const g = groups.find((x) => x.id === conversationId); if (g) setChatsStack([{ type: "group", data: g }]); }   // C227: مفضّلة المجموعات
                             }, onBack: () => setChatsStack([]) }));
                     }
                     if (chatsTop.type === "chatSettings") {
@@ -4024,7 +4027,7 @@ function AppInner() {
                     }
                     if (chatsTop.type === "group") {
                         const liveGroup = groups.find((g) => g.id === chatsTop.data.id) || chatsTop.data;
-                        return (React.createElement(GroupChatScreen, { key: "g:" + liveGroup.id, group: liveGroup, messages: groupMessages[liveGroup.id] || [], myUserId: myUserId, draft: chatDrafts["g:" + liveGroup.id] || "", onSaveDraft: (v) => saveChatDraft("g:" + liveGroup.id, v), onTyping: () => { const c = cloudChat(liveGroup.id); if (c) c.typing(liveGroup.id); }, onSendSticker: (emoji) => sendGroupSticker(liveGroup.id, emoji), contactsForForward: (window.SawaChat && window.SawaChat.contacts ? window.SawaChat.contacts() : []), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendGroupMessage(liveGroup.id, text, replyTo),
+                        return (React.createElement(GroupChatScreen, { key: "g:" + liveGroup.id, group: liveGroup, onTogglePin: (mid) => togglePinMessage(liveGroup.id, mid), onToggleStar: (mid, text) => toggleStarMessage(liveGroup.id, mid, text), messages: groupMessages[liveGroup.id] || [], myUserId: myUserId, draft: chatDrafts["g:" + liveGroup.id] || "", onSaveDraft: (v) => saveChatDraft("g:" + liveGroup.id, v), onTyping: () => { const c = cloudChat(liveGroup.id); if (c) c.typing(liveGroup.id); }, onSendSticker: (emoji) => sendGroupSticker(liveGroup.id, emoji), contactsForForward: (window.SawaChat && window.SawaChat.contacts ? window.SawaChat.contacts() : []), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendGroupMessage(liveGroup.id, text, replyTo),
                             onReact: cloudChat(liveGroup.id) ? (messageId, emoji) => cloudChat(liveGroup.id).react(liveGroup.id, messageId, emoji) : null,
                             onDeleteMessage: cloudChat(liveGroup.id) ? (messageId, scope) => { scope === "all" ? cloudChat(liveGroup.id).deleteForAll(liveGroup.id, messageId) : cloudChat(liveGroup.id).deleteForMe(liveGroup.id, messageId); showToast(scope === "all" ? t("ai_hdhft_lljmya") : t("ai_hdhft_andk"), "success"); } : null,
                             contacts: cloudChat(liveGroup.id) ? people : null,

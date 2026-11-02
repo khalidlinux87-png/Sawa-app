@@ -239,7 +239,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c198";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c227";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -1053,7 +1053,10 @@
   }
   // C186: إشعار المحادثة يُزال عند فتحها — المتصفّح/PWA بالوسم (tag = cid)، وأندرويد بالمعرّف نفسه
   function clearChatNotifs(cid) {
+    if (!cid) return;
+    // C227: أندرويد c227+ (clearChatNotif) · الآيفون: حسب thread-id = cid — كان الإشعار يبقى بعد فتح الرسالة داخل التطبيق
     try { if (NB() && NB().clearChatNotif) NB().clearChatNotif(cid); } catch (e) {}
+    try { if (IOSB() && IOSB().call) IOSB().call("clearChatNotif", { cid: cid }, 5000); } catch (e) {}
     try {
       if (global.navigator && navigator.serviceWorker && navigator.serviceWorker.ready) {
         navigator.serviceWorker.ready.then(function (r) { return r.getNotifications ? r.getNotifications({ tag: cid }) : []; })
@@ -1064,8 +1067,11 @@
   function openChat(cid) {
     if (!isCloud(cid)) return;
     openCid = cid; ensureDays(cid); markRead(cid); publishChats(); clearChatNotifs(cid);
+    try { if (NB() && NB().setOpenChat) NB().setOpenChat(cid); } catch (e) {}   // C227: لا إشعار لمحادثةٍ مفتوحة أمامك
   }
-  function closeChat(cid) { if (!cid || openCid === cid) openCid = null; }
+  function closeChat(cid) { if (!cid || openCid === cid) { openCid = null; try { if (NB() && NB().setOpenChat) NB().setOpenChat(""); } catch (e) {} } }
+  // C227: العودة إلى التطبيق والمحادثة مفتوحة ⇒ تُزال إشعاراتها (وصلت والتطبيق في الخلفيّة)
+  try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && openCid) setTimeout(function () { clearChatNotifs(openCid); }, 300); }); } catch (e) {}
 
   // ---------- وصلت/قُرئت (مجمَّعة) ----------
   var markQ = {}, markTimer = null;
@@ -1239,10 +1245,16 @@
       call("chat.react", { cid: cid, day: day, id: id, emoji: emoji || null }).then(function () { if (adminCached()) toast("✓ " + (emoji || L("أُزيل", "removed")) + " · " + day); }, fail);
     } catch (e) { toast(L("تعذّر التفاعل: ", "Reaction failed: ") + ((e && e.message) || e)); }
   }
+  // C227: حتّى ٣ رسائل مثبّتة (الأحدث أوّلاً) — c.pins، و c.pinned = أوّلها (للنسخ الأقدم)
+  var PIN_MAX = 3;
+  function pinsOf(c) { return c ? (Array.isArray(c.pins) ? c.pins.slice() : (c.pinned ? [c.pinned] : [])) : []; }
   function pin(cid, id) {
-    var c = chats[cid]; if (!c) return;
-    var next = c.pinned === id ? null : id; c.pinned = next; publishChats();
-    call("chat.pin", { cid: cid, id: next }).catch(fail);
+    var c = chats[cid]; if (!c || !id) return;
+    var p = pinsOf(c), had = p.indexOf(id) >= 0;
+    if (!had && p.length >= PIN_MAX) toast(L("تُثبَّت ٣ رسائل على الأكثر — أُزيلت أقدمها", "Up to 3 pinned messages — the oldest was unpinned"));
+    p = had ? p.filter(function (x) { return x !== id; }) : [id].concat(p).slice(0, PIN_MAX);
+    c.pins = p; c.pinned = p[0] || null; publishChats();
+    call("chat.pin", { cid: cid, id: id, toggle: true }).catch(fail);
   }
   function setDisappear(cid, seconds) {
     var c = chats[cid]; if (c) { c.disappear = seconds; publishChats(); }
@@ -1332,7 +1344,7 @@
       isSavedMessages: c.type === "saved", secret: sec, e2e: sec ? e2eUi(c) : null, photo: other ? photoOf(other) : null,
       lastMessage: lp ? preview(lp.msg) : sec ? secretPreview(c) : preview(l), lastFromMe: lastMine,
       lastStatus: lp ? lp.status : (l && l.by === state.uid ? statusOf(c, l.ts) : null),
-      unread: unreadOf(c), updatedAt: Math.max(lp ? lp.ts : 0, c.updatedTs || 0), pinnedMessageId: c.pinned || null,
+      unread: unreadOf(c), updatedAt: Math.max(lp ? lp.ts : 0, c.updatedTs || 0), pinnedMessageId: c.pinned || null, pinnedMessageIds: pinsOf(c),
       disappear: c.disappear || 0, online: !!(p && state.presence[other] && state.presence[other].state === "online")
     };
   }
@@ -1346,7 +1358,7 @@
     var lastText = lp ? preview(lp.msg) : (l ? (l.type === "system" ? sysText({ by: l.by, extra: { ev: l.ev } }, c).replace(/«»|“”/g, "").trim() : (l.by && l.by !== state.uid ? personName(l.by, c) + ": " : "") + (sec ? secretPreview(c) : preview(l))) : (sec ? secretPreview(c) : ""));
     return { id: c.cid, cloud: true, kind: c.type, familyGroupId: c.familyGroupId || null, desc: c.desc || "", adminsOnly: !!c.adminsOnly, infoAdminsOnly: !!c.infoAdminsOnly,
       name: (c.name || L("مجموعة", "Group")) + (sec ? " 🔒" : ""), members: members, lastMessage: lastText, secret: sec, e2e: sec ? e2eUi(c) : null,
-      unread: unreadOf(c), updatedAt: Math.max(lp ? lp.ts : 0, c.updatedTs || 0), pinnedMessageId: c.pinned || null, disappear: c.disappear || 0,
+      unread: unreadOf(c), updatedAt: Math.max(lp ? lp.ts : 0, c.updatedTs || 0), pinnedMessageId: c.pinned || null, pinnedMessageIds: pinsOf(c), disappear: c.disappear || 0,
       photo: c.type === "group" || c.type === "family" ? groupPhotoOf(c) : null };   // C155 · C159: والعائلة
   }
   var pubChatsT = null;
@@ -3557,6 +3569,18 @@
       sendB.textContent = n ? L("إرسال إلى " + n, "Send to " + n) : L("إرسال", "Send");
     }
     q.oninput = paint; paint(); s.box.appendChild(sendB);
+    // C227: صورةٌ واحدة من معرض الهاتف ⇒ «تعيين صورةً شخصيّة» (بمحرّر القصّ نفسه)
+    if (files.length === 1 && kindOfMime(files[0].mime) === "image") {
+      var asMe = mkBtn(L("تعيين صورةً شخصيّة", "Set as profile photo")); asMe.style.marginTop = "8px"; asMe.setAttribute("data-sawa", "share-as-avatar");
+      asMe.onclick = function () {
+        asMe.disabled = true;
+        shareInPull(files[0]).then(function (b) { s.close(); return cropPhoto(b); }).then(function (du) {
+          if (!du) return;
+          return setMyPhoto(du).then(function () { toast(L("تغيّرت صورتك الشخصيّة ✓", "Profile photo updated ✓")); });
+        }).catch(function (e) { asMe.disabled = false; toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+      };
+      s.box.appendChild(asMe);
+    }
     sendB.onclick = function () {
       var keys = Object.keys(picked).filter(function (k) { return picked[k]; });
       if (!keys.length) { toast(L("اختر محادثة على الأقلّ", "Pick at least one chat")); return; }

@@ -165,6 +165,16 @@ function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, 
     const [playing, setPlaying] = useState(false);
     const [showTranscript, setShowTranscript] = useState(false);
     const audioRef = useRef(null);
+    // C227: سرعة التشغيل (١× · ١٫٥× · ٢×) تبقى لكلّ الرسائل الصوتيّة · والشريط يُلمس للتقديم والتأخير
+    const [rate, setRate] = useState(() => { try { return Number(localStorage.getItem("sawa_voice_rate")) || 1; } catch (e) { return 1; } });
+    useEffect(() => { try { if (audioRef.current) audioRef.current.playbackRate = rate; } catch (e) { } }, [rate, url]);
+    const cycleRate = (e) => { e.stopPropagation(); const n = rate === 1 ? 1.5 : rate === 1.5 ? 2 : 1; setRate(n); try { localStorage.setItem("sawa_voice_rate", String(n)); } catch (x) { } };
+    const seek = (e) => {
+        const a = audioRef.current; if (!a || !url) return;
+        const r = e.currentTarget.getBoundingClientRect(); let f = (e.clientX - r.left) / r.width; if (isRTL()) f = 1 - f; f = Math.max(0, Math.min(1, f));
+        const d = a.duration && isFinite(a.duration) ? a.duration : 0; if (!d) return;
+        try { a.currentTime = f * d; setProg(f); setElapsed(Math.floor(f * d)); } catch (x) { }
+    };
     // كل فقاعة صوتية مستقلة ولا تعرف بغيرها، فكانت تشتغل كلها معاً.
     // نسجّل «المشغّل النشط» عالمياً: بدء تشغيل جديد يوقف السابق.
     const stopSelfRef = useRef(null);
@@ -202,14 +212,18 @@ function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, 
                             try { window.__sawaActiveAudio.current(); } catch (e) { }
                         }
                         window.__sawaActiveAudio = stopSelfRef;
+                        try { if (audioRef.current) audioRef.current.playbackRate = rate; } catch (e) { }   // C227
                         const pr = (_b = audioRef.current) === null || _b === void 0 ? void 0 : _b.play();
                         setPlaying(true);
                         // C18: الصيغة غير مدعومة على هذا الجهاز (مثلاً webm على آيفون قديم) ⇒ نقول ذلك بدل زرٍّ عالق
                         if (pr && pr.catch) pr.catch((e) => { setPlaying(false); showToast(tl("تعذّر تشغيل التسجيل على هذا الجهاز", "Can't play this voice note on this device") + (e && e.name === "NotSupportedError" ? tl(" (صيغة غير مدعومة)", " (unsupported format)") : ""), "error"); });
                     }
                 }, className: "w-8 h-8 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: mine ? "rgba(255,255,255,0.25)" : colors.primaryLight } }, playing ? React.createElement(Pause, { size: 14, color: mine ? "#fff" : colors.primary }) : React.createElement(Play, { size: 14, color: mine ? "#fff" : colors.primary })),
-            React.createElement("div", { className: "flex-1 h-1 rounded-full overflow-hidden", style: { backgroundColor: mine ? "rgba(255,255,255,0.3)" : colors.border } },
-                React.createElement("div", { style: { height: "100%", width: Math.round(prog * 100) + "%", backgroundColor: mine ? "#fff" : colors.primary, transition: "width .25s linear" } })),
+            React.createElement("div", { role: "slider", "aria-label": tl("موضع التشغيل", "Playback position"), "aria-valuenow": Math.round(prog * 100), onClick: seek, className: "flex-1 flex items-center", style: { height: 22, cursor: url ? "pointer" : "default" } },
+                React.createElement("div", { className: "relative w-full h-1 rounded-full", style: { backgroundColor: mine ? "rgba(255,255,255,0.3)" : colors.border } },
+                    React.createElement("div", { className: "h-1 rounded-full", style: { width: Math.round(prog * 100) + "%", backgroundColor: mine ? "#fff" : colors.primary, transition: "width .25s linear" } }),
+                    (playing || prog > 0) && React.createElement("div", { className: "absolute rounded-full", style: { width: 10, height: 10, top: -3, insetInlineStart: "calc(" + Math.round(prog * 100) + "% - 5px)", backgroundColor: mine ? "#fff" : colors.primary } }))),
+            (playing || elapsed > 0) && React.createElement("button", { "aria-label": tl("سرعة التشغيل", "Playback speed"), "data-sawa": "voice-rate", onClick: cycleRate, className: "text-[10px] font-extrabold rounded-full px-1.5 py-0.5 shrink-0", style: { backgroundColor: mine ? "rgba(255,255,255,0.25)" : colors.primaryLight, color: mine ? "#fff" : colors.primary } }, (rate === 1.5 ? "1.5" : String(rate)) + "×"),
             React.createElement("span", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, !url && loading ? "⏳ " + duration : !url && failed ? "↻ " + tl("أعد التنزيل", "Retry") : (playing || elapsed) ? Math.floor(elapsed / 60) + ":" + String(elapsed % 60).padStart(2, "0") : duration)),
         transcript && (React.createElement("button", { onClick: () => setShowTranscript(!showTranscript), className: "mt-1.5" },
             React.createElement("span", { className: "text-[10px] font-bold underline", style: { color: mine ? "#ffffffdd" : colors.primary } }, showTranscript ? tl("إخفاء النص", "Hide text") : tl("عرض النص", "Show text")))),
@@ -669,15 +683,36 @@ function openUrl(u, e) {
 // نصّ غنيّ: روابط + إشارات @ (في المجموعات)
 // C194: اتّجاه النصّ من أوّل حرفٍ قويّ (عربيّ ⇒ rtl، لاتينيّ ⇒ ltr) — كان الإيموجي يقفز يسار الجملة الإنجليزيّة
 function textDir(s, fb) { const m = /[A-Za-z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF]|[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.exec(String(s || "")); return m ? (/[A-Za-z\u00C0-\u04FF]/.test(m[0]) ? "ltr" : "rtl") : (fb || (isRTL() ? "rtl" : "ltr")); }
+// C227: تنسيق الرسائل كواتساب — *عريض* (بخطٍّ أكبر قليلاً) · _مائل_ · ~مشطوب~ · ```أحاديّ المسافة```
+//   العلامة تُفتح عند بداية النصّ أو بعد مسافة/علامة ترقيم، ولا يلي الفاتحةَ أو يسبق الخاتمةَ فراغ (حتّى لا يتنسّق «٢ * ٣ * ٤»)
+const FMT_RE = /(^|[\s([{«"'،؛:.!?؟\-])(\*([^\s*](?:[^*\n]*[^\s*])?)\*|_([^\s_](?:[^_\n]*[^\s_])?)_|~([^\s~](?:[^~\n]*[^\s~])?)~|```([^`]+)```)(?=$|[\s)\]}»"'،؛:.!?؟\-])/g;
+function stripFmt(s) { return String(s == null ? "" : s).replace(FMT_RE, (all, pre, _w, b, i, st, mono) => pre + (b || i || st || mono || "")); }
+function fmtNodes(seg, keyBase) {
+    const out = []; let last = 0, m, k = 0; FMT_RE.lastIndex = 0;
+    while ((m = FMT_RE.exec(seg))) {
+        const start = m.index + m[1].length;
+        if (start > last) out.push(seg.slice(last, start));
+        const [, , , b, i, st, mono] = m;
+        const kk = keyBase + "f" + (k++);
+        if (b != null) out.push(React.createElement("strong", { key: kk, style: { fontWeight: 800, fontSize: "1.12em" } }, b));
+        else if (i != null) out.push(React.createElement("em", { key: kk }, i));
+        else if (st != null) out.push(React.createElement("s", { key: kk }, st));
+        else out.push(React.createElement("code", { key: kk, style: { fontFamily: "ui-monospace,Menlo,Consolas,monospace", fontSize: "0.92em" } }, mono));
+        last = m.index + m[0].length;
+    }
+    if (last < seg.length) out.push(seg.slice(last));
+    return out;
+}
 function renderRichText(text, opts) {
     const o = opts || {}; const t = String(text == null ? "" : text);
     const linkColor = o.mine ? "#E3F2FF" : (o.colors ? o.colors.primary : "#2F80C8");
     const nodes = []; let k = 0;
-    const pushPlain = (seg) => {
+    const pushPlain0 = (seg) => {
         if (!seg) return;
         if (!o.mentions) { nodes.push(React.createElement("span", { key: k++ }, seg)); return; }
         seg.split(/(@[\u0600-\u06FFa-zA-Z]+)/g).forEach((part) => { if (!part) return; nodes.push(part.startsWith("@") ? React.createElement("span", { key: k++, className: "font-bold", style: { color: o.colors ? o.colors.accent : "#8B5CF6" } }, part) : React.createElement("span", { key: k++ }, part)); });
     };
+    const pushPlain = (seg) => { if (!seg) return; fmtNodes(seg, "p" + k).forEach((x) => { if (typeof x === "string") pushPlain0(x); else nodes.push(React.cloneElement(x, { key: "r" + (k++) }, ...(typeof x.props.children === "string" ? [x.props.children] : []))); }); };
     let last = 0; URL_RE.lastIndex = 0; let m;
     while ((m = URL_RE.exec(t))) {
         let u = m[0]; const trail = (u.match(/[.,!?؟،:;]+$/) || [""])[0]; u = u.slice(0, u.length - trail.length);
@@ -1351,6 +1386,27 @@ function LocationBubble({ m, mine }) {
 }
 // C98: مشاركة رسالة خارج سوا (واتساب، بريد…) — النصّ/الرابط بمشاركة النظام، والصورة/الفيديو/الملفّ بملفّه
 // C100: الانتقال إلى رسالة (اقتباس الردّ) مع وميضٍ قصير — وإن كانت خارج النافذة نوسّعها أوّلاً
+// C227: شريط الرسائل المثبّتة (حتّى ٣) — يعرض واحدةً مع «١/٣»، واللمس يقفز إليها ثمّ ينتقل إلى التالية · شرائط صغيرة على الجانب كواتساب
+function pinIdsOf(c) { return c ? (Array.isArray(c.pinnedMessageIds) && c.pinnedMessageIds.length ? c.pinnedMessageIds : (c.pinnedMessageId ? [c.pinnedMessageId] : [])) : []; }
+function pinLabel(m) {
+    if (!m) return tl("رسالة مثبّتة", "Pinned message");
+    if (m.deleted) return tl("🚫 رسالة محذوفة", "🚫 Deleted message");
+    const k = { image: "🖼️ " + tl("صورة", "Photo"), video: "🎬 " + tl("فيديو", "Video"), voice: "🎤 " + tl("رسالة صوتيّة", "Voice message"), file: "📎 " + tl("ملفّ", "File"), location: "📍 " + tl("موقع", "Location"), poll: "📊 " + tl("استطلاع", "Poll"), taskList: "✅ " + (m.title || tl("قائمة مهامّ", "Task list")) }[m.type];
+    return stripFmt((m.text && m.type !== "taskList" ? m.text : "") || k || "");
+}
+function PinnedBar({ ids, messages, win, colors }) {
+    const [ix, setIx] = useState(0);
+    const list = (ids || []).filter(Boolean);
+    if (!list.length) return null;
+    const cur = ix % list.length, id = list[cur], m = (messages || []).find((x) => x.id === id);
+    const n = list.length;
+    return React.createElement("button", { "aria-label": tl("الرسائل المثبّتة", "Pinned messages"), "data-sawa": "pinned-bar", onClick: () => { jumpToMessage(id, win, null); setIx(cur + 1); }, className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2 border-b`, style: { borderColor: colors.border, backgroundColor: colors.primaryLight } },
+        n > 1 && React.createElement("div", { className: "flex flex-col gap-0.5 shrink-0", style: { height: 26, width: 3 } }, list.map((_, i) => React.createElement("div", { key: i, className: "flex-1 rounded-full", style: { backgroundColor: i === cur ? colors.primary : colors.primary + "40" } }))),
+        React.createElement(Pin, { size: 12, color: colors.primary, fill: colors.primary, className: "shrink-0" }),
+        React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+            n > 1 && React.createElement("div", { className: "text-[9.5px] font-extrabold", style: { color: colors.primary } }, tl("رسالة مثبّتة " + (cur + 1).toLocaleString(loc()) + " من " + n.toLocaleString(loc()), "Pinned " + (cur + 1) + " of " + n)),
+            React.createElement("div", { className: "text-[11px] font-bold truncate", style: { color: colors.primaryDark } }, pinLabel(m))));
+}
 function jumpToMessage(id, win, toast) {
     if (!id) return;
     const find = () => document.querySelector(`[data-message-id="${String(id).replace(/"/g, "")}"]`);
@@ -1610,9 +1666,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                     " \u2190")));
         })(),
         !online && React.createElement(OfflineBar, null),
-        pinnedMessage && (React.createElement("button", { "aria-label": t("tthbyt"), onClick: () => { const go = () => { var _a; noteJump(); return (_a = document.querySelector(`[data-message-id="${pinnedMessage.id}"]`)) === null || _a === void 0 ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "center" }); }; if (document.querySelector(`[data-message-id="${pinnedMessage.id}"]`)) go(); else { win.more(Infinity); setTimeout(go, 60); } }, className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2 border-b`, style: { borderColor: colors.border, backgroundColor: colors.primaryLight } },
-            React.createElement(Pin, { size: 12, color: colors.primary, fill: colors.primary }),
-            React.createElement("span", { className: `text-[11px] font-bold flex-1 ${textStart()} truncate`, style: { color: colors.primaryDark } }, pinnedMessage.text))),
+        React.createElement(PinnedBar, { ids: pinIdsOf(conversation), messages, win, colors }),   // C227
         React.createElement("div", { style: { position: "relative", flex: 1, minHeight: 0 } },
             React.createElement("div", { ref: scrollContainerRef, className: "flex-1 overflow-y-auto p-4", style: { background: bgGradient || colors.bg, height: "100%", overflowY: "auto" }, onScroll: (e) => {
                     const el = e.currentTarget;
@@ -1639,7 +1693,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                         m.forwarded && (React.createElement("span", { className: `text-[9px] mb-0.5 flex ${rowStart()} items-center gap-1`, style: { color: colors.textMuted } },
                             React.createElement(Send, { size: 9, style: { transform: "scaleX(-1)" } }),
                             t("rsala_mwjha"))),
-                        React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "" : "px-3 py-2"}`, style: { backgroundColor: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "transparent" : mine ? myBubbleColor : colors.card, borderColor: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "transparent" : colors.border, cursor: "pointer", borderRadius: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? 16 : (mine ? "16px 16px 4px 16px" : "16px 16px 16px 4px"), boxShadow: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "none" : "0 1px 1.5px rgba(0,0,0,0.10)" }, ...(sel ? {} : longPress(() => setMsgMenu({ id: m.id, text: m.text, mine, type: m.type, thumb: (m.extra && m.extra.thumb) || null, fileName: (m.extra && m.extra.name) || null, starred: m.starred, pinned: conversation.pinnedMessageId === m.id, viewOnce: !!m.viewOnce, deleted: !!m.deleted, by: m.senderUserId || null }))) },
+                        React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "" : "px-3 py-2"}`, style: { backgroundColor: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "transparent" : mine ? myBubbleColor : colors.card, borderColor: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "transparent" : colors.border, cursor: "pointer", borderRadius: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? 16 : (mine ? "16px 16px 4px 16px" : "16px 16px 16px 4px"), boxShadow: ["sticker", "image", "video"].includes(m.type) && !m.viewOnce ? "none" : "0 1px 1.5px rgba(0,0,0,0.10)" }, ...(sel ? {} : longPress(() => setMsgMenu({ id: m.id, text: m.text, mine, type: m.type, thumb: (m.extra && m.extra.thumb) || null, fileName: (m.extra && m.extra.name) || null, starred: m.starred, pinned: pinIdsOf(conversation).indexOf(m.id) >= 0, viewOnce: !!m.viewOnce, deleted: !!m.deleted, by: m.senderUserId || null }))) },
                             m.replyToText && (React.createElement("div", { role: "button", onClick: (e) => { e.stopPropagation(); jumpToMessage(m.replyTo && m.replyTo.id, win, showToast); }, className: "rounded-xl px-2 py-1 mb-1 text-[10px] flex items-center gap-2 " + (isRTL() ? "border-r-2" : "border-l-2"), style: { backgroundColor: mine ? "rgba(255,255,255,0.15)" : colors.bg, borderColor: colors.accent, color: mine ? "#ffffffcc" : colors.textMuted, cursor: "pointer" } }, React.createElement("span", { className: "flex-1 min-w-0 truncate" }, m.replyToText), m.replyThumb && React.createElement("img", { src: m.replyThumb, alt: "", style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover", flexShrink: 0 } }))),
                             m.type === "sticker" ? (React.createElement("span", { className: "text-4xl" }, m.text)) : (m.type === "image" || m.type === "video") && m.viewOnce ? (m.viewedOnce ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-2 py-3`, style: { minWidth: 160 } },
                                 React.createElement("span", { style: { fontSize: 16 } }, "\uD83D\uDD25"),
@@ -1873,6 +1927,117 @@ function TaskAssignSheet({ task, members, myUserId, boss, onPick, onClose }) {
                 mine && row("_rel", tl("تخلَّ عنها", "Give it up"), tl("تعود «لأيّ عضو»", "Back to “anyone”"), () => onPick({ claim: false }), false),
                 !mine && task.assigneeId && React.createElement("p", { className: `text-[12px] py-3 ${textStart()}`, style: { color: colors.textMuted } }, tl("يغيّر المسؤولَ منشئُ القائمة أو المشرف.", "Only the list creator or an admin can reassign."))));
 }
+// ============================================================================
+// C227: تصدير قائمة المهامّ إلى PDF — تُرسم الصفحات على canvas (يُشكّل العربيّة صحيحةً بخطوط الهاتف)
+//       ثمّ تُضمَّن صوراً JPEG في ملفّ PDF مكتوبٍ يدويّاً (بلا مكتبات) · A4 · صفحاتٌ متعدّدة · يُحفظ/يُشارك بـ saveFileOut
+// ============================================================================
+function pdfFromJpegs(pages) {   // pages: [{ jpeg: Uint8Array, w, h }] ⇒ Blob
+    const enc = new TextEncoder(), parts = [], offs = [];
+    let len = 0;
+    const put = (x) => { const b = typeof x === "string" ? enc.encode(x) : x; parts.push(b); len += b.length; };
+    const obj = (n, body, stream) => { offs[n] = len; put(n + " 0 obj\n" + body); if (stream) { put("\nstream\n"); put(stream); put("\nendstream"); } put("\nendobj\n"); };
+    const PW = 595.28, PH = 841.89, n = pages.length;
+    put("%PDF-1.4\n%âãÏÓ\n");
+    obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+    obj(2, "<< /Type /Pages /Count " + n + " /Kids [" + pages.map((_, i) => (3 + i * 3) + " 0 R").join(" ") + "] >>");
+    pages.forEach((p, i) => {
+        const pg = 3 + i * 3, im = pg + 1, ct = pg + 2;
+        obj(pg, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + PW + " " + PH + "] /Resources << /XObject << /Im" + i + " " + im + " 0 R >> >> /Contents " + ct + " 0 R >>");
+        obj(im, "<< /Type /XObject /Subtype /Image /Width " + p.w + " /Height " + p.h + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " + p.jpeg.length + " >>", p.jpeg);
+        const c = "q " + PW + " 0 0 " + PH + " 0 0 cm /Im" + i + " Do Q";
+        obj(ct, "<< /Length " + c.length + " >>", enc.encode(c));
+    });
+    const total = 3 + n * 3, xref = len;
+    let x = "xref\n0 " + total + "\n0000000000 65535 f \n";
+    for (let i = 1; i < total; i++) x += String(offs[i]).padStart(10, "0") + " 00000 n \n";
+    put(x + "trailer\n<< /Size " + total + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF");
+    return new Blob(parts, { type: "application/pdf" });
+}
+function canvasJpeg(cv) { const b64 = cv.toDataURL("image/jpeg", 0.9).split(",")[1], bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+// الصفحات (١٢٤٠×١٧٥٤ = A4 بدقّة ١٥٠ نقطة/بوصة)
+function taskListPages(list, o) {
+    o = o || {};
+    const W = 1240, H = 1754, M = 80, rtl = isRTL(), FONT = "'Noto Naskh Arabic','Noto Sans Arabic','Segoe UI',Tahoma,system-ui,sans-serif";
+    const tasks = (list.tasks || []).slice();
+    const effP = (x) => (x.status === "done" ? 100 : (x.pct || 0));
+    const pct = tasks.length ? Math.round(tasks.reduce((s, x) => s + effP(x), 0) / tasks.length) : 0;
+    const doneN = tasks.filter((x) => x.status === "done").length;
+    const open = tasks.filter((x) => x.status !== "done").sort((a, b) => (a.dueAt || 9e15) - (b.dueAt || 9e15));
+    const done = tasks.filter((x) => x.status === "done").sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    const N = (v) => Number(v || 0).toLocaleString(loc());
+    const dt = (ts) => { try { return new Date(ts).toLocaleDateString(loc(), { day: "numeric", month: "short", year: "numeric" }); } catch (e) { return ""; } };
+    const pages = []; let cv, g, y;
+    const X = (x) => (rtl ? W - x : x);   // من بداية السطر
+    const font = (px, w) => { g.font = (w || 400) + " " + px + "px " + FONT; };
+    const text = (s, x, yy, color, align) => { g.fillStyle = color || "#1A1A2E"; g.textAlign = align || (rtl ? "right" : "left"); g.fillText(s, x, yy); };
+    const wrap = (s, maxW) => {
+        const out = []; String(s || "").split("\n").forEach((para) => {
+            let line = ""; para.split(/\s+/).forEach((w) => { const tryL = line ? line + " " + w : w; if (g.measureText(tryL).width <= maxW || !line) line = tryL; else { out.push(line); line = w; } });
+            out.push(line);
+        }); return out;
+    };
+    const newPage = () => {
+        cv = document.createElement("canvas"); cv.width = W; cv.height = H; g = cv.getContext("2d");
+        try { g.direction = rtl ? "rtl" : "ltr"; } catch (e) { }
+        g.fillStyle = "#fff"; g.fillRect(0, 0, W, H); g.textBaseline = "alphabetic";
+        pages.push(cv); y = M;
+        if (pages.length > 1) { font(22, 700); text(list.title || "", X(M), y + 10, "#6B7280"); y += 44; g.fillStyle = "#E5E7EB"; g.fillRect(M, y, W - 2 * M, 2); y += 30; }
+    };
+    newPage();
+    // الرأس
+    g.fillStyle = "#2F80C8"; g.fillRect(0, 0, W, 14);
+    font(20, 800); text(tl("سوا · قائمة مهامّ", "Sawa · Task list"), X(M), y + 16, "#2F80C8"); y += 64;
+    font(46, 800); wrap(list.title || tl("قائمة مهامّ", "Task list"), W - 2 * M).forEach((l) => { text(l, X(M), y + 30); y += 60; });
+    font(22, 400); text((o.groupName ? o.groupName + " · " : "") + tl("صُدِّرت في ", "Exported ") + dt(Date.now()), X(M), y + 10, "#6B7280"); y += 50;
+    // الملخّص + شريط الإنجاز
+    g.fillStyle = "#F3F6FA"; g.fillRect(M, y, W - 2 * M, 112);
+    font(26, 800); text(tl("المنجَز " + N(doneN) + " من " + N(tasks.length) + "  —  الإنجاز " + N(pct) + "٪", "Done " + doneN + " of " + tasks.length + " · " + pct + "%"), X(M + 28), y + 46);
+    g.fillStyle = "#E5E7EB"; g.fillRect(M + 28, y + 70, W - 2 * M - 56, 16);
+    g.fillStyle = "#16A34A"; const bw = (W - 2 * M - 56) * pct / 100; g.fillRect(rtl ? W - M - 28 - bw : M + 28, y + 70, bw, 16);
+    y += 150;
+    const section = (title, arr) => {
+        if (!arr.length) return;
+        if (y > H - M - 120) newPage();
+        font(28, 800); text(title + " (" + N(arr.length) + ")", X(M), y + 10); y += 30;
+        arr.forEach((tk) => {
+            font(27, 600); const lines = wrap(tk.text, W - 2 * M - 70);
+            const meta = [];
+            if (tk.assigneeName || tk.assigneeId) meta.push("👤 " + (tk.assigneeId && tk.assigneeId === o.myUserId ? tl("أنت", "You") : (tk.assigneeName || tl("عضو", "Member"))));
+            else if (tk.status !== "done") meta.push(tl("لأيّ عضو", "Anyone"));
+            if (tk.dueAt && tk.status !== "done") meta.push("📅 " + dt(tk.dueAt));
+            if (tk.status === "done" && tk.doneByName) meta.push("✓ " + tl("أنجزها ", "Done by ") + tk.doneByName + (tk.doneAt ? " · " + dt(tk.doneAt) : ""));
+            meta.push(tl("النسبة ", "Progress ") + N(effP(tk)) + "٪");
+            font(21, 400); const noteL = tk.note ? wrap("📝 " + tk.note, W - 2 * M - 70) : [];
+            const h = 26 + lines.length * 38 + 34 + noteL.length * 30 + 24;
+            if (y + h > H - M) newPage();
+            g.fillStyle = "#E5E7EB"; g.fillRect(M, y, W - 2 * M, 2);
+            // مربّع الإنجاز
+            const bx = rtl ? W - M - 34 : M; g.strokeStyle = tk.status === "done" ? "#16A34A" : "#2F80C8"; g.lineWidth = 3; g.strokeRect(bx, y + 22, 30, 30);
+            if (tk.status === "done") { g.fillStyle = "#16A34A"; g.fillRect(bx, y + 22, 30, 30); g.strokeStyle = "#fff"; g.lineWidth = 4; g.beginPath(); g.moveTo(bx + 7, y + 37); g.lineTo(bx + 13, y + 44); g.lineTo(bx + 24, y + 29); g.stroke(); }
+            let yy = y + 50; font(27, 600);
+            lines.forEach((l) => { text(l, X(M + 54), yy, tk.status === "done" ? "#6B7280" : "#1A1A2E"); yy += 38; });
+            font(21, 400); text(meta.join("   ·   "), X(M + 54), yy, "#6B7280"); yy += 34;
+            noteL.forEach((l) => { text(l, X(M + 54), yy, "#4B5563"); yy += 30; });
+            y = yy + 14;
+        });
+        y += 30;
+    };
+    section(tl("قيد التنفيذ", "Open"), open);
+    section(tl("المنجَزة", "Done"), done);
+    if (!tasks.length) { font(26, 400); text(tl("لا مهامّ في القائمة", "No tasks in this list"), X(M), y + 20, "#6B7280"); }
+    // التذييل: رقم الصفحة
+    pages.forEach((c, i) => { const gg = c.getContext("2d"); gg.font = "400 18px " + FONT; gg.fillStyle = "#9CA3AF"; gg.textAlign = "center"; gg.fillText(tl("صفحة " + N(i + 1) + " من " + N(pages.length), "Page " + (i + 1) + " of " + pages.length) + " · sawaaap.com", W / 2, H - 40); });
+    return pages;
+}
+function exportTaskListPdf(list, o) {
+    try {
+        const pages = taskListPages(list, o).map((cv) => ({ jpeg: canvasJpeg(cv), w: cv.width, h: cv.height }));
+        const blob = pdfFromJpegs(pages);
+        const name = (String(list.title || "tasks").replace(/[\\/:*?"<>|\n\r]+/g, " ").trim().slice(0, 60) || "tasks") + ".pdf";
+        saveFileOut(blob, name, "application/pdf");
+        return { ok: true, pages: pages.length, size: blob.size, blob };
+    } catch (e) { return { ok: false, error: (e && e.message) || String(e) }; }
+}
 function TaskListCard({ m, myUserId, isAdmin, members, onToggle, onPatch, onAdd, onAddNote, onMenu }) {
     const { colors } = useTheme();
     const [showDone, setShowDone] = useState(false);
@@ -2086,7 +2251,7 @@ function GroupToolsBar({ groupId, messages, myUserId, win, toast }) {
             other.map((x) => row(x, isHid(x))),
             React.createElement("button", { onClick: () => { setShowAll(false); openMyTasks(); }, className: `w-full mt-3 py-2.5 rounded-xl text-[12px] font-extrabold`, style: { color: colors.primary, backgroundColor: colors.primary + "14" } }, tl("✅ كلّ مهامّي في كلّ المجموعات ›", "✅ All my tasks across groups ›"))));
 }
-function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messages, myUserId, onSend, onSendFile, onSendVoice, onEditMessage, onReact, onDeleteMessage, onTyping, contactsForForward, onSendSticker, contacts = null, onInviteLink, onUpdateGroup, onCreatePoll, onEditPoll, onVotePoll, onCreateBillSplit, onPayBillSplit, onCreateFundraiser, onContributeFundraiser, onCreateTaskList, onToggleTaskStatus, onAddTaskNote, onForward, allConversations, allGroups, draft = "", onSaveDraft, unreadCount = 0, onBack, onRenameGroup, onAddGroupMembers, onRemoveGroupMember, onToggleGroupAdmin, onLeaveGroup }) {
+function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, onEditTaskList, group, messages, myUserId, onSend, onSendFile, onSendVoice, onEditMessage, onReact, onDeleteMessage, onTyping, contactsForForward, onSendSticker, contacts = null, onInviteLink, onUpdateGroup, onCreatePoll, onEditPoll, onVotePoll, onCreateBillSplit, onPayBillSplit, onCreateFundraiser, onContributeFundraiser, onCreateTaskList, onToggleTaskStatus, onAddTaskNote, onForward, allConversations, allGroups, draft = "", onSaveDraft, unreadCount = 0, onBack, onRenameGroup, onAddGroupMembers, onRemoveGroupMember, onToggleGroupAdmin, onLeaveGroup }) {
     var _a, _b;
     const { colors } = useTheme();
     useEffect(() => { try { if (group && group.id && window.SawaChat && window.SawaChat.clearNotifs) window.SawaChat.clearNotifs(group.id); } catch (e) { } }, [group && group.id]);   // C187: فتح المجموعة يزيل إشعارها
@@ -2387,6 +2552,7 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
                 a,
                 t("gc_slahya_mshrf"))))))),
         !online && React.createElement(OfflineBar, null),
+        React.createElement(PinnedBar, { ids: pinIdsOf(group), messages, win, colors }),   // C227
         React.createElement("div", { style: { position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } },   // C174: لزرّ «إلى آخر المحادثة»
         React.createElement("div", { ref: scrollContainerRef, className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg }, onScroll: (e) => { if (win.hidden > 0 && e.currentTarget.scrollTop < 80 && stickRef.recent()) win.more(); } },
             messages.length === 0 && React.createElement(EmptyChatState, { icon: UsersRound }),
@@ -2516,7 +2682,7 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
                     React.createElement(SenderAvatar, { name: (sender && sender.name) || t("gc_swal"), size: 20, photo: sender && sender.photo }),
                     React.createElement("button", { onClick: () => { if (sender && sender.uid && window.SawaChat && window.SawaChat.renameContact) window.SawaChat.renameContact(sender.uid); }, className: "text-[11px] font-bold", style: { color: senderColor((sender && sender.name) || t("gc_swal")), background: "none", border: 0, padding: 0 } }, sender === null || sender === void 0 ? void 0 : sender.name, sender && sender.unnamed ? React.createElement("span", { style: { marginInlineStart: 6, fontSize: 10, color: "#B45309", fontWeight: 800 } }, tl("＋ اسم", "+ name")) : null)),
                 m.replyToText && React.createElement("div", { role: "button", onClick: () => jumpToMessage(m.replyTo && (m.replyTo.id || m.replyTo), win, showToast), className: "max-w-[78%] text-[10px] px-2 py-1 mb-0.5 rounded-lg flex items-center gap-2 " + (isRTL() ? "border-r-2" : "border-l-2"), style: { backgroundColor: colors.card, borderColor: colors.accent, color: colors.textMuted, cursor: "pointer" } }, React.createElement("span", { className: "flex-1 min-w-0 truncate" }, "↩ " + m.replyToText), m.replyThumb && React.createElement("img", { src: m.replyThumb, alt: "", style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover", flexShrink: 0 } })),
-                React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["image", "video", "sticker"].includes(m.type) ? "" : "px-3 py-2"}`, style: { backgroundColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : mine ? colors.primary : colors.card, borderColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : colors.border, cursor: "pointer" }, ...(sel ? {} : longPress(() => setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "", type: m.type, thumb: (m.extra && m.extra.thumb) || null, viewOnce: !!m.viewOnce, deleted: !!m.deleted }))) }, m.type === "image" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "sticker" ? (React.createElement("span", { className: "text-4xl" }, m.text)) : m.type === "video" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "file" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2`, onClick: () => { if (m.cloudMid && window.SawaChat) window.SawaChat.openFile(m); }, style: { cursor: m.cloudMid ? "pointer" : "default" } },
+                React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["image", "video", "sticker"].includes(m.type) ? "" : "px-3 py-2"}`, style: { backgroundColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : mine ? colors.primary : colors.card, borderColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : colors.border, cursor: "pointer" }, ...(sel ? {} : longPress(() => setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "", type: m.type, thumb: (m.extra && m.extra.thumb) || null, viewOnce: !!m.viewOnce, deleted: !!m.deleted, starred: !!m.starred, pinned: pinIdsOf(group).indexOf(m.id) >= 0 }))) }, m.type === "image" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "sticker" ? (React.createElement("span", { className: "text-4xl" }, m.text)) : m.type === "video" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "file" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2`, onClick: () => { if (m.cloudMid && window.SawaChat) window.SawaChat.openFile(m); }, style: { cursor: m.cloudMid ? "pointer" : "default" } },
                     React.createElement(FileIconLucide, { size: 18, color: mine ? "#fff" : colors.primary, style: { flexShrink: 0 } }),
                     React.createElement("div", { className: "min-w-0", style: { maxWidth: "100%" } },   // C98: اسمٌ طويل يلتفّ داخل الفقاعة
                         React.createElement("div", { className: "text-xs font-bold", style: { color: mine ? "#fff" : colors.text, overflowWrap: "anywhere", wordBreak: "break-word" } }, m.text),
@@ -2776,6 +2942,7 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
                     setEditingTasksId(m.id); setShowToolsMenu(false); setShowPollForm(false); setShowBillForm(false); setShowFundraiserForm(false); setShowTaskForm(true); } }] : []),
                 { icon: Share2, label: t("twjyh_2"), act: () => setForwardingText({ id: taskMenu.id, text: "✅ " + (taskMenu.title || ""), cid: group.id }) },
                 { icon: ArrowUpRight, label: tl("مشاركة خارج سوا", "Share outside Sawa"), act: () => shareMessageOut({ type: "taskList", title: taskMenu.title, tasks: taskMenu.tasks }) },   // C185
+                { icon: FileText, label: tl("تصدير PDF", "Export PDF"), act: () => { const r = exportTaskListPdf(taskMenu, { groupName: group.name, myUserId }); showToast(r.ok ? tl("صُدِّرت القائمة PDF ✓", "List exported as PDF ✓") : tl("تعذّر التصدير: ", "Export failed: ") + r.error, r.ok ? "success" : "error"); } },   // C227
                 ...(onDeleteMessage ? [{ icon: Trash2, label: t("hdhf"), danger: true, act: () => setGDel({ id: taskMenu.id, canAll: (taskMenu.creatorId || taskMenu.senderId) === myUserId || isAdmin }) }] : []),
             ] }),
         // C101: ورقةٌ مضغوطة كالخاصّة
@@ -2784,6 +2951,9 @@ function GroupChatScreen({ onTaskPatch, onAddTask, onEditTaskList, group, messag
             items: (groupMsgMenu.deleted ? [] : [
                     { icon: CheckCircle2, label: tl("تحديد", "Select"), act: () => setSel([groupMsgMenu.id]) },   // C119
                     { icon: MessageCircle, label: t("rd"), act: () => setGReply({ id: groupMsgMenu.id, text: replyTextOf(groupMsgMenu), thumb: groupMsgMenu.thumb || null, senderId: groupMsgMenu.senderId, senderName: groupMsgMenu.senderName }) },
+                    // C227: التثبيت (حتّى ٣) والحفظ في المفضّلة — كانا في المحادثة الفرديّة فقط
+                    ...(onTogglePin && !groupMsgMenu.deleted && (!(group.infoAdminsOnly || group.adminsOnly) || isAdmin) ? [{ icon: Pin, label: groupMsgMenu.pinned ? t("ch_ilgha_altthbyt") : t("tthbyt"), act: () => onTogglePin(groupMsgMenu.id) }] : []),
+                    ...(onToggleStar && !groupMsgMenu.deleted && !groupMsgMenu.viewOnce ? [{ icon: Star, label: groupMsgMenu.starred ? t("ch_ilgha_alhfz") : t("hfz_alrsala"), act: () => onToggleStar(groupMsgMenu.id, groupMsgMenu.text || replyTextOf(groupMsgMenu)) }] : []),
                     ...(groupMsgMenu.viewOnce ? [] : [
                         { icon: Share2, label: t("twjyh_2"), act: () => setForwardingText({ id: groupMsgMenu.id, text: groupMsgMenu.text, cid: group.id }) },
                         { icon: ArrowUpRight, label: tl("مشاركة خارج سوا", "Share outside Sawa"), act: () => shareMessageOut(messages.find((x) => x.id === groupMsgMenu.id), showToast) }]),
