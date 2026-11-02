@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c218";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c219";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -293,8 +293,11 @@
     rtcStats: function (id, k) { iosRtc._c("rtcStats", { id: id }, k); },
     rtcAudioBr: function (id, bps) { iosRtc._c("rtcAudioBr", { id: id, bps: bps | 0 }); },
     rtcMute: function (m) { iosRtc._c("rtcMute", { m: !!m }); },
-    rtcClose: function (id) { iosRtc._c("rtcClose", { id: id }); }
+    rtcClose: function (id) { iosRtc._c("rtcClose", { id: id }); },
+    rtcPre: function (id, ice) { iosRtc._c("rtcPre", { id: id, ice: ice }); }   // C218 (متاح إن أعلن التطبيق SawaIOS.rtcPre)
   };
+  // C218: هل يدعم التطبيق الأصليّ التجهيز أثناء الرنين؟ (بناءٌ أقدم ⇒ لا — يبقى التحسين الثاني وحده)
+  function nativePreOk() { try { var nb = RTCB(); if (!nb) return false; if (nb.ios) { var i = IOSB(); return !!(i && i.rtcPre); } return typeof nb.rtcPre === "function" || !!nb.rtcPre; } catch (e) { return false; } }
   function RTCB() { var n = NB(); if (n && n.rtcNew) return n; var i = IOSB(); return i && i.rtc ? iosRtc : null; }
   function nativeAudioOk(type) {
     try {
@@ -314,9 +317,9 @@
     Object.defineProperty(t, "enabled", { get: function () { return t._en; }, set: function (v) { t._en = !!v; try { RTCB().rtcMute(!v); } catch (e) {} } });
     return { native: true, getAudioTracks: function () { return [t]; }, getVideoTracks: function () { return []; }, getTracks: function () { return [t]; }, addTrack: function () {}, removeTrack: function () {} };
   }
-  function NativePC(ice) {
+  function NativePC(ice, id) {
     var self = this;
-    this.id = "p" + Date.now().toString(36) + rid(5); this.native = true; this.closed = false;
+    this.id = id || ("p" + Date.now().toString(36) + rid(5)); this.native = true; this.closed = false;   // C218: id = اتّصالٌ جُهِّز أثناء الرنين ⇒ rtcNew يتبنّاه
     this.connectionState = "new"; this.iceConnectionState = "new";
     NRTC.pcs[this.id] = this;
     this.ready = nCall(function (k) { RTCB().rtcNew(self.id, JSON.stringify(ice || []), k); });
@@ -854,7 +857,7 @@
       attachRemote(c);
     };
     // C218: مسارات الطرف الآخر التي وصلت أثناء التجهيز المسبق (setRemoteDescription قبل الردّ) — تُعاد الآن على المعالج الحقيقيّ
-    if (pre && c.preTracks) { var pt = c.preTracks; c.preTracks = null; pt.forEach(function (e) { try { pc.ontrack(e); } catch (x) {} }); }
+    if (pre && !pre.native && c.preTracks) { var pt = c.preTracks; c.preTracks = null; pt.forEach(function (e) { try { pc.ontrack(e); } catch (x) {} }); }
     pc.onconnectionstatechange = function () { onConn(c, pc.connectionState); };
     pc.oniceconnectionstatechange = function () {
       // متصفّحات لا تدعم connectionState (Safari قديم)
@@ -1302,7 +1305,17 @@
   // (لا وصفٌ محلّيّ قبل الردّ). المحرّك الأصليّ ⚡ لا يدعمه بعد (يحتاج تعديل Java/Swift) — يأخذ التحسين الثاني وحده.
   function prewarm(c) {
     if (!c || c.done || c.pre || c.pc || c.state !== "incoming" || !c.offer || !global.RTCPeerConnection) return;
-    if (c.type === "audio" && nativeAudioOk("audio")) return;
+    if (c.type === "audio" && nativeAudioOk("audio")) {   // المحرّك الأصليّ ⚡: يحجز الوسيط داخل التطبيق (بلا وصفٍ ولا صوت)
+      if (!nativePreOk()) return;
+      getIce(2500).then(function (ice) {
+        if (c.done || c.pre || c.pc || c.state !== "incoming") return;
+        var nid = "p" + Date.now().toString(36) + rid(5);
+        try { RTCB().rtcPre(nid, JSON.stringify(ice || [])); } catch (e) { return; }
+        c.pre = { nid: nid, native: true, ice: ice, at: Date.now(), ok: true };
+        LOG.info("prewarm", { id: c.id, eng: "native" });
+      }).catch(function () {});
+      return;
+    }
     getIce(2500).then(function (ice) {
       if (c.done || c.pre || c.pc || c.state !== "incoming") return;
       var pc; try { pc = new global.RTCPeerConnection({ iceServers: ice, iceCandidatePoolSize: 1 }); } catch (e) { return; }
@@ -1315,7 +1328,11 @@
       LOG.info("prewarm", { id: c.id });
     }).catch(function () {});
   }
-  function dropPre(c) { var p = c && c.pre; if (!p) return; c.pre = null; c.preTracks = null; if (p.pc && p.pc !== c.pc) try { p.pc.close(); } catch (e) {} }
+  function dropPre(c) {
+    var p = c && c.pre; if (!p) return; c.pre = null; c.preTracks = null;
+    if (p.native) { if (!(c.pc && c.pc.id === p.nid)) try { RTCB().rtcClose(p.nid); } catch (e) {} return; }
+    if (p.pc && p.pc !== c.pc) try { p.pc.close(); } catch (e) {}
+  }
   function accept(audioOnly) {
     var c = cur; if (!c || c.role !== "callee" || c.state !== "incoming") return;
     c.accAt = Date.now();   // C179
@@ -1347,12 +1364,13 @@
     var ansP = mediaP.then(function (res) { return Promise.resolve(!c.native && c.pre ? c.pre.remP : null).then(function () { return res; }); }).then(function (res) {
       if (c.done) { stopStream(res[0]); return null; }
       c.local = res[0]; earlyRoute(c); attachLocal(c); paint(c);
-      var pre = !c.native && c.pre && c.pre.pc && c.pre.ok && !c.pre.bad ? c.pre : null;
-      if (!pre) dropPre(c); else c.pre = null;
-      c.pw = pre ? 1 : 0;   // للسجلّ: هل استُعمل التجهيز المسبق
-      c.pc = makePc(c, res[1], pre ? pre.pc : null);
+      var pre = !c.native && c.pre && !c.pre.native && c.pre.pc && c.pre.ok && !c.pre.bad ? c.pre : null;
+      var npre = c.native && c.pre && c.pre.native ? c.pre : null;   // ⚡: الوسيط محجوزٌ داخل التطبيق، والوصف لم يُضبط بعد
+      if (!pre && !npre) dropPre(c); else c.pre = null;
+      c.pw = pre || npre ? 1 : 0;   // للسجلّ: هل استُعمل التجهيز المسبق
+      c.pc = makePc(c, res[1], pre ? pre.pc : npre ? new NativePC(res[1], npre.nid) : null);
       if (!c.icOn) { c.icOn = true; listen(c, c.ref.child("ic_caller"), "child_added", function (s) { addRemoteIce(c, s.val()); }); }
-      return (pre ? Promise.resolve() : c.pc.setRemoteDescription(c.offer)).then(function () {
+      return (pre ? Promise.resolve() : c.pc.setRemoteDescription(c.offer)).then(function () {   // ⚡ المُجهَّز: الوصف يُضبط الآن
         flushIceIn(c); addTracks(c);
         return c.pc.createAnswer();
       }).then(function (a) { return c.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); });
