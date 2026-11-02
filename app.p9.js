@@ -53,8 +53,11 @@ function App() {
         document.documentElement.style.setProperty("--sfs", String(fontScale));
         if (!document.getElementById("sawa-fs-css")) {
             const st = document.createElement("style"); st.id = "sawa-fs-css";
-            st.textContent = ["7", "8", "9", "9.5", "10", "10.5", "11", "11.5", "12", "12.5", "13", "13.5", "14", "14.5", "15", "16", "17", "19", "22"].map((n) => `.text-\\[${n.replace(".", "\\.")}px\\]{font-size:calc(${n}px * var(--sfs, 1))}`).join("")
-                + [["xs", .75, 1], ["sm", .875, 1.25], ["base", 1, 1.5], ["lg", 1.125, 1.75], ["xl", 1.25, 1.75], ["2xl", 1.5, 2], ["3xl", 1.875, 2.25], ["4xl", 2.25, 2.5]].map(([k, f, l]) => `.text-${k}{font-size:calc(${f}rem * var(--sfs, 1));line-height:calc(${l}rem * var(--sfs, 1))}`).join("")
+            // C188: الحرف العربيّ يحتاج حجماً أكبر من اللاتينيّ ليُقرأ — النصوص الصغيرة تكبر (٩ ⇐ ١١، ١٠ ⇐ ١١٫٥، ١١ ⇐ ١٢، ١٢ ⇐ ١٣)، و١٣ فما فوق بلا تغيير.
+            //   الاسم يبقى (text-[10px]) والحجم المعروض من هذا الجدول؛ ٧ و٨ للشارات الصغيرة فتكبر قليلاً فقط.
+            const SFS_MAP = { "7": 8.5, "8": 9.5, "9": 11, "9.5": 11, "10": 11.5, "10.5": 12, "11": 12, "11.5": 12.5, "12": 13, "12.5": 13.5 };
+            st.textContent = ["7", "8", "9", "9.5", "10", "10.5", "11", "11.5", "12", "12.5", "13", "13.5", "14", "14.5", "15", "16", "17", "19", "22"].map((n) => `.text-\\[${n.replace(".", "\\.")}px\\]{font-size:calc(${SFS_MAP[n] || n}px * var(--sfs, 1))}`).join("")
+                + [["xs", .8125, 1.125], ["sm", .875, 1.3125], ["base", 1, 1.5], ["lg", 1.125, 1.75], ["xl", 1.25, 1.75], ["2xl", 1.5, 2], ["3xl", 1.875, 2.25], ["4xl", 2.25, 2.5]].map(([k, f, l]) => `.text-${k}{font-size:calc(${f}rem * var(--sfs, 1));line-height:calc(${l}rem * var(--sfs, 1))}`).join("")
                 + [["4", 1], ["5", 1.25], ["7", 1.75], ["8", 2]].map(([k, l]) => `.leading-${k}{line-height:calc(${l}rem * var(--sfs, 1))}`).join("")
                 + "body{font-size:calc(1rem * var(--sfs, 1))}";
             document.head.appendChild(st);
