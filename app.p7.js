@@ -1012,6 +1012,7 @@ function SelfieCapture({ onCaptured }) {
     function retake() {
         setCapturedUrl(null);
         setStatus("idle");
+        if (onCaptured) onCaptured(null);   // C223: إعادة الالتقاط تُبطل الصورة السابقة عند الأب
     }
     useEffect(() => () => { var _a; return (_a = streamRef.current) === null || _a === void 0 ? void 0 : _a.getTracks().forEach((t) => t.stop()); }, []);
     return (React.createElement("div", { className: "flex flex-col items-center" },
@@ -1027,48 +1028,238 @@ function SelfieCapture({ onCaptured }) {
             React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.danger } }, errorMsg),
             React.createElement(Button, { label: t("hawl_mra_thanya"), onPress: startCamera, variant: "outline", style: { width: 220 } })))));
 }
-function KycFlowScreen({ kycStatus, onSubmit, onBack }) {
+// ============================================================================
+// C223: توثيق الهويّة — نوع المستند · الوجهان · معاينة وإعادة التقاط · فحص جودةٍ تلقائيّ في الهاتف · مراجعة وموافقة
+// الصور لا تغادر الهاتف (نسخةٌ تجريبيّة): تُفحص هنا وتُعرض للمراجعة ثمّ تُمحى بعد الإرسال، ويُحفظ وصفها فقط.
+// ============================================================================
+const KYC_DOCS = [
+    { id: "nid", ar: "البطاقة القوميّة", en: "National ID card", sides: ["front", "back"] },
+    { id: "passport", ar: "جواز السفر", en: "Passport", sides: ["data"] },
+    { id: "license", ar: "رخصة القيادة", en: "Driving licence", sides: ["front", "back"] },
+    { id: "residence", ar: "بطاقة الإقامة", en: "Residence permit", sides: ["front", "back"] },
+];
+const KYC_SIDE_TX = { front: ["الوجه الأماميّ", "Front"], back: ["الوجه الخلفيّ", "Back"], data: ["صفحة البيانات (التي فيها الصورة)", "Data page (with photo)"] };
+// حدود الفحص — المستند: دقّةٌ تُقرأ بها الأحرف الصغيرة · الحجم: لا لقطةً مصغّرة ولا ملفّاً ضخماً
+const KYC_LIMITS = { minLong: 1000, minShort: 600, minBytes: 30 * 1024, maxBytes: 10 * 1024 * 1024, dark: 60, bright: 215, blurErr: 15, blurWarn: 50 };
+function kycLoadImage(src) {
+    // ⚠️ لا new Image(): «Image» في التطبيق أيقونة Lucide (من window.__L) تحجب منشئ المتصفّح
+    return new Promise((res, rej) => { const im = document.createElement("img"); im.onload = () => res(im); im.onerror = () => rej(new Error("decode")); im.src = src; });
+}
+// إضاءةٌ متوسّطة (٠–٢٥٥) ووضوحٌ (تباين لابلاسيان على صورةٍ مصغّرة بعرض ٤٨٠) — مقياسان بسيطان يكشفان المظلمة والمهزوزة
+function kycMeasure(im) {
+    const W = Math.min(480, im.naturalWidth || im.width), H = Math.max(1, Math.round(W * (im.naturalHeight || im.height) / (im.naturalWidth || im.width)));
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    const cx = cv.getContext("2d", { willReadFrequently: true }); cx.drawImage(im, 0, 0, W, H);
+    const d = cx.getImageData(0, 0, W, H).data, g = new Float32Array(W * H);
+    let sum = 0;
+    for (let i = 0, j = 0; i < d.length; i += 4, j++) { const v = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; g[j] = v; sum += v; }
+    let n = 0, m = 0, m2 = 0;
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+        const k = y * W + x, L = g[k - W] + g[k + W] + g[k - 1] + g[k + 1] - 4 * g[k];
+        n++; m += L; m2 += L * L;
+    }
+    const mean = n ? m / n : 0;
+    return { lum: Math.round(sum / (W * H)), sharp: n ? Math.round(m2 / n - mean * mean) : 0 };
+}
+// صورةٌ للمعاينة (أطول ضلع ١٢٨٠، JPEG) — للعرض في الهاتف فقط
+function kycPreview(im) {
+    const s = Math.min(1, 1280 / Math.max(im.naturalWidth, im.naturalHeight));
+    const cv = document.createElement("canvas"); cv.width = Math.round(im.naturalWidth * s); cv.height = Math.round(im.naturalHeight * s);
+    cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+    return cv.toDataURL("image/jpeg", 0.85);
+}
+// يعيد { ok, url, w, h, lum, sharp, sig, issues:[{lvl:"err"|"warn", ar, en}] }
+async function kycCheckFile(file, kind) {
+    const issues = [];
+    const add = (lvl, ar, en) => issues.push({ lvl, ar, en });
+    if (!file || !/^image\//.test(file.type || "")) { add("err", "الملفّ ليس صورة — اختر صورة JPG أو PNG", "Not an image — choose a JPG or PNG"); return { ok: false, issues }; }
+    if (file.size > KYC_LIMITS.maxBytes) add("err", "الصورة أكبر من ١٠ م.ب", "Image is larger than 10 MB");
+    if (file.size < KYC_LIMITS.minBytes) add("err", "الصورة صغيرةٌ جدّاً — يبدو أنّها مصغّرة أو لقطة شاشة", "Image is too small — looks like a thumbnail or screenshot");
+    const url0 = URL.createObjectURL(file);
+    let im;
+    try { im = await kycLoadImage(url0); }
+    catch (e) { URL.revokeObjectURL(url0); add("err", "تعذّرت قراءة الصورة — استعمل JPG أو PNG", "Couldn't read the image — use JPG or PNG"); return { ok: false, issues }; }
+    const w = im.naturalWidth, h = im.naturalHeight, lng = Math.max(w, h), sht = Math.min(w, h);
+    if (kind === "doc" && (lng < KYC_LIMITS.minLong || sht < KYC_LIMITS.minShort)) add("err", "الدقّة منخفضة (" + w + "×" + h + ") — اقترب من المستند أو استعمل الكاميرا الخلفيّة", "Resolution too low (" + w + "×" + h + ") — move closer or use the rear camera");
+    const ms = kycMeasure(im);
+    if (ms.lum < KYC_LIMITS.dark) add("err", "الصورة مظلمة — صوّر في مكانٍ مضيء", "Too dark — take it in better light");
+    else if (ms.lum > KYC_LIMITS.bright) add("err", "الصورة شديدة الإضاءة أو فيها انعكاس — أبعد الفلاش أو غيّر الزاوية", "Too bright or glare — avoid flash or change the angle");
+    if (kind === "doc") {
+        if (ms.sharp < KYC_LIMITS.blurErr) add("err", "الصورة مهزوزة وغير واضحة — ثبّت الهاتف وأعد الالتقاط", "Blurry — hold the phone steady and retake");
+        else if (ms.sharp < KYC_LIMITS.blurWarn) add("warn", "الوضوح أقلّ من المطلوب — تأكّد أنّ الأحرف مقروءة", "Sharpness is low — make sure the text is readable");
+        const r = lng / sht;
+        if (r > 2.2) add("warn", "أبعاد غير معتادة — يجب أن يظهر المستند كاملاً بلا قصّ", "Unusual proportions — the whole document should be visible");
+    }
+    const url = kycPreview(im);
+    URL.revokeObjectURL(url0);
+    // بصمةٌ بسيطة لكشف رفع الصورة نفسها للوجهين
+    const sig = file.size + ":" + w + "x" + h + ":" + ms.lum + ":" + ms.sharp;
+    return { ok: !issues.some((x) => x.lvl === "err"), url, w, h, lum: ms.lum, sharp: ms.sharp, sig, issues };
+}
+async function kycCheckSelfie(dataUrl) {
+    const issues = [];
+    try {
+        const im = await kycLoadImage(dataUrl), ms = kycMeasure(im);
+        if (ms.lum < KYC_LIMITS.dark) issues.push({ lvl: "err", ar: "الصورة الشخصيّة مظلمة — قف قرب مصدر ضوء", en: "Selfie too dark — face a light source" });
+        else if (ms.lum > KYC_LIMITS.bright) issues.push({ lvl: "err", ar: "الصورة الشخصيّة شديدة الإضاءة", en: "Selfie too bright" });
+        return { ok: !issues.length, url: dataUrl, lum: ms.lum, issues };
+    }
+    catch (e) { return { ok: false, issues: [{ lvl: "err", ar: "تعذّرت قراءة الصورة الشخصيّة", en: "Couldn't read the selfie" }] }; }
+}
+function KycIssues({ res }) {
     const { colors } = useTheme();
-    const [docFile, setDocFile] = useState(null);
-    const [selfieDataUrl, setSelfieDataUrl] = useState(null);
-    const docInputRef = useRef(null);
+    if (!res) return null;
+    const list = res.issues || [];
+    if (!list.length) return React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-2 text-[11px] font-bold`, style: { color: colors.success } }, React.createElement(CheckCircle2, { size: 13, color: colors.success }), tl("الصورة واضحة ومقبولة", "Clear and acceptable"));
+    return React.createElement("div", { className: "mt-2 flex flex-col gap-1" }, list.map((x, i) => React.createElement("div", { key: i, className: `flex ${rowStart()} items-start gap-1.5 text-[11px] font-bold leading-snug ${textStart()}`, style: { color: x.lvl === "err" ? colors.danger : colors.accent } },
+        React.createElement(x.lvl === "err" ? X : AlertTriangle, { size: 13, color: x.lvl === "err" ? colors.danger : colors.accent, className: "shrink-0 mt-0.5" }), tl(x.ar, x.en))));
+}
+function KycStepper({ step }) {
+    const { colors } = useTheme();
+    const S = [tl("المستند", "Document"), tl("الصور", "Photos"), tl("صورتك", "Selfie"), tl("المراجعة", "Review")];
+    return React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 mb-4` }, S.map((s, i) => {
+        const n = i + 1, done = n < step, on = n === step;
+        return React.createElement(React.Fragment, { key: n },
+            React.createElement("div", { className: "flex flex-col items-center gap-1", style: { minWidth: 54 } },
+                React.createElement("div", { className: "w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-extrabold", style: { backgroundColor: done || on ? colors.primary : colors.card, color: done || on ? "#fff" : colors.textMuted, border: `1px solid ${done || on ? colors.primary : colors.border}` } },
+                    done ? React.createElement(Check, { size: 13, color: "#fff" }) : n.toLocaleString(loc())),
+                React.createElement("span", { className: "text-[10px] font-bold", style: { color: on ? colors.primary : colors.textMuted } }, s)),
+            n < S.length && React.createElement("div", { className: "flex-1 h-0.5 rounded-full mb-4", style: { backgroundColor: done ? colors.primary : colors.border } }));
+    }));
+}
+function KycFlowScreen({ kycStatus, kycMeta, onSubmit, onBack }) {
+    const { colors } = useTheme();
+    const [step, setStep] = useState(1);
+    const [docType, setDocType] = useState(null);
+    const [shots, setShots] = useState({});   // side -> نتيجة الفحص
+    const [busy, setBusy] = useState(null);
+    const [selfie, setSelfie] = useState(null);
+    const [consent, setConsent] = useState(false);
+    const [, tick] = useState(0);
+    const camRef = useRef(null), galRef = useRef(null), sideRef = useRef(null);
+    useEffect(() => { if (kycStatus !== "pending") return; const t = setInterval(() => tick((x) => x + 1), 1000); return () => clearInterval(t); }, [kycStatus]);
+    const doc = KYC_DOCS.find((d) => d.id === docType) || null;
+    const docLabel = (id) => { const d = KYC_DOCS.find((x) => x.id === id); return d ? tl(d.ar, d.en) : ""; };
+    const shell = (body, back) => React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
+        React.createElement(TopBar, { title: t("twthyq_alhwya"), onBack: back || onBack }),
+        React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } }, body));
     if (kycStatus === "verified") {
-        return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
-            React.createElement(TopBar, { title: t("twthyq_alhwya"), onBack: onBack }),
-            React.createElement("div", { className: "flex-1 overflow-y-auto flex flex-col items-center justify-center p-6", style: { backgroundColor: colors.bg } },
-                React.createElement(ShieldCheck, { size: 40, color: colors.success }),
-                React.createElement("h3", { className: "text-base font-extrabold mt-3", style: { color: colors.text } }, t("hsabk_mwthq")))));
+        return shell(React.createElement("div", { className: "flex flex-col items-center text-center pt-10" },
+            React.createElement("div", { className: "w-16 h-16 rounded-full flex items-center justify-center", style: { backgroundColor: colors.success + "1A" } }, React.createElement(ShieldCheck, { size: 34, color: colors.success })),
+            React.createElement("h3", { className: "text-base font-extrabold mt-3", style: { color: colors.text } }, t("hsabk_mwthq")),
+            kycMeta && React.createElement("p", { className: "text-xs mt-1", style: { color: colors.textMuted } }, docLabel(kycMeta.type) + " · " + new Date(kycMeta.at).toLocaleDateString(loc(), { day: "numeric", month: "long", year: "numeric" })),
+            React.createElement("p", { className: "text-[11px] mt-3", style: { color: colors.textMuted } }, tl("نسخةٌ تجريبيّة: القبول محاكاة، ولم تُرسَل صورك إلى أيّ خادم.", "Demo: approval is simulated and your photos were not sent to any server."))));
     }
     if (kycStatus === "pending") {
-        return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
-            React.createElement(TopBar, { title: t("twthyq_alhwya"), onBack: onBack }),
-            React.createElement("div", { className: "flex-1 overflow-y-auto flex flex-col items-center justify-center p-6", style: { backgroundColor: colors.bg } },
-                React.createElement(Clock, { size: 40, color: colors.accent }),
+        const el = kycMeta ? (Date.now() - kycMeta.at) / 1000 : 0;
+        const T = [[tl("استُلم الطلب", "Request received"), 0], [tl("فحص المستندات", "Checking documents"), 1.5], [tl("مطابقة الصورة الشخصيّة", "Matching your selfie"), 3], [tl("القرار", "Decision"), 4.5]];
+        return shell(React.createElement("div", null,
+            React.createElement("div", { className: "flex flex-col items-center text-center pt-6 mb-5" },
+                React.createElement(Clock, { size: 36, color: colors.accent }),
                 React.createElement("h3", { className: "text-base font-extrabold mt-3", style: { color: colors.text } }, t("tlbk_qyd_almrajaa")),
-                React.createElement("p", { className: "text-xs mt-1 text-center", style: { color: colors.textMuted } }, t("rajana_mstndatk_wsylfyk_btrja")))));
+                React.createElement("p", { className: "text-[11px] mt-1", style: { color: colors.textMuted } }, tl("مراجعة محاكاة في النسخة التجريبيّة", "Simulated review in this demo"))),
+            React.createElement(Card, null, T.map((x, i) => {
+                const done = el >= (T[i + 1] ? T[i + 1][1] : 99), on = !done && el >= x[1];
+                return React.createElement("div", { key: i, className: `flex ${rowStart()} items-center gap-3 py-2` },
+                    React.createElement("div", { className: "w-6 h-6 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: done ? colors.success : on ? colors.accent : colors.border } },
+                        done ? React.createElement(Check, { size: 13, color: "#fff" }) : on ? React.createElement(Clock, { size: 12, color: "#fff" }) : null),
+                    React.createElement("span", { className: "text-xs font-bold", style: { color: done || on ? colors.text : colors.textMuted } }, x[0]));
+            }))));
     }
-    const canSubmit = !!docFile && !!selfieDataUrl;
-    return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
-        React.createElement(TopBar, { title: t("twthyq_alhwya"), onBack: onBack }),
-        React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
-            React.createElement("p", { className: "text-xs mb-4 text-center", style: { color: colors.textMuted } }, t("khtwtan_lazmtan_maa_rfa")),
+    // ---------- الإدخال ----------
+    const pick = (side, cam) => { sideRef.current = side; const r = cam ? camRef.current : galRef.current; if (r) { r.value = ""; r.click(); } };
+    const onFile = async (e) => {
+        const f = e.target.files && e.target.files[0], side = sideRef.current;
+        if (!f || !side) return;
+        setBusy(side);
+        const res = await kycCheckFile(f, "doc");
+        const other = Object.keys(shots).find((k) => k !== side && shots[k] && shots[k].sig && shots[k].sig === res.sig);
+        if (other) { res.ok = false; res.issues = [{ lvl: "err", ar: "هذه الصورة نفسها مرفوعةٌ للوجه الآخر", en: "Same photo as the other side" }].concat(res.issues || []); }
+        setShots((p) => ({ ...p, [side]: res })); setBusy(null);
+    };
+    const sidesOk = !!doc && doc.sides.every((s) => shots[s] && shots[s].ok);
+    const fileInputs = [
+        React.createElement("input", { key: "cam", ref: camRef, type: "file", accept: "image/*", capture: "environment", className: "hidden", onChange: onFile }),
+        React.createElement("input", { key: "gal", ref: galRef, type: "file", accept: "image/jpeg,image/png,image/webp", className: "hidden", onChange: onFile }),
+    ];
+    const privacy = React.createElement("div", { className: `flex ${rowStart()} items-start gap-2 rounded-xl border p-2.5 mb-3`, style: { borderColor: colors.border, backgroundColor: colors.card } },
+        React.createElement(Lock, { size: 14, color: colors.textMuted, className: "shrink-0 mt-0.5" }),
+        React.createElement("span", { className: `text-[11px] leading-snug ${textStart()}`, style: { color: colors.textMuted } }, tl("تُفحص صورك على هذا الهاتف ولا تُرسَل إلى أيّ خادم في هذه النسخة، وتُمحى بعد الإرسال للمراجعة.", "Your photos are checked on this phone, not sent to any server in this version, and erased after you submit.")));
+    if (step === 1) {
+        return shell(React.createElement("div", null,
+            React.createElement(KycStepper, { step: 1 }),
+            React.createElement("h3", { className: `text-sm font-extrabold mb-3 ${textStart()}`, style: { color: colors.text } }, tl("اختر المستند الذي ستوثّق به", "Choose the document you'll use")),
+            KYC_DOCS.map((d) => React.createElement("button", { key: d.id, onClick: () => { setDocType(d.id); setShots({}); }, className: `w-full flex ${rowStart()} items-center gap-3 rounded-2xl border p-3 mb-2 ${textStart()}`, style: { backgroundColor: colors.card, borderColor: docType === d.id ? colors.primary : colors.border, borderWidth: docType === d.id ? 2 : 1 } },
+                React.createElement("div", { className: "w-10 h-10 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primaryLight } }, React.createElement(FileIconLucide, { size: 18, color: colors.primary })),
+                React.createElement("div", { className: "flex-1 min-w-0" },
+                    React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, tl(d.ar, d.en)),
+                    React.createElement("div", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } }, d.sides.length === 2 ? tl("صورتان: الوجه الأماميّ والخلفيّ", "Two photos: front and back") : tl("صورةٌ واحدة: صفحة البيانات", "One photo: the data page"))),
+                docType === d.id && React.createElement(CheckCircle2, { size: 18, color: colors.primary, className: "shrink-0" }))),
+            React.createElement("div", { className: "h-2" }),
+            privacy,
+            React.createElement(Button, { label: tl("التالي", "Next"), disabled: !doc, onPress: () => setStep(2) })));
+    }
+    if (step === 2 && doc) {
+        return shell(React.createElement("div", null,
+            fileInputs,
+            React.createElement(KycStepper, { step: 2 }),
+            React.createElement("div", { className: `rounded-xl border p-3 mb-3 ${textStart()}`, style: { borderColor: colors.border, backgroundColor: colors.card } },
+                React.createElement("div", { className: "text-xs font-extrabold mb-1.5", style: { color: colors.text } }, tl("نصائح لصورةٍ مقبولة", "Tips for an accepted photo")),
+                [tl("ضع المستند على سطحٍ داكن ومستوٍ", "Place it on a dark, flat surface"), tl("أظهر الحواف الأربع كاملةً بلا قصّ", "Show all four edges"), tl("صوّر في ضوءٍ جيّد بلا فلاش ولا انعكاس", "Good light, no flash or glare"), tl("ثبّت الهاتف حتّى تكون الأحرف مقروءة", "Hold steady so text is readable")].map((x, i) => React.createElement("div", { key: i, className: `flex ${rowStart()} items-center gap-1.5 text-[11px]`, style: { color: colors.textMuted } }, React.createElement(Check, { size: 11, color: colors.success, className: "shrink-0" }), x))),
+            doc.sides.map((side) => {
+                const r = shots[side];
+                return React.createElement(Card, { key: side },
+                    React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-2` },
+                        React.createElement("span", { className: "text-sm font-bold", style: { color: colors.text } }, tl(doc.ar, doc.en) + " — " + tl(KYC_SIDE_TX[side][0], KYC_SIDE_TX[side][1])),
+                        r && React.createElement("span", { className: "text-[10px] font-extrabold px-2 py-0.5 rounded-full", style: { backgroundColor: (r.ok ? colors.success : colors.danger) + "1A", color: r.ok ? colors.success : colors.danger } }, r.ok ? tl("مقبولة", "Accepted") : tl("أعد الالتقاط", "Retake"))),
+                    r && r.url && React.createElement("img", { src: r.url, alt: tl(KYC_SIDE_TX[side][0], KYC_SIDE_TX[side][1]), className: "w-full rounded-xl object-contain mb-1", style: { maxHeight: 180, backgroundColor: colors.bg } }),
+                    busy === side && React.createElement("div", { className: "text-[11px] font-bold py-2", style: { color: colors.textMuted } }, tl("جارٍ فحص الصورة…", "Checking the photo…")),
+                    React.createElement(KycIssues, { res: r }),
+                    React.createElement("div", { className: `flex ${rowStart()} gap-2 mt-3` },
+                        React.createElement("button", { onClick: () => pick(side, true), className: "flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-bold", style: { backgroundColor: colors.primary, color: "#fff" } }, React.createElement(Camera, { size: 14, color: "#fff" }), r ? tl("إعادة التقاط", "Retake") : tl("التقاط بالكاميرا", "Use camera")),
+                        React.createElement("button", { onClick: () => pick(side, false), className: "flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-bold border", style: { borderColor: colors.primary, color: colors.primary, backgroundColor: colors.card } }, React.createElement(Upload, { size: 14, color: colors.primary }), tl("من المعرض", "From gallery"))));
+            }),
+            React.createElement(Button, { label: tl("التالي", "Next"), disabled: !sidesOk, onPress: () => setStep(3) }),
+            React.createElement("div", { className: "h-2" }),
+            React.createElement(Button, { label: tl("رجوع", "Back"), variant: "outline", onPress: () => setStep(1) })), () => setStep(1));
+    }
+    if (step === 3) {
+        return shell(React.createElement("div", null,
+            React.createElement(KycStepper, { step: 3 }),
             React.createElement(Card, null,
-                React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-2` },
-                    React.createElement(FileIconLucide, { size: 14, color: colors.primary }),
-                    React.createElement("span", { className: "text-sm font-bold", style: { color: colors.text } }, t("1_swra_alhwya_aw"))),
-                React.createElement("input", { ref: docInputRef, type: "file", accept: "image/*", className: "hidden", onChange: (e) => { var _a; return setDocFile(((_a = e.target.files) === null || _a === void 0 ? void 0 : _a[0]) || null); } }),
-                docFile ? (React.createElement("div", { className: `flex ${rowStart()} items-center justify-between` },
-                    React.createElement("span", { className: "text-xs", style: { color: colors.success } },
-                        "\u2713 ",
-                        docFile.name),
-                    React.createElement("button", { onClick: () => { var _a; return (_a = docInputRef.current) === null || _a === void 0 ? void 0 : _a.click(); }, className: "text-[11px] font-bold underline", style: { color: colors.primary } }, t("tghyyr")))) : (React.createElement(Button, { label: t("rfa_swra"), onPress: () => { var _a; return (_a = docInputRef.current) === null || _a === void 0 ? void 0 : _a.click(); }, variant: "outline" }))),
+                React.createElement("div", { className: `text-sm font-bold mb-1 ${textStart()}`, style: { color: colors.text } }, tl("صورةٌ شخصيّة حيّة", "A live selfie")),
+                React.createElement("div", { className: `text-[11px] mb-3 ${textStart()}`, style: { color: colors.textMuted } }, tl("انظر إلى الكاميرا مباشرةً، بلا نظّارةٍ شمسيّة ولا غطاءٍ للوجه، في ضوءٍ جيّد.", "Look straight at the camera — no sunglasses or face covering, good light.")),
+                React.createElement(SelfieCapture, { onCaptured: async (u) => { if (!u) { setSelfie(null); return; } setSelfie({ checking: true }); setSelfie(await kycCheckSelfie(u)); } }),
+                selfie && !selfie.checking && React.createElement(KycIssues, { res: selfie })),
+            React.createElement(Button, { label: tl("التالي", "Next"), disabled: !(selfie && selfie.ok), onPress: () => setStep(4) }),
+            React.createElement("div", { className: "h-2" }),
+            React.createElement(Button, { label: tl("رجوع", "Back"), variant: "outline", onPress: () => setStep(2) })), () => setStep(2));
+    }
+    if (step === 4 && doc) {
+        const thumbs = doc.sides.map((s) => ({ k: s, url: shots[s] && shots[s].url, label: tl(KYC_SIDE_TX[s][0], KYC_SIDE_TX[s][1]) })).concat([{ k: "selfie", url: selfie && selfie.url, label: tl("الصورة الشخصيّة", "Selfie") }]);
+        return shell(React.createElement("div", null,
+            React.createElement(KycStepper, { step: 4 }),
             React.createElement(Card, null,
-                React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-3` },
-                    React.createElement(Camera, { size: 14, color: colors.primary }),
-                    React.createElement("span", { className: "text-sm font-bold", style: { color: colors.text } }, t("2_sylfy_hy_kamyra"))),
-                React.createElement(SelfieCapture, { onCaptured: setSelfieDataUrl })),
-            React.createElement(Button, { label: t("irsal_llmrajaa"), onPress: () => canSubmit && onSubmit(), disabled: !canSubmit, className: "mt-2" }),
-            !canSubmit && React.createElement("p", { className: "text-[11px] text-center mt-2", style: { color: colors.textMuted } }, t("yjb_ikmal_alkhtwtyn_alathntyn")))));
+                React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-3` },
+                    React.createElement("span", { className: "text-sm font-extrabold", style: { color: colors.text } }, tl(doc.ar, doc.en)),
+                    React.createElement("button", { onClick: () => setStep(1), className: "text-[11px] font-bold", style: { color: colors.primary } }, tl("تغيير", "Change"))),
+                React.createElement("div", { className: "grid grid-cols-3 gap-2" }, thumbs.map((x) => React.createElement("button", { key: x.k, onClick: () => setStep(x.k === "selfie" ? 3 : 2), className: "flex flex-col items-center gap-1" },
+                    React.createElement("div", { className: "w-full rounded-xl overflow-hidden border", style: { aspectRatio: "1 / 1", borderColor: colors.border, backgroundColor: colors.bg } }, x.url && React.createElement("img", { src: x.url, alt: x.label, className: "w-full h-full object-cover" })),
+                    React.createElement("span", { className: "text-[10px] font-bold text-center leading-tight", style: { color: colors.textMuted } }, x.label)))),
+                React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-3 text-[11px] font-bold`, style: { color: colors.success } }, React.createElement(CheckCircle2, { size: 13, color: colors.success }), tl("اجتازت كلّ الصور فحص الجودة", "All photos passed the quality check"))),
+            React.createElement("button", { onClick: () => setConsent((v) => !v), className: `w-full flex ${rowStart()} items-start gap-2.5 rounded-xl border p-3 mb-3 ${textStart()}`, style: { borderColor: consent ? colors.primary : colors.border, backgroundColor: colors.card } },
+                React.createElement("div", { className: "w-5 h-5 rounded-md flex items-center justify-center shrink-0 mt-0.5", style: { backgroundColor: consent ? colors.primary : "transparent", border: `1.5px solid ${consent ? colors.primary : colors.textMuted}` } }, consent && React.createElement(Check, { size: 13, color: "#fff" })),
+                React.createElement("span", { className: "text-xs leading-snug", style: { color: colors.text } }, tl("أقرّ بأنّ هذه المستندات صحيحةٌ وتخصّني، وأوافق على استعمالها للتحقّق من هويّتي فقط.", "I confirm these documents are genuine and mine, and I agree to their use for identity verification only."))),
+            privacy,
+            React.createElement(Button, { label: t("irsal_llmrajaa"), disabled: !consent || !sidesOk || !(selfie && selfie.ok), onPress: () => {
+                    const meta = { type: doc.id, sides: doc.sides.length, at: Date.now(), checks: doc.sides.map((s) => ({ side: s, w: shots[s].w, h: shots[s].h, lum: shots[s].lum, sharp: shots[s].sharp, warn: (shots[s].issues || []).length })) };
+                    setShots({}); setSelfie(null);   // تُمحى الصور من الذاكرة — يبقى الوصف
+                    onSubmit(meta);
+                } }),
+            React.createElement("div", { className: "h-2" }),
+            React.createElement(Button, { label: tl("رجوع", "Back"), variant: "outline", onPress: () => setStep(3) })), () => setStep(3));
+    }
+    return shell(React.createElement("div", null));
 }
 // ============================================================================
 // الجمعية الإلكترونية — نظام الادخار الجماعي الأسري
@@ -1582,7 +1773,7 @@ function IntlTransferScreen({ balance, walletPinForConfirm, kycStatus, history, 
             (err || (f.amount && e0)) && React.createElement("div", { className: "text-xs font-bold mb-3 text-center", style: { color: colors.danger } }, err || e0),
             React.createElement(Button, { label: tl("متابعة للمراجعة", "Continue to review"), disabled: !!e0, onPress: () => { const e = intlValidate({ ...f, balance }); if (e) { setErr(e); return; } setStep("review"); } }))));
 }
-function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, kycStatus, kycDismissed, onDismissKyc, onSubmitKyc, onTopUp, onTransfer, onScanPay, onBack, linkedMethods, onAddPaymentMethod, onRemovePaymentMethod, spendingLimit, onSetSpendingLimit, jamiyaList, onPayJamiya, onCreateJamiya, CURRENT_USER_ID, canIntl = false, intlHistory = [], onIntlTransfer }) {
+function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, kycStatus, kycDismissed, onDismissKyc, onSubmitKyc, onTopUp, onTransfer, onScanPay, onBack, linkedMethods, onAddPaymentMethod, onRemovePaymentMethod, spendingLimit, onSetSpendingLimit, jamiyaList, onPayJamiya, onCreateJamiya, CURRENT_USER_ID, canIntl = false, intlHistory = [], onIntlTransfer, kycMeta = null }) {
     const { colors } = useTheme();
     const [view, setView] = useState("home");
     const WALLET_SERVICES = buildWalletServices(colors, setView);
@@ -1754,7 +1945,7 @@ ${txn.note}
                 React.createElement(Button, { label: t("hfz"), onPress: () => { onSetSpendingLimit(limitInput ? Number(limitInput) : null); setView("home"); } }))));
     }
     if (view === "kyc") {
-        return React.createElement(KycFlowScreen, { kycStatus: kycStatus, onSubmit: onSubmitKyc, onBack: () => setView("home") });
+        return React.createElement(KycFlowScreen, { kycStatus: kycStatus, kycMeta: kycMeta, onSubmit: onSubmitKyc, onBack: () => setView("home") });
     }
     if (view === "paymentMethods") {
         return React.createElement(PaymentMethodsScreen, { methods: linkedMethods, onAddNew: () => setView("linkMethod"), onRemove: onRemovePaymentMethod, onBack: () => setView("home") });
