@@ -428,12 +428,12 @@ function DailyReminderCard({ card, onClose, onFamily }) {
         copyText(txt);
     };
     const pattern = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='.13' stroke-width='1'%3E%3Cpath d='M22 2l6 14 14 6-14 6-6 14-6-14-14-6 14-6z'/%3E%3Ccircle cx='22' cy='22' r='5'/%3E%3C/g%3E%3C/svg%3E\")";
-    const tc = isDark ? "#F3F4F6" : "#1F2937";
+    const tc = isDark ? "#F1F5F9" : "#1E293B";
     return React.createElement(React.Fragment, null,
         React.createElement("div", { onClick: onClose, className: "sawa-fade-in", style: { position: "fixed", inset: 0, zIndex: 60, backgroundColor: "rgba(10,20,35,0.55)", backdropFilter: "blur(2px)" } }),
         React.createElement("div", { className: "sawa-pop-in", role: "dialog", "aria-label": t("dr_title"), dir: "rtl", style: { position: "fixed", left: 18, right: 18, top: "50%", transform: "translateY(-50%)", zIndex: 61, maxWidth: 460, margin: "0 auto", backgroundColor: colors.card, borderRadius: 26, overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.35)" } },
             // الرأس
-            React.createElement("div", { style: { position: "relative", padding: "20px 20px 18px", textAlign: "center", color: "#fff", background: `${pattern}, linear-gradient(135deg, #2F80C8 0%, #1E3A63 100%)` } },
+            React.createElement("div", { style: { position: "relative", padding: "20px 20px 18px", textAlign: "center", color: "#fff", background: `${pattern}, linear-gradient(135deg, #2774BA 0%, #1E3A63 100%)` } },
                 React.createElement("button", { onClick: onClose, "aria-label": t("ighlaq"), style: { position: "absolute", zIndex: 3, top: 10, left: 10, width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.16)", color: "#fff", fontSize: 18, lineHeight: "32px" } }, "×"),
                 React.createElement("div", { style: { fontSize: 13, opacity: 0.85, letterSpacing: 0.2 } }, "🌙 " + t("dr_title")),
                 hijri && React.createElement("div", { style: { fontSize: 18, fontWeight: 800, marginTop: 4 } }, hijri),
@@ -447,7 +447,7 @@ function DailyReminderCard({ card, onClose, onFamily }) {
                     React.createElement("span", { style: { width: 22, height: 1, backgroundColor: colors.border } }), card.source, React.createElement("span", { style: { width: 22, height: 1, backgroundColor: colors.border } }))),
             // الأزرار
             React.createElement("div", { style: { display: "flex", gap: 10, padding: "14px 18px 18px" } },
-                React.createElement("button", { onClick: onFamily, className: "flex-1", style: { padding: "12px 8px", borderRadius: 14, background: "linear-gradient(135deg,#2F80C8,#1E3A63)", color: "#fff", fontSize: 14, fontWeight: 800 } }, "🤍 " + t("sla_alrhm")),
+                React.createElement("button", { onClick: onFamily, className: "flex-1", style: { padding: "12px 8px", borderRadius: 14, background: "linear-gradient(135deg,#2774BA,#1E3A63)", color: "#fff", fontSize: 14, fontWeight: 800 } }, "🤍 " + t("sla_alrhm")),
                 React.createElement("button", { onClick: share, "aria-label": tl("مشاركة", "Share"), style: { padding: "12px 16px", borderRadius: 14, backgroundColor: colors.bg, color: colors.text, fontSize: 14, fontWeight: 800, border: `1px solid ${colors.border}` } }, tl("مشاركة", "Share")))));
 }
 // C107: ربط قريبٍ بحسابه في سوا — برمزه · من جهات اتّصالي · أو دعوةٌ لمن ليس في سوا (رابطٌ باسمه في الشجرة)
@@ -705,7 +705,7 @@ function fmtNodes(seg, keyBase) {
 }
 function renderRichText(text, opts) {
     const o = opts || {}; const t = String(text == null ? "" : text);
-    const linkColor = o.mine ? "#E3F2FF" : (o.colors ? o.colors.primary : "#2F80C8");
+    const linkColor = o.mine ? "#E3F2FF" : (o.colors ? o.colors.primary : "#2774BA");
     const nodes = []; let k = 0;
     const pushPlain0 = (seg) => {
         if (!seg) return;
@@ -1374,7 +1374,7 @@ function LocationBubble({ m, mine }) {
     return (React.createElement("div", { onClick: open, style: { cursor: "pointer", minWidth: 200 } },
         React.createElement("div", { className: "rounded-xl overflow-hidden relative mb-1.5", style: { height: 120, backgroundColor: mine ? "rgba(255,255,255,0.18)" : colors.bg, backgroundImage: `url(${tile})`, backgroundSize: "cover", backgroundPosition: "center" } },
             React.createElement("div", { style: { position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-100%)" } },
-                React.createElement(MapPin, { size: 30, color: "#E53935", fill: "#E53935", strokeWidth: 1.5 }))),
+                React.createElement(MapPin, { size: 30, color: "#EF4444", fill: "#EF4444", strokeWidth: 1.5 }))),
         React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5` },
             React.createElement(MapPin, { size: 13, color: mine ? "#fff" : colors.primary }),
             React.createElement("span", { className: "text-xs font-bold truncate", style: { color: mine ? "#fff" : colors.text } }, m.text || tl("موقعي", "My location"))),
@@ -1803,8 +1803,8 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                                 React.createElement(FileIconLucide, { size: 24, color: colors.primary })),
                             React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, t("mstnd"))),
                         window.SawaChat && window.SawaChat.sendLocation && conversation.cloud !== false && React.createElement("button", { onClick: () => { setShowAttachMenu(false); window.SawaChat.sendLocation(conversation.id); }, className: "flex flex-col items-center gap-2 py-3" },
-                            React.createElement("div", { className: "w-14 h-14 rounded-2xl flex items-center justify-center", style: { backgroundColor: "#E539351a" } },
-                                React.createElement(MapPin, { size: 24, color: "#E53935" })),
+                            React.createElement("div", { className: "w-14 h-14 rounded-2xl flex items-center justify-center", style: { backgroundColor: "#EF44441a" } },
+                                React.createElement(MapPin, { size: 24, color: "#EF4444" })),
                             React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, tl("الموقع", "Location"))),
                         React.createElement("button", { onClick: () => { setShowAttachMenu(false); setSharingContact(true); }, className: "flex flex-col items-center gap-2 py-3" },
                             React.createElement("div", { className: "w-14 h-14 rounded-2xl flex items-center justify-center", style: { backgroundColor: "#22C55E1a" } },
@@ -1981,18 +1981,18 @@ function taskListPages(list, o) {
         try { g.direction = rtl ? "rtl" : "ltr"; } catch (e) { }
         g.fillStyle = "#fff"; g.fillRect(0, 0, W, H); g.textBaseline = "alphabetic";
         pages.push(cv); y = M;
-        if (pages.length > 1) { font(22, 700); text(list.title || "", X(M), y + 10, "#6B7280"); y += 44; g.fillStyle = "#E5E7EB"; g.fillRect(M, y, W - 2 * M, 2); y += 30; }
+        if (pages.length > 1) { font(22, 700); text(list.title || "", X(M), y + 10, "#6B7280"); y += 44; g.fillStyle = "#E2E8F0"; g.fillRect(M, y, W - 2 * M, 2); y += 30; }
     };
     newPage();
     // الرأس
-    g.fillStyle = "#2F80C8"; g.fillRect(0, 0, W, 14);
-    font(20, 800); text(tl("سوا · قائمة مهامّ", "Sawa · Task list"), X(M), y + 16, "#2F80C8"); y += 64;
+    g.fillStyle = "#2774BA"; g.fillRect(0, 0, W, 14);
+    font(20, 800); text(tl("سوا · قائمة مهامّ", "Sawa · Task list"), X(M), y + 16, "#2774BA"); y += 64;
     font(46, 800); wrap(list.title || tl("قائمة مهامّ", "Task list"), W - 2 * M).forEach((l) => { text(l, X(M), y + 30); y += 60; });
     font(22, 400); text((o.groupName ? o.groupName + " · " : "") + tl("صُدِّرت في ", "Exported ") + dt(Date.now()), X(M), y + 10, "#6B7280"); y += 50;
     // الملخّص + شريط الإنجاز
     g.fillStyle = "#F3F6FA"; g.fillRect(M, y, W - 2 * M, 112);
     font(26, 800); text(tl("المنجَز " + N(doneN) + " من " + N(tasks.length) + "  —  الإنجاز " + N(pct) + "٪", "Done " + doneN + " of " + tasks.length + " · " + pct + "%"), X(M + 28), y + 46);
-    g.fillStyle = "#E5E7EB"; g.fillRect(M + 28, y + 70, W - 2 * M - 56, 16);
+    g.fillStyle = "#E2E8F0"; g.fillRect(M + 28, y + 70, W - 2 * M - 56, 16);
     g.fillStyle = "#16A34A"; const bw = (W - 2 * M - 56) * pct / 100; g.fillRect(rtl ? W - M - 28 - bw : M + 28, y + 70, bw, 16);
     y += 150;
     const section = (title, arr) => {
@@ -2010,14 +2010,14 @@ function taskListPages(list, o) {
             font(21, 400); const noteL = tk.note ? wrap("📝 " + tk.note, W - 2 * M - 70) : [];
             const h = 26 + lines.length * 38 + 34 + noteL.length * 30 + 24;
             if (y + h > H - M) newPage();
-            g.fillStyle = "#E5E7EB"; g.fillRect(M, y, W - 2 * M, 2);
+            g.fillStyle = "#E2E8F0"; g.fillRect(M, y, W - 2 * M, 2);
             // مربّع الإنجاز
-            const bx = rtl ? W - M - 34 : M; g.strokeStyle = tk.status === "done" ? "#16A34A" : "#2F80C8"; g.lineWidth = 3; g.strokeRect(bx, y + 22, 30, 30);
+            const bx = rtl ? W - M - 34 : M; g.strokeStyle = tk.status === "done" ? "#16A34A" : "#2774BA"; g.lineWidth = 3; g.strokeRect(bx, y + 22, 30, 30);
             if (tk.status === "done") { g.fillStyle = "#16A34A"; g.fillRect(bx, y + 22, 30, 30); g.strokeStyle = "#fff"; g.lineWidth = 4; g.beginPath(); g.moveTo(bx + 7, y + 37); g.lineTo(bx + 13, y + 44); g.lineTo(bx + 24, y + 29); g.stroke(); }
             let yy = y + 50; font(27, 600);
             lines.forEach((l) => { text(l, X(M + 54), yy, tk.status === "done" ? "#6B7280" : "#1A1A2E"); yy += 38; });
             font(21, 400); text(meta.join("   ·   "), X(M + 54), yy, "#6B7280"); yy += 34;
-            noteL.forEach((l) => { text(l, X(M + 54), yy, "#4B5563"); yy += 30; });
+            noteL.forEach((l) => { text(l, X(M + 54), yy, "#475569"); yy += 30; });
             y = yy + 14;
         });
         y += 30;
@@ -2026,7 +2026,7 @@ function taskListPages(list, o) {
     section(tl("المنجَزة", "Done"), done);
     if (!tasks.length) { font(26, 400); text(tl("لا مهامّ في القائمة", "No tasks in this list"), X(M), y + 20, "#6B7280"); }
     // التذييل: رقم الصفحة
-    pages.forEach((c, i) => { const gg = c.getContext("2d"); gg.font = "400 18px " + FONT; gg.fillStyle = "#9CA3AF"; gg.textAlign = "center"; gg.fillText(tl("صفحة " + N(i + 1) + " من " + N(pages.length), "Page " + (i + 1) + " of " + pages.length) + " · sawaaap.com", W / 2, H - 40); });
+    pages.forEach((c, i) => { const gg = c.getContext("2d"); gg.font = "400 18px " + FONT; gg.fillStyle = "#94A3B8"; gg.textAlign = "center"; gg.fillText(tl("صفحة " + N(i + 1) + " من " + N(pages.length), "Page " + (i + 1) + " of " + pages.length) + " · sawaaap.com", W / 2, H - 40); });
     return pages;
 }
 function exportTaskListPdf(list, o) {
@@ -2529,8 +2529,8 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
             React.createElement("button", { "aria-label": t("bhth"), onClick: () => setShowSearch(!showSearch) },
                 React.createElement(Search, { size: 17, color: colors.textMuted }))),
         liveGroupCall && !liveGroupCall.inCall && (React.createElement("button", { onClick: () => window.SawaRTC.groupCall(group.id, liveGroupCall.type, liveGroupCall.vc ? { vc: true } : undefined), className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2`, style: { backgroundColor: "#E6F4EC", borderBottom: `1px solid ${colors.border}` } },
-            liveGroupCall.vc ? React.createElement(Radio, { size: 15, color: "#1E7A4C" }) : liveGroupCall.type === "video" ? React.createElement(Video, { size: 15, color: "#1E7A4C" }) : React.createElement(Phone, { size: 15, color: "#1E7A4C" }),
-            React.createElement("span", { className: `flex-1 ${textStart()} text-xs font-bold`, style: { color: "#1E7A4C" } }, (liveGroupCall.vc ? tl("دردشة صوتيّة جارية", "Voice chat live") : liveGroupCall.type === "video" ? tl("مكالمة فيديو جارية", "Video call in progress") : tl("مكالمة صوتيّة جارية", "Voice call in progress")) + (liveGroupCall.n ? " · " + tl(liveGroupCall.n + " فيها", liveGroupCall.n + " in") : "")),
+            liveGroupCall.vc ? React.createElement(Radio, { size: 15, color: "#1B7A43" }) : liveGroupCall.type === "video" ? React.createElement(Video, { size: 15, color: "#1B7A43" }) : React.createElement(Phone, { size: 15, color: "#1B7A43" }),
+            React.createElement("span", { className: `flex-1 ${textStart()} text-xs font-bold`, style: { color: "#1B7A43" } }, (liveGroupCall.vc ? tl("دردشة صوتيّة جارية", "Voice chat live") : liveGroupCall.type === "video" ? tl("مكالمة فيديو جارية", "Video call in progress") : tl("مكالمة صوتيّة جارية", "Voice call in progress")) + (liveGroupCall.n ? " · " + tl(liveGroupCall.n + " فيها", liveGroupCall.n + " in") : "")),
             React.createElement("span", { className: "text-[11px] font-extrabold text-white rounded-full px-3 py-1", style: { backgroundColor: "#21A366" } }, tl("انضمام", "Join")))),
         showSearch && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-2 border-b`, style: { borderColor: colors.border, backgroundColor: colors.card } },   // C100: كان معطّلاً (false)
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: searchQuery, onChange: (e) => { setSearchQuery(e.target.value); setSearchMatchIndex(0); }, placeholder: t("bhth_balmhadtha"), className: "flex-1 border rounded-full px-3 py-1.5 text-xs", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg }, autoFocus: true }),
@@ -2884,8 +2884,8 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                         React.createElement(FileIconLucide, { size: 15, color: colors.primary })),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("mstnd"))),
                 window.SawaChat && window.SawaChat.sendLocation && /^(fam_|grp_)/.test(group.id || "") && React.createElement("button", { onClick: () => { setShowAttachMenu(false); window.SawaChat.sendLocation(group.id); }, className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3` },
-                    React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: "#E5393522" } },
-                        React.createElement(MapPin, { size: 15, color: "#E53935" })),
+                    React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: "#EF444422" } },
+                        React.createElement(MapPin, { size: 15, color: "#EF4444" })),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, tl("الموقع", "Location"))),
                 React.createElement("button", { onClick: () => { setShowAttachMenu(false); setSharingContact(true); }, className: `w-full flex ${rowStart()} items-center gap-2.5 px-4 py-3`, style: { borderTop: `1px solid ${colors.border}` } },   // C184
                     React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: "#22C55E22" } },

@@ -261,21 +261,24 @@ const SAWA_LOGO_SM = "data:image/webp;base64,UklGRvIqAABXRUJQVlA4WAoAAAAQAAAAjwA
 // ============================================================================
 // 4 مظاهر قابلة للتبديل — نفس القيم الموثّقة رسمياً بمستند سوا
 const ACCENT_THEMES = {
-    sawa: { labelKey: "acc_swa", accent: "#2F80C8", accentDark: "#1E3A63", accentTint: "#BFE0F5" },
+    // C187: لون سوا كان 2F80C8 (تباين النصّ الأبيض عليه ٤٫٢ < ٤٫٥ المطلوبة) — نفس الدرجة أعمق قليلاً
+    sawa: { labelKey: "acc_swa", accent: "#2774BA", accentDark: "#1E3A63", accentTint: "#BFE0F5" },
     orange: { labelKey: "acc_brtqaly", accent: "#E8823D", accentDark: "#B5602B", accentTint: "#FBD9BA" },
     purple: { labelKey: "acc_bnfsjy", accent: "#8B5FA8", accentDark: "#5F3F78", accentTint: "#E3D3ED" },
     navy: { labelKey: "acc_khly", accent: "#1E3A63", accentDark: "#132743", accentTint: "#C7D4E3" },
     // مستخلَصة من شعار أرحام نفسه: أخضره وزيتيّه. افتراض أرحام، وخيارٌ في سوا.
     green: { labelKey: "acc_akhdr", accent: "#187854", accentDark: "#0C4854", accentTint: "#CFE9DD" },
 };
+// C187: رموز الألوان — المصدر الوحيد. تُنشر أيضاً متغيّراتِ CSS (‎--sawa-*‎) في App، فتقرؤها sawa-chat/sawa-rtc وشاشة التحميل.
+//   الأحمر/الأخضر/الكهرمانيّ: لونٌ واحد لكلّ دور (كانت ٣–٤ درجات متقاربة مكتوبة مباشرة).
 const lightColors = {
-    primary: "#2F80C8", primaryDark: "#1E3A63", primaryLight: "#BFE0F5",
-    accent: "#D98E04", danger: "#C0392B", success: "#1B7A43",
+    primary: "#2774BA", primaryDark: "#1E3A63", primaryLight: "#BFE0F5",
+    accent: "#D98E04", danger: "#B42318", success: "#1B7A43", warning: "#B45309",
     bg: "#F5F7FA", card: "#FFFFFF", text: "#111827", textMuted: "#6B7280", border: "#E2E5E9",
 };
 const darkColors = {
     primary: "#5AA9E6", primaryDark: "#2F5C8F", primaryLight: "#173049",
-    accent: "#E8A93D", danger: "#E5695C", success: "#5CD692",
+    accent: "#E8A93D", danger: "#E5695C", success: "#5CD692", warning: "#F5B14C",
     bg: "#0E1116", card: "#171B21", text: "#EDEFF2", textMuted: "#8A93A0", border: "#262B33",
 };
 const ThemeContext = createContext(null);
@@ -339,7 +342,7 @@ function Button({ label, icon: Icon, onPress, variant = "filled", disabled, clas
 function Badge({ label, variant = "neutral", icon: Icon, size = "md" }) {
     const { isDark } = useTheme();
     const variants = {
-        danger: { bg: isDark ? "#4A2420" : "#FBE9E7", fg: isDark ? "#FF8A7A" : "#C0392B" },
+        danger: { bg: isDark ? "#4A2420" : "#FBE9E7", fg: isDark ? "#FF8A7A" : "#B42318" },
         warning: { bg: isDark ? "#4A3714" : "#FCEFD6", fg: isDark ? "#F2B953" : "#B8720A" },
         success: { bg: isDark ? "#173A26" : "#E3F3EA", fg: isDark ? "#5CD692" : "#1B7A43" },
         neutral: { bg: isDark ? "#232F2A" : "#F7F8FA", fg: isDark ? "#8FA39C" : "#6B7280" },
@@ -457,7 +460,7 @@ function FamAvatar({ name, photo, size = 46, radius, gray, ring, className, styl
     const letter = (String(name || "").trim().charAt(0)) || "؟";
     const base = Object.assign({ width: size, height: size, borderRadius: radius == null ? "50%" : radius, flexShrink: 0, boxShadow: ring ? `0 0 0 3px ${ring}` : undefined }, style || {});
     if (photo) return React.createElement("div", { className: "relative overflow-hidden " + (className || ""), style: Object.assign({}, base, { backgroundImage: `url(${photo})`, backgroundSize: "cover", backgroundPosition: "center", filter: gray ? "grayscale(1)" : undefined }) }, children || null);
-    return React.createElement("div", { className: "relative flex items-center justify-center font-extrabold text-white " + (className || ""), style: Object.assign({}, base, { background: gray ? "linear-gradient(135deg,#9ca3af,#6b7280)" : famAvGrad(name), fontSize: Math.round(size * 0.4) }) }, letter, children || null);
+    return React.createElement("div", { className: "relative flex items-center justify-center font-extrabold text-white " + (className || ""), style: Object.assign({}, base, { background: gray ? "linear-gradient(135deg,#94a3b8,#6b7280)" : famAvGrad(name), fontSize: Math.round(size * 0.4) }) }, letter, children || null);
 }
 function FamHeader({ title, subtitle, onBack, actions, children, compact }) {
     const { colors } = useTheme();
@@ -487,7 +490,7 @@ function FamCard({ children, className = "", style, onPress, onContextMenu, flat
     const Tag = onPress ? "button" : "div";
     return React.createElement(Tag, { onClick: onPress, onContextMenu: onContextMenu, className: `rounded-[20px] p-3.5 ${onPress ? "w-full " + textStart() + " active:scale-[0.99] transition-transform" : ""} ${className}`, style: Object.assign({ backgroundColor: colors.card, boxShadow: flat ? "none" : famShadow(isDark), marginBottom: 10 }, style || {}) }, children);
 }
-const FAM_TONES = { info: ["#e0f2fe", "#0369a1", "#0c3a52", "#7dd3fc"], warn: ["#fef3c7", "#b45309", "#3f2d0c", "#fcd34d"], ok: ["#dcfce7", "#15803d", "#0f3320", "#86efac"], muted: ["#f3f4f6", "#6b7280", "#262b33", "#9ca3af"], danger: ["#fee2e2", "#b91c1c", "#3f1515", "#fca5a5"], violet: ["#ede9fe", "#6d28d9", "#2e1065", "#c4b5fd"] };
+const FAM_TONES = { info: ["#e0f2fe", "#0369a1", "#0c3a52", "#7dd3fc"], warn: ["#fef3c7", "#b45309", "#3f2d0c", "#fcd34d"], ok: ["#dcfce7", "#15803d", "#0f3320", "#86efac"], muted: ["#f1f5f9", "#6b7280", "#262b33", "#94a3b8"], danger: ["#fee2e2", "#b91c1c", "#3f1515", "#fca5a5"], violet: ["#ede9fe", "#6d28d9", "#2e1065", "#c4b5fd"] };
 function famTone(tone, isDark) { const tn = FAM_TONES[tone] || FAM_TONES.info; return { bg: isDark ? tn[2] : tn[0], fg: isDark ? tn[3] : tn[1] }; }
 function FamChip({ label, tone = "info", icon: Icon, onPress, className = "" }) {
     const { isDark } = useTheme();
@@ -993,15 +996,15 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
     const listItems = [
         // C10: رمز سوا وطلبات التواصل
         ...(cloudMe && SCm.codeSheet ? [
-            { key: "mycode", label: tl("رمزي في سوا", "My Sawa code"), icon: QrCode, onPress: () => SCm.codeSheet(), color: "#2F80C8" },
+            { key: "mycode", label: tl("رمزي في سوا", "My Sawa code"), icon: QrCode, onPress: () => SCm.codeSheet(), color: "#2774BA" },
             // C59: الضيف يرى صفّاً بارزاً للربط (Google أو البريد) — كان مخفيّاً داخل «السحابة والمشاركة»
             ...((window.SawaSync && window.SawaSync.authInfo && (window.SawaSync.authInfo() || {}).anon && SCm.linkSheet) ? [{ key: "link", label: tl("اربط حسابك بـGoogle أو البريد — حتى لا يضيع", "Link to Google or email — so it isn't lost"), icon: Lock, onPress: () => SCm.linkSheet(), color: "#B45309" }] : []),
             // C56: فحص الإشعارات والمكالمات في الخلفية — إشعارٌ تجريبيّ حقيقيّ وإرشادات الهاتف
             { key: "pushcheck", label: tl("الإشعارات والمكالمات في الخلفية", "Notifications & background calls"), icon: BellIcon, onPress: () => { if (SCm && SCm.pushCheckSheet) SCm.pushCheckSheet(); }, color: "#F59E0B" },
-            { key: "requests", label: tl("طلبات التواصل", "Contact requests") + (reqCount ? " (" + reqCount + ")" : ""), icon: UserPlus, onPress: () => SCm.requestsSheet(), color: reqCount ? "#E11D48" : "#2F80C8" },
+            { key: "requests", label: tl("طلبات التواصل", "Contact requests") + (reqCount ? " (" + reqCount + ")" : ""), icon: UserPlus, onPress: () => SCm.requestsSheet(), color: reqCount ? "#E11D48" : "#2774BA" },
         ] : []),
         // C39: تثبيت التطبيق على الشاشة الرئيسيّة — يظهر فقط حين يُفتح سوا من المتصفّح على هاتف
-        ...(SCm && SCm.installable && SCm.installable() ? [{ key: "install", label: tl("ثبّت سوا على هاتفك", "Install Sawa on your phone"), icon: Download, onPress: () => SCm.installSheet(), color: "#2F80C8" }] : []),
+        ...(SCm && SCm.installable && SCm.installable() ? [{ key: "install", label: tl("ثبّت سوا على هاتفك", "Install Sawa on your phone"), icon: Download, onPress: () => SCm.installSheet(), color: "#2774BA" }] : []),
         { key: "feedback", label: t("me_arsl_mlahza"), icon: Send, onPress: onOpenFeedback, color: "#10B981" },
         { key: "settings", label: t("me_iadadat_almlf"), icon: MoreHorizontal, onPress: onOpenSettings },
         { key: "notifications", label: RELEASE_UI ? tl("التذكيرات", "Reminders") : t("me_mrkz_altnbyhat"), icon: BellIcon, onPress: onOpenNotifications },
@@ -1020,14 +1023,14 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         ...(!window.SawaNativeBridge && !window.SawaIOS && !/iPhone|iPad|iPod/.test(navigator.userAgent || "") ? [{ key: "apk", label: tl("تنزيل تطبيق أندرويد (APK)", "Download the Android app (APK)"), icon: Download, onPress: () => { location.href = "/download"; }, color: "#16A34A" }] : []),
         // C131: نتائج تقييم المكالمات (المحرّك · النسخة · التأخير · الصدى…) — للمدير
         ...(isAdm && admRank >= 4 ? [{ key: "team", label: tl("فريق الإدارة", "Admin team"), icon: UsersRound, onPress: () => { if (window.SawaChat && window.SawaChat.adminTeam) window.SawaChat.adminTeam(); }, color: "#7C3AED" }] : []),   // C195: للمالك وحده
-        ...(isAdm && admRank >= 3 ? [{ key: "voip", label: tl("اختبار مكالمة الآيفون", "iPhone call test") + admTag, icon: Phone, onPress: () => { if (window.SawaChat && window.SawaChat.voipTest) window.SawaChat.voipTest(); }, color: "#2F80C8" }] : []),   // C151
-        ...(isAdm ? [{ key: "reports", label: tl("البلاغات", "Reports") + admTag, icon: Flag, onPress: () => { if (window.SawaChat && window.SawaChat.adminReports) window.SawaChat.adminReports(); }, color: "#DC2626" }] : []),   // C150
+        ...(isAdm && admRank >= 3 ? [{ key: "voip", label: tl("اختبار مكالمة الآيفون", "iPhone call test") + admTag, icon: Phone, onPress: () => { if (window.SawaChat && window.SawaChat.voipTest) window.SawaChat.voipTest(); }, color: "#2774BA" }] : []),   // C151
+        ...(isAdm ? [{ key: "reports", label: tl("البلاغات", "Reports") + admTag, icon: Flag, onPress: () => { if (window.SawaChat && window.SawaChat.adminReports) window.SawaChat.adminReports(); }, color: "#EF4444" }] : []),   // C150
         ...(isAdm ? [{ key: "tel", label: tl("سجلّ المكالمات", "Call log") + admTag, icon: BarChart3, onPress: () => { if (window.SawaRTC && window.SawaRTC.telReport) window.SawaRTC.telReport(); } }] : []),   // C179
         ...(isAdm ? [{ key: "health", label: tl("حالة الخدمات", "Service health") + admTag, icon: Server, onPress: () => { if (window.SawaRTC && window.SawaRTC.healthSheet) window.SawaRTC.healthSheet(); } }] : []),   // C178
         ...(isAdm ? [{ key: "relay", label: tl("الوسيط الأساسيّ للمكالمات", "Primary call relay") + admTag, icon: Radio, onPress: () => { if (window.SawaRTC && window.SawaRTC.relaySheet) window.SawaRTC.relaySheet(); } }] : []),   // C175
         ...(isAdm ? [{ key: "qa", label: tl("تقييمات المكالمات", "Call ratings") + admTag, icon: Star, onPress: () => { if (window.SawaRTC && window.SawaRTC.qaReport) window.SawaRTC.qaReport(); }, color: "#F59E0B" }] : []),
         // C83: تحديث التطبيق لكلّ مستخدم — النسخة، ما الجديد، وتحديثٌ قسريّ آمن
-        ...(SCm && SCm.updateSheet ? [{ key: "update", label: updAvail ? tl("تحديث التطبيق • نسخةٌ جديدة ✨", "App update • new ✨") : tl("تحديث التطبيق", "App update"), icon: RotateCcw, onPress: () => SCm.updateSheet(), color: updAvail ? "#D97706" : "#2F80C8" }] : []),
+        ...(SCm && SCm.updateSheet ? [{ key: "update", label: updAvail ? tl("تحديث التطبيق • نسخةٌ جديدة ✨", "App update • new ✨") : tl("تحديث التطبيق", "App update"), icon: RotateCcw, onPress: () => SCm.updateSheet(), color: updAvail ? "#B45309" : "#2774BA" }] : []),
         // C11: صفحاتٌ عامّة على الموقع (Google Play يطلب رابطيها)
         { key: "legal", label: tl("الخصوصيّة والشروط", "Privacy & terms"), icon: ShieldCheck, onPress: () => { location.href = "/privacy"; }, color: "#64748B" },
         { key: "cloud", label: t("me_rfa_alshjra"), icon: Cloud, onPress: () => { if (window.SawaSync) (window.SawaSync.openPanel ? window.SawaSync.openPanel() : window.SawaSync.uploadCurrent()); }, color: "#187854" },
@@ -1247,7 +1250,7 @@ function NativeAppLockCard() {
                 ? tl("يُفتح سوا بالبصمة أو برمز قفل الهاتف. المكالمات والإشعارات تصلك وهو مقفل، والردّ على مكالمة لا ينتظر القفل.", "Sawa opens with your fingerprint or phone PIN. Calls and notifications still arrive while locked.")
                 : tl("يحتاج قفل شاشة على الهاتف (بصمة أو رمز أو نمط). فعّله من إعدادات الهاتف ثمّ عُد هنا.", "Needs a phone screen lock (fingerprint, PIN or pattern).")),
         st.on && React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mt-3` }, opts.map((o) => React.createElement("button", { key: o.v, onClick: () => { if (o.v !== st.after) ask(true, o.v); }, disabled: busy, className: "rounded-full px-3 py-1.5 text-xs border", style: { backgroundColor: st.after === o.v ? colors.primary : colors.card, color: st.after === o.v ? "#fff" : colors.text, borderColor: st.after === o.v ? colors.primary : colors.border } }, o.l))),
-        msg && React.createElement("p", { className: `text-[11px] mt-2 font-bold ${textStart()}`, style: { color: "#c0392b" } }, msg));
+        msg && React.createElement("p", { className: `text-[11px] mt-2 font-bold ${textStart()}`, style: { color: "#b42318" } }, msg));
 }
 function NotifAvatarRow() {
     const { colors } = useTheme();

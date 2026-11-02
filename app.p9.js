@@ -35,6 +35,15 @@ function App() {
         fontScale, setFontScale, highContrast, setHighContrast,
         dataSaver, setDataSaver,
     };
+    // C187: الألوان متغيّراتُ CSS على الجذر (‎--sawa-primary‎، ‎--sawa-text-muted‎…) + color-scheme، لما ليس داخل React
+    //   (شاشة التحميل، واجهات sawa-chat/sawa-rtc). ونحفظ المظهر لشاشة التحميل في الزيارة التالية.
+    useEffect(() => {
+        const r = document.documentElement;
+        Object.keys(colors).forEach((k) => { r.style.setProperty("--sawa-" + k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase()), colors[k]); });
+        r.style.colorScheme = isDark ? "dark" : "light";
+        r.setAttribute("data-theme", isDark ? "dark" : "light");
+        try { const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute("content", isDark ? colors.bg : colors.primary); } catch (e) {}
+    }, [isDark, accentKey, highContrast]);
     // حجم الخط: نطبّقه على الجذر عشان يؤثّر على كل وحدات rem المستخدمة بكل مكوّنات
     // Tailwind (text-xs/text-sm/...) — تأثير حقيقي وشامل، مو محلي لشاشة وحدة بس
     useEffect(() => {

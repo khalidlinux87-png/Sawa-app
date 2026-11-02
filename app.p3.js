@@ -1519,7 +1519,7 @@ function FamilyPersonDetailScreen({ onChangeParent, person, persons = [], relati
                         person.status_detail && person.alive && React.createElement(FamChip, { tone: "warn", icon: AlertCircle, label: statusLabels[person.status_detail] })),
                     React.createElement("div", { className: `flex ${rowStart()} items-start justify-center gap-5 mt-4` },
                         React.createElement(FamAction, { icon: Phone, label: tl("اتّصال", "Call"), bg: "#22C55E", href: phoneStr && person.alive ? "tel:" + phoneStr.replace(/[^\d+]/g, "") : undefined, onPress: phoneStr && person.alive ? () => { try { onMarkContact(person.id); } catch (e) { } } : undefined }),
-                        React.createElement(FamAction, { icon: Star, label: fav ? t("fp_mfdl") : tl("مفضّلة", "Favorite"), bg: fav ? colors.accent : "#9CA3AF", onPress: () => onToggleFav(person.id) }),
+                        React.createElement(FamAction, { icon: Star, label: fav ? t("fp_mfdl") : tl("مفضّلة", "Favorite"), bg: fav ? colors.accent : "#94A3B8", onPress: () => onToggleFav(person.id) }),
                         canEdit && React.createElement(FamAction, { icon: Edit2, label: t("tadyl"), bg: "#F59E0B", onPress: () => setShowEditForm(true) }),
                         React.createElement(FamAction, { icon: Share2, label: shareCopied ? t("fp_tm_alnskh") : t("fp_msharka"), bg: colors.primary, onPress: share })))),
             // C106: قريبٌ ربط حسابه في سوا ⇒ رسالة واتّصال وفيديو داخل سوا مباشرةً
