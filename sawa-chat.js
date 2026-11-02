@@ -5191,7 +5191,6 @@
     "#sawa-onb{position:fixed;inset:0;z-index:2147483000;color:#fff;display:flex;flex-direction:column;font-family:var(--sawa-font,system-ui),-apple-system,'Segoe UI',Tahoma,sans-serif;overflow-y:auto;overflow-x:hidden;background:#0f3561;-webkit-tap-highlight-color:transparent}",
     "#sawa-onb *{box-sizing:border-box}",
     "#sawa-onb .ob-bg{position:fixed;inset:0;pointer-events:none;overflow:hidden;background:radial-gradient(130% 75% at 50% -12%,#4aa3ea 0%,#2a78c0 32%,#185392 62%,#0d3260 100%)}",
-    "#sawa-onb .ob-bg::after{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.10) 1px,transparent 1.2px);background-size:22px 22px;-webkit-mask-image:linear-gradient(to bottom,#000,transparent 55%);mask-image:linear-gradient(to bottom,#000,transparent 55%)}",
     "#sawa-onb .ob-blob{position:absolute;border-radius:50%;filter:blur(46px);opacity:.5;animation:ob-float 16s ease-in-out infinite}",
     "#sawa-onb .ob-b1{width:300px;height:300px;background:#6cc0ff;top:-90px;inset-inline-start:-110px}",
     "#sawa-onb .ob-b2{width:280px;height:280px;background:#6d72ff;bottom:6%;inset-inline-end:-130px;opacity:.38;animation-delay:-5s}",
@@ -5289,6 +5288,21 @@
     "#sawa-onb .ob-home b{display:block;font:800 14px var(--sawa-font,system-ui)}#sawa-onb .ob-home small{display:block;font:500 12px var(--sawa-font,system-ui);color:#5b6775;margin-top:2px}",
     ".sawa-inst .ob-step{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:16px;background:#f1f5f9;color:#1e293b;font:600 13.5px/1.5 var(--sawa-font,system-ui)}",
     ".sawa-inst .ob-step .ob-fi{flex:none;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:#dbeafe;color:#1d5fa0}",
+    // C189: بطل صفحة الترحيب — نقطتان تلتقيان (انظر onbGo "welcome")
+    "#sawa-onb .ob-hero{position:relative;width:224px;height:224px;display:grid;place-items:center;margin-bottom:4px}",
+    "#sawa-onb .ob-hero svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}",
+    "#sawa-onb .ob-track{fill:none;stroke:rgba(255,255,255,.14);stroke-width:2}",
+    "#sawa-onb .ob-arc{fill:none;stroke-width:3.5;stroke-linecap:round;stroke-dasharray:132;stroke-dashoffset:0;animation:ob-draw 1.1s cubic-bezier(.5,0,.2,1) .25s both}",
+    "#sawa-onb .ob-arc-a{stroke:#9fd3ff}#sawa-onb .ob-arc-b{stroke:#3fe0c5}",
+    "#sawa-onb .ob-orb{transform-box:view-box;transform-origin:100px 100px}",
+    "#sawa-onb .ob-orb-a{fill:#9fd3ff;transform:rotate(80deg);animation:ob-orb-a 1.1s cubic-bezier(.5,0,.2,1) .25s both}",
+    "#sawa-onb .ob-orb-b{fill:#3fe0c5;transform:rotate(-80deg);animation:ob-orb-b 1.1s cubic-bezier(.5,0,.2,1) .25s both}",
+    "#sawa-onb .ob-hero .ob-logo{width:112px;height:112px;box-shadow:0 26px 50px -14px rgba(3,20,45,.75);animation:ob-pop .6s cubic-bezier(.2,.9,.25,1.15) 1.2s both}",
+    "#sawa-onb .ob-apk{font-size:13px;font-weight:600;color:rgba(255,255,255,.7);padding:6px}",
+    "@keyframes ob-draw{from{stroke-dashoffset:132}}",
+    "@keyframes ob-orb-a{from{transform:rotate(0)}}",
+    "@keyframes ob-orb-b{from{transform:rotate(0)}}",
+    "@keyframes ob-pop{from{opacity:0;transform:scale(.8)}}",
     "@keyframes ob-in{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}",
     "@keyframes ob-fill{from{width:0}to{width:100%}}",
     "@keyframes ob-float{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(24px,30px) scale(1.12)}}",
@@ -5296,7 +5310,7 @@
     "@keyframes ob-ring{0%{transform:scale(.92);opacity:.9}100%{transform:scale(1.18);opacity:0}}",
     "@keyframes ob-ring-bell{0%,60%,100%{transform:rotate(0)}65%{transform:rotate(14deg)}72%{transform:rotate(-12deg)}79%{transform:rotate(8deg)}86%{transform:rotate(-5deg)}}",
     "@keyframes ob-drop{from{opacity:0;transform:translateY(-22px) scale(.96)}to{opacity:1;transform:none}}",
-    "@media (max-height:640px){#sawa-onb .ob-tile{width:76px;height:76px;border-radius:24px}#sawa-onb .ob-tile svg{width:36px;height:36px}#sawa-onb .ob-h{font-size:23px;margin-top:16px}#sawa-onb .ob-logo{width:88px;height:88px;border-radius:26px}#sawa-onb .ob-feats{margin-top:18px}}",
+    "@media (max-height:640px){#sawa-onb .ob-tile{width:76px;height:76px;border-radius:24px}#sawa-onb .ob-tile svg{width:36px;height:36px}#sawa-onb .ob-h{font-size:23px;margin-top:16px}#sawa-onb .ob-logo{width:88px;height:88px;border-radius:26px}#sawa-onb .ob-feats{margin-top:18px}#sawa-onb .ob-hero{width:176px;height:176px}#sawa-onb .ob-hero .ob-logo{width:88px;height:88px}}",
     "@media (prefers-reduced-motion:reduce){#sawa-onb *,#sawa-onb *::before{animation:none!important;transition:none!important}}"
   ].join("\n");
   function onbCss() {
@@ -5388,24 +5402,21 @@
     onb.step = step; lsSet("sawa_onb_step", step);
     var f = onbFrame(step), b = f.body, ft = f.foot;
     if (step === "welcome") {
-      var logo = mk("img"); logo.className = "ob-logo"; logo.src = "./icons/icon-192.png"; logo.alt = "سوا";
-      b.appendChild(logo);
-      var h = hTitle(L("أهلاً بك في ", "Welcome to ")); h.appendChild(oc("span", "ob-grad", L("سوا", "Sawa"))); b.appendChild(h);
-      b.appendChild(hSub(L("محادثاتك ومكالماتك وغرف اجتماعاتك — في تطبيقٍ واحدٍ بسيط.", "Your chats, calls and meeting rooms — in one simple app.")));
-      var feats = oc("div", "ob-feats");
-      [["chat", L("محادثات", "Chats"), L("نصّ وصوت وصور", "Text, voice, photos")],
-       ["phone", L("مكالمات", "Calls"), L("صوت وفيديو", "Voice & video")],
-       ["room", L("غرف", "Rooms"), L("اجتماعات فوريّة ومجدولة", "Live & scheduled")],
-       ["hash", L("رمزٌ خاصّ", "Private code"), L("تواصل دون رقم هاتف", "No phone number needed")]].forEach(function (x) {
-        var c = oc("div", "ob-feat"), fi = oc("span", "ob-fi"); fi.appendChild(oi(x[0])); c.appendChild(fi);
-        var t = mk("div"); t.appendChild(mk("b", "", x[1])); t.appendChild(mk("small", "", x[2])); c.appendChild(t); feats.appendChild(c);
-      });
-      b.appendChild(feats);
+      // C189: عنصرٌ واحد يقول «سوا»: نقطتان (أزرق الشعار وأخضره) تبدآن متباعدتين على حلقة وتلتقيان في أعلاها، ثمّ يظهر الشعار.
+      //   حركةٌ واحدة عند الفتح (لا تتكرّر)؛ الحالة النهائيّة هي الأساس فتظهر كما هي مع «تقليل الحركة». بدل البطاقات الأربع.
+      var hero = oc("div", "ob-hero");
+      hero.innerHTML = '<svg viewBox="0 0 200 200" aria-hidden="true"><circle class="ob-track" cx="100" cy="100" r="84"/>'
+        + '<path class="ob-arc ob-arc-a" d="M16 100A84 84 0 0 1 100 16"/><path class="ob-arc ob-arc-b" d="M184 100A84 84 0 0 0 100 16"/>'
+        + '<g class="ob-orb ob-orb-a"><circle cx="16" cy="100" r="10"/></g><g class="ob-orb ob-orb-b"><circle cx="184" cy="100" r="10"/></g></svg>';
+      var logo = mk("img"); logo.className = "ob-logo"; logo.src = "./icons/icon-192.png"; logo.alt = L("سوا", "Sawa");
+      hero.appendChild(logo); b.appendChild(hero);
+      b.appendChild(hTitle(L("أهلاً بك في سوا", "Welcome to Sawa")));
+      b.appendChild(hSub(L("تواصل مع أهلك وأصحابك: محادثاتٌ ومكالماتٌ وغرف اجتماعات، دون رقم هاتف.", "Stay close to family and friends: chats, calls and meeting rooms, no phone number needed.")));
       var st = bigBtn(L("ابدأ", "Get started"), "white"); st.appendChild(oc("span", "ob-fwd", "")).appendChild(oi("arrow"));
       st.onclick = function () { onbGo("login"); }; ft.appendChild(st);
       // C132: رابط تنزيل تطبيق أندرويد (APK) في الصفحة الأولى للنطاق — للمتصفّح فقط (لا داخل التطبيق ولا على آيفون)
       if (!NB() && !IOSB() && !isIOS()) {
-        var apk = bigBtn(L("📥 تنزيل تطبيق أندرويد (APK)", "📥 Download the Android app (APK)"), "link");
+        var apk = bigBtn(L("تنزيل تطبيق أندرويد (APK)", "Download the Android app (APK)"), "link"); apk.classList.add("ob-apk");
         apk.onclick = function () { global.location.href = "/download"; }; ft.appendChild(apk);
       }
       return;
