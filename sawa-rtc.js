@@ -26,7 +26,7 @@
   function toast(m) { try { S().toast(m); } catch (e) {} }
   function wcall(op, payload) { return S().call(op, payload || {}); }
   // C197: السجلّ المنظَّم المشترك (SawaLog) — أوّل وحدة تُحمَّل تعرّفه والبقيّة تستعمله.
-  //   LOG.info/warn/error/debug(event, { fields }) · آخر ٣٠٠ حدث في SawaLog.recent(n) · الحدّ الأدنى للعرض: localStorage "sawa-log" (debug|info|warn|error).
+  //   LOG.info/warn/error/debug(event, { fields }) · آخر 300 حدث في SawaLog.recent(n) · الحدّ الأدنى للعرض: localStorage "sawa-log" (debug|info|warn|error).
   var SawaLog = global.SawaLog || (global.SawaLog = (function () {
     var LV = { debug: 10, info: 20, warn: 30, error: 40 }, buf = [], MAX = 300;
     function minLv() { try { return LV[localStorage.getItem("sawa-log")] || LV.info; } catch (e) { return LV.info; } }
@@ -86,7 +86,7 @@
   // ---------- ربط التطبيق: سجلّ المكالمات + فتح المحادثة ----------
   function bindApp(fns) {
     app = fns || null;
-    // C52: خوادم ICE جاهزة قبل أوّل مكالمة (تُجدَّد كلّ ٢٠ دقيقة في getIce)
+    // C52: خوادم ICE جاهزة قبل أوّل مكالمة (تُجدَّد كلّ 20 دقيقة في getIce)
     if (!iceWarm) {
       iceWarm = true; setTimeout(function () { try { getIce(); } catch (e) {} }, 4000);
       // C113: عند العودة إلى التطبيق نجدّدها مسبقاً — المكالمة لا تنتظر
@@ -117,10 +117,10 @@
   var iceWarm = false;
   var iceBusy = null;
   function getIce(waitMs) {
-    // C175: بعد ٣ دقائق نجدّد في الخلفيّة (والمحفوظ يُستعمل فوراً) — فيصل تبديل المدير للوسيط الأساسيّ إلى الكلّ خلال دقائق
+    // C175: بعد 3 دقائق نجدّد في الخلفيّة (والمحفوظ يُستعمل فوراً) — فيصل تبديل المدير للوسيط الأساسيّ إلى الكلّ خلال دقائق
     if (iceCache && Date.now() - iceAt < 3 * 60 * 1000) return Promise.resolve(iceCache);
     if (iceCache && Date.now() - iceAt < 20 * 60 * 1000) { if (!iceBusy) { iceBusy = fetchIce(); iceBusy.then(function () { iceBusy = null; }, function () { iceBusy = null; }); } return Promise.resolve(iceCache); }
-    // C113: بيانات الوسيط صالحة ٦ ساعات — نستعمل المحفوظة فوراً ونجدّدها في الخلفيّة (كانت أوّل مكالمة بعد ٢٠ دقيقة تنتظر الخادم حتّى ٦ ث)
+    // C113: بيانات الوسيط صالحة 6 ساعات — نستعمل المحفوظة فوراً ونجدّدها في الخلفيّة (كانت أوّل مكالمة بعد 20 دقيقة تنتظر الخادم حتّى 6 ث)
     if (iceCache && Date.now() - iceAt < 4 * 3600 * 1000) { if (!iceBusy) { iceBusy = fetchIce(); iceBusy.then(function () { iceBusy = null; }, function () { iceBusy = null; }); } return Promise.resolve(iceCache); }
     return fetchIce(waitMs);
   }
@@ -139,7 +139,7 @@
 
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
-  // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ ٣٠ دقيقة أو حين تتغيّر الشبكة.
+  // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
   var RTC_BUILD = "c228";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
@@ -208,7 +208,7 @@
       wcall("rtc.probe", { ms: relayMs, nat: natInfo && natInfo.t || "" }).catch(function () { probeSent = ""; });
     } catch (e) {}
   }
-  // قياسات الطرف الآخر (آخر ما أرسله هاتفه، حتّى ٢٤ ساعة) — تُحفظ ١٠ دقائق، وننتظرها ٧٠٠ مللي ث على الأكثر
+  // قياسات الطرف الآخر (آخر ما أرسله هاتفه، حتّى 24 ساعة) — تُحفظ 10 دقائق، وننتظرها 700 مللي ث على الأكثر
   var peerRly = {};
   function peerProbe(peer, wait) {
     var e = peerRly[peer];
@@ -217,7 +217,7 @@
     return Promise.race([p, new Promise(function (res) { setTimeout(function () { res(null); }, wait || 700); })]);
   }
   // الاختيار: لكلّ وسيطٍ قاسه الطرفان «أسوأ الزمنين» (لا مجموعهما — حتّى لا يُظلم طرفٌ لصالح الآخر)؛ الفاشل عند أيٍّ منهما يُستبعد.
-  // ما لم يقِسه الآخر يُحسب بزمني أنا + ٢٠٠ مللي ث (عقوبة عدم اليقين). يُعاد { ids: [الأفضل، الاحتياطيّ], ms، pms }.
+  // ما لم يقِسه الآخر يُحسب بزمني أنا + 200 مللي ث (عقوبة عدم اليقين). يُعاد { ids: [الأفضل، الاحتياطيّ], ms، pms }.
   function pairRank(pms) {
     if (!iceRelays || !iceRelays.length) return null;
     var mine = function (id) { var v = relayMs[id]; return typeof v === "number" ? v : v === false ? -1 : null; };
@@ -270,7 +270,7 @@
   //   • عنوانان مختلفان للمنفذ نفسه ⇒ «sym» (متماثل: المنفذ يتغيّر مع كلّ وجهة — المباشر يفشل غالباً، والوسيط ضروريّ)
   //   • لا عنوان خارجيّ ⇒ «none» (UDP أو STUN محجوب)
   // ملاحظة: المتصفّح يدمج العنوانين المتطابقين، فـ«eim» تعني أيضاً «أجاب خادمٌ واحد فقط» — الأدقّ هو «sym».
-  // يُقاس خارج المكالمات فقط، عند تغيّر الشبكة أو كلّ ٣٠ دقيقة، ويُرفق بسجلّ المكالمة (call.tel).
+  // يُقاس خارج المكالمات فقط، عند تغيّر الشبكة أو كلّ 30 دقيقة، ويُرفق بسجلّ المكالمة (call.tel).
   var NAT_STUN = [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun.cloudflare.com:3478" }];
   var natInfo = null, natAt = 0, natBusy = null;
   function natClassify(cands) {
@@ -327,7 +327,7 @@
   }
 
   // ---------- C95: محرّك المكالمات الصوتيّة الأصليّ في تطبيق أندرويد ----------
-  // مخزن الصوت في WebView يتضخّم إلى ١٫٥–٢ ثانية على شبكات الجوّال المتقلّبة ولا سقف له من JS. التطبيق الأصليّ (NativeRtc)
+  // مخزن الصوت في WebView يتضخّم إلى 1.5–2 ثانية على شبكات الجوّال المتقلّبة ولا سقف له من JS. التطبيق الأصليّ (NativeRtc)
   // يشغّل WebRTC بنفسه بسقف نصف ثانية وتفريغٍ سريع ومُلغي صدى العتاد. الإشارات تبقى هنا كما هي: NativePC بديلٌ لـRTCPeerConnection.
   // الصوتيّة الثنائيّة فقط (الفيديو والجماعيّة والغرف على WebView). فشل المحرّك مرّةً ⇒ نعود إلى WebView يوماً كاملاً.
   var NRTC = { seq: 0, cbs: {}, pcs: {} };
@@ -425,7 +425,7 @@
         return "a=fmtp:" + pt + " " + (keep ? keep + ";" : "") + want;
       });
       else sdp = sdp.replace(m[0], m[0] + "\r\na=fmtp:" + pt + " " + want);
-      // C113: أُلغيت إطارات ٤٠ مللي ث (C110) — ضياع حزمةٍ كان يُسقط ضعف المدّة فيُسمع تقطّعاً
+      // C113: أُلغيت إطارات 40 مللي ث (C110) — ضياع حزمةٍ كان يُسقط ضعف المدّة فيُسمع تقطّعاً
       if (typeof d.sdp === "string" && !(d instanceof global.RTCSessionDescription)) { d.sdp = sdp; return d; }
       return { type: d.type, sdp: sdp };
     } catch (e) { return d; }
@@ -580,8 +580,8 @@
   // C30: الصوت في الخلفيّة — جلسة وسائط (Media Session) تُبقي أندرويد على صوت المكالمة حين تنتقل إلى تطبيقٍ آخر،
   //      وتعرض إشعار «مكالمة جارية» بزرّ إنهاء. عند العودة نعيد تشغيل عناصر الصوت احتياطاً.
   // C71: المكالمة تبقى حيّةً وظاهرةً حين تخرج إلى تطبيقٍ آخر:
-  //  (١) صوتٌ خافت جدّاً (-60dB) في حلقة — بدونه، ومن غير صوتٍ وارد (وحدك في الغرفة)، يعدّ Chrome الصفحة صامتةً فيجمّدها بعد دقائق وتنقطع، ولا يُعرض إشعار الوسائط
-  //  (٢) إشعارٌ ثابت «مكالمة جارية» من عامل الخدمة بزرَّي «العودة» و«إنهاء» — كما في تطبيقات المكالمات
+  //  (1) صوتٌ خافت جدّاً (-60dB) في حلقة — بدونه، ومن غير صوتٍ وارد (وحدك في الغرفة)، يعدّ Chrome الصفحة صامتةً فيجمّدها بعد دقائق وتنقطع، ولا يُعرض إشعار الوسائط
+  //  (2) إشعارٌ ثابت «مكالمة جارية» من عامل الخدمة بزرَّي «العودة» و«إنهاء» — كما في تطبيقات المكالمات
   var KA_SRC = "data:audio/wav;base64,UklGRqQlAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YYAlAAAAAPX/BQDv//D/DgDy/wMAEQDv/wwA+f/u//H/BwAGAPD/+//x/w8ABwDv/xAA8//6/xQAFAARAO//EAARAAUA7//6/+7/DwD0//7/BgD1/w4A8/8QAP//DwD3//L/EQAQABQA+P8DAPL/DwDw/xAA7/8TAPn/CwAOAAcAAAAJABEACQADAP//+//3//v/8f8QAP//DQALAAEACAD+/xIA8P/z/wwABgD2/wEA9f8LAAYA7v/w/w8AEAAAAAEAAgASAAsAEQAJAPD/8f/9/woA8P/v////EAAIAP7/BAACAO3/CQACAPb/EwDz/wsA7//5//7/9P/7/wUABQALAPH/9v8IAAUADwD9//T/BwAPAP3/BgACAAQA+v/1//H/9//1//r/+v/s/wsAEQD3//z//v/s//X/BgAOAAMAEwAQAAAA9P8MABMA7/8JAA8ABQAFAAUABQDy/woAFAAFAO//+P/w//n/CAD2//P/AQASAO//8v/s/xAA9f8OAPL/AwATAO3/8P/5/xMABAD1/xQA/P8CABIAAwAKAPP/8/8LAAkACgAKAP//8f/1//L/AQD8/woA9v8NAO3/+f8NAAMA9f8OAO3/DQD///H//P8NAAMA9v8CAPr/DgAOAAwAAQAUAPr/EwD4//v/BQD6//j/DQALAAIA7f/t//3/CgD8//j/EgACAAgAAgADAPH/+v/y//r/CgD4/wEA+f8KABMAEwDs/woAAgDx//P/BAD4/woA9/8HABQAAQDx/wUACQAFAPH/9v/2//T/7f/1/xEACQD1/xMAEgAKAAIA9f8PAA8A9P/t/+z/8v8NAPT/BwD4//n/7f/8//n//v8MAPv/EQAAAPz/DgAGAPT/7/8CAAkAEQANAAYADAD0/w4A9f8NAAwA7f8IAPf/EgDs//X/9//1/woAEwDz/w8A7/8AAA0ADQAPAAoA8v8PAO//+//4//3/7v/y/wwACAAPAO3/8P8IAAAAEwAMABIADAD4//3/CAAMAA4ACgAMAPv/DQD8/w8A+P8IAPT/BgDz/wUACAAAAPD/+/8HAPD/+f////P/9f8DAPX//P/0/wkA+v/y/wUACwD2//r/9v8HAAwABQABAAYA+P8CAAAA8f8DAO3/AQAPAAkACADt/wQAAQANABMA/v8MAPD/8//6//L/8f/8//3/7v/3//3/9P8HAPz/BQD1/w4ADAAQAAsAAADx//3/7//3/wcA8P/9/+3/FADx//z/8f8SAPr/8P/8//P/CQDs/wEADwAGAP3/EwD0/+7/DQD7//P/9v/8/+//9//4////FAD//w0A+f/+/wgADAD3//3/AgDt//z/7v/s/+3/DAAPAPj/DAAKAPv/CADy/wcACwAOAAUADAD///n/+v8BAPj/FAD0/wUAAgDv//T/7P/w/xQA/P8HAPb/7//x/wQADAD+/xIA+//+/+7/CQD3//b//f8IAOz//P8DAAEADwAAAPv/7v////n/AgD3/+z/AQAEAPH/CgD9/wwA+P/7/wwA7P/x//z/8f/1/wUAEQDu/wUA7f//////FAD6//H/EQANAPX/EgAEAAAACwD1//7/EwD1/+7/DAAUAAcADAD0/w0ADAAQAO3/EQD6//H/7f/u//T/FAADAPL/BAAIAA8A7/8UAO3/FAAOAPv/CwD8/+z/CQDw/wwADgDx/w0A8P8KAPz/8P/8//v/+f/6/wkACwAEAPD/CgD+/+7/EwAUAPj/8P8SAPX/AQD8////EwAQAPT/7P8KAO//CwD9//L/+f8LAP7/DQD+/wkACQAJAPP/DwD4////8f8KAO3//v8JAPD/DAAIAP3/BAD5//n/8P8RAPH/9f8NAPz/AwD0/xIAFAAMAP3/8/8DAPr/CwALAAUA7f/2/+z/CwAIAAUA///1/wYAAgAEAAAA8/8BAOz/AAABAAUA8//4/+z//v/8/wMA8P8FAAQAEQDw/wMABwD9/+///f/y/+///v8UAPX/+//9/wcADAAAAPj/AwAHAO3/FAAFAA8ADwD5//H/7/8GAAgAEwD0//7/CwDv/w8A9P/2/woABgABAP7////8//z/BQD7////CgAPAAUA8//2//b/8P/5/wwACwAPAPr/CAABAAgABwD0/w8A+P/7//H/9/8BAA8A8f8AAPv/AwD8/xAA+P/t/wYABAAGAA0A+f8EAP3/AQDv/wsA/f8QAAMA9P8MAA0AFAD5//H//f/7/wQABQAIAAcA///t//T/7v8HAAoAEQALAOz/8P8FAA0ACQAIAPv/8v/6//X/9f8NAPL/CQDx/w8A7v/s//T/+v8QAO7////0/xQA/P8NABQABwDz//L/8P///w0AEQD4/wQA/P/6/xIA7P/s/w4A//8JAP3/AAD7/woADQD7/w8A+//t/wYA///v/+3/+P8LAAYA8f/8//r/BwADAPr/CwDu/wEABgADAAUA+P/s//7/DADw//n/CwD4////+P/6/wkA+v/8//7/8v8TAAsAEwD3//r/CwAGAO//EgD1/wUA7//5/+3/EgD1/wYA7//v//f/BQAIAAAA8//x//b/AQD4//f/DQAJAO7///8EAAMAAQAIAPb/8v/s//H//f/x/wIABgDz/w8A+f8EAAIA//8HAPH/7/8KAPj/AwAOAAgA+P8AAAMACgDt/xQABgD7/xQABQDu/wQA7v8JAPD/7//8//j/8P8SAAEAAwD9/wEAEwDu//z/AAD9////7P8SABQA8P/t//r/8v8KAAkABAD8/wcACwD0/wsA9//s////9f8SAPv/AAAAAAkAAwASAPH/DAD4/wUA9v/7/wYA8P/u/woADwAOAAAA9v8HAPL/8P/8/xMA8f/5//L/BgALAAgA9//6//T/BgAJABMA+/8OAPP//v/+//3/EAD9/wMA/P/8//j/CAD7//f/+//7//X//v8RAPj/AADw/wUA/P/7/wwADQD6//L/CQDu//L/7P8KAPr/CAADAO7//v/6//P/7//4/xIAEQD4//D/AwAMAPf/CAASAPz/7P/y/xQAEgATAAIA+f/u/wMAAQD1/+7/+f/8/+7/EgD5/+z/AAAGAAMA9/8TAP//8P/5/+7/CwAPAAoA8P8GAPL/BQAPAPX/FAAOAPH/9v8FAP3/BgD+////BgDv////EAACAAYABgDt/wMA+P8FAAUA+f/s/wcA9v8HAPP/8f8FABAAAwAJAPb/9P/s/+//DwD1/wUA8f8QABMAAwAMAPb/9f8CAP7/9v8NAPb/8P/y/wQACwD4////9P/u/woAAADv/xIAFAAEAPH/EwD2/xQA+v8TAAUAEwD4/woA9/8QAPn/7v8FAA0A9v8EAAIA8//1//v/+P/u/w8A7v8AAPP/BAASAAkADwAUAP//BgD//xEA+/8HAAQAAwAIAAwACAD3/+3/7P8TAAsACQD7/wgAEwAJAPf/CgAFAPL/8P/0/wIABwADAPH/CAAMAAwA7v/u/xQA9P/x/wAADADx/+//DAAEAPT/7f/w/xMA8//4//T/CwD+//b/+v/w/wIAEwD8//b/AAATAP3/CQD1//z/DAAKAPn/EQD8/xMADAD7/wAAAwDu//j/9/8FAPb/FAD9/wAABAD2//z/8/8NAO//FAADAAgADwANABEA8v/8/w4AFAAFAAMA/P8EAAMAEAD1/wMAAQDx/wgA+v/3/xMA7//+/w0A/P///xQAEQAAAOz/7v/6//X//v8TABQABwAGAAwAAwDv//T/CwD6/xMA7v/t/+//7P8QAAIA///y/w0AAgAOAPr/BgARAP//EQD0//n/AwATAAoA9v/0/+z/+//1/wgA8v/w/xQA9f/9/wUA/P/s/+//DwACABIAEQAIABIADQALAPv/9v/s/+7/7/8OAO3/BQD3//v/9v/v//L/7P8TAA8A+P/1/wYA+P8NABIADAAGABMA9/8MAP//8P///xQA7/8KAA4A7P8EAAcACQDx/wgA9//6//L//P/6/+7/8/8BAPz/7//9/xQADwAHAA0A/P/+//n/8f8MAOz/9v/8//v/+P/2/wAA+P8EAAEAEgD7/wQAFAAOAAoACgANAOz/7f8HAPr/EAD///n/BQATABEA8P8QAPb/9f/u/+3/8//y/xMA9v8CAPX/7f/t/+7/9P8UAO7/8P/u//D/EQADAPj/DgDw/wQA8v/7//n/+f/z/+7/7v8UAPH/FAAUAP7/CgDy//T/8v/5//7/AAABAAcA/P/t/wIA/P/+/+//AwAAABIADAAKAP7/EwDt/wYA7f8HAA0A8v8CAAoA7/8OABAA+f/x/xAA/v/2/wcA7P8NAPj//v/v/+z/AgALAPL/CwD3/wsAEQACAAwA/P8QAPb//v/5//r/CwD2//P/FADx/wsADwDy/xQAAAACAPL/BQAFAPH/BwDt/wMA+f////z/BwAOAAwA9v8EABQA+v8JAPT/DgASABIA7v8CABEAAAANAPX/CAAPAAAA9v8JAAgA/P8RAPr/9P8BAAkA+/8MAPj//f///xMA9f/1//v/AAASAA0AAgD2//v/AAD4//z/8v/2//L/+P8EAPX/9f//////BwD9//j/8v8UAPL//f/5/wQACQDu/+z/BQAHAPr/DAAUAP7/CQDt//X//P8SAAUA7P/7/wcAEAARAAYA+v8RAPr/9//z/wkABwAAAPz/FADy/wYA+/8FABQA9v/8/wcACgAJAO3/EwAGAA0A9/8AAOz/BAALAPL/7v/8/w4A+f/2//j/DQACAPL/EAAJAA4A+f8KAAwA7f8UAAMADQABAAYACQD5//f/BQAMAPP/EwACABQA7//8//3/BAAFAO//7P/w/wYABgAUAAIAEQD8//L/+v///wUADQD6/wUACQD5//b/9P/w/xQA+P8KAA8A+v/1/wIAFAAGAAkA/v8PAPT/CgACAPr//f8EAPz/BwD3/woA7P/9/wIA+////wAACgALAAcAEwAUAPH/AwD1////BADv//H/EAAAAPT/DQACABQAEQDs/+z/+f/w//7//P8SAPL/EQD1//r/9/8IAAIA9f/5/wUADgD2/xMAEgDx/w8AFAD///j/CwD5/w0A8f8IAPP/DwDz//z/BgD6//T/CgALAA8A7/8KAAkA9f8LAPv/CwD2/w4AEgDs//b/AAAJABAACwD+/wkAAwAHAAYA8P/3/xQAAwAUAO3/7f8TAO7/AQDy/wwACgALAPX/7v/5/wYAFAD0/wEA8v8DAAEACgANAA8A+f/+/wcAAQAHAPz/DwDv//7//v8CAAsABQABAAwA/f8MAAIA+f8LAPP/AQD4/wAA///0/xEAFADx/+7/BQAPAAUADgAQAO//BQD///L/7P/u//j/CgASAO//DAAOABMABAATAPX/FAASAPH/+f/u/xQACQAUAPf/8v/3/+7/BgDy/+z/AwD0////DwD8////9/8GAO7/AADt/wcAEAARAO//CwAQAA0A7v/z/wYAEAAFAAgA8P/s/wQAEgARAPX/CgAGAA8A8v/x/woA+f/1/xQA7P8HAOz/7P/z//H/+f/z//T/CgDt//3/EAD7/wgA9//v/wMA9f/x//7/FAAPAAsACQD8/+//7v/s/+//7P8TAPH/BAD/////EgD2/wsAEgDv/wAAAwAQAAgACgD2//X/8/8DAPb/FAAGAAoABAAIAP3/EAABAP7//f/v/xMAEgABABIA7P/1/xIA//8RAAcA+/8EAAQABAASAPr/CAD+/+z/AAD8//3/BwD2/xEA7v/+//X/EAD1//3/DwALAAIADgDx/w4ADwALAAQA+P/6////EgDv/wUACQD5//z/EQDs/wQACQAOAPH/DgACAPD/+v8FABEADQD8/w0AAAAKAAwAEQD4//j/+f/4//H/9//+/wMAEAAQAAIABQANAPX/+//u/wsAAwDy/wMAFAAJAPH/9f8AABIA7f8CAP3/DQASAO3/8v/u//n/EAALABEAEAD5//z//f8HAPL/CAARABIA9P/8/+7/AQD4//f/BADx/+3/7//u/w8AAwAJAAsA8P8SABQABQDz//H//P8AABAA+v/x/wwABQD3/wgA9v8DAPv/+v/3/+7//P8CAO//DwDt/+///P8MAAoA7//y//X/AADs//j///8RABEACADy/woAAAADAPz/BADz/wMACgAEAPb/CAD7//X/7P8JAPj/7v/2//r/8P8TAAMA9P8IAPL/BADt/xQA8P8IAAEAAAD6/woA8/8UAAMA9f8BAPr/7//3/wgADwD1/wgA9f/9/wYABgD7//X/7f/9/xAA/v8BAPb//P8LAPL/AAAJAAoA8//1/wwA7/8UAPn/DwAKAP7/8//8//j/AwAHAPz/+//7//L/BAD+/wYA9v/v//7/9f8UAO3/CAAMAAEADAD0/wgA7P8NAP7/9/8DAAcA7v8GAPn//f8QAPf/9P/3/w0A+v/3//j/EgDx//H/EgALAP3/9//5//T/EwAUAPj/EQD///j/7P/w/w0ABgDv/w0AAgABAP7/FAALAPH/7P8GAAoA9P/9//v/9/8QAAMA7v/2/wMAEAASAOz/AgANAAgADQDw//P/AgD7/wAABAAQAO///v/y/wsACAAMAO3/DQAOAPT/7f/7//H/+v8TAPf/9v/y/////P8PAO3/7f/y//j//P/t/xIAFAAQAAkADQD7/wgA8v8CAPL/9//u//3/8/8JAAsAEQAMAP3/8//z//P/BQD0/w4AEQD6//r/9f8QAAkABQD2/+3/FAAEAAYAEgASAA0A7v8FAO//AwABAAUA+/8BAAcAEAAAAAUADwDv/wAADQD1/wIA+/8HABQA7P8DAPL/DQD3//D/AAAHAPj/DADt//r/9P8GAAUACQAUAO7/7v/u/xMA/f8TAP3/FAAOAO7/EwDy//z/8/8NAOz/BwD7/+7//v/z////AgD2//P/7/8SAAwA/f/x/wkAEQAOAPX/CADz/wwA9P/+/wYAEAD+//3/+//x/w4A/v8JABMAEAD6/wQA+P8PAAMACQAPAP//EwAKAAoA///t//v/AQD6//j/DAAOAAQAEQAFAOz/AgD2//v/AAAPAAAACwD9//7/+f/+/+//7f/2/w8A8P8SAAIACADv/w0ABAAIAAIA8v8NAPr/9f8GAAEAAgD0//j/EwATAP3/DQDy/woA/f8UABQA9P8GAPL/7P8GAA8AEQDz/wsABQAQAPX/BgD9/xMAEgDz/wQACAAJAP7/AgD+/wIABQANAA8AEgAEAAAA7P8LAAQACAD///f/DgD///X/BwAQAAQAEQD6//H/AQAAABIA+/8AAPn/BwDs/+3/7//8/xAACwD//w4A//8OABMABwANAA0ABwAEAAkAAgDu/xIAAgAIAOz/8P8NAPr/8v8GAAMADAAFAA8AEAD1//j/BgALAAUACAATABEAAQANAPH/9v8DAAAAAwDw////DAD3//P//v8BAAwABgAUAPb/DQD+/wwA+f8MAPj/BgD3/+//FAAQABIA8v8CABAAFAAUAO7/BgDs/+z///8PAOz///8FAPL/EQDs/+3/+P/3/wsADwAQAP3/DgAMAPX/EAD4/wYAEgDz//X/9v8NAAwA8v/t//L/8P/2/w0ACwAJABMABwDv/+z/EQAAAPX/+/8CAP3/9v/u//3/FADy/xEA8P8CAPj/CAATAAQA7f/v//r/BQARAO7/CADv/xMA+//7//r/7v/2/xEA9/8AAOz/CQD//wYAEgD8/wsA8P/7/wQAEQD6/wYA//8FAAsA7f/7//H/9//2/wIABAD3/+z//v8FAA8AAwDz/wEADgAEAAEABQDw//P/BwACAA8A+/8EAPj/CQD+/wIA+/8HAO7//f/t/wEA9f/7//T/8f/4//3/DgD0/w8ACAAJAPv/9v8DAAIA+f8FAAQAFAARAPn///8KAAwA+f/6/wgA9P/8/xIACAARAAMADgD7/wUAEgAMAPn/9P/z/wwA8f8OAP3/BADt/xAA9f///+z/BADx//f/+v8AAPj/8v/w/w8AAwAMAP//+P/w////8f/6//7/9P8FAP7/AgAFAAkAFAAUAPT//f/3/+3/AwACAAYA7f8JAPv/BQACABQA8v/3//7/8//9/xIA+v/u/wUA7v8SAPb/BwD4////9f8EAO7/DwD//xQAFAD3/xAA+v8QAAsADQD8/wcAEAACAOz/8//+/+7/EQASAO//+//z/+7/AAD5/wIA8f8GAAUAEwD6//3/DQDx/wIABwAIAAEADAAUABQACAAMAO//+f8HAAwA9P8LAPj/7v8PAPz/9/8OAPb/FAD7/w4A/P/7/+//9v8CAAIABgDx//j/FAD///T/9P8LAAoA+//7/+z/DAAIAPT/AgD///T/9f8RABAA+/8BABQA8/8PAAcA9v/1/xIACQAFAPn/8//+/+z/AwALAPn/7v/v//3////4//P///8IAPP/9v8AAAgACQAQAAMA/v/2/w8A8P/u/+z/CQALAPH/AQAQAPz/8v8LAAcACwD4/w4AAADs/wIA8f/+/xQAEwD8//v/8f/0/+3/7f8FAPX//v8DAPf/FAANAPb/8v///xMAAAAEAPf/AgAAAPr/AwD0/w8AAwD8//v/7//u//L/EAAUAAUA7//5/wsABwALAPb///8SABEAFADx//X/+v/2//T/CAAUAAUA8f/u/wgACgD4//n/AwDs/+7/EwAMAAcA9f/+//D/7/8MAAYAAQDw/wgA7P/3//b/BAD+/+z/CAAQAAIAEAD4/woA8f8OAAAADQAJAAcADgAUAPX/BQASABMA8f/v/wEAEgD//xAAEAAGAAMACgD0////AQANABQA7f/4//r/CADx//X/EQADAA8AEQAGAAMADQD7/xAACAAFAPz/8//6//f/+P8PAPP/+v/8//L/+P8NAPz/CwD6/w8ACQD6/w4AEADz/wwAEQAQAPH/BgDw/wgA9P8MAA8ADADz/xQADADy/wkABQAOAPb/+P8QAAoA8f/0/wMAEwDv/wUA+//v/wMA7v/s/xIA+f8JAP//8//0/wcA8f8TAPj/EADz/wIA9v8DAAEA7P/8//P/+/8DAAwADQACAAsA7v8SAAIA8v8CAA8AAAASAPP/7v/7//z/AgD4/wgA7f8RAAgA8//t/wsA8//w//z/9//1/w8A/v8EAPX/EQD8/w4A/f8IAOz/7f8BAPX/CwAMAAoA7v/u//D/9/8TABIABQAKAPb/CAAFAPr/EwANAPD/AwABAA0A+f////T/EQATAO7/+f/2/wMACQABABAACQAEAAIAAADs/wEAEQAKAAEA+v/t//v/CQASAO7/FAD1//X//f8EAP3/8P8MAPz/AgAQABAADQARAPT/7v8PAPL/+P8HABQAEAAUAPL/AwD+//v/9f/w////AQADAAwAFAD7/wIADwAFAAEA7/8BAAAACgAMAAMA+//7/wIA9f/0//n/7P8JAAUACAAFABAA///2/xEA8P/1///////8/xAADwABAPD/+P8RAPH/EQD3////EQACAAkAAgAHAPD/CwAAAPf//f/8/w4A7f/2/xQA/f/7/+3/+f/v/wUACAD4/xIA/v8MAPL/+P/7/+//9P8SAO//8f/w/xAAAQD0/+z/+P/9/w4A7P8UAAAA7f/5/wAAAADt/wsABQATAAEA9//v/wYA7v/x/xQAEwABAAsAEgAFAPz/CQDs/+3/AAAQAAAA7/8GABMAAQD2//H/7f/1//n/9f8NAPH/AgADAAcAAgAOABEADwD1/xIAEAABAPr/EwD8/woA7v///w8ACQAPAP3/AwANAA0A/f/0//z/7P8PAAoA8v8DAPX/FAD6/wUA8f/t/xMA9P/z/+//DgAMAPn/DwD3//z/EgADAPX/9//2/w0A7f8CAPv/CAALAPn/FAACAAQACQD5/wAA7f/y/+z/8P8FAAIA7//6/xAABAAGAAQAFAD6/+3//P/t//z/BwD7//r/AgD5/wAABwD9////CwD5/xAA9v8KAP3/9P////7/8f8BAOz/CwD7//b/AAATABIACAD5/xEA7//5/wMA7v8IAPf/BwD0////7f/z//X/7P/0////9f8MAAIA8v/2/wkABQDx/wYAAQAFAAEA7v8RAPv/+P8UAOz/7v/0/wwAEgD6/xAABwDy/+3/7/8AAPD/8//z/wsA9P8NAAcA7P/3//r/DgD1/xQADgAMAPP/DQACAAsA8P8CAPn/+v/w//3/9//s//z//f/w/+7/+P8MAO//BgAPAAMA/f/s/wAA7v8JAA4A/v8PAAEABgD9/wUABwAAAA4ABgAEAPX/BAAEAAYA9f8UAOz/+/8SAAwA/P8TAAQA+//4//P/8f8TAO7/7/8FAA8AAAAIAA8AAAAJABAA7P8KAAoADAABABEADgAEAPv/FAAEAAIA8P8FAA0A/f8TAAAA8P8UAA4A+v8TAPz//P8KAAIADQARAAoAEAD6//X/8P8NAAMADQD5/w0A9v8DAPv/9//1/wkA9/8UAO7/AAAEAAMABwDz/wYA9f/8/wQA8v8DAAIADQANAP//CADx//3/BQD+/wgA8/8IABQACgD3/w0A9f/s//T/AwALAA0A+/8TAAMADQABAAQA/P/t/w8A+P/s/xAA/P/v/xEA9////w4A/f8AAPz/+//8/wgA8f8NABQACwDx//j/9P8HAP7/EwADAO7/CAAEAAMA7v/+/wYABwASAPz/AgD7/wQAEQD0/xMA+P8RAAMA8P/5/wEA8P/x/wgABAAFAA0ABgALAO3/8v8RABAACQAJAAcABgAKAPf/8P8IAAUACwD0/wwA7P/6//j/BQAOAO7//v8PAAEABAAJAPP/8f/6//D/EADs//L/CwDx//n/EAAJAO//+P8BAAoA7/8PAAYAEQD0/wYA7/8UAPX/AAABAPj/DQDs//f/DgD9/w0A/P/x/wAABAD8////DwAFAAwABgDv///////7/wQABwAOAPz////4//T/7//5/w4AAwAJAAsAEQD1/wMAAQD4/wkADwDv/wAA7P8OAPD/BgAQAAAA7v/9//r/CAD+//j/+f8RABMACQAFAAgA+f/5/+//9/8HABQA8//v//T/8P8SAAsA9//s/w8A9v8LAPr//v/5/w4A9v/1//n/DQDy/wkA8v/4//H/7/8GAPr//P8IAAcA9f/v//T/7v/2/wgA/v/6/xEAAAAPAPX////8/wAADwD5//X/+v8FAO7/AAAEAPX//v/6/w4A8f/4/wkA9f/3/wcAAQAFAPP/7v8CAPP/+f8NAA0A8P/+/wsAAgDt/wsA8f/4/wsA/f///xIAEQAOAPH/+P/0/woA/f/6/xEA///u/xEAEgDy/+z/AgD4//X////v//f/AQACAAgACgD7/wEAAwD3//P////w/w8ACQDy/w8A8//2/xIABQAJAO7/7v/u/wwAEQDy/wYA9P8GABAAAgDw/wMA9v8DAPb/8f8BAOz/CgD///X//P/y//L/+//z//X/CwD9/w4ADgDz/wAACQD7//b/EAAOAO7/DAD8/wMA+P/+/wUADwD5//T/+/8OAAwA+//y/+z/8v/v/wsAEAD5//r/8f/2//X//P/t/wcABQATAA0A8//+/xAA8//x/xEA+f/6//v/EgAMAO//+//w/xIAAQDy/+7/+f8TAPf///8BAPH/CQARAPf/7P8AAAYABgDu//H/+//1/wwA9v/1/wIA9P/5//j/+v8BAPD/7P8KAO7/CwANAAEA8P8SABQA8P/4/xQA7/8DAAYA8f8CABEA9v8LAAsA9P/8////7/8JABEA9v8HAAQAFAAMAP//EQAOABQA8//w//z/+v/7//j/EQAJAA8A+/8LABAA7/8FAAUAFAABAAQABQDx//r/AQASAAcA///s////CwASAO3/8/8KAAYABgASAP//CQD1/wEADgD5//H/AgAFAAkAEwDu//7/AQDx//3/9/8IAAYADgD7//P/+f8UAO7/BAD3/wQA/f8BAPX/AwD2//r/AgATAAUA//8LAAAADAASAPj/9v8FAA0A7P/s//f/8v/7/wkAEAD8/wIA8v8PAAwABAD0//z/BgDw/wwAEwABAAgA/f/+/wMA//8UAAQADQDv/wsACwADAO3/7//z/w8ABAAIAP//DAD1/xIACQDu/wAACgD0/+z//f/1//j/EQAQAAwA7v8FAPf/EQD9/xQA+//+/w4A7f8GAA8ABgDx/xQABAALAAMA/f8AAPb/EAALAO//DgACAPT/+P8NAO//9v///w0A9v///+//EQD//wQAAwD3//3///8KAPj/EwAAAAgABQDy//z/AwAFAAAABAAKAP3/8//5/xMACAAMAAYAFAD2/wAA7v/1//3/DgAKAA8ABgDw//3/BQADAAUADQD+/xQA8//8/wgA7P/u/w4AEAD//wIAEgADAPz/+//w/w8A8v8SAAYA8/////b/9/8UAPP/BQAFAAEABQAFAAsAAQACAPf/9f8OAA0ABgD+//T/+f8BAPD/BgDw/wwA7P8QAPv/EAAHAAUA+f8QAP3/9P/1//r/+/8MAPP//v/u/wQA/v/0/wQAEwD9//D/EgASAAwA/f8SAPn/+v////L/AwAQAPH/AwDt/w0A8P/z/wAA+f/s/wkAFAD0/wgA/f8MAO//CAARAA8AEgDu/+7/DgAJAPP/CgD6//7/FAABAAEADQAQAPr/+f8PAPn//v8QAA4A7f/6//f/7f8MAP3/BwADAPD/FAD9//H/EQDz/wUABAA=";
   var kaEl = null, ongoingEnd = null;
   function keepAlive(on) {
@@ -666,7 +666,7 @@
       }
     });
   } catch (e) {}
-  // C28: «وضع الأذن» — على السمّاعة العاديّة تسودّ الشاشة بعد ٥ ثوانٍ (المتصفّح لا يطفئها ولا يصل إلى حسّاس القرب)،
+  // C28: «وضع الأذن» — على السمّاعة العاديّة تسودّ الشاشة بعد 5 ثوانٍ (المتصفّح لا يطفئها ولا يصل إلى حسّاس القرب)،
   //      فلا تلمسها الوجنة، وتعود بالضغط المطوّل أو بتحويل الصوت إلى المكبّر أو بانتهاء المكالمة.
   var earT = null, earEl = null;
   function earOn() {
@@ -901,7 +901,7 @@
   function makePc(c, ice, pre) {
     var pc = pre || (c.native ? new NativePC(ice) : new global.RTCPeerConnection({ iceServers: ice }));   // C95 · C218: أو اتّصالٌ جُهِّز أثناء الرنين
     var side = c.role === "caller" ? "ic_caller" : "ic_callee";
-    // C66: المرشّحات دفعةً كلّ ١٢٠ ms بدل كتابةٍ لكلّ مرشّح
+    // C66: المرشّحات دفعةً كلّ 120 ms بدل كتابةٍ لكلّ مرشّح
     c.iceBuf = [];
     var flushBuf = function () { c.iceT = null; if (!c.iceBuf.length) return; var b = c.iceBuf; c.iceBuf = []; var j = b.length === 1 ? b[0] : { cands: b }; if (c.ref && c.live && !c.iceHold) c.ref.child(side).push(j).catch(function () {}); else c.iceOut.push(j); };   // C218: iceHold = لا شيء للمتّصل قبل حجز الردّ
     pc.onicecandidate = function (e) {
@@ -943,16 +943,16 @@
   }
   function flushIceIn(c) { c.remoteSet = true; var q = c.iceIn; c.iceIn = []; q.forEach(function (j) { addRemoteIce(c, j); }); }
   // C112: الصوت والصورة في «بثّين» منفصلين ⇒ المتصفّح لا يؤخّر الصوت ليُطابق الصورة (lip-sync). على شبكةٍ سيّئة كانت الصورة
-  //       تتأخّر فيتأخّر الصوت معها: «مخزن ١٥٦٥ مللي ث» في مكالمة فيديو (خالد). الآن الصوت يصل بأسرع ما يمكن وحده.
+  //       تتأخّر فيتأخّر الصوت معها: «مخزن 1565 مللي ث» في مكالمة فيديو (خالد). الآن الصوت يصل بأسرع ما يمكن وحده.
   function ownStream(t) { try { return new global.MediaStream([t]); } catch (e) { return null; } }
   function addTracks(c) {
     c.local.getTracks().forEach(function (t) { var st = ownStream(t); if (st) c.pc.addTrack(t, st); else c.pc.addTrack(t, c.local); });
   }
-  // C97: ثلاث درجات للصورة بدل اثنتين (كانت تهبط مباشرةً إلى ٣٢٠×٢٤٠ · ١٥٠ ك/ث وتبقى هناك) — تنزل درجةً وتصعد درجة
-  // C163: درجةٌ رابعة للشبكة السيّئة جدّاً (فقد ٥٤٪ وتأخير ثانيتين في صور خالد) — الصورة كانت تبقى ١٥٠ ك/ث فتزاحم الصوت على خطٍّ لا يحملها
+  // C97: ثلاث درجات للصورة بدل اثنتين (كانت تهبط مباشرةً إلى 320×240 · 150 ك/ث وتبقى هناك) — تنزل درجةً وتصعد درجة
+  // C163: درجةٌ رابعة للشبكة السيّئة جدّاً (فقد 54٪ وتأخير ثانيتين في صور خالد) — الصورة كانت تبقى 150 ك/ث فتزاحم الصوت على خطٍّ لا يحملها
   var VTIERS = [{ w: 640, h: 480, fps: 24, br: 700000 }, { w: 480, h: 360, fps: 20, br: 350000 }, { w: 320, h: 240, fps: 15, br: 150000 }, { w: 240, h: 180, fps: 10, br: 80000 }];
   function capVideo(c) { try { tuneSenders(c.pc, VTIERS[c.vt || 0].br); } catch (e) {} }
-  // C52: قياس الشبكة كلّ ٣ ثوانٍ في المكالمة الثنائيّة (كما في الغرف): ضعيفة مرّتين ⇒ صورة أخفّ (320×240 · 15 إطاراً · 150 كيلوبت)، تتحسّن ٤ مرّات ⇒ تعود
+  // C52: قياس الشبكة كلّ 3 ثوانٍ في المكالمة الثنائيّة (كما في الغرف): ضعيفة مرّتين ⇒ صورة أخفّ (320×240 · 15 إطاراً · 150 كيلوبت)، تتحسّن 4 مرّات ⇒ تعود
   function cStatsTick(c) {
     if (c.done || !c.pc || c.state !== "connected") return;
     c.pc.getStats().then(function (rep) {
@@ -974,12 +974,12 @@
       c.q = q; c.rtt = rtt; c.loss = loss;
       if (c.type !== "video") audioAdapt(c, rtt);
       // C97: المخزن لا يدخل في تقدير الشبكة (في الفيديو يتأخّر الصوت عمداً ليتزامن مع الصورة — كان يخفّض الصورة بلا داعٍ)
-      // C92: تأخير مخزن الصوت (ms) في آخر ٣ ثوانٍ + عرض الشبكة/التأخير في شاشة المكالمة
+      // C92: تأخير مخزن الصوت (ms) في آخر 3 ثوانٍ + عرض الشبكة/التأخير في شاشة المكالمة
       var dD = jbD - (c.sJbD || 0), dN = jbN - (c.sJbN || 0); c.sJbD = jbD; c.sJbN = jbN;
       if (dN > 0) c.jb = Math.round(dD / dN * 1000);
       c.lagHist = (c.lagHist || []).concat([Math.round((rtt || 0) / 2 + (c.jb || 0))]).slice(-40);
       qaSample(c, rtt, c.jb, loss, pair);   // C131
-      c.snapN = (c.snapN || 0) + 1; if (c.snapN % 5 === 1) telLive(c);   // C216: لقطة كلّ ~١٥ث
+      c.snapN = (c.snapN || 0) + 1; if (c.snapN % 5 === 1) telLive(c);   // C216: لقطة كلّ ~15ث
       telSample(c, jitS, fpsS, hS);   // C179
       if (c === cur && ui.sub && c.type !== "video") ui.sub.textContent = netLine(c);
       c.qHist = (c.qHist || []).concat([q]).slice(-6);
@@ -987,7 +987,7 @@
       var vt = c.local && c.local.getVideoTracks()[0];
       var vt0 = c.vt || 0, vt1 = vt0;
       if (bad && vt0 < VTIERS.length - 1) vt1 = vt0 + 1; else if (good && vt0 > 0) vt1 = vt0 - 1;
-      // C163: فقدٌ فادح (> ٣٠٪) ١٢ ثانية في مكالمة فيديو والكاميرا تعمل ⇒ اقتراحٌ واحد بإيقافها (الصوت أولى) — لا نوقفها نحن
+      // C163: فقدٌ فادح (> 30٪) 12 ثانية في مكالمة فيديو والكاميرا تعمل ⇒ اقتراحٌ واحد بإيقافها (الصوت أولى) — لا نوقفها نحن
       var lossX = Math.max(loss, lostOut != null ? lostOut : 0);   // ما يضيع إليّ أو منّي
       c.hlN = lossX > 0.3 ? (c.hlN || 0) + 1 : 0;
       if (c.hlN >= 4 && c.type === "video" && !c.camOff && !c.camHint) { c.camHint = true; toast(L("الشبكة سيّئة جدّاً (فقد " + Math.round(lossX * 100) + "٪) — أوقف الكاميرا ليصل الصوت أسرع", "Very poor network — turn the camera off so audio arrives faster")); }
@@ -1001,10 +1001,10 @@
       if (c === cur) paintStatus(c);
     }).catch(function () {});
   }
-  // C110: تراكم التأخير (bufferbloat) — خالد: «شبكة ٦٢٧٤ ← ٧٢٠٣ مللي ث» تزيد كلّ دقيقة: نُرسل أكثر ممّا تحمله شبكة الجوّال
+  // C110: تراكم التأخير (bufferbloat) — خالد: «شبكة 6274 ← 7203 مللي ث» تزيد كلّ دقيقة: نُرسل أكثر ممّا تحمله شبكة الجوّال
   //       فيطول الطابور. أقلّ زمنٍ رأيناه = خطّ الأساس؛ إن تجاوزه الزمن كثيراً مرّتين متتاليتين ⇒ نخفّض سقف الصوت درجة
-  //       (٣٢ ← ٢٠ ← ١٢ ← ٨ ك)، وحين يعود قريباً منه ٣٠ ثانية ⇒ نرفعه درجة. الطرفان يفعلان ذلك فيُفرَغ الطابور من الجهتين.
-  var ABR = [32000, 24000, 20000];   // C113: لا ننزل تحت ٢٠ ك (٨–١٢ ك كانت مكتومة/آليّة)
+  //       (32 ← 20 ← 12 ← 8 ك)، وحين يعود قريباً منه 30 ثانية ⇒ نرفعه درجة. الطرفان يفعلان ذلك فيُفرَغ الطابور من الجهتين.
+  var ABR = [32000, 24000, 20000];   // C113: لا ننزل تحت 20 ك (8–12 ك كانت مكتومة/آليّة)
   function audioCap(c, bps) {
     try {
       if (c.native) { var nb = RTCB(); if (nb && nb.rtcAudioBr) nb.rtcAudioBr(c.pc.id, bps); return; }
@@ -1228,7 +1228,7 @@
     c.native = nativeAudioOk(type);   // C95
     if (dbUp === false) dbNudge("call");   // C119: قاعدة البيانات منقطعة (بعد الخلفيّة) ⇒ إعادة الاتّصال الآن لا بعد ثوانٍ
     warmAt = 0; warmUp("call");
-    // C228: قياسات الطرف الآخر بالتوازي مع الميكروفون (وضع «الأقرب للطرفين» فقط · ٧٠٠ مللي ث على الأكثر)
+    // C228: قياسات الطرف الآخر بالتوازي مع الميكروفون (وضع «الأقرب للطرفين» فقط · 700 مللي ث على الأكثر)
     var peerP = getIce().then(function () { return relayPrimary === "p" ? peerProbe(peer, 700) : null; });
     Promise.all([c.native ? Promise.resolve(nativeLocal()) : getMedia(type), getIce(), peerP]).then(function (r) {
       if (c.done) { stopStream(r[0]); return; }
@@ -1500,7 +1500,7 @@
       .then(function () { c.switching = false; });
   }
   // ============================================================
-  //  C131: تقييم المكالمات — بدل الانطباع: بعد كلّ مكالمة (≥ ١٥ ث) يسأل المدير ومن فعّل «المختبِر» (رابط ?qa=1) عن الجودة
+  //  C131: تقييم المكالمات — بدل الانطباع: بعد كلّ مكالمة (≥ 15 ث) يسأل المدير ومن فعّل «المختبِر» (رابط ?qa=1) عن الجودة
   //  ويُحفظ مع القياس: المحرّك · النسخة · الوسيط · التأخير (وسيط/أقصى) · المخزن · الفقد · المكبّر/السمّاعة · الجهاز ⇒ qa/{id} في الخادم
   //  المدير يرى النتائج مجمّعةً: SawaRTC.qaReport() (من «حسابي ← تقييمات المكالمات»).
   // ============================================================
@@ -1531,8 +1531,8 @@
   }
   // C216: سجلّ المكالمة لا يضيع. كان يُرسل مرّةً واحدة ويُهمل الخطأ — فإن فشل الطلب (شبكةٌ مزدحمة، التطبيق في الخلفيّة، انتهاء المهلة)
   //        ضاع السجلّ بصمت (مكالمة 01:02: سجلّ المستقبِل ⚡ لم يصل). الآن: يُحفظ في الهاتف قبل الإرسال ويُحذف عند نجاحه،
-  //        ويُعاد عند فتح التطبيق وعودة الشبكة وبعد كلّ مكالمة (حتّى ١٢ محاولة · ٣ أيّام · ٢٠ سجلّاً). qd = دقائق التأخير.
-  //        ولقطةٌ كلّ ~١٥ث أثناء المكالمة: إن توقّف التطبيق قبل الإنهاء (أُغلق أو قتله النظام) تُرسل في الفتح التالي بسبب «unfinished».
+  //        ويُعاد عند فتح التطبيق وعودة الشبكة وبعد كلّ مكالمة (حتّى 12 محاولة · 3 أيّام · 20 سجلّاً). qd = دقائق التأخير.
+  //        ولقطةٌ كلّ ~15ث أثناء المكالمة: إن توقّف التطبيق قبل الإنهاء (أُغلق أو قتله النظام) تُرسل في الفتح التالي بسبب «unfinished».
   var TELQ = "sawa-tel-q", TELL = "sawa-tel-live", telBusy = false;
   function lsJ(k, d) { try { var v = JSON.parse(global.localStorage.getItem(k) || "null"); return v == null ? d : v; } catch (e) { return d; } }
   function lsW(k, v) { try { if (v == null) global.localStorage.removeItem(k); else global.localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
@@ -1661,7 +1661,7 @@
         var a = r.all || {};
         var c1 = card(L("المكالمات الفرديّة", "1:1 calls"));
         kv(c1, L("العدد", "Calls"), String(a.n || 0));
-        // C217: النجاح يُحسب من المكالمات التي رُدّ عليها — «لم يُجب/مشغول/رُفضت/أُلغيت» ليست فشلاً في الاتّصال (كانت تُنزل النسبة إلى ٤٨٪)
+        // C217: النجاح يُحسب من المكالمات التي رُدّ عليها — «لم يُجب/مشغول/رُفضت/أُلغيت» ليست فشلاً في الاتّصال (كانت تُنزل النسبة إلى 48٪)
         if (a.fail != null) {
           var att = (a.conn || 0) + (a.fail || 0);
           kv(c1, L("نجح الاتّصال بعد الردّ", "Connected after answer"), pct(a.conn, att) + " · " + (a.conn || 0) + "/" + att, att && a.conn / att < 0.9);
@@ -1669,7 +1669,7 @@
         } else kv(c1, L("نجح الاتّصال", "Connected"), pct(a.conn, a.n), a.n && a.conn / a.n < 0.85);
         kv(c1, L("عبر الوسيط (TURN)", "Via TURN relay"), pct(a.relay, a.conn), a.conn && a.relay / a.conn > 0.4);
         kv(c1, L("عبر TCP/TLS (ليس UDP)", "Over TCP/TLS (not UDP)"), pct(a.tcp, a.conn), a.conn && a.tcp / a.conn > 0.15);
-        kv(c1, L("زمن إنشاء الاتّصال (وسيط · ٩٠٪)", "Setup time (median · p90)"), ms(a.setup) + " · " + ms(a.setup90), a.setup > 3000);
+        kv(c1, L("زمن إنشاء الاتّصال (وسيط · 90٪)", "Setup time (median · p90)"), ms(a.setup) + " · " + ms(a.setup90), a.setup > 3000);
         // C218: أثر التجهيز أثناء الرنين — زمن المستقبِل من «ردّ» إلى الاتّصال
         if (a.setupPwN) kv(c1, L("بعد الردّ: مُجهَّز مسبقاً · بدونه", "After answer: pre-warmed · without"), ms(a.setupPw) + " (" + a.setupPwN + ") · " + ms(a.setupNoPw) + " (" + (a.setupNoPwN || 0) + ")");
         kv(c1, "RTT", ms(a.rtt), a.rtt > 300);
@@ -1677,7 +1677,7 @@
         kv(c1, L("التذبذب (jitter)", "Jitter"), ms(a.jit), a.jit > 40);
         if (a.fps != null) kv(c1, L("إطارات الفيديو", "Video fps"), a.fps + " fps", a.fps < 12);
         if (a.ringN) kv(c1, L("وصل إشعار الرنين", "Ring push delivered"), pct(a.ringOk, a.ringN), a.ringOk / a.ringN < 0.9);
-        c1.appendChild(el("div", "font:600 11px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:4px", L("المعتاد عالميّاً: ١٥–٤٠٪ عبر الوسيط. الأصفر يستحقّ المراجعة.", "Typical: 15–40% relayed. Yellow deserves a look.")));
+        c1.appendChild(el("div", "font:600 11px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:4px", L("المعتاد عالميّاً: 15–40٪ عبر الوسيط. الأصفر يستحقّ المراجعة.", "Typical: 15–40% relayed. Yellow deserves a look.")));
         // C215: نوع NAT لكلّ طرف (من قياس الهاتف قبل المكالمة) — يفسّر نسبة الوسيط
         var nt = a.nat || {}, nN = (nt.sym || 0) + (nt.eim || 0) + (nt.none || 0);
         if (nN) {
@@ -1694,7 +1694,7 @@
         // C228: الجودة حسب المسار (دولتا الطرفين من شبكة Cloudflare) وحسب الوسيط المستعمَل
         var flag = function (cc) { return /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(127397 + cc.charCodeAt(0), 127397 + cc.charCodeAt(1)) + " " + cc : "؟"; };
         var rlbl = function (id) { if (id === "cf") return "Cloudflare"; if (id === "direct") return L("مباشر", "Direct"); if (/^m:/.test(id)) return "Metered " + id.slice(2).split(".")[0]; return id === "?" ? L("غير معروف", "Unknown") : id; };
-        var qtxt = function (x) { return (x.conn || 0) + "/" + (x.n || 0) + " · RTT " + ms(x.rtt) + (x.rtt90 != null ? " (٩٠٪ " + ms(x.rtt90) + ")" : "") + " · " + L("فقد ", "loss ") + (x.loss == null ? "–" : x.loss + "%") + (x.slow ? " · " + L("بطيئة ", "slow ") + x.slow : "") + (x.pair ? " · " + L("اختيار الطرفين ", "pair-picked ") + x.pair : ""); };
+        var qtxt = function (x) { return (x.conn || 0) + "/" + (x.n || 0) + " · RTT " + ms(x.rtt) + (x.rtt90 != null ? " (90٪ " + ms(x.rtt90) + ")" : "") + " · " + L("فقد ", "loss ") + (x.loss == null ? "–" : x.loss + "%") + (x.slow ? " · " + L("بطيئة ", "slow ") + x.slow : "") + (x.pair ? " · " + L("اختيار الطرفين ", "pair-picked ") + x.pair : ""); };
         var rk = Object.keys(r.routes || {});
         if (rk.length) {
           var cr = card(L("الجودة حسب المسار (دولتا الطرفين)", "Quality by route (both countries)"));
@@ -1703,7 +1703,7 @@
             var x = r.routes[k], top = Object.keys(x.relays || {}).sort(function (p, q) { return x.relays[q] - x.relays[p]; })[0];
             kv(cr, k.split("-").map(flag).join(" ↔ "), qtxt(x) + (top ? " · " + rlbl(top) : ""), x.rtt > 300 || (x.conn && x.slow / x.conn > 0.3));
           });
-          cr.appendChild(el("div", "font:600 11px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:4px", L("الدولة من شبكة Cloudflare عند كلّ طرف. «بطيئة» = RTT فوق ٣٠٠ مللي ث. «اختيار الطرفين» = اختير الوسيط بقياس الهاتفين معاً.", "Country as seen by Cloudflare for each side. «Slow» = RTT over 300 ms. «Pair-picked» = relay chosen from both phones' measurements.")));
+          cr.appendChild(el("div", "font:600 11px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:4px", L("الدولة من شبكة Cloudflare عند كلّ طرف. «بطيئة» = RTT فوق 300 مللي ث. «اختيار الطرفين» = اختير الوسيط بقياس الهاتفين معاً.", "Country as seen by Cloudflare for each side. «Slow» = RTT over 300 ms. «Pair-picked» = relay chosen from both phones' measurements.")));
         }
         var rb = Object.keys(r.byRelay || {});
         if (rb.length) {
@@ -1716,9 +1716,9 @@
         if (ps.length) { var c3 = card(L("حسب المنصّة", "By platform")); ps.forEach(function (k) { var x = r.byPlat[k]; kv(c3, k, x.n + " · ✓ " + pct(x.conn, x.n) + " · TURN " + pct(x.relay, x.conn)); }); }
         var g = r.groups || {};
         if (g.n) { var c4 = card(L("المجموعات والغرف", "Groups & rooms")); kv(c4, L("الجلسات", "Sessions"), String(g.n)); kv(c4, L("عبر خادم الوسائط (SFU)", "Via SFU"), pct(g.sfu, g.n)); kv(c4, L("انضمّ بنجاح", "Joined"), pct(g.conn, g.n)); }
-        // C181: الملخّص اليوميّ (٧ صباحاً) وتنبيه التراجع — تشغيل/إيقاف وتجربة
+        // C181: الملخّص اليوميّ (7 صباحاً) وتنبيه التراجع — تشغيل/إيقاف وتجربة
         var cq = card(L("الملخّص اليوميّ والتنبيهات", "Daily digest & alerts"));
-        cq.appendChild(el("div", "font:600 11.5px var(--sawa-font,system-ui);color:" + MUTED + ";margin-bottom:8px", L("كلّ صباح (٧ بتوقيت السودان) يصلك ملخّص أمس، وتنبيهٌ فوريّ إن تراجعت المكالمات في آخر ساعتين.", "Every morning you get yesterday's summary, plus an instant alert if calls degrade in the last 2 hours.")));
+        cq.appendChild(el("div", "font:600 11.5px var(--sawa-font,system-ui);color:" + MUTED + ";margin-bottom:8px", L("كلّ صباح (7 بتوقيت السودان) يصلك ملخّص أمس، وتنبيهٌ فوريّ إن تراجعت المكالمات في آخر ساعتين.", "Every morning you get yesterday's summary, plus an instant alert if calls degrade in the last 2 hours.")));
         var qr = el("div", "display:flex;gap:6px"); cq.appendChild(qr);
         var qb = el("button", "flex:1;padding:9px;border-radius:10px;border:1px solid " + LINE + ";background:" + (r.qoff ? "transparent" : PRI) + ";color:#fff;font:800 12.5px var(--sawa-font,system-ui)", r.qoff ? L("متوقّف — تشغيل", "Off — turn on") : L("مفعّل — إيقاف", "On — turn off"));
         qb.onclick = function () { qb.disabled = true; wcall("admin.qcfg", { off: !r.qoff }).then(function (x) { r.qoff = !!(x && x.qoff); qb.textContent = r.qoff ? L("متوقّف — تشغيل", "Off — turn on") : L("مفعّل — إيقاف", "On — turn off"); qb.style.background = r.qoff ? "transparent" : PRI; toast(r.qoff ? L("أُوقف الملخّص", "Digest off") : L("✓ الملخّص مفعّل", "✓ Digest on")); }).catch(function (e) { toast(String((e && e.message) || e)); }).then(function () { qb.disabled = false; }); };
@@ -1731,7 +1731,7 @@
           var row = el("div", "padding:6px 0;border-top:1px solid " + LINE + ";font:600 12px var(--sawa-font,system-ui)");
           row.appendChild(el("div", "display:flex;justify-content:space-between;gap:6px", ""));
           row.firstChild.appendChild(el("span", "font-weight:800", (ok ? "✅ " : "❌ ") + (x.k || "?") + (x.mode ? " · " + x.mode : "") + (x.n ? " · " + x.n + "👥" : "")));
-          row.firstChild.appendChild(el("span", "color:" + MUTED + ";direction:ltr", new Date(c.ts).toLocaleString(isAr() ? "ar" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })));
+          row.firstChild.appendChild(el("span", "color:" + MUTED + ";direction:ltr", new Date(c.ts).toLocaleString(isAr() ? "ar-u-nu-latn" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })));
           c.sides.forEach(function (y) {
             row.appendChild(el("div", "color:" + MUTED + ";direction:ltr;text-align:start;margin-top:2px;word-break:break-word",
               [y.role, y.plat, y.eng, y.ck ? "📲sys" : "", y.vis === 0 ? "bg" : "", y.ok ? ms(y.setup) : (TEL_REASON[y.reason] ? L(TEL_REASON[y.reason][0], TEL_REASON[y.reason][1]) : y.reason), y.err ? "err " + y.err : "", y.up ? "📹+" : "", y.route ? y.route + "/" + (y.proto || "?") + (y.relay ? " " + y.relay : "") : "", y.lct ? y.lct + "↔" + (y.rct || "?") + (y.fam === "6" ? " IPv6" : "") : "", y.nat ? "NAT " + (NAT_TX[y.nat] ? L(NAT_TX[y.nat][0], NAT_TX[y.nat][1]) : y.nat) + (y.v6 ? " +v6" : "") : "", y.v6l || y.v6r ? "IPv6 " + (y.v6l ? "✓" : "✗") + "/" + (y.v6r ? "✓" : "✗") : "", y.rtt ? "RTT " + y.rtt.med : "", y.loss ? "loss " + y.loss.med + "%" : "", y.secs ? y.secs + "s" : "", y.qd ? "⏳" + (y.qd >= 60 ? Math.round(y.qd / 60) + "h" : y.qd + "m") : ""].filter(Boolean).join(" · ")));
@@ -1744,7 +1744,7 @@
       }).catch(function (e) { box.textContent = L("تعذّر التحميل: ", "Couldn't load: ") + ((e && e.message) || e); });
     });
   }
-  // C178: حالة الخدمات (للمدير) — من فحص الخادم كلّ ٢٠ دقيقة (health/now) أو «فحص الآن»
+  // C178: حالة الخدمات (للمدير) — من فحص الخادم كلّ 20 دقيقة (health/now) أو «فحص الآن»
   function healthSheet() {
     sheet(L("حالة الخدمات", "Service health"), function (body) {
       body.parentNode.parentNode.style.direction = isAr() ? "rtl" : "ltr";
@@ -1756,7 +1756,7 @@
         if (!admOk(r)) go.style.display = "none";   // C195: المشاهد والمشرف بلا «فحص الآن»
         var lb = r.labels || {}, keys = Object.keys(r.svc || {});
         var name = function (k) { return lb[k] || (k.indexOf("metered:") === 0 ? L("وسيط Metered (", "Metered relay (") + k.slice(8) + ")" : k); };
-        box.appendChild(el("div", "font:600 12px var(--sawa-font,system-ui);color:" + MUTED + ";margin-bottom:8px", r.at ? L("آخر فحص: ", "Last check: ") + new Date(r.at).toLocaleString(isAr() ? "ar" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }) : L("لم يُفحص بعد — اضغط «فحص الآن»", "Not checked yet — tap “Check now”")));
+        box.appendChild(el("div", "font:600 12px var(--sawa-font,system-ui);color:" + MUTED + ";margin-bottom:8px", r.at ? L("آخر فحص: ", "Last check: ") + new Date(r.at).toLocaleString(isAr() ? "ar-u-nu-latn" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }) : L("لم يُفحص بعد — اضغط «فحص الآن»", "Not checked yet — tap “Check now”")));
         keys.forEach(function (k) {
           var v = r.svc[k], h = (r.hist && r.hist[k]) || [];
           var card = el("div", "padding:10px 12px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid " + (v.ok ? LINE : "#b91c1c"));
@@ -1766,7 +1766,7 @@
           top.appendChild(el("span", "font:700 12px var(--sawa-font,system-ui);direction:ltr;color:" + MUTED, v.ok ? v.ms + " ms" : L("متعطّل", "down")));
           card.appendChild(top);
           var up = h.filter(function (x) { return x[1] >= 0; }).length;
-          var sub = (v.ok ? L("يعمل منذ ", "Up since ") : L("متعطّل منذ ", "Down since ")) + new Date(v.since || v.at).toLocaleString(isAr() ? "ar" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }) + (h.length ? " · " + L("التوفّر ", "uptime ") + Math.round(up * 100 / h.length) + "%" : "");
+          var sub = (v.ok ? L("يعمل منذ ", "Up since ") : L("متعطّل منذ ", "Down since ")) + new Date(v.since || v.at).toLocaleString(isAr() ? "ar-u-nu-latn" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }) + (h.length ? " · " + L("التوفّر ", "uptime ") + Math.round(up * 100 / h.length) + "%" : "");
           card.appendChild(el("div", "font:600 11.5px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:3px", sub));
           if (!v.ok && v.err) card.appendChild(el("div", "font:600 11.5px var(--sawa-font,system-ui);color:#fca5a5;margin-top:3px;direction:ltr;text-align:start;word-break:break-word", v.err));
           if (h.length > 1) {   // آخر القياسات: عمودٌ لكلّ فحص (الأحمر عطل)
@@ -1777,7 +1777,7 @@
           }
           box.appendChild(card);
         });
-        box.appendChild(el("div", "font:600 11px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:4px", L("يُفحص الخادم كلّ ٢٠ دقيقة، ويصلك إشعارٌ حين تتعطّل خدمة أو تعود.", "Checked every 20 min; you're notified when a service goes down or recovers.")));
+        box.appendChild(el("div", "font:600 11px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:4px", L("يُفحص الخادم كلّ 20 دقيقة، ويصلك إشعارٌ حين تتعطّل خدمة أو تعود.", "Checked every 20 min; you're notified when a service goes down or recovers.")));
       };
       var go = el("button", "margin:4px 16px 12px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 14px var(--sawa-font,system-ui)", L("فحص الآن", "Check now"));
       go.onclick = function () { go.disabled = true; go.textContent = L("جارٍ الفحص…", "Checking…"); wcall("admin.health", { run: true }).then(paint).catch(function (e) { toast(L("تعذّر الفحص: ", "Check failed: ") + ((e && e.message) || e)); }).then(function () { go.disabled = false; go.textContent = L("فحص الآن", "Check now"); }); };
@@ -1915,7 +1915,7 @@
   }
 
   // ============================================================
-  //  C7: المكالمات الجماعيّة — شبكةٌ مباشرة بين الأجهزة (≤ ٤ فيديو / ≤ ٨ صوت حتّى SFU)
+  //  C7: المكالمات الجماعيّة — شبكةٌ مباشرة بين الأجهزة (≤ 4 فيديو / ≤ 8 صوت حتّى SFU)
   //  gcalls/{gid} = { by, type, title, cid, ts, approval, allow{uid}, members{uid:{name,sess,ts}},
   //                   sig/{to}/{push}:{from,fs,tsn,t,sdp|cand}, req{uid}, adm{uid} }
   //  الـWorker وحده ينشئها ويحدّد allow (gcall.start / gcall.add). الوافد الجديد يرسل العروض لمن سبقه (لا تصادم).
@@ -2120,7 +2120,7 @@
     Object.keys(m).forEach(function (u) {
       if (u === me) return;
       g.met[u] = gName(g, u);
-      // احتياط: عضوٌ لم يصلني منه عرضٌ خلال ٦ ثوانٍ ⇒ أعرض أنا (والتصادم يحسمه onGSig)
+      // احتياط: عضوٌ لم يصلني منه عرضٌ خلال 6 ثوانٍ ⇒ أعرض أنا (والتصادم يحسمه onGSig)
       if (!g.peers[u] && m[u] && m[u].sess && !(g.timers["o" + u])) g.timers["o" + u] = setTimeout(function () {
         delete g.timers["o" + u];
         if (!g.done && !g.peers[u] && g.members[u] && g.members[u].sess === m[u].sess) gOffer(g, u, m[u].sess);
@@ -2128,7 +2128,7 @@
     });
     var others = Object.keys(m).filter(function (u) { return u !== me; });
     // وحدك: انتظر قليلاً ثمّ أنهِ (لا يبقى أحدٌ في مكالمةٍ فارغة)
-    // C24: الدردشة الصوتيّة غرفةٌ مفتوحة — تنتظر وحدك حتّى ١٥ دقيقة
+    // C24: الدردشة الصوتيّة غرفةٌ مفتوحة — تنتظر وحدك حتّى 15 دقيقة
     if (!others.length) { if (!g.timers.alone) g.timers.alone = setTimeout(function () { gFinish(g, Object.keys(g.met).length ? "everyoneLeft" : "nobody"); }, g.vc ? Math.max(ALONE_MS, 15 * 60000) : ALONE_MS); }
     else { clearTimeout(g.timers.alone); delete g.timers.alone; stopTone(); }
     gAutoSfu(g, m);   // C178
@@ -2294,7 +2294,7 @@
 
   // ---------- النهاية ----------
   var G_END = {
-    missed: ["مكالمة جماعيّة فائتة", "Missed group call"], full: ["المكالمة ممتلئة (الحدّ ٤ فيديو / ٨ صوت حاليّاً)", "The call is full"],
+    missed: ["مكالمة جماعيّة فائتة", "Missed group call"], full: ["المكالمة ممتلئة (الحدّ 4 فيديو / 8 صوت حاليّاً)", "The call is full"],
     rejected: ["لم يوافق المضيف على انضمامك", "The host declined your request"], nobody: ["لم ينضمّ أحد", "Nobody joined"],
     everyoneLeft: ["غادر الجميع", "Everyone left"]
   };
@@ -2604,7 +2604,7 @@
   //  · دردشة ومحضر (قرارات/مهامّ/نقاط) يُرسَل إلى مجموعة · دعوة جهات الاتّصال · تفاعلات طائرة · وضع البيانات القليلة · مدّة
   //  RTDB: rooms/{code}/{ meta{host,title,ts,locked,lobby,endsAt,ended,sched}, members/{uid}{name,sess,ts,mic,cam,hand,low},
   //        sig/{to}/{push}, req/{uid}, adm/{uid}, kick/{uid}, ctl/{uid}{mute,ask,lower}, chat/{push}, rx/{push} }
-  //  شبكة مباشرة ≤ ٨ أشخاص و≤ ٤ كاميرات (حتّى SFU). الصوت والصورة قناتان ثابتتان من البداية ⇒ تشغيل الكاميرا بلا إعادة تفاوض.
+  //  شبكة مباشرة ≤ 8 أشخاص و≤ 4 كاميرات (حتّى SFU). الصوت والصورة قناتان ثابتتان من البداية ⇒ تشغيل الكاميرا بلا إعادة تفاوض.
   // ============================================================
   var ROOM_MAX = 8, ROOM_CAMS = 4, HOST_GRACE = global.__sawaRoomGraceMs || 12000;
   function ghostMs() { return global.__sawaGhostMs || 45000; }   // C63: مهلة العضو الغائب عن RTDB وصوته مازال يصل
@@ -2615,9 +2615,9 @@
   }
   var SFU_MAX = 30, SFU_CAMS = 6;
   function rBig(r) { return !!(r && r.meta && r.meta.big); }
-  // C178: خادم الوسائط (SFU) تلقائيّاً — من ٣ مشاركين يستقبل الخادم تدفّقاً واحداً من كلّ شخص ويوزّعه (بدل أن يرفع كلّ هاتفٍ نسخةً لكلّ مشارك)
-  //       الغرف: من ٣ · مكالمات المجموعات: الفيديو من ٣ والصوت من ٥ (الصوت المباشر خفيف وأقلّ تأخيراً). المضيف يستطيع إعادتها عاديّة.
-  // C182: الغرف تبقى مباشرةً حتّى ٨ (مشاركة الشاشة بمسارها المستقلّ) وتصير كبيرةً حين تمتلئ فقط — ولا تتحوّل أثناء عرض شاشة
+  // C178: خادم الوسائط (SFU) تلقائيّاً — من 3 مشاركين يستقبل الخادم تدفّقاً واحداً من كلّ شخص ويوزّعه (بدل أن يرفع كلّ هاتفٍ نسخةً لكلّ مشارك)
+  //       الغرف: من 3 · مكالمات المجموعات: الفيديو من 3 والصوت من 5 (الصوت المباشر خفيف وأقلّ تأخيراً). المضيف يستطيع إعادتها عاديّة.
+  // C182: الغرف تبقى مباشرةً حتّى 8 (مشاركة الشاشة بمسارها المستقلّ) وتصير كبيرةً حين تمتلئ فقط — ولا تتحوّل أثناء عرض شاشة
   var AUTO_SFU = { room: 8, video: 3, audio: 5 }, sfuCfgC = null, sfuCfgAt = 0;
   function sfuReady() {
     if (sfuCfgC !== null && Date.now() - sfuCfgAt < 10 * 60000) return Promise.resolve(sfuCfgC);
@@ -2674,9 +2674,9 @@
     rShow(r);
     var me = myUid();
     r.t0 = Date.now(); r.step = "meta"; r.tries = (opts.tries || 0);
-    if (dbUp === false && Date.now() - dbDownAt > 3000) dbNudge("join while db down");   // C69: منقطعة منذ أكثر من ٣ ثوانٍ ⇒ هزّة فوراً لا بعد ١٢
+    if (dbUp === false && Date.now() - dbDownAt > 3000) dbNudge("join while db down");   // C69: منقطعة منذ أكثر من 3 ثوانٍ ⇒ هزّة فوراً لا بعد 12
     rJoinWatch(r, code, opts);
-    // C66: الإنشاء يكتب meta مباشرةً (الرمز عشوائيّ من ٨ خانات — التصادم مستبعد؛ والقواعد تمنع الكتابة فوق غرفةٍ قائمة لغيري) ويستعمل النسخة المحلّيّة بلا إعادة قراءة
+    // C66: الإنشاء يكتب meta مباشرةً (الرمز عشوائيّ من 8 خانات — التصادم مستبعد؛ والقواعد تمنع الكتابة فوق غرفةٍ قائمة لغيري) ويستعمل النسخة المحلّيّة بلا إعادة قراءة
     var metaP = opts.create
       ? (function () {
           var m = { host: me, owner: me, title: String(r.title).slice(0, 80), ts: TS(), gc: Date.now() + 3 * 3600000, locked: false, lobby: false };
@@ -2770,7 +2770,7 @@
         var go = el("button", "margin:0 16px 6px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px var(--sawa-font,system-ui)", L("دخول", "Enter"));
         go.onclick = function () {
           var v = String(inp.value || "").replace(/\D/g, "");
-          if (v.length < 4) { toast(L("الرمز ٤ إلى ٦ أرقام", "PIN is 4–6 digits")); return; }
+          if (v.length < 4) { toast(L("الرمز 4 إلى 6 أرقام", "PIN is 4–6 digits")); return; }
           r.pinTried = true;
           rRef(r, "pins/" + myUid()).set(v).then(function () { closed = true; cl(); resolve(); }).catch(function () { toast(L("تعذّر إرسال الرمز", "Couldn't send PIN")); });
         };
@@ -2931,7 +2931,7 @@
     if (r.done) return;
     var me = myUid();
     if (r.live && !m[me]) { rRejoin(r); return; }   // أزالني المضيف أو سقطت الشبكة — rRejoin تفرّق بينهما
-    // C63: عضوٌ اختفى من القائمة وصوته ما زال يصل (انقطع اتّصاله بقاعدة البيانات فقط — تطبيقٌ آخر أمامه) ⇒ يبقى ٤٥ ثانية ولا نقطع الصوت
+    // C63: عضوٌ اختفى من القائمة وصوته ما زال يصل (انقطع اتّصاله بقاعدة البيانات فقط — تطبيقٌ آخر أمامه) ⇒ يبقى 45 ثانية ولا نقطع الصوت
     var prev = r.members || {}, nowT = Date.now();
     Object.keys(r.peers).forEach(function (u) {
       var p = r.peers[u];
@@ -2955,7 +2955,7 @@
       r.met[u] = rName(r, u);
       var p = r.peers[u];
       if (p && p.lowSent !== !!m[u].low) { p.lowSent = !!m[u].low; rSenders(r, p); }   // من فعّل «بيانات قليلة» لا نرسل له الصورة
-      // C66: الوافد يعرض أوّلاً؛ إن لم يصل عرضه خلال ٣ ثوانٍ (كانت ٦) أعرض أنا
+      // C66: الوافد يعرض أوّلاً؛ إن لم يصل عرضه خلال 3 ثوانٍ (كانت 6) أعرض أنا
       if (!rBig(r) && !p && m[u].sess && !r.timers["o" + u]) r.timers["o" + u] = setTimeout(function () {
         delete r.timers["o" + u];
         if (!r.done && !r.peers[u] && r.members[u] && r.members[u].sess === m[u].sess) rOffer(r, u, m[u].sess);
@@ -3227,7 +3227,7 @@
     var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: new global.MediaStream(), pid: rid(6), t0: Date.now() };   // C63: pid يميّز اتّصالاً جديداً عن إعادة تفاوض
     var pc = p.pc = new global.RTCPeerConnection({ iceServers: r.ice || STUN });
     if (offerer) { p.at = pc.addTransceiver("audio", { direction: "sendrecv" }); p.vt = pc.addTransceiver("video", { direction: "sendrecv" }); p.sct = pc.addTransceiver("video", { direction: "sendrecv" }); rSenders(r, p); }   // C120: sct = الشاشة
-    // C66: المرشّحات تُجمَّع وتُرسل دفعةً كلّ ١٢٠ ms (كانت كتابةً لكلّ مرشّح — ١٠ إلى ٢٠ كتابةً لكلّ طرف على شبكةٍ بطيئة)
+    // C66: المرشّحات تُجمَّع وتُرسل دفعةً كلّ 120 ms (كانت كتابةً لكلّ مرشّح — 10 إلى 20 كتابةً لكلّ طرف على شبكةٍ بطيئة)
     p.iceOut = [];
     var flushOut = function () { p.iceT = null; if (r.done || !p.iceOut.length) return; var b = p.iceOut; p.iceOut = []; rSend(r, uid, sess, b.length === 1 ? { t: "ice", cand: b[0] } : { t: "ice", cands: b }); };
     pc.onicecandidate = function (e) { if (!e.candidate || !e.candidate.candidate) { flushOut(); return; } p.iceOut.push(iceJson(e.candidate)); if (!p.iceT) p.iceT = setTimeout(flushOut, 120); };
@@ -3297,14 +3297,14 @@
     rTile(r, uid);
   }
   function rCap(r) {
-    var n = Object.keys(r.peers).length, br = n <= 1 ? 600000 : n <= 3 ? 400000 : n <= 4 ? 250000 : 160000;   // C92: ٦–٨ أشخاص ⇒ أخفّ (الرفع من الجوّال يُرسل لكلّ واحد)
+    var n = Object.keys(r.peers).length, br = n <= 1 ? 600000 : n <= 3 ? 400000 : n <= 4 ? 250000 : 160000;   // C92: 6–8 أشخاص ⇒ أخفّ (الرفع من الجوّال يُرسل لكلّ واحد)
     if (r.lowRes) br = Math.min(br, 150000);   // C38
     // C70: تعديلٌ واحد مُسلسَل لكلّ مُرسِل (كان تعديلان متداخلان ⇒ «parameters stale»)
     try { if (r.sfu && r.sfu.pc) tuneSenders(r.sfu.pc, r.lowRes ? 150000 : 350000); } catch (e) {}
     Object.keys(r.peers).forEach(function (u) { var p = r.peers[u]; if (p.pc) tuneSenders(p.pc, br); });
   }
 
-  // ---------- C38: جودة الشبكة (getStats كلّ ٣ ثوانٍ): 3 ممتاز · 2 جيّد · 1 ضعيف · 0 سيّئ ----------
+  // ---------- C38: جودة الشبكة (getStats كلّ 3 ثوانٍ): 3 ممتاز · 2 جيّد · 1 ضعيف · 0 سيّئ ----------
   function rStatsTick(r) {
     if (r.done) return;
     var me = myUid(), worst = 3, any = false;
@@ -3335,7 +3335,7 @@
     if (!any && r.sfu && r.sfu.pc && r.sfu.state === "connected") sfuStats(r);
     else if (!any && r.myQ !== null) { r.myQ = null; }
   }
-  // تكيّف: شبكةٌ ضعيفة مرّتين متتاليتين ⇒ فيديو أخفّ (320×240 · 15 إطاراً · 150 كيلوبت) · تتحسّن ٤ مرّات ⇒ يعود · سيّئة ٣ مرّات ⇒ اقتراح «بيانات قليلة» مرّةً
+  // تكيّف: شبكةٌ ضعيفة مرّتين متتاليتين ⇒ فيديو أخفّ (320×240 · 15 إطاراً · 150 كيلوبت) · تتحسّن 4 مرّات ⇒ يعود · سيّئة 3 مرّات ⇒ اقتراح «بيانات قليلة» مرّةً
   function rAdapt(r, q) {
     r.myQ = q;
     r.qHist = (r.qHist || []).concat([q]).slice(-6);
@@ -3590,7 +3590,7 @@
   function rEndAll() { rHost(null, function (r) { rRef(r, "meta/ended").set(true).catch(function () {}); }); }
 
   // ---------- المغادرة ----------
-  var R_END = { full: ["الغرفة ممتلئة (٨ أشخاص حاليّاً)", "The room is full"], kicked: ["أخرجك المضيف من الغرفة", "The host removed you"], denied: ["لم يسمح لك المضيف بالدخول", "The host didn't let you in"],
+  var R_END = { full: ["الغرفة ممتلئة (8 أشخاص حاليّاً)", "The room is full"], kicked: ["أخرجك المضيف من الغرفة", "The host removed you"], denied: ["لم يسمح لك المضيف بالدخول", "The host didn't let you in"],
                 ended: ["أنهى المضيف الغرفة", "The host ended the room"], timeup: ["انتهى وقت الغرفة", "Room time is up"] };
   // ---------- C119: الرجوع إلى الغرفة ----------
   var LASTROOM = "sawa_lastroom", rejoinEl = null;
@@ -3635,7 +3635,7 @@
         if (wasHost && others.length && reason !== "ended") step = ref.child("meta/host").set(others[0]).catch(function () {});   // الاستضافة لأقدم الحاضرين
         step.then(function () { return ref.child("members/" + me).remove(); }).then(function () { return ref.child("sig/" + me).remove(); }).then(function () {
           // آخر من يغادر (وهو المضيف): يحذف الغرفة — وتبقى «بطاقتها» إن كانت مجدولة لموعدٍ قادم
-          // C119: آخر من يغادر لا يحذف الغرفة (إلّا «إنهاء للجميع») — يستطيع الرجوع إليها؛ الخادم ينظّف الفارغة بعد ٣ ساعات من إنشائها
+          // C119: آخر من يغادر لا يحذف الغرفة (إلّا «إنهاء للجميع») — يستطيع الرجوع إليها؛ الخادم ينظّف الفارغة بعد 3 ساعات من إنشائها
           if (wasHost && reason === "ended") {
             var keep = meta && meta.sched && meta.sched > Date.now() - 3600000 && reason !== "ended";
             // C16: البطاقة المحفوظة تحتفظ بمالكها وموعد تنظيفها (القواعد ترفض حذف المالك)
@@ -3665,10 +3665,10 @@
   }
   function rTick(r) {
     if (r.done) return;
-    // C64: حارس — لا تبقى الغرفة عالقةً في «جارٍ العودة»: الصوت يتدفّق ⇒ حيّة · عودةٌ معلّقة أكثر من ٢٠ ث (طلبٌ لم يرجع أثناء الانقطاع) ⇒ محاولةٌ جديدة
+    // C64: حارس — لا تبقى الغرفة عالقةً في «جارٍ العودة»: الصوت يتدفّق ⇒ حيّة · عودةٌ معلّقة أكثر من 20 ث (طلبٌ لم يرجع أثناء الانقطاع) ⇒ محاولةٌ جديدة
     if (r.rejoining && r.rejoinAt && Date.now() - r.rejoinAt > 20000) { r.rejoining = false; rRejoin(r); }
     else if (r.live && r.state === "reconnecting" && !r.rejoining && rMediaAlive(r)) { r.state = "live"; rPaint(r); }
-    // C67: وحدي في الغرفة (لا صوت يشهد) وعالق على «جارٍ العودة» — أحداث الشبكة قد لا تصل أصلاً على أندرويد ⇒ نجسّ قاعدة البيانات كلّ ٥ ثوانٍ:
+    // C67: وحدي في الغرفة (لا صوت يشهد) وعالق على «جارٍ العودة» — أحداث الشبكة قد لا تصل أصلاً على أندرويد ⇒ نجسّ قاعدة البيانات كلّ 5 ثوانٍ:
     //      قراءةٌ ناجحة لعضويّتي ⇒ حيّة؛ عضويّتي محذوفة ⇒ عودة؛ القراءة لا ترجع ⇒ ما زلنا منقطعين فعلاً
     else if (r.live && r.state === "reconnecting" && !r.rejoining && !r.probing && Date.now() - (r.probeAt || 0) > 5000) {
       r.probing = true; r.probeAt = Date.now();
@@ -3680,7 +3680,7 @@
         else { LOG.warn("probe.gone.rejoin"); rRejoin(r); }
       }).catch(function () { clearTimeout(tm); r.probing = false; });
     }
-    // C65: دخلنا الغرفة بلا TURN (طلب الخوادم تجاوز ٦ ثوانٍ على شبكةٍ بطيئة فاكتفينا بـSTUN) ⇒ نطلبه في الخلفيّة ونرقّي الاتّصالات القائمة
+    // C65: دخلنا الغرفة بلا TURN (طلب الخوادم تجاوز 6 ثوانٍ على شبكةٍ بطيئة فاكتفينا بـSTUN) ⇒ نطلبه في الخلفيّة ونرقّي الاتّصالات القائمة
     if (r.live && !hasTurn(r.ice) && !r.iceBusy && Date.now() - (r.iceTry || 0) > 15000) {
       r.iceTry = Date.now(); r.iceBusy = true;
       wcall("rtc.ice", {}).then(function (b) {
@@ -3711,7 +3711,7 @@
     }
     if (r.meta.endsAt) {
       var left = Math.round((r.meta.endsAt - now()) / 1000);
-      if (left <= 300 && !r.warned5) { r.warned5 = true; toast(L("تبقّت ٥ دقائق على نهاية الغرفة", "5 minutes left")); }
+      if (left <= 300 && !r.warned5) { r.warned5 = true; toast(L("تبقّت 5 دقائق على نهاية الغرفة", "5 minutes left")); }
       if (left <= 0) { if (amHost(r)) rEndAll(); else if (left < -20) rLeave(r, "timeup"); }
     }
     // C38: قفلٌ تلقائيّ بعد مدّةٍ من البدء (المضيف ينفّذه)
@@ -4008,7 +4008,7 @@
     var vt = isMe ? (r.camOn ? r.camTrack : null) : p && (p.vt && p.vt.receiver && p.vt.receiver.track ? [p.vt.receiver.track] : p.stream.getVideoTracks()).filter(function (x) { return x.readyState === "live" && !x.muted; })[0];   // C120: الكاميرا من مسارها (لا الشاشة)
     var hidV = !isMe && !!(r.hideV && r.hideV[uid]);
     var showV = !!vt && !hidV && (isMe ? r.camOn : (m.cam && !r.low));
-    // C15: الطرف شغّل الكاميرا ولا تصل الصورة ⇒ بعد ٨ ثوانٍ نعيد التفاوض (مرّة) ونقول ذلك بدل صورةٍ رماديّة صامتة
+    // C15: الطرف شغّل الكاميرا ولا تصل الصورة ⇒ بعد 8 ثوانٍ نعيد التفاوض (مرّة) ونقول ذلك بدل صورةٍ رماديّة صامتة
     if (!isMe && p) {
       var wantV = !!(m.cam && !r.low && p.state === "connected");
       if (wantV && !showV && !p.camWait && !p.camRetried) p.camWait = setTimeout(function () {
@@ -4250,7 +4250,7 @@
       tog("🔒", L("قفل الغرفة", "Lock room"), null, !!r.meta.locked, function () { rSetMeta("locked", !r.meta.locked); });
       tog("🚪", L("غرفة الانتظار", "Waiting room"), null, !!r.meta.lobby, function () { rSetMeta("lobby", !r.meta.lobby); });
       tog("🎧", L("صوتٌ فقط (بلا كاميرات)", "Audio only (no cameras)"), null, !!r.meta.audioOnly, function () { rSetMeta("audioOnly", !r.meta.audioOnly); });
-      // C45: غرفة كبيرة (حتى ٣٠) عبر خادم الوسائط
+      // C45: غرفة كبيرة (حتى 30) عبر خادم الوسائط
       var bg = item(body, "🏟", L("غرفة كبيرة (حتى " + SFU_MAX + ")", "Large room (up to " + SFU_MAX + ")"), function () { close(); rBigToggle(); });
       bg.appendChild(el("span", "font:800 11px var(--sawa-font,system-ui);padding:3px 9px;border-radius:9px;background:" + (rBig(r) ? "#16a34a33" : LINE) + ";color:" + (rBig(r) ? "#4ade80" : "#cbd5e1"), rBig(r) ? L("مفعّل", "On") : L("متوقّف", "Off")));
       var mx = item(body, "👥", L("الحدّ الأقصى للمشاركين", "Max participants"), function () { close(); rMaxPick(); });
@@ -4286,20 +4286,20 @@
     var r = rm; if (!r) return;
     sheet(L("الحدّ الأقصى للمشاركين", "Max participants"), function (body, close) {
       var big = rBig(r), cap = rCap0(r);
-      body.appendChild(el("div", "padding:0 16px 6px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", big ? L("الغرفة الكبيرة تحتمل حتى " + SFU_MAX + " شخصاً و" + SFU_CAMS + " كاميرات", "Large room: up to " + SFU_MAX + " people, " + SFU_CAMS + " cameras") : L("الشبكة المباشرة تحتمل حتى ٨ أشخاص و٤ كاميرات — للأكثر فعّل «غرفة كبيرة»", "Direct mesh supports up to 8 people and 4 cameras")));
+      body.appendChild(el("div", "padding:0 16px 6px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", big ? L("الغرفة الكبيرة تحتمل حتى " + SFU_MAX + " شخصاً و" + SFU_CAMS + " كاميرات", "Large room: up to " + SFU_MAX + " people, " + SFU_CAMS + " cameras") : L("الشبكة المباشرة تحتمل حتى 8 أشخاص و4 كاميرات — للأكثر فعّل «غرفة كبيرة»", "Direct mesh supports up to 8 people and 4 cameras")));
       (big ? [10, 15, 20, 25, 30] : [2, 3, 4, 5, 6, 8]).forEach(function (n) { var b = item(body, "👥", String(n) + (n === cap ? " (" + L("الافتراض", "default") + ")" : ""), function () { rSetMeta("max", n === cap ? null : n); close(); }); if (rMax(r) === n) b.appendChild(el("span", "", "✓")); });
     });
   }
   function rPinPick() {
     var r = rm; if (!r) return;
     sheet(L("رمز الدخول", "Join PIN"), function (body, close) {
-      body.appendChild(el("div", "padding:0 16px 8px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", L("من يعرف الرابط يحتاج هذا الرمز أيضاً (٤–٦ أرقام). من في الغرفة الآن لا يتأثّر.", "Anyone with the link also needs this PIN (4–6 digits). Current members aren't affected.")));
+      body.appendChild(el("div", "padding:0 16px 8px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", L("من يعرف الرابط يحتاج هذا الرمز أيضاً (4–6 أرقام). من في الغرفة الآن لا يتأثّر.", "Anyone with the link also needs this PIN (4–6 digits). Current members aren't affected.")));
       var inp = el("input", "display:block;margin:4px 16px 10px;width:calc(100% - 32px);box-sizing:border-box;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:12px;padding:11px;font:800 20px var(--sawa-font,system-ui);letter-spacing:6px;text-align:center;direction:ltr");
       inp.inputMode = "numeric"; inp.maxLength = 6; inp.placeholder = "••••"; body.appendChild(inp);
       var go = el("button", "margin:0 16px 6px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px var(--sawa-font,system-ui)", L("تفعيل الرمز", "Set PIN"));
       go.onclick = function () {
         var v = String(inp.value || "").replace(/\D/g, "");
-        if (v.length < 4 || v.length > 6) { toast(L("الرمز ٤ إلى ٦ أرقام", "PIN is 4–6 digits")); return; }
+        if (v.length < 4 || v.length > 6) { toast(L("الرمز 4 إلى 6 أرقام", "PIN is 4–6 digits")); return; }
         rRef(r, "pin").set(v).then(function () { return rRef(r, "meta/pinOn").set(true); }).then(function () { toast(L("فُعّل رمز الدخول: ", "PIN set: ") + v); close(); }).catch(function (e) { LOG.warn("pin", { err: e && e.message }); toast(L("تعذّر حفظ الرمز", "Couldn't save PIN")); });
       };
       body.appendChild(go);
@@ -4311,7 +4311,7 @@
     var r = rm; if (!r) return;
     sheet(L("قفلٌ تلقائيّ بعد البدء", "Auto-lock after start"), function (body, close) {
       body.appendChild(el("div", "padding:0 16px 6px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", L("بعد هذه المدّة لا يدخل أحدٌ جديد — يبقى الحاضرون", "After this, no one new can join")));
-      [[0, L("متوقّف", "Off")], [5, L("٥ دقائق", "5 min")], [10, L("١٠ دقائق", "10 min")], [15, L("١٥ دقيقة", "15 min")], [30, L("٣٠ دقيقة", "30 min")]].forEach(function (o) {
+      [[0, L("متوقّف", "Off")], [5, L("5 دقائق", "5 min")], [10, L("10 دقائق", "10 min")], [15, L("15 دقيقة", "15 min")], [30, L("30 دقيقة", "30 min")]].forEach(function (o) {
         item(body, "⏲", o[1], function () { if (rm) rm.autoLocked = false; rSetMeta("lockAt", o[0] ? now() + o[0] * 60000 : null); close(); });
       });
     });
@@ -4329,15 +4329,15 @@
   }
   function rDurationPick() {
     sheet(L("مدّة الغرفة", "Room duration"), function (body, close) {
-      [[0, L("بلا حدّ", "No limit")], [30, L("٣٠ دقيقة", "30 min")], [60, L("ساعة", "1 hour")], [90, L("ساعة ونصف", "1.5 hours")], [120, L("ساعتان", "2 hours")]].forEach(function (o) {
+      [[0, L("بلا حدّ", "No limit")], [30, L("30 دقيقة", "30 min")], [60, L("ساعة", "1 hour")], [90, L("ساعة ونصف", "1.5 hours")], [120, L("ساعتان", "2 hours")]].forEach(function (o) {
         item(body, "⏱", o[1], function () { rSetMeta("endsAt", o[0] ? now() + o[0] * 60000 : null); if (rm) rm.warned5 = false; close(); });
       });
       // C38: مدّة حرّة بالدقائق
       var row = el("div", "display:flex;gap:8px;padding:10px 16px 6px;border-top:1px solid " + LINE);
       var inp = el("input", "flex:1;min-width:0;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:10px;padding:9px 10px;font:700 14px var(--sawa-font,system-ui);text-align:center;direction:ltr");
-      inp.inputMode = "numeric"; inp.placeholder = L("دقائق (٥–٤٨٠)", "minutes (5–480)");
+      inp.inputMode = "numeric"; inp.placeholder = L("دقائق (5–480)", "minutes (5–480)");
       var go = el("button", "border:0;border-radius:10px;padding:0 14px;background:" + PRI + ";color:#fff;font:800 13px var(--sawa-font,system-ui)", L("تطبيق", "Apply"));
-      go.onclick = function () { var n = parseInt(String(inp.value || "").replace(/\D/g, ""), 10); if (!(n >= 5 && n <= 480)) { toast(L("من ٥ إلى ٤٨٠ دقيقة", "5–480 minutes")); return; } rSetMeta("endsAt", now() + n * 60000); if (rm) rm.warned5 = false; close(); };
+      go.onclick = function () { var n = parseInt(String(inp.value || "").replace(/\D/g, ""), 10); if (!(n >= 5 && n <= 480)) { toast(L("من 5 إلى 480 دقيقة", "5–480 minutes")); return; } rSetMeta("endsAt", now() + n * 60000); if (rm) rm.warned5 = false; close(); };
       row.appendChild(inp); row.appendChild(go); body.appendChild(row);
     });
   }
@@ -4395,11 +4395,11 @@
     rui.panel.style.display = kind ? "flex" : "none";
     rPaintChat(r); rPaint(r);
   }
-  // ---------- C89b: ملفّات دردشة الغرفة — في RTDB داخل الغرفة نفسها (تُحذف مع الغرفة)، قطعٌ base64 ≤ ٥١٢ ك، حتّى ١٠ ميجابايت ----------
+  // ---------- C89b: ملفّات دردشة الغرفة — في RTDB داخل الغرفة نفسها (تُحذف مع الغرفة)، قطعٌ base64 ≤ 512 ك، حتّى 10 ميجابايت ----------
   var RFILE_MAX = 10 * 1024 * 1024, RFILE_CH = 384 * 1024, rFileCache = {};
   function rFmtSize(n) { return n >= 1048576 ? (Math.round(n / 104857.6) / 10) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
   function rB64(blob) { return new Promise(function (res, rej) { var fr = new FileReader(); fr.onload = function () { var s0 = String(fr.result || ""); res(s0.slice(s0.indexOf(",") + 1)); }; fr.onerror = function () { rej(fr.error); }; fr.readAsDataURL(blob); }); }
-  function rImgPrep(f) {   // صورة كبيرة ⇒ ١٦٠٠ بكسل JPEG + مصغّرة فوريّة داخل الرسالة
+  function rImgPrep(f) {   // صورة كبيرة ⇒ 1600 بكسل JPEG + مصغّرة فوريّة داخل الرسالة
     return new Promise(function (res) {
       if (!/^image\/(jpeg|png|webp)/.test(f.type)) return res({ blob: f, thumb: null });
       var u = URL.createObjectURL(f), img = document.createElement("img");
@@ -4419,7 +4419,7 @@
     var fail = function (msg) { up.err = msg; rPaintChat(r); setTimeout(function () { r.ups = (r.ups || []).filter(function (x) { return x !== up; }); rPaintChat(r); }, 6000); };
     rImgPrep(f).then(function (pr) {
       var blob = pr.blob, mime = pr.mime || f.type || "application/octet-stream";
-      if (blob.size > RFILE_MAX) return fail(L("أكبر من ١٠ ميجابايت", "over 10 MB"));
+      if (blob.size > RFILE_MAX) return fail(L("أكبر من 10 ميجابايت", "over 10 MB"));
       var fid = rid(12), n = Math.max(1, Math.ceil(blob.size / RFILE_CH)), me = myUid();
       return rRef(r, "files/" + fid).set({ from: me, name: String(up.name).slice(0, 200), mime: String(mime).slice(0, 100), size: blob.size, n: n, ts: TS() }).then(function () {
         var i = 0, done = 0;
@@ -4543,7 +4543,7 @@
   }
   function rSummaryText(r) {
     var ns = r.chat.filter(function (m) { return m.kind; });
-    var out = L("محضر: ", "Minutes: ") + (r.title || L("غرفة سوا", "Sawa room")) + "\n" + new Date().toLocaleString(isAr() ? "ar" : "en") + "\n";
+    var out = L("محضر: ", "Minutes: ") + (r.title || L("غرفة سوا", "Sawa room")) + "\n" + new Date().toLocaleString(isAr() ? "ar-u-nu-latn" : "en") + "\n";
     out += L("الحضور: ", "Present: ") + [myName() || L("أنا", "me")].concat(Object.keys(r.met).map(function (u) { return r.met[u]; })).join("، ") + "\n\n";
     ["decision", "task", "point"].forEach(function (k) {
       var it = ns.filter(function (m) { return m.kind === k; }); if (!it.length) return;
@@ -4581,7 +4581,7 @@
     sheet(L("انضمام إلى غرفة", "Join a room"), function (body, close) {
       var inp = el("input", "display:block;margin:6px 16px 10px;width:calc(100% - 32px);box-sizing:border-box;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:12px;padding:11px;font:800 16px var(--sawa-font,system-ui);letter-spacing:3px;text-align:center;direction:ltr");
       inp.placeholder = "ABCD2345"; inp.setAttribute("autocapitalize", "characters");
-      body.appendChild(el("div", "padding:0 16px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", L("الصق رابط الغرفة أو اكتب رمزها (٨ حروف)", "Paste the room link or type its 8-letter code")));
+      body.appendChild(el("div", "padding:0 16px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", L("الصق رابط الغرفة أو اكتب رمزها (8 حروف)", "Paste the room link or type its 8-letter code")));
       body.appendChild(inp);
       var go = el("button", "margin:0 16px 8px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px var(--sawa-font,system-ui)", L("انضمام", "Join"));
       go.onclick = function () { var c = cleanCode(inp.value); if (!c) { toast(L("رمز الغرفة غير صحيح", "Invalid room code")); return; } close(); roomJoin(c); };

@@ -165,7 +165,7 @@ function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, 
     const [playing, setPlaying] = useState(false);
     const [showTranscript, setShowTranscript] = useState(false);
     const audioRef = useRef(null);
-    // C227: سرعة التشغيل (١× · ١٫٥× · ٢×) تبقى لكلّ الرسائل الصوتيّة · والشريط يُلمس للتقديم والتأخير
+    // C227: سرعة التشغيل (1× · 1.5× · 2×) تبقى لكلّ الرسائل الصوتيّة · والشريط يُلمس للتقديم والتأخير
     const [rate, setRate] = useState(() => { try { return Number(localStorage.getItem("sawa_voice_rate")) || 1; } catch (e) { return 1; } });
     useEffect(() => { try { if (audioRef.current) audioRef.current.playbackRate = rate; } catch (e) { } }, [rate, url]);
     const cycleRate = (e) => { e.stopPropagation(); const n = rate === 1 ? 1.5 : rate === 1.5 ? 2 : 1; setRate(n); try { localStorage.setItem("sawa_voice_rate", String(n)); } catch (x) { } };
@@ -405,7 +405,7 @@ function ForwardPickerScreen({ conversations, groups, contacts, currentConversat
 // بديل يظهر مكان الوسائط التي لم يُحفَظ محتواها بين الجلسات
 // C99: صورة/فيديو في المحادثة بحالاتها: يُنزَّل (المعاينة الضبابيّة + مؤشّر) · تعذّر (اضغط لإعادة التنزيل) · جاهز.
 //      كانت الصورة التي تعذّر تنزيلها تبقى ضبابيّةً بلا أيّ زرّ، والفيديو بلا صورةٍ مصغّرة يظهر مشغّلاً مكسوراً.
-// C101: ورقة أفعال الرسالة المضغوطة (الخاصّة والمجموعات): معاينة سطرٍ واحد · تفاعلات سريعة · شبكة أزرار من ٤ أعمدة
+// C101: ورقة أفعال الرسالة المضغوطة (الخاصّة والمجموعات): معاينة سطرٍ واحد · تفاعلات سريعة · شبكة أزرار من 4 أعمدة
 // C103: بطاقة التذكير اليوميّ (daily.json)
 const DAILY_KIND_STYLE = {
     "آية": { c: "#187854", bg: "#E3F3EA", open: "﴿", close: "﴾", icon: "📖" },
@@ -419,8 +419,8 @@ function DailyReminderCard({ card, onClose, onFamily }) {
     const ks = DAILY_KIND_STYLE[card.kind] || { c: colors.primary, bg: colors.primaryLight, open: "", close: "", icon: "🤍" };
     const now = new Date();
     let hijri = "", greg = "";
-    try { hijri = new Intl.DateTimeFormat(isRTL() ? "ar-SA-u-ca-islamic-umalqura" : "en-u-ca-islamic-umalqura", { day: "numeric", month: "long", year: "numeric" }).format(now); } catch (e) { }
-    try { greg = new Intl.DateTimeFormat(isRTL() ? "ar-u-nu-arab" : "en", { weekday: "long", day: "numeric", month: "long" }).format(now); } catch (e) { }
+    try { hijri = new Intl.DateTimeFormat(isRTL() ? "ar-SA-u-ca-islamic-umalqura-nu-latn" : "en-u-ca-islamic-umalqura", { day: "numeric", month: "long", year: "numeric" }).format(now); } catch (e) { }
+    try { greg = new Intl.DateTimeFormat(isRTL() ? "ar-u-nu-latn" : "en",   /* C200 */ { weekday: "long", day: "numeric", month: "long" }).format(now); } catch (e) { }
     const poem = card.kind === "شعر";
     const share = () => {
         const txt = (ks.open ? ks.open + " " : "") + card.text + (ks.close ? " " + ks.close : "") + (card.source ? "\n— " + card.source : "") + "\n\n" + tl("من تذكير سوا اليوميّ 🤍 sawaaap.com", "From Sawa's daily reminder 🤍 sawaaap.com");
@@ -459,7 +459,7 @@ function famLinkErr(m) {
         : /already linked/.test(m) ? tl("صاحب هذا الحساب مربوطٌ بشخصٍ آخر في الشجرة", "That account is linked to another person here")
         : /use this is me/.test(m) ? tl("هذا رمزك أنت — استعمل «هذا أنا»", "That's your own code — use “This is me”")
         : /rate_limited/.test(m) ? tl("طلباتٌ كثيرة — جرّب بعد قليل", "Too many requests — try later")
-        : /bad_code/.test(m) ? tl("الرمز غير صحيح — ١٠ أرقام", "Invalid code — 10 digits")
+        : /bad_code/.test(m) ? tl("الرمز غير صحيح — 10 أرقام", "Invalid code — 10 digits")
         : /removed/.test(m) ? tl("هذا الحساب أُزيل من العائلة", "This account was removed from the family") : /not a contact/.test(m) ? tl("ليس من جهات اتّصالك ولا من أعضاء العائلة", "Not your contact or a family member")
         : /not allowed|editor/.test(m) ? tl("الربط للمحرّرين فقط", "Only editors can link") : m;
 }
@@ -473,7 +473,7 @@ function FamLinkSheet({ person, onClose }) {
     const [err, setErr] = useState("");             // C108: الخطأ داخل الورقة لا في إشعارٍ عابر
     const SS = window.SawaSync, SC = window.SawaChat;
     const sg = SS && SS.serverGid ? SS.serverGid(person._gid) : null;
-    // C108: كلّ جهات الاتّصال (كانت أوّل ٣٠ فقط) — والبحث بالتسمية والاسم الحقيقيّ والرمز والرقم: «قلبي 💓» = Doaa Siddig
+    // C108: كلّ جهات الاتّصال (كانت أوّل 30 فقط) — والبحث بالتسمية والاسم الحقيقيّ والرمز والرقم: «قلبي 💓» = Doaa Siddig
     const people = (SC && SC.contacts ? SC.contacts() : []).filter((c) => c && c.uid);
     // C109: رقمه المحفوظ في الشجرة لحسابٍ موثَّق في سوا؟ ⇒ اقتراحٌ جاهز بضغطة
     const [phoneHit, setPhoneHit] = useState(null);
@@ -518,13 +518,13 @@ function FamLinkSheet({ person, onClose }) {
                     React.createElement(FamAvatar, { name: phoneHit.name || person.local_name, size: 34 }),
                     React.createElement("span", { className: `flex-1 min-w-0 truncate text-[13.5px] font-bold ${textStart()}`, style: { color: colors.text } }, phoneHit.name || person.local_name, phoneHit.pending ? React.createElement("span", { className: "block text-[10.5px] font-normal", style: { color: colors.textMuted } }, tl("أُرسل له طلبٌ سابقاً", "Already requested")) : null),
                     React.createElement("button", { disabled: busy, onClick: () => send({ byPhone: true }, phoneHit.name, "phone"), className: "px-4 py-2 rounded-xl text-[12.5px] font-extrabold text-white shrink-0", style: { backgroundColor: "#187854", opacity: busy ? 0.6 : 1 } }, pending === "phone" ? tl("…جارٍ", "…") : phoneHit.pending ? tl("أعد الإرسال", "Resend") : tl("ربط", "Link")))),
-            // ١) برمز سوا
-            React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, tl("رمز سوا (١٠ أرقام)", "Sawa code (10 digits)")),
+            // 1) برمز سوا
+            React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, tl("رمز سوا (10 أرقام)", "Sawa code (10 digits)")),
             React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-4` },
                 React.createElement("input", { dir: "ltr", inputMode: "numeric", value: code, onChange: (e) => setCode(e.target.value.replace(/[^\d\s٠-٩]/g, "").slice(0, 14)), placeholder: "123 456 7890", className: "flex-1 min-w-0 rounded-xl px-3 py-2.5 text-[15px] tracking-wider", style: box }),
                 React.createElement("button", { disabled: busy || digits.length !== 10, onClick: () => send({ code: digits }, "", "code"), className: "px-4 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary, opacity: busy || digits.length !== 10 ? 0.5 : 1 } }, pending === "code" ? "…" : tl("إرسال", "Send"))),
             err && React.createElement("p", { role: "alert", className: `text-[12px] font-bold mb-3 rounded-xl px-3 py-2 ${textStart()}`, style: { color: colors.danger, backgroundColor: colors.danger + "14" } }, "⚠️ " + err),
-            // ٢) من جهات اتّصالي
+            // 2) من جهات اتّصالي
             people.length > 0 && React.createElement(React.Fragment, null,
                 React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, tl("أو من جهات اتّصالك في سوا", "Or from your Sawa contacts")),
                 people.length > 3 && React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: q, onChange: (e) => setQ(e.target.value), placeholder: tl("ابحث بالاسم أو الرمز", "Search name or code"), className: "w-full rounded-xl px-3 py-2 text-sm mb-2", style: box }),
@@ -536,7 +536,7 @@ function FamLinkSheet({ person, onClose }) {
                             React.createElement("span", { className: "block text-[13.5px] font-bold truncate", style: { color: colors.text } }, c.name),
                             (c.realName && c.realName !== c.name) && React.createElement("span", { className: "block text-[11px] truncate", style: { color: colors.textMuted } }, c.realName)),
                         React.createElement("span", { className: "text-[11px] font-extrabold shrink-0", style: { color: colors.primary } }, pending === c.uid ? tl("…جارٍ الإرسال", "…sending") : tl("ربط", "Link")))))),
-            // ٣) ليس في سوا
+            // 3) ليس في سوا
             React.createElement("div", { className: "rounded-2xl p-3", style: { backgroundColor: colors.primary + "0d" } },
                 React.createElement("p", { className: `text-[12px] font-extrabold mb-1 ${textStart()}`, style: { color: colors.text } }, tl("ليس في سوا بعد؟", "Not on Sawa yet?")),
                 React.createElement("p", { className: `text-[11px] mb-2 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, tl("أرسل له دعوةً باسمه في الشجرة (واتساب أو غيره): حين يسجّل ويفتحها يُسأل «هل أنت " + person.local_name + "؟» فيُربط.", "Send an invite for this person: when they sign up and open it, they're asked to confirm and get linked.")),
@@ -591,7 +591,7 @@ function MsgActionSheet({ colors, onClose, preview, onReact, items }) {
                     React.createElement(it.icon, { size: 20, color: it.danger ? colors.danger : colors.text }),
                     React.createElement("span", { className: "text-[11px] font-bold leading-tight text-center", style: { color: it.danger ? colors.danger : colors.textMuted } }, it.label))))));
 }
-// C184: مقاس فقاعة الصورة/الفيديو حسب نسبتها — عرضٌ حتّى ٢٤٠ وارتفاعٌ بين ٩٠ و٣٨٠؛ ما يتجاوز ذلك يُعرض كاملاً (contain) لا مقصوصاً
+// C184: مقاس فقاعة الصورة/الفيديو حسب نسبتها — عرضٌ حتّى 240 وارتفاعٌ بين 90 و380؛ ما يتجاوز ذلك يُعرض كاملاً (contain) لا مقصوصاً
 function mediaDims(wh) {
     const w = Number(wh && wh[0]) || 0, h = Number(wh && wh[1]) || 0;
     if (!(w > 0 && h > 0)) return null;
@@ -684,7 +684,7 @@ function openUrl(u, e) {
 // C194: اتّجاه النصّ من أوّل حرفٍ قويّ (عربيّ ⇒ rtl، لاتينيّ ⇒ ltr) — كان الإيموجي يقفز يسار الجملة الإنجليزيّة
 function textDir(s, fb) { const m = /[A-Za-z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF]|[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.exec(String(s || "")); return m ? (/[A-Za-z\u00C0-\u04FF]/.test(m[0]) ? "ltr" : "rtl") : (fb || (isRTL() ? "rtl" : "ltr")); }
 // C227: تنسيق الرسائل كواتساب — *عريض* (بخطٍّ أكبر قليلاً) · _مائل_ · ~مشطوب~ · ```أحاديّ المسافة```
-//   العلامة تُفتح عند بداية النصّ أو بعد مسافة/علامة ترقيم، ولا يلي الفاتحةَ أو يسبق الخاتمةَ فراغ (حتّى لا يتنسّق «٢ * ٣ * ٤»)
+//   العلامة تُفتح عند بداية النصّ أو بعد مسافة/علامة ترقيم، ولا يلي الفاتحةَ أو يسبق الخاتمةَ فراغ (حتّى لا يتنسّق «2 * 3 * 4»)
 const FMT_RE = /(^|[\s([{«"'،؛:.!?؟\-])(\*([^\s*](?:[^*\n]*[^\s*])?)\*|_([^\s_](?:[^_\n]*[^\s_])?)_|~([^\s~](?:[^~\n]*[^\s~])?)~|```([^`]+)```)(?=$|[\s)\]}»"'،؛:.!?؟\-])/g;
 function stripFmt(s) { return String(s == null ? "" : s).replace(FMT_RE, (all, pre, _w, b, i, st, mono) => pre + (b || i || st || mono || "")); }
 function fmtNodes(seg, keyBase) {
@@ -816,7 +816,7 @@ function EmptyChatState({ icon }) {
 // يحفظ ما لم يُرسَل عند مغادرة الشاشة، ويعيده عند العودة
 function useChatDraft(draft, onSaveDraft, onTyping) {
     const [text, setText0] = useState(draft || "");
-    // C47: مؤشّر «يكتب…» كان يُرسل عند مغادرة الشاشة فقط (حفظ المسوّدة) — الآن مع كلّ كتابة (sawa-chat يخفّفه كلّ ٣ ثوانٍ)
+    // C47: مؤشّر «يكتب…» كان يُرسل عند مغادرة الشاشة فقط (حفظ المسوّدة) — الآن مع كلّ كتابة (sawa-chat يخفّفه كلّ 3 ثوانٍ)
     const setText = (v) => { setText0(v); try { const val = typeof v === "function" ? v(textRef.current) : v; if (onTyping && val && String(val).trim()) onTyping(); } catch (e) {} };
     const textRef = useRef(text);
     textRef.current = text;
@@ -833,7 +833,7 @@ function useChatDraft(draft, onSaveDraft, onTyping) {
 // C18: المحادثة تُفتح عند آخر رسالة وتبقى في الأسفل ما لم يصعد المستخدم — كانت تُفتح من الأعلى لأنّ الرسائل تصل بعد فتح الشاشة
 //      (والصور تكبر بعد تحميلها)، وشرط «قريبٌ من الأسفل» كان يُقرأ والصفحة في أعلاها.
 // C174: الالتصاق بآخر المحادثة — لا يحرّره إلّا المستخدم (لمسٌ/عجلة) أو قفزةٌ مقصودة إلى رسالة.
-//       كان أيّ حدث تمريرٍ (استعادة المتصفّح · تحميل الأقدم · تغيّر الارتفاع بعد ٥ ثوانٍ) يُفلت المحادثة فتُفتح في وسطها.
+//       كان أيّ حدث تمريرٍ (استعادة المتصفّح · تحميل الأقدم · تغيّر الارتفاع بعد 5 ثوانٍ) يُفلت المحادثة فتُفتح في وسطها.
 let SAWA_JUMP_AT = 0;
 function noteJump() { SAWA_JUMP_AT = Date.now(); }
 function useStickToBottom(ref, dep) {
@@ -1099,7 +1099,7 @@ function ImageLightbox({ src, onClose }) {
 }
 
 // C140: «دفعة» الوسائط = صورٌ/فيديوهاتٌ متتالية من المرسل نفسه، بين كلٍّ منها والتي قبلها دقيقتان على الأكثر ولا رسالة أخرى بينها.
-//       العارض يتنقّل داخل الدفعة ويعدّ «٢ / ٤» منها — كان يعدّ كلّ صور المحادثة («٢٣ / ٨٧»).
+//       العارض يتنقّل داخل الدفعة ويعدّ «2 / 4» منها — كان يعدّ كلّ صور المحادثة («23 / 87»).
 function mediaWithBatches(messages) {
     const out = []; let g = 0, prev = null;
     (messages || []).forEach((m) => {
@@ -1386,7 +1386,7 @@ function LocationBubble({ m, mine }) {
 }
 // C98: مشاركة رسالة خارج سوا (واتساب، بريد…) — النصّ/الرابط بمشاركة النظام، والصورة/الفيديو/الملفّ بملفّه
 // C100: الانتقال إلى رسالة (اقتباس الردّ) مع وميضٍ قصير — وإن كانت خارج النافذة نوسّعها أوّلاً
-// C227: شريط الرسائل المثبّتة (حتّى ٣) — يعرض واحدةً مع «١/٣»، واللمس يقفز إليها ثمّ ينتقل إلى التالية · شرائط صغيرة على الجانب كواتساب
+// C227: شريط الرسائل المثبّتة (حتّى 3) — يعرض واحدةً مع «1/3»، واللمس يقفز إليها ثمّ ينتقل إلى التالية · شرائط صغيرة على الجانب كواتساب
 function pinIdsOf(c) { return c ? (Array.isArray(c.pinnedMessageIds) && c.pinnedMessageIds.length ? c.pinnedMessageIds : (c.pinnedMessageId ? [c.pinnedMessageId] : [])) : []; }
 function pinLabel(m) {
     if (!m) return tl("رسالة مثبّتة", "Pinned message");
@@ -1954,7 +1954,7 @@ function pdfFromJpegs(pages) {   // pages: [{ jpeg: Uint8Array, w, h }] ⇒ Blob
     return new Blob(parts, { type: "application/pdf" });
 }
 function canvasJpeg(cv) { const b64 = cv.toDataURL("image/jpeg", 0.9).split(",")[1], bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
-// الصفحات (١٢٤٠×١٧٥٤ = A4 بدقّة ١٥٠ نقطة/بوصة)
+// الصفحات (1240×1754 = A4 بدقّة 150 نقطة/بوصة)
 function taskListPages(list, o) {
     o = o || {};
     const W = 1240, H = 1754, M = 80, rtl = isRTL(), FONT = "'Noto Naskh Arabic','Noto Sans Arabic','Segoe UI',Tahoma,system-ui,sans-serif";
@@ -2071,8 +2071,8 @@ function TaskListCard({ m, myUserId, isAdmin, members, onToggle, onPatch, onAdd,
         if (!task.assigneeId) return task.status === "done" ? null : React.createElement("button", { onClick: () => boss ? setAssignFor(task) : onPatch(task.id, { claim: true }), className: "text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0", style: { color: colors.primary, backgroundColor: colors.primary + "14" } }, boss ? tl("لأيّ عضو ▾", "Anyone ▾") : tl("أنا عليها ✋", "I'm on it ✋"));
         return React.createElement("button", { onClick: () => (boss || mine) && setAssignFor(task), className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 truncate", style: { maxWidth: 96, color: mine ? "#fff" : colors.primary, backgroundColor: mine ? colors.primary : colors.primary + "14" } }, mine ? tl("أنت", "You") : (task.assigneeName || tl("عضو", "Member")));
     };
-    const progRow = (task) => {   // C188: شريط نسبة المهمّة + فتح قائمة النِّسَب (0–100 بخطوة ١٠)
-        const v = effP(task), on = task.status === "done", can = canToggle(task);   // C190: المنجزة يمكن تعديل نسبتها (١٠٠ ⇒ منجزة، وأقلّ ⇒ معلّقة)
+    const progRow = (task) => {   // C188: شريط نسبة المهمّة + فتح قائمة النِّسَب (0–100 بخطوة 10)
+        const v = effP(task), on = task.status === "done", can = canToggle(task);   // C190: المنجزة يمكن تعديل نسبتها (100 ⇒ منجزة، وأقلّ ⇒ معلّقة)
         return React.createElement("div", { className: "mt-1" },
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
                 React.createElement("div", { className: "flex-1 h-1 rounded-full", style: { backgroundColor: colors.border } },
@@ -2951,7 +2951,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
             items: (groupMsgMenu.deleted ? [] : [
                     { icon: CheckCircle2, label: tl("تحديد", "Select"), act: () => setSel([groupMsgMenu.id]) },   // C119
                     { icon: MessageCircle, label: t("rd"), act: () => setGReply({ id: groupMsgMenu.id, text: replyTextOf(groupMsgMenu), thumb: groupMsgMenu.thumb || null, senderId: groupMsgMenu.senderId, senderName: groupMsgMenu.senderName }) },
-                    // C227: التثبيت (حتّى ٣) والحفظ في المفضّلة — كانا في المحادثة الفرديّة فقط
+                    // C227: التثبيت (حتّى 3) والحفظ في المفضّلة — كانا في المحادثة الفرديّة فقط
                     ...(onTogglePin && !groupMsgMenu.deleted && (!(group.infoAdminsOnly || group.adminsOnly) || isAdmin) ? [{ icon: Pin, label: groupMsgMenu.pinned ? t("ch_ilgha_altthbyt") : t("tthbyt"), act: () => onTogglePin(groupMsgMenu.id) }] : []),
                     ...(onToggleStar && !groupMsgMenu.deleted && !groupMsgMenu.viewOnce ? [{ icon: Star, label: groupMsgMenu.starred ? t("ch_ilgha_alhfz") : t("hfz_alrsala"), act: () => onToggleStar(groupMsgMenu.id, groupMsgMenu.text || replyTextOf(groupMsgMenu)) }] : []),
                     ...(groupMsgMenu.viewOnce ? [] : [

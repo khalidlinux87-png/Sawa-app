@@ -119,7 +119,7 @@
       add("ok", "الحساب", u.uid.slice(0, 6) + "… · " + (u.isAnonymous ? "ضيف" : (u.providerData[0] && u.providerData[0].providerId) || ""));
       var uid = u.uid;
       u.getIdToken().then(function (tok) {
-        // ١) الخادم
+        // 1) الخادم
         return worker(tok, "whoami").then(function (a) {
           if (a.err) add("bad", "الخادم (Worker)", a.err + " · " + a.ms);
           else if (!a.j) add("bad", "الخادم (Worker)", "ردّ غير متوقّع " + a.status + " · " + a.ms + " · " + a.raw);
@@ -141,13 +141,13 @@
           add(ok ? "ok" : "bad", "المواعيد", ok ? (a.j.items || []).length + " موعد · " + a.ms : (a.err || (a.j && a.j.error)) + " · " + a.ms);
         });
       }).then(function () {
-        // ٢) Firestore مباشرةً (الحصّة اليوميّة)
+        // 2) Firestore مباشرةً (الحصّة اليوميّة)
         var t0 = performance.now();
         return timeout(firebase.firestore().collection("chats").where("members", "array-contains", uid).limit(1).get(), 15000, "firestore").then(function (s) {
           add("ok", "Firestore مباشرة", s.size + " · " + ms(t0));
         }, function (e) { add("bad", "Firestore مباشرة", (e && (e.code || e.message)) + " · " + ms(t0) + (e && e.code === "resource-exhausted" ? " ⇐ انتهت الحصّة اليوميّة المجّانيّة" : "")); });
       }).then(function () {
-        // ٣) Realtime Database
+        // 3) Realtime Database
         var d = firebase.database(), t0 = performance.now();
         return timeout(new Promise(function (res) { d.ref(".info/connected").on("value", function (s) { if (s.val() === true) res(); }); }), 15000, "RTDB").then(function () {
           add("ok", "Realtime Database (الحضور والمكالمات)", "متّصل · " + ms(t0));
@@ -163,7 +163,7 @@
           }, function (e) { add("bad", "صندوق المكالمات الواردة", (e && (e.code || e.message)) + " — قواعد RTDB؟"); });
         });
       }).then(function () {
-        // ٤) الإشعارات
+        // 4) الإشعارات
         var perm = typeof Notification !== "undefined" ? Notification.permission : "غير مدعوم";
         add(perm === "granted" ? "ok" : "warn", "إذن الإشعارات", perm);
         if (!navigator.serviceWorker) { add("bad", "عامل الخدمة", "غير مدعوم"); return; }
@@ -305,7 +305,7 @@
         var top = Object.keys(today.v.ops).map(function (k) { return [k, Number(today.v.ops[k]) || 0]; }).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 8);
         html += '<div class="d" style="margin-top:8px">أكثر العمليّات اليوم: ' + top.map(function (x) { return x[0] + " " + n(x[1]); }).join(" · ") + "</div>";
       }
-      html += '<div class="d" style="margin-top:8px">الشريط = نسبة طلبات اليوم من حدّ Cloudflare المجّانيّ (١٠٠٬٠٠٠ يوميّاً). العدّادات تقريبيّة (تُجمَع على دفعات).<br>' +
+      html += '<div class="d" style="margin-top:8px">الشريط = نسبة طلبات اليوم من حدّ Cloudflare المجّانيّ (100,000 يوميّاً). العدّادات تقريبيّة (تُجمَع على دفعات).<br>' +
         'قراءات/كتابات Firestore والتخزين: <a href="https://console.firebase.google.com/project/sawa-test-9770f/usage" target="_blank">لوحة Firebase</a> · ' +
         'طلبات الـWorker: <a href="https://dash.cloudflare.com/?to=/:account/workers-and-pages" target="_blank">Cloudflare</a> · ' +
         'استهلاك TURN: <a href="https://dash.cloudflare.com/?to=/:account/calls" target="_blank">Realtime</a></div>';

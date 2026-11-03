@@ -53,7 +53,7 @@ const KINSHIP_RELATION_DEFAULTS = {
 const roleLabelKeys = { owner: "rl_owner", admin: "rl_admin", editor: "rl_admin", member: "rl_member", viewer: "rl_viewer" };
 const roleLabel = (r) => (roleLabelKeys[r] ? t(roleLabelKeys[r]) : r);
 function myAccountName() { try { const p = window.SawaChat && window.SawaChat.me && window.SawaChat.me() && window.SawaChat.profile ? window.SawaChat.profile() : null; return (p && (p.name || p.displayName)) || ""; } catch (e) { return ""; } }
-function membersCountLabel(nStr) { const x = nStr + t("fg_frd_fasl"); return isRTL() ? arCountFix(x) : x; }   // C74: «٧ أفراد ·»
+function membersCountLabel(nStr) { const x = nStr + t("fg_frd_fasl"); return isRTL() ? arCountFix(x) : x; }   // C74: «7 أفراد ·»
 // استدلال افتراضي للجنس من صلة القرابة المُختارة — يمكن للمستخدم تغييره
 // يدوياً؛ "أخرى" و"ابن العم/الخال" بلا استدلال واضح فنتركها بلا افتراض
 const KINSHIP_GENDER_DEFAULTS = {
@@ -281,7 +281,7 @@ function FamilyGroupsScreen({ groups, groupPersons, currentGroupId, onSetCurrent
             showRadius && React.createElement(FamSheet, { title: tl("نطاق التنبيه لكلّ الأقارب", "Alert distance for all relatives"), subtitle: tl("كم تكون المسافة من منزل القريب ليُنبّهك؟ يمكن تخصيصها لقريبٍ بعينه من نموذجه.", "How close to a relative's home before alerting? Per-relative override in their form."), onClose: () => setShowRadius(false), maxHeight: "72%" },
                 PROX_RADII.map((r, i) => React.createElement(FamRow, { key: r, icon: MapPin, title: fmtDist(r), sub: r <= 500 ? tl("مشياً في الحيّ", "Walking distance") : r <= 1000 ? tl("الحيّ وما حوله", "The neighborhood") : tl("بالسيّارة", "By car"), onPress: () => { onSetProxRadius(r); setShowRadius(false); }, right: proxRadius === r ? React.createElement(Check, { size: 17, color: colors.primary }) : React.createElement("span", null) })),
                 React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 pt-3` },
-                    React.createElement("input", { dir: "ltr", inputMode: "numeric", value: customR, onChange: (e) => setCustomR(e.target.value.replace(/\D/g, "").slice(0, 4)), placeholder: tl("مسافة أخرى بالمتر (١٠٠–٥٠٠٠)", "Other, meters (100–5000)"), className: "fam-in flex-1 min-w-0 px-3.5 py-3 text-sm", style: famInput(colors) }),
+                    React.createElement("input", { dir: "ltr", inputMode: "numeric", value: customR, onChange: (e) => setCustomR(e.target.value.replace(/\D/g, "").slice(0, 4)), placeholder: tl("مسافة أخرى بالمتر (100–5000)", "Other, meters (100–5000)"), className: "fam-in flex-1 min-w-0 px-3.5 py-3 text-sm", style: famInput(colors) }),
                     React.createElement("button", { disabled: !(Number(customR) >= 100 && Number(customR) <= 5000), onClick: () => { onSetProxRadius(Number(customR)); setCustomR(""); setShowRadius(false); }, className: "rounded-2xl px-4 py-3 text-sm font-bold text-white", style: { background: famGrad(colors), opacity: (Number(customR) >= 100 && Number(customR) <= 5000) ? 1 : 0.4 } }, t("takyd")))),
             React.createElement(FamSection, { title: tl("عائلاتي", "My families"), action: tl("+ عائلة جديدة", "+ New family"), onAction: () => setShowCreate(true) },
                 groups.length === 0 && React.createElement(FamCard, { className: "text-center", style: { padding: 24 } },
@@ -1191,7 +1191,7 @@ function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons,
         if (/زوج|زوجة|حمو|حماة|صهر|نسيب/.test(k)) return 11;
         return 10;
     };
-    // C51: نافذة عرض للقائمة — أوّل ٦٠ ثمّ ٦٠ أخرى كلّما اقترب التمرير من الأسفل؛ تعود للبداية عند تغيّر البحث/التصفية
+    // C51: نافذة عرض للقائمة — أوّل 60 ثمّ 60 أخرى كلّما اقترب التمرير من الأسفل؛ تعود للبداية عند تغيّر البحث/التصفية
     const [listN, setListN] = useState(60);
     useEffect(() => { setListN(60); }, [searchQuery, filteredPersons.length]);
     const sortedPersons = [...filteredPersons].sort((a, b) => {
@@ -2654,7 +2654,7 @@ function FamilyTreeScreen({ initialFocusId, onClaimChildren, onChangeParent, gro
     const [focusPath, setFocusPath] = useState([]); // مسار التنقّل
     // C46: الطيّ التلقائيّ يُحسب قبل أوّل رسمٍ للشجرة الكاملة (كان أثراً بعده: تُرسم الشجرة كلّها مفتوحةً ثمّ تُطوى = ضعف العمل)
     function autoFold() {
-        // نطوي فروع الجيل الثالث فما بعد — والعائلة الكبيرة (فوق ٢٥٠) من الجيل الثاني، فتُفتح الشجرة خفيفةً ويُفتح الفرع عند الحاجة
+        // نطوي فروع الجيل الثالث فما بعد — والعائلة الكبيرة (فوق 250) من الجيل الثاني، فتُفتح الشجرة خفيفةً ويُفتح الفرع عند الحاجة
         const firstParent = {};
         relations.forEach((r) => { if (r.type === "parent" && !(r.target in firstParent)) firstParent[r.target] = r.source; });
         const memo = {};

@@ -23,7 +23,7 @@ function DialPadScreen({ onCall, onBack }) {
             React.createElement("div", { className: "w-full text-center pt-4" },
                 React.createElement("span", { className: "text-2xl font-extrabold tracking-widest", style: { color: colors.text }, dir: "ltr" }, shown || "—"),
                 React.createElement("div", { className: "text-xs mt-2", style: { color: colors.textMuted } }, tl("أدخل رمز سوا الخاصّ بالشخص (10 أرقام) — تجده عنده في «جهات الاتّصال ← رمزي»", "Enter the person's 10-digit Sawa code (Contacts → My code)"))),
-            React.createElement("div", { dir: "ltr", className: "grid grid-cols-3 gap-4 w-full max-w-xs" }, keys.map(   /* C198: لوحة الأرقام بترتيبها المعتاد (١ يساراً) في كلّ اللغات — كانت تنقلب في العربيّة */(k, i) => k === "" ? React.createElement("div", { key: "e" + i }) : (React.createElement("button", { key: k, onClick: () => setNumber((prev) => (prev + k).slice(0, 10)), className: "w-16 h-16 rounded-full flex items-center justify-center mx-auto", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
+            React.createElement("div", { dir: "ltr", className: "grid grid-cols-3 gap-4 w-full max-w-xs" }, keys.map(   /* C198: لوحة الأرقام بترتيبها المعتاد (1 يساراً) في كلّ اللغات — كانت تنقلب في العربيّة */(k, i) => k === "" ? React.createElement("div", { key: "e" + i }) : (React.createElement("button", { key: k, onClick: () => setNumber((prev) => (prev + k).slice(0, 10)), className: "w-16 h-16 rounded-full flex items-center justify-center mx-auto", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                 React.createElement("span", { className: "text-xl font-bold", style: { color: colors.text } }, k))))),
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-4 w-full max-w-xs justify-center` },
                 React.createElement("button", { "aria-label": t("atsal"), onClick: () => ready && onCall(number), disabled: !ready, className: "w-16 h-16 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary, opacity: ready ? 1 : 0.4 } },
@@ -267,7 +267,7 @@ function callTimeLabel(ts) {
     const diff = Math.round((day(n) - day(d)) / 86400000);
     if (diff === 0) return (ar ? "اليوم " : "Today ") + hm;
     if (diff === 1) return (ar ? "أمس " : "Yesterday ") + hm;
-    // C198: «١ نوفمبر» بدل «1/11» (غامض: يوم/شهر أم شهر/يوم)
+    // C198: «1 نوفمبر» بدل «1/11» (غامض: يوم/شهر أم شهر/يوم)
     try { return d.toLocaleDateString(ar ? "ar-u-nu-latn" : "en", { day: "numeric", month: "long" }) + " " + hm; } catch (e) { return `${d.getDate()}/${d.getMonth() + 1} ${hm}`; }
 }
 // C198: المدّة «12 د 5 ث» بدل «12:05» (كانت تُقرأ ساعةً بجانب الوقت)
@@ -431,7 +431,7 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
                 ].map((it) => (React.createElement("button", { key: it.label, onClick: () => { it.act(); setCallMenu(null); }, className: "w-full flex flex-row items-center gap-3 px-5 py-3.5 border-t", style: { borderColor: colors.border } },
                     React.createElement(it.icon, { size: 17, color: it.danger ? colors.danger : colors.textMuted }),
                     React.createElement("span", { className: `flex-1 ${textStart()} text-sm font-bold`, style: { color: it.danger ? colors.danger : colors.text } }, it.label))))))),
-        React.createElement("button", { onClick: () => setSubScreen("newCall"), className: "flex items-center justify-center", "aria-label": t("mkalma_jdyda"), style: { position: "absolute", bottom: "1rem", [isRTL() ? "left" : "right"]: "1rem", width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, boxShadow: "0 4px 12px rgba(0,0,0,0.25)" }   /* C198: كان أخضر واتساب #25D366 (الأيقونة البيضاء ٢:١) */ },
+        React.createElement("button", { onClick: () => setSubScreen("newCall"), className: "flex items-center justify-center", "aria-label": t("mkalma_jdyda"), style: { position: "absolute", bottom: "1rem", [isRTL() ? "left" : "right"]: "1rem", width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, boxShadow: "0 4px 12px rgba(0,0,0,0.25)" }   /* C198: كان أخضر واتساب #25D366 (الأيقونة البيضاء 2:1) */ },
             React.createElement(PhoneCall, { size: 22, color: "#fff" }))));
 }
 // ============================================================================
@@ -548,7 +548,7 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
                 React.createElement("p", { className: "text-xs leading-relaxed mb-4", style: { color: colors.textMuted } }, t("ct_none_desc")),
                 React.createElement(Button, { icon: UserPlus, label: t("ct_add_title"), onPress: () => setShowAddModal(true) }))),
             contacts.length > 0 && filtered.length === 0 && (React.createElement(EmptyState, { icon: view === "online" ? Wifi : Search, label: view === "online" && !q ? tl("لا أحد متّصل الآن", "Nobody is online right now") : t("la_twjd_ntayj") }))),
-        !search && view === "all" && sawaContacts.length >= 40 && letters.length > 6 && (React.createElement("div", { className: "absolute top-1/2 flex flex-col gap-0.5",   /* C197: للقوائم الطويلة فقط (كان يظهر مع ١٢ اسماً) */ style: { [isRTL() ? "left" : "right"]: 4, transform: "translateY(-50%)", zIndex: 10 } }, letters.map((l) => (React.createElement("button", { key: l, onClick: () => { var _a; (_a = sectionRefs.current[l]) === null || _a === void 0 ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "start" }); }, className: "w-7 h-7 flex items-center justify-center rounded-full text-[12px] font-extrabold", style: { color: colors.primary } }, l))))),
+        !search && view === "all" && sawaContacts.length >= 40 && letters.length > 6 && (React.createElement("div", { className: "absolute top-1/2 flex flex-col gap-0.5",   /* C197: للقوائم الطويلة فقط (كان يظهر مع 12 اسماً) */ style: { [isRTL() ? "left" : "right"]: 4, transform: "translateY(-50%)", zIndex: 10 } }, letters.map((l) => (React.createElement("button", { key: l, onClick: () => { var _a; (_a = sectionRefs.current[l]) === null || _a === void 0 ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "start" }); }, className: "w-7 h-7 flex items-center justify-center rounded-full text-[12px] font-extrabold", style: { color: colors.primary } }, l))))),
         React.createElement("button", { "aria-label": t("idafa_mshark"), onClick: () => setShowAddModal(true), className: "absolute flex items-center justify-center rounded-full shadow-lg", style: { bottom: 20, [isRTL() ? "left" : "right"]: 20, width: 52, height: 52, backgroundColor: colors.primary, zIndex: 10 } },
             React.createElement(UserPlus, { size: 22, color: "#fff" })),
         showAddModal && (React.createElement(AddContactSheet, { colors: colors, onClose: () => setShowAddModal(false) })),
@@ -636,7 +636,7 @@ function shareContactOut(contact) {
 function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVideoCall, onMessage, onSecret, onRename, onToggleBlock, onRemove, familyOnly, onReport, onClose }) {
     const [confirm, setConfirm] = useState(null);   // null | "block" | "remove"
     // C61: الكلمة تحت الدائرة تنقر أيضاً (كان النقر عليها لا يفعل شيئاً)
-    // C197: الدوائر بلون المظهر (كانت أزرق/أخضر/كهرمانيّ/أخضر — و«اتصال» و«فيديو» في الداكن فاتحان فالأيقونة البيضاء ~٢:١)؛ «سرّيّة» محدّدة بلونه
+    // C197: الدوائر بلون المظهر (كانت أزرق/أخضر/كهرمانيّ/أخضر — و«اتصال» و«فيديو» في الداكن فاتحان فالأيقونة البيضاء ~2:1)؛ «سرّيّة» محدّدة بلونه
     const act = (icon, label, onPress, outline) => React.createElement("div", { className: "flex flex-col items-center gap-1.5", style: { opacity: onPress ? 1 : 0.35, cursor: onPress ? "pointer" : "default" }, onClick: onPress || undefined },
         React.createElement("button", { "aria-label": label, onClick: (e) => { e.stopPropagation(); if (onPress) onPress(); }, disabled: !onPress, className: "w-13 h-13 rounded-full flex items-center justify-center", style: { width: 52, height: 52, backgroundColor: outline ? "transparent" : colors.primary, border: outline ? `2px solid ${colors.primary}` : "none" } }, React.createElement(icon, { size: 21, color: outline ? colors.primary : "#fff" })),
         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, label));
@@ -666,7 +666,7 @@ function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVid
                 contact.nick && contact.realName && contact.realName !== contact.nick && React.createElement("span", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } }, tl("اسمه في سوا: ", "Sawa name: ") + contact.realName),
                 React.createElement("span", { className: "text-xs mt-1", style: { color: blocked ? colors.danger : isOnline ? "#16A34A" : colors.textMuted } }, blocked ? tl("محظور — لا تصلك رسائله ولا مكالماته", "Blocked") : ctSubNode(contact, contactSubtitle(contact, isOnline))),
                 contact.families && contact.families.length > 0 && React.createElement("span", { className: "text-[11px] mt-0.5 text-center", style: { color: colors.textMuted } }, contact.families.map((f) => f.name).join(" · ")),
-                // C88: رمز سوا (١٠ أرقام) بدل الوسم القديم — نقرةٌ تنسخه
+                // C88: رمز سوا (10 أرقام) بدل الوسم القديم — نقرةٌ تنسخه
                 contact.code && React.createElement("button", { onClick: () => { const f = String(contact.code).replace(/\D/g, "").replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3"); try { navigator.clipboard.writeText(f); } catch (e) { } try { window.SawaSync.toast(tl("نُسخ الرمز ✓", "Code copied ✓")); } catch (e) { } }, className: "mt-1.5 flex flex-row items-center gap-1.5 px-2.5 py-1 rounded-full", style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
                     React.createElement(QrCode, { size: 12, color: colors.primary }),
                     React.createElement("span", { className: "text-[12px] font-extrabold", dir: "ltr", style: { unicodeBidi: "isolate", color: colors.text, letterSpacing: 1 } }, String(contact.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3")),
@@ -711,7 +711,7 @@ function AddContactSheet({ colors, onClose }) {
             React.createElement("div", { className: "w-10 h-1 rounded-full mx-auto mb-4", style: { backgroundColor: colors.border } }),
             React.createElement("h3", { className: `text-base font-extrabold ${textStart()} mb-1.5`, style: { color: colors.text } }, t("ct_add_title")),
             React.createElement("p", { className: `text-xs leading-relaxed ${textStart()} mb-4`, style: { color: colors.textMuted } }, t("ct_add_desc")),
-            // C10: الأسهل — رمز سوا (١٠ أرقام) بطلب تواصلٍ يوافق عليه صاحبه
+            // C10: الأسهل — رمز سوا (10 أرقام) بطلب تواصلٍ يوافق عليه صاحبه
             // C197: زرٌّ رئيسيّ واحد («مشاركة رابطي»)، وباقي الطرق خياراتٌ ثانويّة بشكلٍ واحد (كانت خمسة أشكال وإيموجي 🔢)
             React.createElement(Button, { icon: Share2, label: t("ct_share_link"), onPress: () => SC && SC.shareInvite() }),
             React.createElement("div", { className: "flex flex-col gap-2 mt-3" },
@@ -1107,12 +1107,12 @@ const ERSAL_HANDLING = [
 // موثّق صراحة، تحقّقنا منه بالصور الفعلية (FR-10462: عثمان الطيب للاستلام،
 // محمد إبراهيم للتسليم — شخص مختلف كلياً بمركبة مختلفة)
 const ERSAL_PICKUP_DRIVERS = [
-    { name: "عثمان الطيب", vehicle: "نيسان باترول", plate: "خ ر ط ٥٦٧٨" },
-    { name: "الفاتح عبدالله", vehicle: "تويوتا هايس", plate: "خ ر ط ٩٠١٢" },
+    { name: "عثمان الطيب", vehicle: "نيسان باترول", plate: "خ ر ط 5678" },
+    { name: "الفاتح عبدالله", vehicle: "تويوتا هايس", plate: "خ ر ط 9012" },
 ];
 const ERSAL_DELIVERY_DRIVERS = [
-    { name: "محمد إبراهيم", vehicle: "تويوتا هايلوكس", plate: "خ ر ط ١٢٣٤" },
-    { name: "صلاح الدين حسن", vehicle: "نيسان نافارا", plate: "خ ر ط ٣٤٥٦" },
+    { name: "محمد إبراهيم", vehicle: "تويوتا هايلوكس", plate: "خ ر ط 1234" },
+    { name: "صلاح الدين حسن", vehicle: "نيسان نافارا", plate: "خ ر ط 3456" },
 ];
 // أسماء افتراضية لمن استلم الطرد فعلياً بالباب — يلتقطها المندوب بجهازه
 // وقت التسليم الحقيقي، مو المُرسِل لاحقاً؛ هنا نحاكيها بأسماء واقعية بسيطة
@@ -1454,7 +1454,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
             return prev.includes(key) ? withoutNormal.filter((k) => k !== key) : [...withoutNormal, key];
         });
     }
-    const erN = (x) => Number(x || 0).toLocaleString(loc());   // C225: الأرقام بخطّ الواجهة (كانت تختلط ١٢ و12)
+    const erN = (x) => Number(x || 0).toLocaleString(loc());   // C225: الأرقام بخطّ الواجهة (كانت تختلط 12 و12)
     const activeShipments = shipments.filter((s) => s.stageIdx < s.stages.length - 1 && !s.failed && !s.cancelled);
     const onTimeCount = shipments.filter((s) => s.stageIdx >= s.stages.length - 1 && !s.failed).length;
     const showBottomNav = mainTab !== "ship" || shipFlowView === "goods";
