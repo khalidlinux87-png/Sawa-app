@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c228";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c229";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -1115,7 +1115,7 @@
       if (!c.connectedAt) { if (s === "failed") finish(c, "failed"); return; }
       setState(c, "reconnecting");
       // المتّصل يعيد التفاوض (ICE restart) — يفيد عند تبدّل الشبكة (واي فاي ↔ بيانات)
-      if (c.role === "caller" && (s === "failed" || !c.timers.restart)) c.timers.restart = setTimeout(function () { iceRestart(c); }, s === "failed" ? 0 : 3000);
+      if (c.role === "caller" && (s === "failed" || !c.timers.restart)) { clearTimeout(c.timers.restart); c.timers.restart = setTimeout(function () { iceRestart(c); }, s === "failed" ? 0 : 3000); }   // C229: «انقطع» ثمّ «فشل» كانا يطلقان إعادتين متتاليتين ⇒ عرضان يتسابقان عند الطرف الآخر فلا يُعاد الاتّصال
       if (!c.timers.lost) c.timers.lost = setTimeout(function () { finish(c, "lost"); }, LOST_MS);
     }
   }
@@ -1348,8 +1348,12 @@
     if (v.up && !c.upSeen && c.connectedAt) { c.upSeen = true; c.silent = true; finish(c, "upgraded", { remote: true }); groupJoinDirect(v.up, c.type, null, c.upgrading ? "starter" : "joiner"); return; }
     if (v.reoffer && v.reoffer.n > c.reSeen && c.pc && c.remoteSet) {
       var n = v.reoffer.n; c.reSeen = n;
-      var camP = v.reoffer.v && c.vcamP ? c.vcamP : Promise.resolve(null);   // C183: عرض الفيديو ⇒ كاميرتي في الردّ
-      camP.then(function (vt) { return c.pc.setRemoteDescription({ type: v.reoffer.type, sdp: v.reoffer.sdp }).then(function () { return vt; }); })
+      var ro = v.reoffer;
+      // C229: عرضٌ واحدٌ في كلّ مرّة — عرضان متقاربان كانا يُعالَجان معاً فيفشل ضبط الردّ الثاني (الحالة stable)، والمتّصل ينتظر ردّ الأحدث وحده
+      c.reQ = (c.reQ || Promise.resolve()).then(function () {
+      if (c.done || !c.pc || n !== c.reSeen) return;   // جاء عرضٌ أحدث — هو وحده يهمّ
+      var camP = ro.v && c.vcamP ? c.vcamP : Promise.resolve(null);   // C183: عرض الفيديو ⇒ كاميرتي في الردّ
+      return camP.then(function (vt) { return c.pc.setRemoteDescription({ type: ro.type, sdp: ro.sdp }).then(function () { return vt; }); })
         .then(function (vt) {
           if (vt) {
             var tx = c.pc.getTransceivers().filter(function (t) { return t.receiver && t.receiver.track && t.receiver.track.kind === "video" && !(t.sender && t.sender.track); })[0];
@@ -1358,8 +1362,8 @@
         })
         .then(function () { return c.pc.createAnswer(); })
         .then(function (a) { return c.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); })
-        .then(function (a) { return c.ref.update({ reanswer: { type: a.type, sdp: a.sdp, n: n } }); })
-        .catch(function (e) { LOG.warn("reoffer", { err: e && e.message }); });
+        .then(function (a) { return c.ref.update({ reanswer: { type: a.type, sdp: a.sdp, n: n } }); });
+      }).catch(function (e) { LOG.warn("reoffer", { err: e && e.message }); });
     }
     if (v.state === "ended" && softEnded(c, v)) return;
     if (v.state === "ended" || v.state === "missed") finish(c, c.connectedAt ? "remote" : "missed", { remote: true });
@@ -2176,11 +2180,11 @@
       var s = pc.connectionState;
       if (g.done || g.peers[uid] !== p) return;
       if (s === "connected") {
-        p.state = "connected"; p.everConnected = true; clearTimeout(p.lost); p.lost = null;
+        p.state = "connected"; p.everConnected = true; clearTimeout(p.lost); p.lost = null; clearTimeout(p.rt); p.rt = null;
         gCap(g); stopTone(); gTile(g, uid); gPaintHead(g);
       } else if (s === "disconnected" || s === "failed") {
         p.state = "reconnecting"; gTile(g, uid);
-        if (p.offerer) setTimeout(function () { if (g.peers[uid] === p && p.state !== "connected") gRenegotiate(g, p, true); }, s === "failed" ? 0 : 3000);
+        if (p.offerer && (s === "failed" || !p.rt)) { clearTimeout(p.rt); p.rt = setTimeout(function () { p.rt = null; if (g.peers[uid] === p && p.state !== "connected") gRenegotiate(g, p, true); }, s === "failed" ? 0 : 3000); }   // C229
         if (!p.lost) p.lost = setTimeout(function () { if (g.peers[uid] === p && p.state !== "connected") { p.state = "lost"; gTile(g, uid); } }, LOST_MS);
       }
     };
@@ -2208,11 +2212,14 @@
       // تصادم عرضين: الأصغر معرّفاً «مهذّب» يتراجع ويقبل عرض الآخر، والأكبر يتجاهله
       if (p && p.pc.signalingState === "have-local-offer") { if (myUid() < u) { gDrop(g, u); p = null; } else return; }
       if (!p) p = gPeer(g, u, msg.fs, false);
-      p.pc.setRemoteDescription({ type: "offer", sdp: msg.sdp })
-        .then(function () { gFlush(p); return p.pc.createAnswer(); })
-        .then(function (a) { return p.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); })
-        .then(function (a) { gSend(g, u, p.sess, { t: "answer", sdp: a.sdp }); })
-        .catch(function (e) { LOG.warn("ganswer", { err: e && e.message }); });
+      var gp = p, gn = gp.inN = (gp.inN || 0) + 1;   // C229: عرضٌ واحدٌ في كلّ مرّة، والأحدث وحده
+      gp.q = (gp.q || Promise.resolve()).then(function () {
+        if (g.done || g.peers[u] !== gp || gn !== gp.inN) return;
+        return gp.pc.setRemoteDescription({ type: "offer", sdp: msg.sdp })
+          .then(function () { gFlush(gp); return gp.pc.createAnswer(); })
+          .then(function (a) { return gp.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); })
+          .then(function (a) { gSend(g, u, gp.sess, { t: "answer", sdp: a.sdp }); });
+      }).catch(function (e) { LOG.warn("ganswer", { err: e && e.message }); });
     } else if (msg.t === "answer") {
       if (!p || p.sess !== msg.fs || p.pc.signalingState !== "have-local-offer") return;
       p.pc.setRemoteDescription({ type: "answer", sdp: msg.sdp }).then(function () { gFlush(p); }).catch(function (e) { LOG.warn("gans", { err: e && e.message }); });
@@ -2224,7 +2231,7 @@
   function gDrop(g, uid) {
     var p = g.peers[uid]; if (!p) return;
     try { p.pc.close(); } catch (e) {}
-    clearTimeout(p.lost);
+    clearTimeout(p.lost); clearTimeout(p.rt);
     delete g.peers[uid];
     gTile(g, uid);
   }
@@ -3239,11 +3246,11 @@
     pc.onconnectionstatechange = function () {
       var s = pc.connectionState;
       if (r.done || r.peers[uid] !== p) return;
-      if (s === "connected") { p.state = "connected"; clearTimeout(p.lost); p.lost = null; rCap(r); rTile(r, uid); }
+      if (s === "connected") { p.state = "connected"; clearTimeout(p.lost); p.lost = null; clearTimeout(p.rt); p.rt = null; rCap(r); rTile(r, uid); }
       else if (s === "disconnected" || s === "failed") {
         if (p.ghost) { clearTimeout(r.timers["gh" + uid]); delete r.timers["gh" + uid]; var mm = Object.assign({}, r.members); delete mm[uid]; p.ghost = 0; rDrop(r, uid); onRMembers(r, mm); return; }   // C63
         p.state = "reconnecting"; rTile(r, uid);
-        if (p.offerer) setTimeout(function () { if (r.peers[uid] === p && p.state !== "connected") rNegotiate(r, p, true); }, s === "failed" ? 0 : 3000);
+        if (p.offerer && (s === "failed" || !p.rt)) { clearTimeout(p.rt); p.rt = setTimeout(function () { p.rt = null; if (r.peers[uid] === p && p.state !== "connected") rNegotiate(r, p, true); }, s === "failed" ? 0 : 3000); }   // C229
         if (!p.lost) p.lost = setTimeout(function () { if (r.peers[uid] === p && p.state !== "connected") { p.state = "lost"; rTile(r, uid); } }, LOST_MS);
       }
     };
@@ -3269,7 +3276,11 @@
       if (p && p.pc.signalingState === "have-local-offer") { if (myUid() < u) { rDrop(r, u); p = null; } else return; }
       if (!p) p = rPeer(r, u, msg.fs, false);
       if (msg.pid) p.rpid = msg.pid;
-      p.pc.setRemoteDescription({ type: "offer", sdp: msg.sdp }).then(function () {
+      var rp = p, rn = rp.inN = (rp.inN || 0) + 1;   // C229: عرضٌ واحدٌ في كلّ مرّة، والأحدث وحده
+      rp.q = (rp.q || Promise.resolve()).then(function () {
+      if (r.done || r.peers[u] !== rp || rn !== rp.inN) return;
+      var p = rp;
+      return p.pc.setRemoteDescription({ type: "offer", sdp: msg.sdp }).then(function () {
         p.pc.getTransceivers().forEach(function (t) {
           var k = t.receiver && t.receiver.track && t.receiver.track.kind;
           if (k === "audio" && !p.at) p.at = t; else if (k === "video" && !p.vt) p.vt = t; else if (k === "video" && !p.sct && t !== p.vt) p.sct = t;   // C120
@@ -3278,8 +3289,8 @@
         rSenders(r, p); gFlush(p); rScrTiles(r);
         return p.pc.createAnswer();
       }).then(function (a) { return p.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); })
-        .then(function (a) { rSend(r, u, p.sess, { t: "answer", sdp: a.sdp }); })
-        .catch(function (e) { LOG.warn("ranswer", { err: e && e.message }); });
+        .then(function (a) { rSend(r, u, p.sess, { t: "answer", sdp: a.sdp }); });
+      }).catch(function (e) { LOG.warn("ranswer", { err: e && e.message }); });
     } else if (msg.t === "answer") {
       if (!p || p.sess !== msg.fs || p.pc.signalingState !== "have-local-offer") return;
       p.pc.setRemoteDescription({ type: "answer", sdp: msg.sdp }).then(function () { gFlush(p); }).catch(function (e) { LOG.warn("rans", { err: e && e.message }); });
@@ -3292,7 +3303,7 @@
   function rDrop(r, uid) {
     var p = r.peers[uid]; if (!p) return;
     try { p.pc.close(); } catch (e) {}
-    clearTimeout(p.lost); delete r.peers[uid]; delete r.levels[uid];
+    clearTimeout(p.lost); clearTimeout(p.rt); clearTimeout(p.iceT); delete r.peers[uid]; delete r.levels[uid];
     if (p.an) try { p.an.src.disconnect(); } catch (e) {}
     rTile(r, uid);
   }
