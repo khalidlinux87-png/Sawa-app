@@ -59,7 +59,7 @@ function LinkedDevicesScreen({ onBack }) {
                         React.createElement("span", { style: { fontSize: 28 } }, d.icon),
                         React.createElement("div", { className: `flex-1 ${textStart()}` },
                             React.createElement("p", { className: "text-sm font-bold", style: { color: colors.text } }, d.name),
-                            React.createElement("p", { className: "text-[11px] mt-0.5", style: { color: d.online ? "#22C55E" : colors.textMuted } }, d.online ? t("dv_mtsl_alan") : t(d.lastSeenKey))),
+                            React.createElement("p", { className: "text-[11px] mt-0.5", style: { color: d.online ? "#16A34A" : colors.textMuted } }, d.online ? t("dv_mtsl_alan") : t(d.lastSeenKey))),
                         React.createElement("button", { onClick: () => removeDevice(d.id), className: "px-3 py-1.5 rounded-xl text-xs font-bold", style: { backgroundColor: "#ef444420", color: "#ef4444" } }, t("ilgha_alrbt")))))))),
             React.createElement("div", { className: "h-6" }))));
 }
@@ -72,7 +72,7 @@ function SawaWrappedScreen({ onBack, conversations, groups, showToast = () => { 
     const totalConvs = ((conversations === null || conversations === void 0 ? void 0 : conversations.length) || 0) + ((groups === null || groups === void 0 ? void 0 : groups.length) || 0);
     const stats = [
         { label: t("sw_rsala_arslt"), value: "342", icon: "💬", color: colors.primary },
-        { label: t("sw_dqyqa_mkalmat"), value: "87", icon: "📞", color: "#22C55E" },
+        { label: t("sw_dqyqa_mkalmat"), value: "87", icon: "📞", color: "#16A34A" },
         { label: t("sw_swra_wwthyqa"), value: "24", icon: "📎", color: colors.accent },
         { label: t("sw_mhadtha_nshta"), value: String(totalConvs), icon: "🗂️", color: "#8B5CF6" },
         { label: t("sw_rsala_swtya"), value: "15", icon: "🎙️", color: "#F59E0B" },
@@ -99,8 +99,8 @@ function SawaWrappedScreen({ onBack, conversations, groups, showToast = () => { 
             React.createElement("div", { className: `mt-3 p-4 rounded-2xl ${textStart()}`, style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                 React.createElement("p", { className: "text-xs font-extrabold mb-3", style: { color: colors.text } }, t("sla_alrhm_hdha_alshhr")),
                 React.createElement("div", { className: `flex ${rowStart()} gap-3` },
-                    React.createElement("div", { className: "flex-1 p-2.5 rounded-xl text-center", style: { backgroundColor: "#22C55E15" } },
-                        React.createElement("p", { className: "text-lg font-extrabold", style: { color: "#22C55E" } }, "12"),
+                    React.createElement("div", { className: "flex-1 p-2.5 rounded-xl text-center", style: { backgroundColor: "#16A34A15" } },
+                        React.createElement("p", { className: "text-lg font-extrabold", style: { color: "#16A34A" } }, "12"),
                         React.createElement("p", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, t("twasl_fy_alwqt"))),
                     React.createElement("div", { className: "flex-1 p-2.5 rounded-xl text-center", style: { backgroundColor: "#ef444415" } },
                         React.createElement("p", { className: "text-lg font-extrabold", style: { color: "#ef4444" } }, "2"),
@@ -314,7 +314,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
         return () => clearInterval(tmr);
     }, [participants]);
     const NOTE_KINDS = {
-        decision: { label: t("rm_qrar"), icon: "✅", color: "#22C55E" },
+        decision: { label: t("rm_qrar"), icon: "✅", color: "#16A34A" },
         task: { label: t("rm_mhma"), icon: "📌", color: "#F59E0B" },
         point: { label: t("rm_nqta"), icon: "💬", color: "#60A5FA" },
     };
@@ -405,7 +405,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                 t("rm_fy_ghrfa_alantzar")),
             waitingQueue.map((g) => (React.createElement("div", { key: g.id, className: `flex ${rowStart()} items-center gap-2 mb-1` },
                 React.createElement("span", { className: `flex-1 ${textStart()} text-xs font-bold text-white truncate` }, g.name),
-                React.createElement("button", { onClick: () => admitGuest(g), className: "px-2.5 py-1 rounded-lg text-[10px] font-extrabold", style: { backgroundColor: "#22C55E", color: "#fff" } }, t("smah")),
+                React.createElement("button", { onClick: () => admitGuest(g), className: "px-2.5 py-1 rounded-lg text-[10px] font-extrabold", style: { backgroundColor: "#16A34A", color: "#fff" } }, t("smah")),
                 React.createElement("button", { onClick: () => denyGuest(g), className: "px-2.5 py-1 rounded-lg text-[10px] font-bold", style: { backgroundColor: "#334155", color: "#94a3b8" } }, t("rfd"))))))),
         raisedHands.length > 0 && (React.createElement("div", { className: `mx-4 mt-2 rounded-xl px-3 py-2 flex ${rowStart()} items-center gap-2`, style: { backgroundColor: "#f59e0b22", border: "1px solid #f59e0b55" } },
             React.createElement("span", { style: { fontSize: 14 } }, "\u270B"),
@@ -418,26 +418,26 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
             participants.map((p) => (React.createElement("div", { key: p.id, className: "w-7 h-7 rounded-full flex items-center justify-center font-extrabold text-xs shrink-0", style: {
                     backgroundColor: p.id === "p-1" ? colors.primary : "#334155",
                     color: "#fff",
-                    border: activeSpeaker === p.id && p.mic ? "2px solid #22C55E"
+                    border: activeSpeaker === p.id && p.mic ? "2px solid #16A34A"
                         : p.id === "p-1" ? `2px solid ${colors.primary}88` : "2px solid #475569",
-                    boxShadow: activeSpeaker === p.id && p.mic ? "0 0 0 2px #22C55E33" : "none",
+                    boxShadow: activeSpeaker === p.id && p.mic ? "0 0 0 2px #16A34A33" : "none",
                     transition: "border-color .2s, box-shadow .2s",
                 }, title: p.name }, p.avatar))),
-            activeSpeaker && ((_b = participants.find((p) => p.id === activeSpeaker)) === null || _b === void 0 ? void 0 : _b.mic) && (React.createElement("span", { className: "text-[9px] font-bold", style: { color: "#22C55E" } },
+            activeSpeaker && ((_b = participants.find((p) => p.id === activeSpeaker)) === null || _b === void 0 ? void 0 : _b.mic) && (React.createElement("span", { className: "text-[9px] font-bold", style: { color: "#16A34A" } },
                 "\u25CF ", (_c = participants.find((p) => p.id === activeSpeaker)) === null || _c === void 0 ? void 0 :
                 _c.name)))) : chatOpen ? (React.createElement("div", { className: "grid grid-cols-2 gap-2 px-3 shrink-0", style: { height: 100, padding: "6px 12px" } },
             participants.map((p) => (React.createElement("div", { key: p.id, onClick: () => { if (amHost && p.id !== "p-1")
                     setHostMenu(p); }, className: "rounded-xl flex flex-col items-center justify-center relative overflow-hidden", style: {
                     backgroundColor: "#1e293b",
-                    border: activeSpeaker === p.id && p.mic ? "2px solid #22C55E"
+                    border: activeSpeaker === p.id && p.mic ? "2px solid #16A34A"
                         : p.id === "p-1" ? `2px solid ${colors.primary}` : "2px solid #334155",
-                    boxShadow: activeSpeaker === p.id && p.mic ? "0 0 0 2px #22C55E33" : "none",
+                    boxShadow: activeSpeaker === p.id && p.mic ? "0 0 0 2px #16A34A33" : "none",
                     transition: "border-color .25s, box-shadow .25s",
                     cursor: amHost && p.id !== "p-1" ? "pointer" : "default",
                 } },
                 React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center font-extrabold text-sm mb-1", style: { backgroundColor: p.id === "p-1" ? colors.primary : "#334155", color: "#fff" } }, p.cam && !lowDataMode ? React.createElement(Video, { size: 14, color: "#fff" }) : p.avatar),
                 React.createElement("p", { className: "text-[9px] font-bold text-white truncate px-1", style: { maxWidth: "100%" } }, p.name),
-                React.createElement("div", { className: "absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center", style: { backgroundColor: p.mic ? "#22c55e33" : "#ef444433" } }, p.mic ? React.createElement(Mic, { size: 8, color: "#22c55e" }) : React.createElement(MicOff, { size: 8, color: "#ef4444" })),
+                React.createElement("div", { className: "absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center", style: { backgroundColor: p.mic ? "#16a34a33" : "#ef444433" } }, p.mic ? React.createElement(Mic, { size: 8, color: "#16a34a" }) : React.createElement(MicOff, { size: 8, color: "#ef4444" })),
                 raisedHands.includes(p.id) && React.createElement("div", { className: "absolute bottom-1 left-1 text-xs" }, "\u270B")))),
             participants.length < 4 && (React.createElement("button", { onClick: () => familyMembers.length ? setShowFamilyInvite(true) : copyLink(), className: "rounded-xl flex flex-col items-center justify-center gap-1", style: { backgroundColor: "#1e293b", border: "2px dashed #334155" }, "aria-label": t("dawa_mshark") },
                 React.createElement(UserPlus, { size: 14, color: "#475569" }),
@@ -445,16 +445,16 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
             participants.map((p) => (React.createElement("div", { key: p.id, onClick: () => { if (amHost && p.id !== "p-1")
                     setHostMenu(p); }, className: "rounded-2xl flex flex-col items-center justify-center relative overflow-hidden", style: {
                     backgroundColor: "#1e293b",
-                    border: activeSpeaker === p.id && p.mic ? "2px solid #22C55E"
+                    border: activeSpeaker === p.id && p.mic ? "2px solid #16A34A"
                         : p.id === "p-1" ? `2px solid ${colors.primary}` : "2px solid #334155",
-                    boxShadow: activeSpeaker === p.id && p.mic ? "0 0 0 3px #22C55E33" : "none",
+                    boxShadow: activeSpeaker === p.id && p.mic ? "0 0 0 3px #16A34A33" : "none",
                     transition: "border-color .25s, box-shadow .25s",
                     minHeight: 120,
                     cursor: amHost && p.id !== "p-1" ? "pointer" : "default",
                 } },
                 React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center font-extrabold text-xl mb-2", style: { backgroundColor: p.id === "p-1" ? colors.primary : "#334155", color: "#fff" } }, p.cam && !lowDataMode ? React.createElement(Video, { size: 24, color: "#fff" }) : p.avatar),
                 React.createElement("p", { className: "text-xs font-bold text-white truncate px-2", style: { maxWidth: "100%" } }, p.name),
-                React.createElement("div", { className: "absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center", style: { backgroundColor: p.mic ? "#22c55e33" : "#ef444433" } }, p.mic ? React.createElement(Mic, { size: 11, color: "#22c55e" }) : React.createElement(MicOff, { size: 11, color: "#ef4444" })),
+                React.createElement("div", { className: "absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center", style: { backgroundColor: p.mic ? "#16a34a33" : "#ef444433" } }, p.mic ? React.createElement(Mic, { size: 11, color: "#16a34a" }) : React.createElement(MicOff, { size: 11, color: "#ef4444" })),
                 p.host && (React.createElement("div", { className: "absolute top-2 left-2 px-1.5 py-0.5 rounded-full", style: { backgroundColor: colors.primary + "55" } },
                     React.createElement("span", { className: "text-[9px] font-extrabold", style: { color: colors.primary } }, t("mdyf")))),
                 raisedHands.includes(p.id) && React.createElement("div", { className: "absolute bottom-2 left-2 text-base" }, "\u270B")))),
@@ -466,7 +466,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 py-2 border-b shrink-0`, style: { borderColor: "#334155" } },
                 React.createElement("div", { className: `flex ${rowStart()} rounded-lg overflow-hidden shrink-0`, style: { border: "1px solid #334155" } }, [{ k: "casual", l: t("rm_drdsha") }, { k: "business", l: t("rm_amal") }].map((chatMode_item) => (React.createElement("button", { key: chatMode_item.k, onClick: () => setChatMode(chatMode_item.k), className: "px-2.5 py-1 text-[10px] font-extrabold", style: { backgroundColor: chatMode === chatMode_item.k ? colors.primary : "transparent", color: chatMode === chatMode_item.k ? "#fff" : "#94a3b8" } }, chatMode_item.l)))),
                 React.createElement("div", { className: "flex-1" }),
-                chatMode === "business" && (React.createElement("button", { onClick: () => setShowSummary(true), className: "px-2 py-1 rounded-lg text-[10px] font-bold shrink-0", style: { backgroundColor: "#22C55E22", color: "#22C55E" } },
+                chatMode === "business" && (React.createElement("button", { onClick: () => setShowSummary(true), className: "px-2 py-1 rounded-lg text-[10px] font-bold shrink-0", style: { backgroundColor: "#16A34A22", color: "#16A34A" } },
                     t("rm_mhdr_adad"),
                     businessNotes.length,
                     ")")),
@@ -643,7 +643,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                                     String(m.atSecond % 60).padStart(2, "0")))))));
                     })),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2 p-4 shrink-0`, style: { borderTop: "1px solid #334155" } },
-                    React.createElement("button", { onClick: exportSummary, disabled: businessNotes.length === 0, className: "flex-1 py-2.5 rounded-xl text-xs font-extrabold", style: { backgroundColor: businessNotes.length ? "#22C55E" : "#334155", color: businessNotes.length ? "#fff" : "#64748b" } }, t("tnzyl_almhdr")),
+                    React.createElement("button", { onClick: exportSummary, disabled: businessNotes.length === 0, className: "flex-1 py-2.5 rounded-xl text-xs font-extrabold", style: { backgroundColor: businessNotes.length ? "#16A34A" : "#334155", color: businessNotes.length ? "#fff" : "#64748b" } }, t("tnzyl_almhdr")),
                     taskNotes.length > 0 && groups.length > 0 && (React.createElement("button", { onClick: () => setSendingTasks(true), className: "flex-1 py-2.5 rounded-xl text-xs font-extrabold", style: { backgroundColor: "#F59E0B", color: "#fff" } },
                         t("rm_arsl"),
                         taskNotes.length,

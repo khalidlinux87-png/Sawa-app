@@ -275,7 +275,7 @@ function FamilyGroupsScreen({ groups, groupPersons, currentGroupId, onSetCurrent
             // C37: تنبيهات القرب — بطاقة تفعيل، ثمّ سطر حالة
             groups.length > 0 && onEnableProx && (!proxEnabled
                 ? React.createElement("div", { className: "px-4 pt-4" }, React.createElement(FamCard, { className: `flex ${rowStart()} items-center gap-3`, style: { marginBottom: 0 } },
-                    React.createElement("div", { className: "w-11 h-11 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "#22C55E18" } }, React.createElement(MapPin, { size: 20, color: "#16a34a" })),
+                    React.createElement("div", { className: "w-11 h-11 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "#16A34A18" } }, React.createElement(MapPin, { size: 20, color: "#16a34a" })),
                     React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
                         React.createElement("div", { className: "text-[13.5px] font-extrabold", style: { color: colors.text } }, tl("تنبيهات القرب", "Nearby alerts")),
                         React.createElement("div", { className: "text-[11px] leading-relaxed", style: { color: colors.textMuted } }, tl("حين تمرّ ضمن " + fmtDist(proxRadius) + " من منزل قريبٍ أذكّرك: زيارةٌ أو اتّصال. حدّد منازلهم من ملفّاتهم، والمسافة تُضبط بعد التفعيل.", "When you pass within " + fmtDist(proxRadius) + " of a relative's home, I'll suggest a visit or a call."))),
@@ -1518,7 +1518,7 @@ function FamilyPersonDetailScreen({ onChangeParent, person, persons = [], relati
                         person.alive && person.proximity && !hasNoProximityPerson(person) && React.createElement(FamChip, { tone: overdueP ? "danger" : "ok", icon: Clock, label: contactAgoLabel(person.lastContactDate) }),
                         person.status_detail && person.alive && React.createElement(FamChip, { tone: "warn", icon: AlertCircle, label: statusLabels[person.status_detail] })),
                     React.createElement("div", { className: `flex ${rowStart()} items-start justify-center gap-5 mt-4` },
-                        React.createElement(FamAction, { icon: Phone, label: tl("اتّصال", "Call"), bg: "#22C55E", href: phoneStr && person.alive ? "tel:" + phoneStr.replace(/[^\d+]/g, "") : undefined, onPress: phoneStr && person.alive ? () => { try { onMarkContact(person.id); } catch (e) { } } : undefined }),
+                        React.createElement(FamAction, { icon: Phone, label: tl("اتّصال", "Call"), bg: "#16A34A", href: phoneStr && person.alive ? "tel:" + phoneStr.replace(/[^\d+]/g, "") : undefined, onPress: phoneStr && person.alive ? () => { try { onMarkContact(person.id); } catch (e) { } } : undefined }),
                         React.createElement(FamAction, { icon: Star, label: fav ? t("fp_mfdl") : tl("مفضّلة", "Favorite"), bg: fav ? colors.accent : "#94A3B8", onPress: () => onToggleFav(person.id) }),
                         canEdit && React.createElement(FamAction, { icon: Edit2, label: t("tadyl"), bg: "#F59E0B", onPress: () => setShowEditForm(true) }),
                         React.createElement(FamAction, { icon: Share2, label: shareCopied ? t("fp_tm_alnskh") : t("fp_msharka"), bg: colors.primary, onPress: share })))),
@@ -1582,7 +1582,7 @@ function FamilyPersonDetailScreen({ onChangeParent, person, persons = [], relati
                 React.createElement("div", { className: "text-[10px] font-bold mt-3 mb-1", style: { color: colors.textMuted } }, t("du_general")),
                 React.createElement("p", { dir: "rtl", className: "text-sm leading-7", style: { color: colors.textMuted } }, ((duaa && duaa.general) || DUAA_FALLBACK.general)[0]))),
             ((_b = person.contacts) === null || _b === void 0 ? void 0 : _b.phone) && (React.createElement(FamCard, { className: `flex ${rowStart()} items-center gap-3` },
-                React.createElement("div", { className: "w-10 h-10 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: "#22C55E18" } }, React.createElement(Phone, { size: 17, color: "#16a34a" })),
+                React.createElement("div", { className: "w-10 h-10 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: "#16A34A18" } }, React.createElement(Phone, { size: 17, color: "#16a34a" })),
                 React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
                     React.createElement("div", { className: "text-[10.5px] font-bold", style: { color: colors.textMuted } }, t("altwasl")),
                     React.createElement("div", { dir: "ltr", className: `text-[14px] font-extrabold ${textStart()}`, style: { color: colors.text } }, person.contacts.phone)),
@@ -1600,7 +1600,7 @@ function FamilyPersonDetailScreen({ onChangeParent, person, persons = [], relati
                     React.createElement(FamRow, { icon: MapPin, title: tl("حدّد منزله", "Set home location"), sub: tl("لتنبيهك حين تمرّ قربه — فرصة زيارةٍ أو اتّصال", "Get alerted when you pass nearby"), last: true, onPress: () => setShowEditForm(true) })) : null;
                 const url = window.SawaChat && window.SawaChat.mapsUrl ? window.SawaChat.mapsUrl(h.lat, h.lng) : `https://www.google.com/maps/search/?api=1&query=${h.lat},${h.lng}`;
                 return React.createElement(FamCard, { className: `flex ${rowStart()} items-center gap-3` },
-                    React.createElement("div", { className: "w-10 h-10 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: "#22C55E18" } }, React.createElement(MapPin, { size: 17, color: "#16a34a" })),
+                    React.createElement("div", { className: "w-10 h-10 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: "#16A34A18" } }, React.createElement(MapPin, { size: 17, color: "#16a34a" })),
                     React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
                         React.createElement("div", { className: "text-[10.5px] font-bold", style: { color: colors.textMuted } }, tl("منزله", "Home")),
                         React.createElement("div", { className: "text-[13px] font-extrabold truncate", style: { color: colors.text } }, h.label || tl("موقعٌ محدَّد", "Location set")),

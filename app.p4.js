@@ -615,7 +615,7 @@ function HomeEditor({ value, onChange, personName }) {
         React.createElement(FamLabel, { hint: tl("لتنبيهك حين تمرّ قربه", "to alert you when nearby") }, tl("منزله", "Home")),
         React.createElement("div", { className: "rounded-2xl p-3", style: { backgroundColor: colors.bg } },
             has ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-2.5` },
-                React.createElement("div", { className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: "#22C55E18" } }, React.createElement(MapPin, { size: 17, color: "#16a34a" })),
+                React.createElement("div", { className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: "#16A34A18" } }, React.createElement(MapPin, { size: 17, color: "#16a34a" })),
                 React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
                     React.createElement("div", { className: "text-[12.5px] font-bold", style: { color: colors.text } }, tl("الموقع محدَّد ✓", "Location set ✓")),
                     React.createElement("div", { className: "text-[10.5px]", dir: "ltr", style: { color: colors.textMuted, textAlign: isRTL() ? "right" : "left" } }, Number(v.lat).toFixed(5) + ", " + Number(v.lng).toFixed(5))),
@@ -671,7 +671,7 @@ function ProximitySheet({ alert, onVisit, onCall, onSnooze, onMute, onClose, onO
     if (overdue) ideas.push({ i: Clock, c: "#f59e0b", t: tl("مضى وقتٌ طويل منذ آخر تواصل (" + contactAgoLabel(person.lastContactDate).replace(/^.*?:\s*/, "") + ") — الزيارة تجبر ذلك.", "It's been a while (" + contactAgoLabel(person.lastContactDate) + ").") });
     const gifts = [tl("حلوى أو تمر", "Sweets or dates"), tl("فاكهة", "Fruit"), tl("عطر أو بخّور", "Perfume or incense"), tl("شيءٌ يحبّه", "Something they like"), tl("للأطفال إن كان عنده", "Something for the kids")];
     return React.createElement(FamSheet, { title: tl("أنت قريبٌ من منزل " + first, "You're near " + first + "'s home"), subtitle: kin + " · " + tl("على بعد ", "about ") + fmtDist(dist), onClose: onClose, z: 70, maxHeight: "88%",
-            hero: React.createElement("div", { className: "flex justify-center -mt-1 mb-1" }, React.createElement(FamAvatar, { name: person.local_name, photo: person.photo, size: 64, ring: "#22C55E" })) },
+            hero: React.createElement("div", { className: "flex justify-center -mt-1 mb-1" }, React.createElement(FamAvatar, { name: person.local_name, photo: person.photo, size: 64, ring: "#16A34A" })) },
         step === "ask" ? React.createElement(React.Fragment, null,
             React.createElement("p", { className: `text-[14px] font-extrabold mb-1 ${textStart()}`, style: { color: colors.text } }, tl("فرصةٌ مناسبة للزيارة — هل عندك وقت؟", "A good chance for a visit — do you have time?")),
             React.createElement("p", { className: `text-[12px] leading-relaxed mb-3 ${textStart()}`, style: { color: colors.textMuted } }, tl("صلة الرحم تزيد في العمر والرزق. زيارةٌ قصيرة خيرٌ من لا شيء، وإن لم يتّسع وقتك فاتّصالٌ من الشارع يفرحه.", "A short visit is better than none; if you can't, a call from the street will make them happy.")),
@@ -2242,7 +2242,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                                         backgroundImage: !c.isSavedMessages && c.photo ? `url(${c.photo})` : "none", backgroundSize: "cover", backgroundPosition: "center",
                                     } },
                                     c.isSavedMessages ? React.createElement(Bookmark, { size: 19, color: "#fff", fill: "#fff" }) : c.photo ? null : React.createElement("span", { className: "text-lg font-extrabold", style: { color: colors.primaryDark } }, String(c.name || "؟").trim().charAt(0) || "؟"),
-                                    !c.isSavedMessages && onlineContacts.includes(c.name) && (React.createElement("span", { className: "absolute bottom-0 left-0 w-3 h-3 rounded-full border-2", style: { backgroundColor: "#22C55E", borderColor: colors.card } })),
+                                    !c.isSavedMessages && onlineContacts.includes(c.name) && (React.createElement("span", { className: "absolute bottom-0 left-0 w-3 h-3 rounded-full border-2", style: { backgroundColor: "#16A34A", borderColor: colors.card } })),
                                     overdue && (React.createElement("span", { className: "absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px]", style: { backgroundColor: "#ef4444", color: "#fff", border: `2px solid ${colors.card}` } }, "!")),
                                     matchedPerson && !overdue && (React.createElement("span", { className: "absolute -top-1 -right-1 text-[10px]" }, "\uD83E\uDD0D"))));
                             })(),

@@ -261,13 +261,16 @@ const SAWA_LOGO_SM = "data:image/webp;base64,UklGRvIqAABXRUJQVlA4WAoAAAAQAAAAjwA
 // ============================================================================
 // 4 مظاهر قابلة للتبديل — نفس القيم الموثّقة رسمياً بمستند سوا
 const ACCENT_THEMES = {
+    // C192: accentOnDark — درجة المظهر في الوضع الداكن. اللون نفسه نصٌّ على الخلفيّة الداكنة وتعبئةٌ تحت نصٍّ أبيض، فاختيرت درجةٌ
+    //   تعطي ~٤٫١ في الاتّجاهين (أقصى توازنٍ ممكن). كان الكحليّ في الداكن ١٫٥ فلا تكاد تُرى الروابط والتبويب النشط.
+    //   البرتقاليّ الفاتح كان E8823D (النصّ الأبيض عليه ٢٫٧) ⇐ BB5816 (٤٫٧).
     // C187: لون سوا كان 2F80C8 (تباين النصّ الأبيض عليه ٤٫٢ < ٤٫٥ المطلوبة) — نفس الدرجة أعمق قليلاً
-    sawa: { labelKey: "acc_swa", accent: "#2774BA", accentDark: "#1E3A63", accentTint: "#BFE0F5" },
-    orange: { labelKey: "acc_brtqaly", accent: "#E8823D", accentDark: "#B5602B", accentTint: "#FBD9BA" },
-    purple: { labelKey: "acc_bnfsjy", accent: "#8B5FA8", accentDark: "#5F3F78", accentTint: "#E3D3ED" },
-    navy: { labelKey: "acc_khly", accent: "#1E3A63", accentDark: "#132743", accentTint: "#C7D4E3" },
+    sawa: { labelKey: "acc_swa", accent: "#2774BA", accentDark: "#1E3A63", accentTint: "#BFE0F5", accentOnDark: "#2B81CE" },
+    orange: { labelKey: "acc_brtqaly", accent: "#BB5816", accentDark: "#8F420F", accentTint: "#FBD9BA", accentOnDark: "#C85F18" },
+    purple: { labelKey: "acc_bnfsjy", accent: "#8B5FA8", accentDark: "#5F3F78", accentTint: "#E3D3ED", accentOnDark: "#966DB0" },
+    navy: { labelKey: "acc_khly", accent: "#1E3A63", accentDark: "#132743", accentTint: "#C7D4E3", accentOnDark: "#4A7EC8" },
     // مستخلَصة من شعار أرحام نفسه: أخضره وزيتيّه. افتراض أرحام، وخيارٌ في سوا.
-    green: { labelKey: "acc_akhdr", accent: "#187854", accentDark: "#0C4854", accentTint: "#CFE9DD" },
+    green: { labelKey: "acc_akhdr", accent: "#187854", accentDark: "#0C4854", accentTint: "#CFE9DD", accentOnDark: "#1C8E64" },
 };
 // C187: رموز الألوان — المصدر الوحيد. تُنشر أيضاً متغيّراتِ CSS (‎--sawa-*‎) في App، فتقرؤها sawa-chat/sawa-rtc وشاشة التحميل.
 //   الأحمر/الأخضر/الكهرمانيّ: لونٌ واحد لكلّ دور (كانت ٣–٤ درجات متقاربة مكتوبة مباشرة).

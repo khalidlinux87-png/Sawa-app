@@ -1675,7 +1675,7 @@
           var v = r.svc[k], h = (r.hist && r.hist[k]) || [];
           var card = el("div", "padding:10px 12px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid " + (v.ok ? LINE : "#b91c1c"));
           var top = el("div", "display:flex;align-items:center;gap:8px");
-          top.appendChild(el("span", "width:10px;height:10px;border-radius:5px;flex-shrink:0;background:" + (v.ok ? "#22c55e" : "#ef4444")));
+          top.appendChild(el("span", "width:10px;height:10px;border-radius:5px;flex-shrink:0;background:" + (v.ok ? "#16a34a" : "#ef4444")));
           top.appendChild(el("span", "flex:1;font:800 13.5px var(--sawa-font,system-ui)", name(k)));
           top.appendChild(el("span", "font:700 12px var(--sawa-font,system-ui);direction:ltr;color:" + MUTED, v.ok ? v.ms + " ms" : L("متعطّل", "down")));
           card.appendChild(top);
@@ -2436,7 +2436,7 @@
       var b = el("button", "width:100%;display:flex;align-items:center;gap:10px;padding:10px 6px;background:transparent;border:0;color:#fff;font:700 13px var(--sawa-font,system-ui);text-align:right;cursor:pointer");
       var a = el("span", "width:34px;height:34px;border-radius:50%;background:#2d6a9a;display:flex;align-items:center;justify-content:center;font:800 14px var(--sawa-font,system-ui);flex-shrink:0", (c.name || "؟").charAt(0));
       b.appendChild(a); b.appendChild(el("span", "flex:1", c.name || ""));
-      if (c.online) b.appendChild(el("span", "width:8px;height:8px;border-radius:50%;background:#22c55e"));
+      if (c.online) b.appendChild(el("span", "width:8px;height:8px;border-radius:50%;background:#16a34a"));
       b.onclick = function () { ov.remove(); if (target === cur) upgrade(cur, c.uid, c.name); else gAdd(c.uid, c.name); };
       sc.appendChild(b);
     });
@@ -2555,7 +2555,7 @@
   function cleanCode(c) { var m = String(c || "").toUpperCase().match(/[A-Z0-9]{8}/); return m && /^[A-HJ-NP-Z2-9]{8}$/.test(m[0]) ? m[0] : null; }
   function roomLink(code) { try { return global.location.origin + global.location.pathname.replace(/[^/]*$/, "") + "?room=" + code; } catch (e) { return "?room=" + code; } }
   var RX = ["👏", "❤️", "😂", "👍", "🤲", "🎉"];
-  var NOTE = { point: ["💬", "نقطة", "Point", "#60A5FA"], decision: ["✅", "قرار", "Decision", "#22C55E"], task: ["📌", "مهمّة", "Task", "#F59E0B"] };
+  var NOTE = { point: ["💬", "نقطة", "Point", "#60A5FA"], decision: ["✅", "قرار", "Decision", "#16A34A"], task: ["📌", "مهمّة", "Task", "#F59E0B"] };
 
   function rNew(o) {
     o.peers = {}; o.members = {}; o.offs = []; o.timers = {}; o.sess = rid(8); o.mic = true; o.camOn = false; o.camTrack = null; o.facing = "user";
@@ -3266,7 +3266,7 @@
     if (h.length >= 3 && h.slice(-3).every(function (x) { return x === 0; }) && !r.low && !r.lowSuggested) { r.lowSuggested = true; toast(L("الشبكة سيّئة — جرّب «بيانات قليلة» من ⋯", "Bad network — try low-data mode from ⋯")); }
     rPaintHead(r);
   }
-  var QBARS = ["▁", "▃", "▅", "▇"], QCOL = ["#ef4444", "#f59e0b", "#a3e635", "#22c55e"];
+  var QBARS = ["▁", "▃", "▅", "▇"], QCOL = ["#ef4444", "#f59e0b", "#a3e635", "#16a34a"];
   function qTag(q) { if (q == null) return null; var t = el("span", "font:800 11px var(--sawa-font,system-ui);letter-spacing:-1px;color:" + QCOL[q] + ";background:#00000055;border-radius:8px;padding:1px 5px", QBARS.slice(0, q + 1).join("") + "  "); t.title = [L("سيّئة", "bad"), L("ضعيفة", "weak"), L("جيّدة", "good"), L("ممتازة", "excellent")][q]; return t; }
   // ---------- المتحدّث النشط: مستوى الصوت الحقيقيّ ----------
   function rLevelWatch(r, uid, stream) {
@@ -3880,7 +3880,7 @@
       var row = box(PRI + "22", PRI + "66");
       var knock = !!(r.reqs[u] && r.reqs[u].knock);
       row.appendChild(el("span", "flex:1;font:700 12px var(--sawa-font,system-ui)", (knock ? "🔒 " : "🚪 ") + (nameOf(u) || stranger(r.reqs[u] && r.reqs[u].name)) + " " + (knock ? L("يطرق — الغرفة مقفلة", "is knocking — room is locked") : L("في الانتظار", "is waiting"))));
-      row.appendChild(btnS(L("سماح", "Admit"), "#22c55e", function () { rAdmit(u, true); }));
+      row.appendChild(btnS(L("سماح", "Admit"), "#16a34a", function () { rAdmit(u, true); }));
       row.appendChild(btnS(L("رفض", "Deny"), LINE, function () { rAdmit(u, false); }));
       b.appendChild(row);
     });
@@ -3951,11 +3951,11 @@
     t.tags.appendChild(el("span", "", (hostU ? "👑 " : "") + ((isMe ? r.hand : m.hand) ? "✋" : "")));
     var right = el("span", "display:flex;gap:4px;align-items:center");
     if (!isMe && p && p.state === "connected") { var qt = qTag(p.q); if (qt) right.appendChild(qt); }
-    right.appendChild(el("span", "background:" + (mic ? "#22c55e33" : "#ef444455") + ";border-radius:10px;padding:1px 5px", mic ? "🎤" : "🔇"));
+    right.appendChild(el("span", "background:" + (mic ? "#16a34a33" : "#ef444455") + ";border-radius:10px;padding:1px 5px", mic ? "🎤" : "🔇"));
     t.tags.appendChild(right);
     var speaking = r.speaker === uid && mic;
-    t.box.style.borderColor = speaking ? "#22c55e" : isMe ? PRI + "99" : "transparent";
-    t.box.style.boxShadow = speaking ? "0 0 0 4px #22c55e44, 0 6px 18px rgba(0,0,0,.25)" : "0 6px 18px rgba(0,0,0,.25)";
+    t.box.style.borderColor = speaking ? "#16a34a" : isMe ? PRI + "99" : "transparent";
+    t.box.style.boxShadow = speaking ? "0 0 0 4px #16a34a44, 0 6px 18px rgba(0,0,0,.25)" : "0 6px 18px rgba(0,0,0,.25)";
     t.box.style.cursor = "pointer";
     rLayout(r);
   }
@@ -4158,7 +4158,7 @@
     sheet(L("إعدادات الغرفة", "Room settings"), function (body, close) {
       var tog = function (icon, label, sub, on, fn) {
         var b = item(body, icon, label, function () { fn(); close(); again(); });
-        b.appendChild(el("span", "font:800 11px var(--sawa-font,system-ui);padding:3px 9px;border-radius:9px;background:" + (on ? "#22c55e33" : LINE) + ";color:" + (on ? "#4ade80" : "#cbd5e1"), on ? L("مفعّل", "On") : L("متوقّف", "Off")));
+        b.appendChild(el("span", "font:800 11px var(--sawa-font,system-ui);padding:3px 9px;border-radius:9px;background:" + (on ? "#16a34a33" : LINE) + ";color:" + (on ? "#4ade80" : "#cbd5e1"), on ? L("مفعّل", "On") : L("متوقّف", "Off")));
         if (sub) b.appendChild(el("div", "position:absolute", ""));
       };
       tog("🔒", L("قفل الغرفة", "Lock room"), null, !!r.meta.locked, function () { rSetMeta("locked", !r.meta.locked); });
@@ -4166,7 +4166,7 @@
       tog("🎧", L("صوتٌ فقط (بلا كاميرات)", "Audio only (no cameras)"), null, !!r.meta.audioOnly, function () { rSetMeta("audioOnly", !r.meta.audioOnly); });
       // C45: غرفة كبيرة (حتى ٣٠) عبر خادم الوسائط
       var bg = item(body, "🏟", L("غرفة كبيرة (حتى " + SFU_MAX + ")", "Large room (up to " + SFU_MAX + ")"), function () { close(); rBigToggle(); });
-      bg.appendChild(el("span", "font:800 11px var(--sawa-font,system-ui);padding:3px 9px;border-radius:9px;background:" + (rBig(r) ? "#22c55e33" : LINE) + ";color:" + (rBig(r) ? "#4ade80" : "#cbd5e1"), rBig(r) ? L("مفعّل", "On") : L("متوقّف", "Off")));
+      bg.appendChild(el("span", "font:800 11px var(--sawa-font,system-ui);padding:3px 9px;border-radius:9px;background:" + (rBig(r) ? "#16a34a33" : LINE) + ";color:" + (rBig(r) ? "#4ade80" : "#cbd5e1"), rBig(r) ? L("مفعّل", "On") : L("متوقّف", "Off")));
       var mx = item(body, "👥", L("الحدّ الأقصى للمشاركين", "Max participants"), function () { close(); rMaxPick(); });
       mx.appendChild(el("span", "font:800 12px var(--sawa-font,system-ui);color:#cbd5e1", String(rMax(r)) + (r.meta.max ? "" : " (" + L("الافتراض", "default") + ")")));
       var pn = item(body, "🔑", L("رمز الدخول", "Join PIN"), function () { close(); rPinPick(); });

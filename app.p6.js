@@ -180,7 +180,7 @@ function ScheduledRoomsScreen({ rooms = [], onJoin, onCancel, onNew, onBack }) {
                 React.createElement("button", { onClick: onNew, className: `flex ${rowStart()} items-center gap-2 px-4 py-2.5 rounded-2xl`, style: { backgroundColor: colors.primary } },
                     React.createElement(Plus, { size: 16, color: "#fff" }),
                     React.createElement("span", { className: "text-sm font-bold text-white" }, tl("جدولة غرفة", "Schedule a room")))),
-            list.map(({ r, st }) => (React.createElement(Card, { key: r.id, className: "mb-2.5", style: { opacity: st.k === "past" ? 0.6 : 1, border: st.k === "live" ? "2px solid #22c55e" : undefined } },
+            list.map(({ r, st }) => (React.createElement(Card, { key: r.id, className: "mb-2.5", style: { opacity: st.k === "past" ? 0.6 : 1, border: st.k === "live" ? "2px solid #16a34a" : undefined } },
                 React.createElement("div", { className: `flex ${rowStart()} items-start justify-between gap-2` },
                     React.createElement("div", { style: { minWidth: 0, flex: 1 } },
                         React.createElement("p", { className: "text-sm font-extrabold truncate", style: { color: colors.text } }, r.title),
@@ -226,9 +226,9 @@ function SpeedDialScreen({ speedDialContacts, onUpdate, onCall, onBack }) {
             speedDialContacts.length === 0 && React.createElement(EmptyState, { icon: Star, label: t("ma_fyh_arqam_mfdla") }),
             speedDialContacts.map((name, i) => (React.createElement(Card, { key: name, className: `flex ${rowStart()} items-center` },
                 React.createElement("div", { className: `flex flex-col ${ms("1")}` },
-                    React.createElement("button", { "aria-label": tl("نقل إلى الأعلى", "Move up"), onClick: () => move(name, -1), disabled: i === 0 },
+                    React.createElement("button", { className: "sawa-hit", "aria-label": tl("نقل إلى الأعلى", "Move up"), onClick: () => move(name, -1), disabled: i === 0 },
                         React.createElement(ChevronUp, { size: 13, color: i === 0 ? colors.border : colors.textMuted })),
-                    React.createElement("button", { "aria-label": tl("نقل إلى الأسفل", "Move down"), onClick: () => move(name, 1), disabled: i === speedDialContacts.length - 1 },
+                    React.createElement("button", { className: "sawa-hit", "aria-label": tl("نقل إلى الأسفل", "Move down"), onClick: () => move(name, 1), disabled: i === speedDialContacts.length - 1 },
                         React.createElement(ChevronDown, { size: 13, color: i === speedDialContacts.length - 1 ? colors.border : colors.textMuted }))),
                 React.createElement("div", { className: `w-9 h-9 rounded-full flex items-center justify-center ${ms("2")}`, style: { backgroundColor: colors.primaryLight } },
                     React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.primaryDark } }, name.charAt(0))),
@@ -362,7 +362,7 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
             callLog.filter((c) => !callQ || callMatch(c, callQ)).map((c) => {
                 const Icon = callTypeIcons[c.type];
                 const unanswered = c.type === "missed" || (!c.duration && c.cloud);
-                const arrowColor = c.type === "missed" ? "#EF4444" : unanswered ? "#B45309" : "#22C55E";
+                const arrowColor = c.type === "missed" ? "#EF4444" : unanswered ? "#B45309" : "#16A34A";
                 // C61: الصفّ كلّه ينقر (كان الهاتف الصغير و⋮ فقط) ⇒ قائمة الخيارات: صوت · فيديو · حذف
                 return (React.createElement("div", { key: c.id, role: "button", tabIndex: 0, onClick: () => setCallMenu(c), onKeyDown: (e) => { if (e.key === "Enter") setCallMenu(c); }, className: "flex flex-row items-center px-4 py-2.5 border-b cursor-pointer", style: { borderColor: "#EFEFEF" } },
                     (() => { const ph = c.peerUid && window.SawaChat && window.SawaChat.photoOf ? window.SawaChat.photoOf(c.peerUid) : null;
@@ -566,10 +566,10 @@ function ContactRow({ contact, isOnline, blocked, colors, onPress, showInvite })
     return (React.createElement("button", { onClick: onPress, className: "w-full flex flex-row items-center px-4 py-2.5 gap-3", style: { backgroundColor: "transparent", opacity: blocked ? 0.6 : 1 } },
         React.createElement("div", { className: "relative shrink-0" },
             React.createElement(Pic, { photo: contact.photo || null, letter: contact.name.charAt(0), size: 44, bg: colors.primaryLight, color: colors.primaryDark }),
-            isOnline && !blocked && (React.createElement("span", { className: "absolute bottom-0 w-3 h-3 rounded-full border-2", style: { [isRTL() ? "left" : "right"]: 0, backgroundColor: "#22C55E", borderColor: colors.bg } }))),
+            isOnline && !blocked && (React.createElement("span", { className: "absolute bottom-0 w-3 h-3 rounded-full border-2", style: { [isRTL() ? "left" : "right"]: 0, backgroundColor: "#16A34A", borderColor: colors.bg } }))),
         React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
             React.createElement("div", { className: "text-sm font-bold truncate", style: { color: colors.text } }, contact.name),
-            React.createElement("div", { className: "text-xs mt-0.5 truncate", style: { color: blocked ? colors.danger : isOnline ? "#22C55E" : colors.textMuted } }, blocked ? tl("محظور", "Blocked") : contactSubtitle(contact, isOnline))),
+            React.createElement("div", { className: "text-xs mt-0.5 truncate", style: { color: blocked ? colors.danger : isOnline ? "#16A34A" : colors.textMuted } }, blocked ? tl("محظور", "Blocked") : contactSubtitle(contact, isOnline))),
         blocked && React.createElement(Ban, { size: 15, color: colors.danger }),
         showInvite && (React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("dawa")))));
 }
@@ -623,10 +623,10 @@ function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVid
             React.createElement("div", { className: "flex flex-col items-center mb-4" },
                 React.createElement("div", { className: "relative mb-2.5" },
                     React.createElement(Pic, { photo: contact.photo || null, letter: contact.name.charAt(0), size: 80, bg: colors.primaryLight, color: colors.primaryDark }),
-                    isOnline && !blocked && (React.createElement("span", { className: "absolute bottom-1 w-4 h-4 rounded-full border-2", style: { [isRTL() ? "left" : "right"]: 4, backgroundColor: "#22C55E", borderColor: colors.card } }))),
+                    isOnline && !blocked && (React.createElement("span", { className: "absolute bottom-1 w-4 h-4 rounded-full border-2", style: { [isRTL() ? "left" : "right"]: 4, backgroundColor: "#16A34A", borderColor: colors.card } }))),
                 React.createElement("span", { className: "text-lg font-extrabold text-center", style: { color: colors.text } }, contact.name),
                 contact.nick && contact.realName && contact.realName !== contact.nick && React.createElement("span", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } }, tl("اسمه في سوا: ", "Sawa name: ") + contact.realName),
-                React.createElement("span", { className: "text-xs mt-1", style: { color: blocked ? colors.danger : isOnline ? "#22C55E" : colors.textMuted } }, blocked ? tl("🚫 محظور — لا تصلك رسائله ولا مكالماته", "🚫 Blocked") : contactSubtitle(contact, isOnline)),
+                React.createElement("span", { className: "text-xs mt-1", style: { color: blocked ? colors.danger : isOnline ? "#16A34A" : colors.textMuted } }, blocked ? tl("🚫 محظور — لا تصلك رسائله ولا مكالماته", "🚫 Blocked") : contactSubtitle(contact, isOnline)),
                 contact.families && contact.families.length > 0 && React.createElement("span", { className: "text-[11px] mt-0.5 text-center", style: { color: colors.textMuted } }, contact.families.map((f) => f.name).join(" · ")),
                 // C88: رمز سوا (١٠ أرقام) بدل الوسم القديم — نقرةٌ تنسخه
                 contact.code && React.createElement("button", { onClick: () => { const f = String(contact.code).replace(/\D/g, "").replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3"); try { navigator.clipboard.writeText(f); } catch (e) { } try { window.SawaSync.toast(tl("نُسخ الرمز ✓", "Code copied ✓")); } catch (e) { } }, className: "mt-1.5 flex flex-row items-center gap-1.5 px-2.5 py-1 rounded-full", style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
@@ -635,7 +635,7 @@ function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVid
                     React.createElement(Copy, { size: 11, color: colors.textMuted }))),
             React.createElement("div", { className: "flex flex-row justify-center gap-5 mb-5" },
                 act(MessageCircle, t("rsala"), blocked ? null : onMessage, colors.primary),
-                act(Phone, t("atsal"), blocked ? null : onCall, colors.success || "#22C55E"),
+                act(Phone, t("atsal"), blocked ? null : onCall, colors.success || "#16A34A"),
                 act(Video, t("fydyw"), blocked ? null : onVideoCall, colors.accent || "#8B5CF6"),
                 onSecret && act(Lock, tl("سرّيّة", "Secret"), blocked ? null : onSecret, "#16a34a")),
             confirm === "block" ? ask(tl("حظر «" + contact.name + "»؟", "Block " + contact.name + "?"), tl("لن تصلك رسائله ولا مكالماته، ولن يعرف أنّك حظرته. يمكنك إلغاء الحظر في أيّ وقت.", "You won't get their messages or calls, and they won't be told. You can unblock anytime."), tl("حظر", "Block"), onToggleBlock)
@@ -705,7 +705,7 @@ function NonSawaContactSheet({ contact, colors, onClose }) {
                 React.createElement("span", { className: "text-[11px] font-bold mt-1.5", style: { color: colors.textMuted } }, t("cs_ghyr_msjl"))),
             React.createElement("div", { className: `flex ${rowStart()} justify-center gap-6 mb-5` },
                 React.createElement("div", { className: "flex flex-col items-center gap-1.5" },
-                    React.createElement("a", { href: "tel:" + phone, className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#22C55E" } },
+                    React.createElement("a", { href: "tel:" + phone, className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#16A34A" } },
                         React.createElement(Phone, { size: 22, color: "#fff" })),
                     React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, t("cs_atsal"))),
                 React.createElement("div", { className: "flex flex-col items-center gap-1.5" },

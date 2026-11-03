@@ -1,6 +1,15 @@
 function App() {
     // C26: المظهر كان في useState فيضيع مع كلّ إعادة تحميل (ومنها التحديث) — صار محفوظاً
-    const [isDark, setIsDark] = usePersistedState("ui.dark", false, 50);
+    // C192: أوّل تشغيل يتبع مظهر الهاتف (null = لم يختر)، حتّى يختار المستخدم بنفسه. من اختار سابقاً يبقى على اختياره.
+    const [darkPref, setDarkPref] = usePersistedState("ui.dark", null, 50);
+    const [sysDark, setSysDark] = useState(() => { try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch (e) { return false; } });
+    useEffect(() => {
+        let mq; try { mq = window.matchMedia("(prefers-color-scheme: dark)"); } catch (e) { return; }
+        const on = (e) => setSysDark(e.matches);
+        if (mq.addEventListener) mq.addEventListener("change", on); else if (mq.addListener) mq.addListener(on);
+        return () => { if (mq.removeEventListener) mq.removeEventListener("change", on); else if (mq.removeListener) mq.removeListener(on); };
+    }, []);
+    const isDark = typeof darkPref === "boolean" ? darkPref : sysDark;
     // مفتاح إعادة البناء عند تبديل اللغة. اللغة تعيش في window لا في
     // حالة React، فنستمع لحدث يبثّه setLocale.
     const [langTick, setLangTick] = useState(function () { try { return localStorage.getItem("sawaLang") || "ar"; } catch (e) { return "ar"; } });
@@ -21,7 +30,7 @@ function App() {
     const base = isDark ? darkColors : lightColors;
     const colors = {
         ...base,
-        primary: accent.accent,
+        primary: isDark ? (accent.accentOnDark || accent.accent) : accent.accent,   // C192
         primaryDark: accent.accentDark,
         primaryLight: isDark ? base.primaryLight : accent.accentTint,
         // تباين عالٍ: نص أسود/أبيض خالص + حدود أوضح، بدل الدرجات المتوسطة
@@ -30,7 +39,7 @@ function App() {
             : {}),
     };
     const theme = {
-        colors, isDark, toggleDark: () => setIsDark((v) => !v),
+        colors, isDark, toggleDark: () => setDarkPref(!isDark),
         accentKey, setAccentKey, accentThemes: ACCENT_THEMES,
         fontScale, setFontScale, highContrast, setHighContrast,
         dataSaver, setDataSaver,

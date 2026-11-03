@@ -26,7 +26,7 @@ window.__sawaParts=(function(){var N=9,jobs=[];for(var i=1;i<=N;i++)(function(k)
 
 <script>
   // C190: شاشة التحميل بمظهر التطبيق المحفوظ (sawa:ui.dark) قبل أن يرسم أيّ شيء — كانت فاتحةً دائماً فيرى مستخدم الوضع الداكن ومضةً بيضاء.
-  try { if (JSON.parse(localStorage.getItem('sawa:ui.dark') || 'false') === true) { document.documentElement.setAttribute('data-theme', 'dark'); document.documentElement.style.colorScheme = 'dark'; var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', '#0E1116'); } } catch (e) {}
+  try { var dp = JSON.parse(localStorage.getItem('sawa:ui.dark') || 'null'); if (dp === true || (dp !== false && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)) {   /* C192: بلا اختيار ⇐ مظهر الهاتف */ document.documentElement.setAttribute('data-theme', 'dark'); document.documentElement.style.colorScheme = 'dark'; var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', '#0E1116'); } } catch (e) {}
 </script>
 <link rel="preload" href="./fonts/plex-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./tw.css">
@@ -58,6 +58,11 @@ window.__sawaParts=(function(){var N=9,jobs=[];for(var i=1;i<=N;i++)(function(k)
   :root[data-theme=dark] #err h2{color:#E5695C}
   :root[data-theme=dark] #err pre{background:#171B21;border-color:#262B33;color:#EDEFF2}
   :root[data-theme=dark] .spin{border-color:#173049;border-top-color:#5AA9E6}
+  /* C192: إطار التركيز — يظهر مع لوحة المفاتيح فقط (لا مع اللمس)، بلون المظهر. كانت ٤٤ عنصراً تُخفيه (outline-none). الحقول مستثناة: فيها المؤشّر. */
+  :is(button,a,summary,select,[role=button],[role=tab],[role=switch],[role=menuitem],[tabindex]):focus-visible{outline:2px solid var(--sawa-primary,#2774BA)!important;outline-offset:2px}
+  /* C192: مساحة لمسٍ ٤٠ بكسل على الأقلّ للأزرار الصغيرة (٢٠–٣٢ بكسل) دون تغيير شكلها: طبقةٌ شفّافة حولها. */
+  button:where(.w-5,.w-6,.w-7,.w-8,.sawa-hit):not(.absolute):not(.fixed):not(.sticky){position:relative}
+  button:where(.w-5,.w-6,.w-7,.w-8,.sawa-hit)::after{content:"";position:absolute;top:min(0px,calc((100% - 40px) / 2));bottom:min(0px,calc((100% - 40px) / 2));left:min(0px,calc((100% - 40px) / 2));right:min(0px,calc((100% - 40px) / 2))}
   #err{display:none;position:fixed;inset:0;padding:28px;background:#F5F7FA;z-index:10000;
     overflow:auto;direction:rtl;text-align:right}
   #err h2{color:#B42318;font-size:17px}
