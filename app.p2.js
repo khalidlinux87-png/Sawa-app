@@ -336,10 +336,11 @@ function Button({ label, icon: Icon, onPress, variant = "filled", disabled, clas
     const { colors } = useTheme();
     const filled = variant === "filled";
     return (React.createElement("button", { onClick: onPress, disabled: disabled, className: `w-full flex ${rowStart()} items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-extrabold transition-transform active:scale-[0.98] ${className}`, style: {
-            backgroundColor: filled ? colors.primary : colors.card,
-            color: filled ? "#fff" : colors.primary,
-            border: filled ? "none" : `1.5px solid ${colors.primary}`,
-            opacity: disabled ? 0.5 : 1,
+            // C199: المعطّل رماديّ بنصٍّ خافت (كان لون المظهر بشفافيّة ٥٠٪ — نصٌّ أبيض على أزرق شاحب ~١٫٦:١)
+            backgroundColor: disabled ? (filled ? colors.border : colors.card) : filled ? colors.primary : colors.card,
+            color: disabled ? colors.textMuted : filled ? "#fff" : colors.primary,
+            border: disabled ? (filled ? "none" : `1.5px solid ${colors.border}`) : filled ? "none" : `1.5px solid ${colors.primary}`,
+            opacity: 1,
             boxShadow: filled && !disabled ? `0 4px 14px ${colors.primary}40` : "none",
         } },
         Icon && React.createElement(Icon, { size: 18 }),
