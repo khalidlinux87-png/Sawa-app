@@ -22,7 +22,7 @@ function DialPadScreen({ onCall, onBack }) {
         React.createElement("div", { className: "flex-1 flex flex-col items-center justify-between p-6", style: { backgroundColor: colors.bg } },
             React.createElement("div", { className: "w-full text-center pt-4" },
                 React.createElement("span", { className: "text-2xl font-extrabold tracking-widest", style: { color: colors.text }, dir: "ltr" }, shown || "—"),
-                React.createElement("div", { className: "text-xs mt-2", style: { color: colors.textMuted } }, tl("أدخل رمز سوا الخاصّ بالشخص (10 أرقام) — تجده عنده في «جهات الاتصال ← رمزي»", "Enter the person's 10-digit Sawa code (Contacts → My code)"))),
+                React.createElement("div", { className: "text-xs mt-2", style: { color: colors.textMuted } }, tl("أدخل رمز سوا الخاصّ بالشخص (10 أرقام) — تجده عنده في «جهات الاتّصال ← رمزي»", "Enter the person's 10-digit Sawa code (Contacts → My code)"))),
             React.createElement("div", { className: "grid grid-cols-3 gap-4 w-full max-w-xs" }, keys.map((k, i) => k === "" ? React.createElement("div", { key: "e" + i }) : (React.createElement("button", { key: k, onClick: () => setNumber((prev) => (prev + k).slice(0, 10)), className: "w-16 h-16 rounded-full flex items-center justify-center mx-auto", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                 React.createElement("span", { className: "text-xl font-bold", style: { color: colors.text } }, k))))),
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-4 w-full max-w-xs justify-center` },
@@ -400,7 +400,7 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
             React.createElement(PhoneCall, { size: 22, color: "#fff" }))));
 }
 // ============================================================================
-// جهات الاتصال — نفس تبويب سوا الأصلي
+// جهات الاتّصال — نفس تبويب سوا الأصلي
 // ============================================================================
 // ⛔ لا جهات اتّصال وهميّة (C1): القائمة الحيّة من SawaChat — أعضاء عائلاتي على السحابة + من أضفتهم برابطٍ شخصيّ.
 //    يحدّثها AppInner في كلّ رسم (setLiveContacts)، فتقرؤها شاشات المكالمات والاتّصال السريع كما كانت تقرأ القائمة الثابتة.
@@ -471,7 +471,7 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
     const chip = (key, label, n) => React.createElement("button", { key, onClick: () => setFilter(key), className: "px-3 py-1.5 rounded-full text-xs font-bold shrink-0", style: { backgroundColor: view === key ? colors.primary : colors.card, color: view === key ? "#fff" : colors.text, border: `1px solid ${view === key ? colors.primary : colors.border}` } }, label + (n != null ? " · " + n : ""));
     const quick = (icon, label, onPress) => React.createElement("button", { onClick: onPress, className: "flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
         React.createElement("div", { className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primaryLight } }, React.createElement(icon, { size: 17, color: colors.primary })),
-        React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, label));
+        React.createElement("span", { className: "text-[12px] font-bold", style: { color: colors.text } }, label));
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col relative", style: { backgroundColor: colors.bg } },
         React.createElement("div", { className: "px-4 pt-5 pb-2" },
             React.createElement("div", { className: "flex flex-row items-center justify-between mb-3" },
@@ -499,8 +499,8 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
                 quick(Share2, tl("دعوة صديق", "Invite a friend"), () => SC.shareInvite && SC.shareInvite()),
                 SC.phoneContactsSheet && quick(Smartphone, tl("جهات الهاتف", "Phone contacts"), () => SC.phoneContactsSheet())),
             sawaContacts.length > 0 && letters.map((letter) => (React.createElement("div", { key: letter, ref: (el) => (sectionRefs.current[letter] = el) },
-                React.createElement("div", { className: "px-4 py-1 mt-2", style: { backgroundColor: colors.border + "44" } },
-                    React.createElement("span", { className: "text-[11px] font-extrabold", style: { color: colors.textMuted } }, letter)),
+                React.createElement("div", { className: "px-4 pt-3 pb-0.5" },   // C197: حرفٌ خفيف بلا شريطٍ ملوّن
+                    React.createElement("span", { className: "text-[12px] font-extrabold", style: { color: colors.textMuted } }, letter)),
                 grouped[letter].map((c) => (React.createElement(ContactRow, { key: c.id, contact: c, isOnline: isOn(c), blocked: blockedOf(c), colors: colors, onPress: () => setSelectedId(c.id) })))))),
             phoneContacts.length > 0 && (React.createElement("div", null,
                 React.createElement("div", { className: "px-4 pt-4 pb-1" },
@@ -513,7 +513,7 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
                 React.createElement("p", { className: "text-xs leading-relaxed mb-4", style: { color: colors.textMuted } }, t("ct_none_desc")),
                 React.createElement(Button, { icon: UserPlus, label: t("ct_add_title"), onPress: () => setShowAddModal(true) }))),
             contacts.length > 0 && filtered.length === 0 && (React.createElement(EmptyState, { icon: view === "online" ? Wifi : Search, label: view === "online" && !q ? tl("لا أحد متّصل الآن", "Nobody is online right now") : t("la_twjd_ntayj") }))),
-        !search && view === "all" && letters.length > 6 && (React.createElement("div", { className: "absolute top-1/2 flex flex-col gap-0.5", style: { [isRTL() ? "left" : "right"]: 4, transform: "translateY(-50%)", zIndex: 10 } }, letters.map((l) => (React.createElement("button", { key: l, onClick: () => { var _a; (_a = sectionRefs.current[l]) === null || _a === void 0 ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "start" }); }, className: "w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-extrabold", style: { color: colors.primary } }, l))))),
+        !search && view === "all" && sawaContacts.length >= 40 && letters.length > 6 && (React.createElement("div", { className: "absolute top-1/2 flex flex-col gap-0.5",   /* C197: للقوائم الطويلة فقط (كان يظهر مع ١٢ اسماً) */ style: { [isRTL() ? "left" : "right"]: 4, transform: "translateY(-50%)", zIndex: 10 } }, letters.map((l) => (React.createElement("button", { key: l, onClick: () => { var _a; (_a = sectionRefs.current[l]) === null || _a === void 0 ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "start" }); }, className: "w-7 h-7 flex items-center justify-center rounded-full text-[12px] font-extrabold", style: { color: colors.primary } }, l))))),
         React.createElement("button", { "aria-label": t("idafa_mshark"), onClick: () => setShowAddModal(true), className: "absolute flex items-center justify-center rounded-full shadow-lg", style: { bottom: 20, [isRTL() ? "left" : "right"]: 20, width: 52, height: 52, backgroundColor: colors.primary, zIndex: 10 } },
             React.createElement(UserPlus, { size: 22, color: "#fff" })),
         showAddModal && (React.createElement(AddContactSheet, { colors: colors, onClose: () => setShowAddModal(false) })),
@@ -562,6 +562,8 @@ function AddContactModal({ colors, onAdd, onClose }) {
                 React.createElement(Button, { label: t("hfz"), onPress: handleSave, style: { flex: 1 }, disabled: !name.trim() || !phone.trim() }),
                 React.createElement(Button, { label: t("ilgha"), variant: "outline", onPress: onClose, style: { flex: 1 } })))));
 }
+// C197: رقم الهاتف بلا عزلٍ داخل نصٍّ عربيّ كان يُعرض «24991234566+» — يُعزل باتّجاهٍ يساريّ (والنصوص العربيّة كما هي)
+function ctSubNode(contact, sub) { return sub && contact && sub === contact.phone ? React.createElement("span", { dir: "ltr", style: { unicodeBidi: "isolate" } }, sub) : sub; }
 function ContactRow({ contact, isOnline, blocked, colors, onPress, showInvite }) {
     return (React.createElement("button", { onClick: onPress, className: "w-full flex flex-row items-center px-4 py-2.5 gap-3", style: { backgroundColor: "transparent", opacity: blocked ? 0.6 : 1 } },
         React.createElement("div", { className: "relative shrink-0" },
@@ -569,7 +571,7 @@ function ContactRow({ contact, isOnline, blocked, colors, onPress, showInvite })
             isOnline && !blocked && (React.createElement("span", { className: "absolute bottom-0 w-3 h-3 rounded-full border-2", style: { [isRTL() ? "left" : "right"]: 0, backgroundColor: "#16A34A", borderColor: colors.bg } }))),
         React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
             React.createElement("div", { className: "text-sm font-bold truncate", style: { color: colors.text } }, contact.name),
-            React.createElement("div", { className: "text-xs mt-0.5 truncate", style: { color: blocked ? colors.danger : isOnline ? "#16A34A" : colors.textMuted } }, blocked ? tl("محظور", "Blocked") : contactSubtitle(contact, isOnline))),
+            React.createElement("div", { className: "text-xs mt-0.5 truncate", style: { color: blocked ? colors.danger : isOnline ? "#16A34A" : colors.textMuted } }, blocked ? tl("محظور", "Blocked") : ctSubNode(contact, contactSubtitle(contact, isOnline)))),
         blocked && React.createElement(Ban, { size: 15, color: colors.danger }),
         showInvite && (React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("dawa")))));
 }
@@ -599,10 +601,11 @@ function shareContactOut(contact) {
 function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVideoCall, onMessage, onSecret, onRename, onToggleBlock, onRemove, familyOnly, onReport, onClose }) {
     const [confirm, setConfirm] = useState(null);   // null | "block" | "remove"
     // C61: الكلمة تحت الدائرة تنقر أيضاً (كان النقر عليها لا يفعل شيئاً)
-    const act = (icon, label, onPress, bg) => React.createElement("div", { className: "flex flex-col items-center gap-1.5", style: { opacity: onPress ? 1 : 0.35, cursor: onPress ? "pointer" : "default" }, onClick: onPress || undefined },
-        React.createElement("button", { "aria-label": label, onClick: (e) => { e.stopPropagation(); if (onPress) onPress(); }, disabled: !onPress, className: "w-13 h-13 rounded-full flex items-center justify-center", style: { width: 52, height: 52, backgroundColor: bg } }, React.createElement(icon, { size: 21, color: "#fff" })),
+    // C197: الدوائر بلون المظهر (كانت أزرق/أخضر/كهرمانيّ/أخضر — و«اتصال» و«فيديو» في الداكن فاتحان فالأيقونة البيضاء ~٢:١)؛ «سرّيّة» محدّدة بلونه
+    const act = (icon, label, onPress, outline) => React.createElement("div", { className: "flex flex-col items-center gap-1.5", style: { opacity: onPress ? 1 : 0.35, cursor: onPress ? "pointer" : "default" }, onClick: onPress || undefined },
+        React.createElement("button", { "aria-label": label, onClick: (e) => { e.stopPropagation(); if (onPress) onPress(); }, disabled: !onPress, className: "w-13 h-13 rounded-full flex items-center justify-center", style: { width: 52, height: 52, backgroundColor: outline ? "transparent" : colors.primary, border: outline ? `2px solid ${colors.primary}` : "none" } }, React.createElement(icon, { size: 21, color: outline ? colors.primary : "#fff" })),
         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, label));
-    const row = (icon, label, sub, onPress, danger) => React.createElement("button", { onClick: onPress, className: "w-full flex flex-row items-center gap-3 px-3 py-3 rounded-xl", style: { backgroundColor: danger ? colors.danger + "0f" : colors.bg } },
+    const row = (icon, label, sub, onPress, danger) => React.createElement("button", { onClick: onPress, className: "w-full flex flex-row items-center gap-3 px-3 py-3 rounded-xl", style: { backgroundColor: danger ? "transparent" : colors.bg } },   /* C197: الخطرة بنصٍّ أحمر بلا خلفيّة */
         React.createElement(icon, { size: 17, color: danger ? colors.danger : colors.primary }),
         React.createElement("div", { className: `flex-1 ${textStart()}` },
             React.createElement("span", { className: "text-sm font-bold block", style: { color: danger ? colors.danger : colors.text } }, label),
@@ -626,7 +629,7 @@ function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVid
                     isOnline && !blocked && (React.createElement("span", { className: "absolute bottom-1 w-4 h-4 rounded-full border-2", style: { [isRTL() ? "left" : "right"]: 4, backgroundColor: "#16A34A", borderColor: colors.card } }))),
                 React.createElement("span", { className: "text-lg font-extrabold text-center", style: { color: colors.text } }, contact.name),
                 contact.nick && contact.realName && contact.realName !== contact.nick && React.createElement("span", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } }, tl("اسمه في سوا: ", "Sawa name: ") + contact.realName),
-                React.createElement("span", { className: "text-xs mt-1", style: { color: blocked ? colors.danger : isOnline ? "#16A34A" : colors.textMuted } }, blocked ? tl("🚫 محظور — لا تصلك رسائله ولا مكالماته", "🚫 Blocked") : contactSubtitle(contact, isOnline)),
+                React.createElement("span", { className: "text-xs mt-1", style: { color: blocked ? colors.danger : isOnline ? "#16A34A" : colors.textMuted } }, blocked ? tl("محظور — لا تصلك رسائله ولا مكالماته", "Blocked") : ctSubNode(contact, contactSubtitle(contact, isOnline))),
                 contact.families && contact.families.length > 0 && React.createElement("span", { className: "text-[11px] mt-0.5 text-center", style: { color: colors.textMuted } }, contact.families.map((f) => f.name).join(" · ")),
                 // C88: رمز سوا (١٠ أرقام) بدل الوسم القديم — نقرةٌ تنسخه
                 contact.code && React.createElement("button", { onClick: () => { const f = String(contact.code).replace(/\D/g, "").replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3"); try { navigator.clipboard.writeText(f); } catch (e) { } try { window.SawaSync.toast(tl("نُسخ الرمز ✓", "Code copied ✓")); } catch (e) { } }, className: "mt-1.5 flex flex-row items-center gap-1.5 px-2.5 py-1 rounded-full", style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
@@ -634,16 +637,19 @@ function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVid
                     React.createElement("span", { className: "text-[12px] font-extrabold", dir: "ltr", style: { unicodeBidi: "isolate", color: colors.text, letterSpacing: 1 } }, String(contact.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3")),
                     React.createElement(Copy, { size: 11, color: colors.textMuted }))),
             React.createElement("div", { className: "flex flex-row justify-center gap-5 mb-5" },
-                act(MessageCircle, t("rsala"), blocked ? null : onMessage, colors.primary),
-                act(Phone, t("atsal"), blocked ? null : onCall, colors.success || "#16A34A"),
-                act(Video, t("fydyw"), blocked ? null : onVideoCall, colors.accent || "#8B5CF6"),
-                onSecret && act(Lock, tl("سرّيّة", "Secret"), blocked ? null : onSecret, "#16a34a")),
+                act(MessageCircle, t("rsala"), blocked ? null : onMessage),
+                act(Phone, t("atsal"), blocked ? null : onCall),
+                act(Video, t("fydyw"), blocked ? null : onVideoCall),
+                onSecret && act(Lock, tl("سرّيّة", "Secret"), blocked ? null : onSecret, true)),
             confirm === "block" ? ask(tl("حظر «" + contact.name + "»؟", "Block " + contact.name + "?"), tl("لن تصلك رسائله ولا مكالماته، ولن يعرف أنّك حظرته. يمكنك إلغاء الحظر في أيّ وقت.", "You won't get their messages or calls, and they won't be told. You can unblock anytime."), tl("حظر", "Block"), onToggleBlock)
                 : confirm === "remove" ? ask(tl("إزالة «" + contact.name + "» من جهات اتّصالك؟", "Remove " + contact.name + "?"), tl("لن يرى حالتك ولن يستطيع الاتّصال بك. محادثتكما السابقة تبقى عندك. ليعود يحتاج رمزك أو رابطك من جديد.", "They won't see your status or be able to call you. Your chat stays. To reconnect they'll need your code or link again."), tl("إزالة", "Remove"), onRemove)
                 : React.createElement("div", { className: "flex flex-col gap-2" },
                     row(Share2, tl("مشاركة خارج سوا", "Share outside Sawa"), contact.phone ? tl("بطاقة جهة اتّصال إلى واتساب أو رسالة أو غيرها", "A contact card to WhatsApp, SMS…") : tl("اسمه ورمز سوا ورابط إضافته", "Name, Sawa code and add link"), () => shareContactOut(contact)),   // C175
                     onRename && row(Edit3, contact.nick ? tl("تعديل التسمية", "Edit name") : tl("تسمية", "Set a name"), tl("اسمٌ تختاره يظهر لك وحدك", "A name only you see"), onRename),
-                    onToggleBlock && (blocked ? row(Ban, tl("إلغاء الحظر", "Unblock"), null, onToggleBlock) : row(Ban, tl("حظر", "Block"), tl("لا تصلك رسائله ولا مكالماته", "No messages or calls from them"), () => setConfirm("block"), true)),
+                    onToggleBlock && blocked && row(Ban, tl("إلغاء الحظر", "Unblock"), null, onToggleBlock),
+                    // C197: الإجراءات الخطرة في مجموعةٍ واحدة أسفل الملفّ، بعد فاصل
+                    ((onToggleBlock && !blocked) || onRemove || onReport) && React.createElement("div", { className: "mt-2 pt-2", style: { borderTop: `1px solid ${colors.border}` } }),
+                    onToggleBlock && !blocked && row(Ban, tl("حظر", "Block"), tl("لا تصلك رسائله ولا مكالماته", "No messages or calls from them"), () => setConfirm("block"), true),
                     onRemove ? row(Trash2, t("ct_remove"), null, () => setConfirm("remove"), true)
                         : familyOnly ? React.createElement("p", { className: "text-[10.5px] text-center px-2", style: { color: colors.textMuted } }, tl("من عائلةٍ مشتركة — يبقى في جهات اتّصالك ما دمتما في العائلة نفسها.", "From a shared family — stays while you're both in it.")) : null,
                     onReport && row(Flag, tl("إبلاغ", "Report"), null, onReport, true)))));
@@ -661,6 +667,8 @@ function AddContactSheet({ colors, onClose }) {
         SC.renderQr(qrRef.current, 200).catch((e) => { if (qrRef.current) qrRef.current.textContent = (e && e.message) || String(e); }).then(() => setBusy(false));
     }
     function scan() { if (SC) SC.scanAndAdd().then((r) => { if (r) onClose(); }); }
+    const addOpt = (Icon, label, onPress) => React.createElement("button", { onClick: onPress, className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold border`, style: { borderColor: colors.border, backgroundColor: colors.bg, color: colors.text } },
+        React.createElement(Icon, { size: 17, color: colors.primary, "aria-hidden": true }), React.createElement("span", { className: `flex-1 ${textStart()}` }, label));
     function addPasted() { if (SC && pasted.trim()) SC.accept(pasted.trim()).then((r) => { if (r) onClose(); }); }
     return (React.createElement(React.Fragment, null,
         React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.45)", zIndex: 40 } }),
@@ -669,11 +677,12 @@ function AddContactSheet({ colors, onClose }) {
             React.createElement("h3", { className: `text-base font-extrabold ${textStart()} mb-1.5`, style: { color: colors.text } }, t("ct_add_title")),
             React.createElement("p", { className: `text-xs leading-relaxed ${textStart()} mb-4`, style: { color: colors.textMuted } }, t("ct_add_desc")),
             // C10: الأسهل — رمز سوا (١٠ أرقام) بطلب تواصلٍ يوافق عليه صاحبه
-            SC && SC.findSheet && React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-2.5` },
-                React.createElement("button", { onClick: () => { onClose(); SC.findSheet(); }, className: "flex-1 rounded-xl py-2.5 text-sm font-extrabold", style: { backgroundColor: colors.primary, color: "#fff" } }, tl("🔢 أدخل رمز شخص", "🔢 Enter a code")),
-                React.createElement("button", { onClick: () => { onClose(); SC.codeSheet(); }, className: "flex-1 rounded-xl py-2.5 text-sm font-bold border", style: { borderColor: colors.primary, color: colors.primary } }, tl("رمزي", "My code"))),
+            // C197: زرٌّ رئيسيّ واحد («مشاركة رابطي»)، وباقي الطرق خياراتٌ ثانويّة بشكلٍ واحد (كانت خمسة أشكال وإيموجي 🔢)
             React.createElement(Button, { icon: Share2, label: t("ct_share_link"), onPress: () => SC && SC.shareInvite() }),
-            React.createElement("button", { onClick: showQr, className: `w-full mt-2.5 flex ${rowStart()} items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold border`, style: { borderColor: colors.primary, color: colors.primary } }, t("ct_show_qr")),
+            React.createElement("div", { className: "flex flex-col gap-2 mt-3" },
+                SC && SC.findSheet && addOpt(UserPlus, tl("أدخل رمز شخص", "Enter a code"), () => { onClose(); SC.findSheet(); }),
+                SC && SC.codeSheet && addOpt(UserCheck, tl("رمزي", "My code"), () => { onClose(); SC.codeSheet(); }),
+                addOpt(QrCode, t("ct_show_qr"), showQr)),
             React.createElement("div", { className: "flex flex-col items-center", style: { display: qrShown ? "flex" : "none" } },
                 // ⛔ عنصر الرمز بلا أبناء React: مكتبة QR تكتب داخله مباشرةً، وأيّ ابنٍ يديره React (مثل «…») كان
                 //    يُمحى عند إعادة الرسم فيختفي الرمز فور ظهوره
@@ -681,7 +690,7 @@ function AddContactSheet({ colors, onClose }) {
                 React.createElement("div", { className: "mt-3 p-2 rounded-xl", style: { backgroundColor: "#fff", display: busy ? "none" : "block" } },
                     React.createElement("div", { ref: qrRef, style: { width: 200, height: 200, color: "#666", fontSize: 12 } })),
                 React.createElement("p", { className: "text-[10px] mt-2 text-center", style: { color: colors.textMuted } }, t("ct_qr_hint"))),
-            SC && SC.scanSupported() && React.createElement("button", { onClick: scan, className: `w-full mt-2.5 flex ${rowStart()} items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold border`, style: { borderColor: colors.border, color: colors.text } }, t("ct_scan_qr")),
+            SC && SC.scanSupported() && React.createElement("div", { className: "mt-2" }, addOpt(Camera, t("ct_scan_qr"), scan)),
             React.createElement("div", { className: `flex ${rowStart()} gap-2 mt-3` },
                 React.createElement("input", { dir: "ltr", value: pasted, onChange: (e) => setPasted(e.target.value), placeholder: t("ct_paste_ph"), className: "flex-1 rounded-xl px-3 py-2.5 text-xs border outline-none", style: { backgroundColor: colors.bg, borderColor: colors.border, color: colors.text } }),
                 React.createElement("button", { onClick: addPasted, disabled: !pasted.trim(), className: "rounded-xl px-4 text-xs font-bold", style: { backgroundColor: pasted.trim() ? colors.primary : colors.border, color: "#fff" } }, t("ct_add_btn"))))));
