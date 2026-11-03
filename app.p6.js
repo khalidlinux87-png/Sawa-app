@@ -3,7 +3,7 @@ function NewCallScreen({ onCall, onBack }) {
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
         React.createElement(TopBar, { title: t("mkalma_jdyda"), onBack: onBack }),
         React.createElement("div", { className: "flex-1 overflow-y-auto p-4" }, DEFAULT_CONTACTS.map((c) => (React.createElement(Card, { key: c.id, className: `flex ${rowStart()} items-center` },
-            React.createElement("div", { className: `w-10 h-10 rounded-full flex items-center justify-center ${ms("3")} font-bold`, style: { backgroundColor: colors.primaryLight, color: colors.primaryDark } }, c.name.charAt(0)),
+            React.createElement("div", { className: `w-10 h-10 rounded-full flex items-center justify-center ${ms("3")} font-bold`, style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, c.name.charAt(0)),
             React.createElement("span", { className: "flex-1 text-sm font-bold", style: { color: colors.text } }, c.name),
             React.createElement("button", { "aria-label": t("fydyw"), onClick: () => onCall(c.name, "video"), className: `w-9 h-9 rounded-full flex items-center justify-center ${ms("1.5")}`, style: { backgroundColor: colors.primaryLight } },
                 React.createElement(Video, { size: 14, color: colors.primary })),
@@ -28,7 +28,7 @@ function DialPadScreen({ onCall, onBack }) {
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-4 w-full max-w-xs justify-center` },
                 React.createElement("button", { "aria-label": t("atsal"), onClick: () => ready && onCall(number), disabled: !ready, className: "w-16 h-16 rounded-full flex items-center justify-center", style: { backgroundColor: colors.success, opacity: ready ? 1 : 0.4 } },
                     React.createElement(Phone, { size: 22, color: "#fff" })),
-                number.length > 0 && (React.createElement("button", { onClick: () => setNumber((prev) => prev.slice(0, -1)), className: "w-12 h-12 rounded-full flex items-center justify-center" },
+                number.length > 0 && (React.createElement("button", { "aria-label": tl("مسح آخر رقم", "Delete last digit"), onClick: () => setNumber((prev) => prev.slice(0, -1)), className: "w-12 h-12 rounded-full flex items-center justify-center" },
                     React.createElement(Delete, { size: 18, color: colors.textMuted })))))));
 }
 function ScheduleCallScreen({ defaultCallType, onSave, onBack, groups = [] }) {
@@ -180,7 +180,7 @@ function ScheduledRoomsScreen({ rooms = [], onJoin, onCancel, onNew, onBack }) {
                 React.createElement("button", { onClick: onNew, className: `flex ${rowStart()} items-center gap-2 px-4 py-2.5 rounded-2xl`, style: { backgroundColor: colors.primary } },
                     React.createElement(Plus, { size: 16, color: "#fff" }),
                     React.createElement("span", { className: "text-sm font-bold text-white" }, tl("جدولة غرفة", "Schedule a room")))),
-            list.map(({ r, st }) => (React.createElement(Card, { key: r.id, className: "mb-2.5", style: { opacity: st.k === "past" ? 0.6 : 1, border: st.k === "live" ? "2px solid #22c55e" : undefined } },
+            list.map(({ r, st }) => (React.createElement(Card, { key: r.id, className: "mb-2.5", style: { opacity: st.k === "past" ? 0.6 : 1, border: st.k === "live" ? "2px solid #16a34a" : undefined } },
                 React.createElement("div", { className: `flex ${rowStart()} items-start justify-between gap-2` },
                     React.createElement("div", { style: { minWidth: 0, flex: 1 } },
                         React.createElement("p", { className: "text-sm font-extrabold truncate", style: { color: colors.text } }, r.title),
@@ -226,12 +226,12 @@ function SpeedDialScreen({ speedDialContacts, onUpdate, onCall, onBack }) {
             speedDialContacts.length === 0 && React.createElement(EmptyState, { icon: Star, label: t("ma_fyh_arqam_mfdla") }),
             speedDialContacts.map((name, i) => (React.createElement(Card, { key: name, className: `flex ${rowStart()} items-center` },
                 React.createElement("div", { className: `flex flex-col ${ms("1")}` },
-                    React.createElement("button", { onClick: () => move(name, -1), disabled: i === 0 },
+                    React.createElement("button", { className: "sawa-hit", "aria-label": tl("نقل إلى الأعلى", "Move up"), onClick: () => move(name, -1), disabled: i === 0 },
                         React.createElement(ChevronUp, { size: 13, color: i === 0 ? colors.border : colors.textMuted })),
-                    React.createElement("button", { onClick: () => move(name, 1), disabled: i === speedDialContacts.length - 1 },
+                    React.createElement("button", { className: "sawa-hit", "aria-label": tl("نقل إلى الأسفل", "Move down"), onClick: () => move(name, 1), disabled: i === speedDialContacts.length - 1 },
                         React.createElement(ChevronDown, { size: 13, color: i === speedDialContacts.length - 1 ? colors.border : colors.textMuted }))),
                 React.createElement("div", { className: `w-9 h-9 rounded-full flex items-center justify-center ${ms("2")}`, style: { backgroundColor: colors.primaryLight } },
-                    React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.primaryDark } }, name.charAt(0))),
+                    React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.primaryInk } }, name.charAt(0))),
                 React.createElement("span", { className: "flex-1 text-sm font-bold", style: { color: colors.text } }, name),
                 React.createElement("button", { "aria-label": t("atsal"), onClick: () => onCall(name), className: `w-9 h-9 rounded-full flex items-center justify-center ${ms("1.5")}`, style: { backgroundColor: colors.primaryLight } },
                     React.createElement(Phone, { size: 14, color: colors.primary })),
@@ -339,20 +339,20 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
             React.createElement("button", { "aria-label": t("ilgha"), onClick: () => setCallQ(null) }, React.createElement(X, { size: 15, color: colors.textMuted }))),
         React.createElement("div", { className: "grid grid-cols-4 gap-2 px-4 pt-5" },
             React.createElement("button", { onClick: () => setSubScreen("newCall"), className: "flex flex-col items-center gap-1.5" },
-                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#F0F0F0" } },
-                    React.createElement(Phone, { size: 20, color: "#4A4A4A" })),
+                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#F1F5F9" } },
+                    React.createElement(Phone, { size: 20, color: "#475569" })),
                 React.createElement("span", { className: "text-[11px]", style: { color: colors.text } }, t("mkalma"))),
             React.createElement("button", { onClick: () => setSubScreen("schedule"), className: "flex flex-col items-center gap-1.5" },
-                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#F0F0F0" } },
-                    React.createElement(Calendar, { size: 20, color: "#4A4A4A" })),
+                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#F1F5F9" } },
+                    React.createElement(Calendar, { size: 20, color: "#475569" })),
                 React.createElement("span", { className: "text-[11px]", style: { color: colors.text } }, t("jdwla"))),
             React.createElement("button", { onClick: () => setSubScreen("dialPad"), className: "flex flex-col items-center gap-1.5" },
-                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#F0F0F0" } },
-                    React.createElement(Grid3x3, { size: 20, color: "#4A4A4A" })),
+                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#F1F5F9" } },
+                    React.createElement(Grid3x3, { size: 20, color: "#475569" })),
                 React.createElement("span", { className: "text-[11px]", style: { color: colors.text } }, t("lwha_alarqam"))),
             React.createElement("button", { onClick: () => setSubScreen("speedDial"), className: "flex flex-col items-center gap-1.5" },
-                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#F0F0F0" } },
-                    React.createElement(Heart, { size: 20, color: "#4A4A4A" })),
+                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#F1F5F9" } },
+                    React.createElement(Heart, { size: 20, color: "#475569" })),
                 React.createElement("span", { className: "text-[11px]", style: { color: colors.text } }, t("almfdla_2")))),
         React.createElement("div", { className: "px-4 pt-5 pb-1" },
             React.createElement("span", { className: "text-[15px] font-bold", style: { color: colors.text } }, t("alhdytha"))),
@@ -362,20 +362,20 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
             callLog.filter((c) => !callQ || callMatch(c, callQ)).map((c) => {
                 const Icon = callTypeIcons[c.type];
                 const unanswered = c.type === "missed" || (!c.duration && c.cloud);
-                const arrowColor = c.type === "missed" ? "#E53935" : unanswered ? "#D97706" : "#22C55E";
+                const arrowColor = c.type === "missed" ? "#EF4444" : unanswered ? "#B45309" : "#16A34A";
                 // C61: الصفّ كلّه ينقر (كان الهاتف الصغير و⋮ فقط) ⇒ قائمة الخيارات: صوت · فيديو · حذف
-                return (React.createElement("div", { key: c.id, role: "button", tabIndex: 0, onClick: () => setCallMenu(c), onKeyDown: (e) => { if (e.key === "Enter") setCallMenu(c); }, className: "flex flex-row items-center px-4 py-2.5 border-b cursor-pointer", style: { borderColor: "#EFEFEF" } },
+                return (React.createElement("div", { key: c.id, role: "button", tabIndex: 0, onClick: () => setCallMenu(c), onKeyDown: (e) => { if (e.key === "Enter") setCallMenu(c); }, className: "flex flex-row items-center px-4 py-2.5 border-b cursor-pointer", style: { borderColor: "#EDEFF2" } },
                     (() => { const ph = c.peerUid && window.SawaChat && window.SawaChat.photoOf ? window.SawaChat.photoOf(c.peerUid) : null;
                         return React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${me("3")} shrink-0`, style: { backgroundColor: colors.primaryLight, backgroundImage: ph ? `url(${ph})` : "none", backgroundSize: "cover", backgroundPosition: "center" } },
-                            ph ? null : c.room || c.cid ? React.createElement(Users, { size: 19, color: colors.primaryDark }) : React.createElement(User, { size: 19, color: colors.primaryDark })); })(),
+                            ph ? null : c.room || c.cid ? React.createElement(Users, { size: 19, color: colors.primaryInk }) : React.createElement(User, { size: 19, color: colors.primaryInk })); })(),
                     React.createElement("div", { className: "flex-1 min-w-0" },
-                        React.createElement("div", { className: "text-[15px]", style: { color: c.type === "missed" ? "#E53935" : colors.text, fontWeight: 500 } },
+                        React.createElement("div", { className: "text-[15px]", style: { color: c.type === "missed" ? "#EF4444" : colors.text, fontWeight: 500 } },
                             c.name,
                             (c.participants && c.participants.length > 0) && React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, " + " + c.participants.length)),
                         React.createElement("div", { className: "flex flex-row items-center gap-1 mt-0.5" },
                             React.createElement(Icon, { size: 12, color: arrowColor }),
                             c.callType === "video" && React.createElement(Video, { size: 10, color: colors.textMuted }),
-                            React.createElement("span", { className: "text-xs", style: { color: c.type === "missed" ? "#E53935" : colors.textMuted } },
+                            React.createElement("span", { className: "text-xs", style: { color: c.type === "missed" ? "#EF4444" : colors.textMuted } },
                                 c.label ? `${c.label} · ` : "",
                                 (c.cloud && c.timestamp ? callTimeLabel(c.timestamp) : c.time),
                                 c.duration ? ` · ${c.duration}` : "",
@@ -565,11 +565,11 @@ function AddContactModal({ colors, onAdd, onClose }) {
 function ContactRow({ contact, isOnline, blocked, colors, onPress, showInvite }) {
     return (React.createElement("button", { onClick: onPress, className: "w-full flex flex-row items-center px-4 py-2.5 gap-3", style: { backgroundColor: "transparent", opacity: blocked ? 0.6 : 1 } },
         React.createElement("div", { className: "relative shrink-0" },
-            React.createElement(Pic, { photo: contact.photo || null, letter: contact.name.charAt(0), size: 44, bg: colors.primaryLight, color: colors.primaryDark }),
-            isOnline && !blocked && (React.createElement("span", { className: "absolute bottom-0 w-3 h-3 rounded-full border-2", style: { [isRTL() ? "left" : "right"]: 0, backgroundColor: "#22C55E", borderColor: colors.bg } }))),
+            React.createElement(Pic, { photo: contact.photo || null, letter: contact.name.charAt(0), size: 44, bg: colors.primaryLight, color: colors.primaryInk }),
+            isOnline && !blocked && (React.createElement("span", { className: "absolute bottom-0 w-3 h-3 rounded-full border-2", style: { [isRTL() ? "left" : "right"]: 0, backgroundColor: "#16A34A", borderColor: colors.bg } }))),
         React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
             React.createElement("div", { className: "text-sm font-bold truncate", style: { color: colors.text } }, contact.name),
-            React.createElement("div", { className: "text-xs mt-0.5 truncate", style: { color: blocked ? colors.danger : isOnline ? "#22C55E" : colors.textMuted } }, blocked ? tl("محظور", "Blocked") : contactSubtitle(contact, isOnline))),
+            React.createElement("div", { className: "text-xs mt-0.5 truncate", style: { color: blocked ? colors.danger : isOnline ? "#16A34A" : colors.textMuted } }, blocked ? tl("محظور", "Blocked") : contactSubtitle(contact, isOnline))),
         blocked && React.createElement(Ban, { size: 15, color: colors.danger }),
         showInvite && (React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("dawa")))));
 }
@@ -622,11 +622,11 @@ function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVid
                 React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: onClose, className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: colors.bg } }, React.createElement(X, { size: 16, color: colors.textMuted }))),
             React.createElement("div", { className: "flex flex-col items-center mb-4" },
                 React.createElement("div", { className: "relative mb-2.5" },
-                    React.createElement(Pic, { photo: contact.photo || null, letter: contact.name.charAt(0), size: 80, bg: colors.primaryLight, color: colors.primaryDark }),
-                    isOnline && !blocked && (React.createElement("span", { className: "absolute bottom-1 w-4 h-4 rounded-full border-2", style: { [isRTL() ? "left" : "right"]: 4, backgroundColor: "#22C55E", borderColor: colors.card } }))),
+                    React.createElement(Pic, { photo: contact.photo || null, letter: contact.name.charAt(0), size: 80, bg: colors.primaryLight, color: colors.primaryInk }),
+                    isOnline && !blocked && (React.createElement("span", { className: "absolute bottom-1 w-4 h-4 rounded-full border-2", style: { [isRTL() ? "left" : "right"]: 4, backgroundColor: "#16A34A", borderColor: colors.card } }))),
                 React.createElement("span", { className: "text-lg font-extrabold text-center", style: { color: colors.text } }, contact.name),
                 contact.nick && contact.realName && contact.realName !== contact.nick && React.createElement("span", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } }, tl("اسمه في سوا: ", "Sawa name: ") + contact.realName),
-                React.createElement("span", { className: "text-xs mt-1", style: { color: blocked ? colors.danger : isOnline ? "#22C55E" : colors.textMuted } }, blocked ? tl("🚫 محظور — لا تصلك رسائله ولا مكالماته", "🚫 Blocked") : contactSubtitle(contact, isOnline)),
+                React.createElement("span", { className: "text-xs mt-1", style: { color: blocked ? colors.danger : isOnline ? "#16A34A" : colors.textMuted } }, blocked ? tl("🚫 محظور — لا تصلك رسائله ولا مكالماته", "🚫 Blocked") : contactSubtitle(contact, isOnline)),
                 contact.families && contact.families.length > 0 && React.createElement("span", { className: "text-[11px] mt-0.5 text-center", style: { color: colors.textMuted } }, contact.families.map((f) => f.name).join(" · ")),
                 // C88: رمز سوا (١٠ أرقام) بدل الوسم القديم — نقرةٌ تنسخه
                 contact.code && React.createElement("button", { onClick: () => { const f = String(contact.code).replace(/\D/g, "").replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3"); try { navigator.clipboard.writeText(f); } catch (e) { } try { window.SawaSync.toast(tl("نُسخ الرمز ✓", "Code copied ✓")); } catch (e) { } }, className: "mt-1.5 flex flex-row items-center gap-1.5 px-2.5 py-1 rounded-full", style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
@@ -635,7 +635,7 @@ function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVid
                     React.createElement(Copy, { size: 11, color: colors.textMuted }))),
             React.createElement("div", { className: "flex flex-row justify-center gap-5 mb-5" },
                 act(MessageCircle, t("rsala"), blocked ? null : onMessage, colors.primary),
-                act(Phone, t("atsal"), blocked ? null : onCall, colors.success || "#22C55E"),
+                act(Phone, t("atsal"), blocked ? null : onCall, colors.success || "#16A34A"),
                 act(Video, t("fydyw"), blocked ? null : onVideoCall, colors.accent || "#8B5CF6"),
                 onSecret && act(Lock, tl("سرّيّة", "Secret"), blocked ? null : onSecret, "#16a34a")),
             confirm === "block" ? ask(tl("حظر «" + contact.name + "»؟", "Block " + contact.name + "?"), tl("لن تصلك رسائله ولا مكالماته، ولن يعرف أنّك حظرته. يمكنك إلغاء الحظر في أيّ وقت.", "You won't get their messages or calls, and they won't be told. You can unblock anytime."), tl("حظر", "Block"), onToggleBlock)
@@ -705,7 +705,7 @@ function NonSawaContactSheet({ contact, colors, onClose }) {
                 React.createElement("span", { className: "text-[11px] font-bold mt-1.5", style: { color: colors.textMuted } }, t("cs_ghyr_msjl"))),
             React.createElement("div", { className: `flex ${rowStart()} justify-center gap-6 mb-5` },
                 React.createElement("div", { className: "flex flex-col items-center gap-1.5" },
-                    React.createElement("a", { href: "tel:" + phone, className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#22C55E" } },
+                    React.createElement("a", { href: "tel:" + phone, className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#16A34A" } },
                         React.createElement(Phone, { size: 22, color: "#fff" })),
                     React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, t("cs_atsal"))),
                 React.createElement("div", { className: "flex flex-col items-center gap-1.5" },
@@ -1097,9 +1097,9 @@ const ERSAL_PAYMENT_TIMINGS = [{ key: "pickup", labelKey: "er_and_alastlam" }, {
 // 3 ثيمات ألوان خاصة بإرسال نفسه (تُطبَّق على تطبيقاته الثلاثة معًا حسب
 // المستند — هنا ضمن تطبيق العميل فقط) — منفصلة تمامًا عن ثيمات سوا الأربعة
 const ERSAL_THEMES = {
-    default: { label: t("er_alaftrady"), primary: "#1E5FBF", primaryDark: "#153F80", primaryLight: "#D6E4FA", accent: "#D98E04", bg: "#F5F7FA" },
-    desert: { label: t("er_alshra"), primary: "#B5652E", primaryDark: "#7A431E", primaryLight: "#F2DCC9", accent: "#C99A4A", bg: "#FBF7F2" },
-    nile: { label: t("er_alnyl"), primary: "#0E8A82", primaryDark: "#0A5F59", primaryLight: "#CFEDEA", accent: "#C9A227", bg: "#F3FAF9" },
+    default: { label: t("er_alaftrady"), primary: "#1565C0", primaryDark: "#153F80", primaryLight: "#D6E4FA", accent: "#D98E04", bg: "#F5F7FA" },
+    desert: { label: t("er_alshra"), primary: "#B5652E", primaryDark: "#7A431E", primaryLight: "#FBDECB", accent: "#C99A4A", bg: "#FFFFFF" },
+    nile: { label: t("er_alnyl"), primary: "#0D9488", primaryDark: "#0A5F59", primaryLight: "#CFE9DD", accent: "#C9A227", bg: "#F5F7FA" },
 };
 // رسوم تخزين يومية عند فشل التسليم (بعد 5 أيام عمل سماح) — ميزة لم تُذكر
 // بالتوثيق الرئيسي إطلاقاً، وُثِّقت بالملحق التفصيلي فقط
@@ -1579,7 +1579,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                         React.createElement(Card, { style: { padding: 12, backgroundColor: colors.primaryLight } },
                             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
                                 React.createElement(Clock, { size: 14, color: colors.primary }),
-                                React.createElement("span", { className: "text-xs font-bold", style: { color: colors.primaryDark } },
+                                React.createElement("span", { className: "text-xs font-bold", style: { color: colors.primaryInk } },
                                     t("er_alwqt_almtwqa"),
                                     t(ERSAL_ORIGIN_CITY_KEY),
                                     t("er_wmrkz"),
@@ -1616,8 +1616,8 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                                 React.createElement("label", { className: "text-[11px] font-bold mb-2 block", style: { color: colors.text } }, t("mta_tryd_aldfa")),
                                 React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-2` }, ERSAL_PAYMENT_TIMINGS.map((ptiming) => React.createElement(Chip, { key: ptiming.key, label: t(ptiming.labelKey), active: paymentTiming === ptiming.key, onPress: () => setPaymentTiming(ptiming.key) }))),
                                 React.createElement("div", { className: `flex ${rowStart()} items-start gap-1.5 rounded-xl p-2`, style: { backgroundColor: colors.primaryLight } },
-                                    React.createElement(Truck, { size: 13, color: colors.primaryDark, className: "mt-0.5" }),
-                                    React.createElement("p", { className: "text-[10px] flex-1", style: { color: colors.primaryDark } },
+                                    React.createElement(Truck, { size: 13, color: colors.primaryInk, className: "mt-0.5" }),
+                                    React.createElement("p", { className: "text-[10px] flex-1", style: { color: colors.primaryInk } },
                                         t("er_jhz_almblgh"),
                                         m.key === "bank" ? t("er_bhsab_jahz") : t("er_nqda"),
                                         t("er_syakd"),
@@ -1771,7 +1771,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                                 const daysRemaining = Math.max(0, ERSAL_RETURN_DEADLINE_DAYS - daysSinceFail);
                                 const isReturned = daysSinceFail >= ERSAL_RETURN_DEADLINE_DAYS && s.pendingChoice !== "pickup_confirmed";
                                 if (isReturned) {
-                                    return (React.createElement("div", { className: `rounded-xl p-3 mb-2 flex ${rowStart()} items-center gap-2`, style: { backgroundColor: isDark ? "#2A2A2A" : "#EFEFEF" } },
+                                    return (React.createElement("div", { className: `rounded-xl p-3 mb-2 flex ${rowStart()} items-center gap-2`, style: { backgroundColor: isDark ? "#2A2A2A" : "#EDEFF2" } },
                                         React.createElement(RotateCcw, { size: 16, color: colors.textMuted }),
                                         React.createElement("span", { className: "text-xs font-bold", style: { color: colors.textMuted } },
                                             t("er_mrtjaa"),
@@ -1956,7 +1956,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                 React.createElement("div", { style: { position: "absolute", insetInlineEnd: -10, bottom: -16, opacity: 0.12, lineHeight: 0, pointerEvents: "none" } }, React.createElement(Truck, { size: 96, color: "#fff" })),
                 React.createElement("div", { className: "text-xs font-bold", style: { color: "rgba(255,255,255,0.75)" } }, hr < 12 ? t("sbah_alkhyr") : tl("مساء الخير", "Good evening")),
                 React.createElement("div", { className: "text-lg font-extrabold text-white mb-3" }, t("jahz_lnql_shy")),
-                React.createElement("button", { onClick: () => { setMainTab("ship"); setShipFlowView("goods"); }, className: `flex ${rowStart()} items-center gap-2 rounded-xl px-4 py-2.5 font-extrabold text-sm`, style: { backgroundColor: "#fff", color: colors.primaryDark } }, React.createElement(Package, { size: 16, color: colors.primaryDark }), t("shhna_jdyda"))),
+                React.createElement("button", { onClick: () => { setMainTab("ship"); setShipFlowView("goods"); }, className: `flex ${rowStart()} items-center gap-2 rounded-xl px-4 py-2.5 font-extrabold text-sm`, style: { backgroundColor: "#fff", color: colors.primaryInk } }, React.createElement(Package, { size: 16, color: colors.primaryInk }), t("shhna_jdyda"))),
             React.createElement(Card, { style: { padding: 12 } },
                 React.createElement("label", { className: "text-xs font-bold mb-2 block", style: { color: colors.text } }, t("ttba_ay_shhna_brqmha")),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },

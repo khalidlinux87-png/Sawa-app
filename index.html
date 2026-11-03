@@ -16,7 +16,7 @@ window.__sawaParts=(function(){var N=9,jobs=[];for(var i=1;i<=N;i++)(function(k)
 <title>سوا</title>
 
 <link rel="manifest" href="./manifest.json">
-<meta name="theme-color" content="#2F80C8">
+<meta name="theme-color" content="#2774BA">
 <link rel="icon" href="./icons/favicon.png">
 <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -24,25 +24,48 @@ window.__sawaParts=(function(){var N=9,jobs=[];for(var i=1;i<=N;i++)(function(k)
 <meta name="apple-mobile-web-app-title" content="سوا">
 <meta name="mobile-web-app-capable" content="yes">
 
+<script>
+  // C190: شاشة التحميل بمظهر التطبيق المحفوظ (sawa:ui.dark) قبل أن يرسم أيّ شيء — كانت فاتحةً دائماً فيرى مستخدم الوضع الداكن ومضةً بيضاء.
+  try { var dp = JSON.parse(localStorage.getItem('sawa:ui.dark') || 'null'); if (dp === true || (dp !== false && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)) {   /* C192: بلا اختيار ⇐ مظهر الهاتف */ document.documentElement.setAttribute('data-theme', 'dark'); document.documentElement.style.colorScheme = 'dark'; var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', '#0E1116'); } } catch (e) {}
+</script>
+<link rel="preload" href="./fonts/plex-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./tw.css">
-<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
 
 <style>
+  /* C187: خطّ سوا — IBM Plex Sans Arabic (رخصة OFL، fonts/OFL.txt) مستضافٌ مع التطبيق؛ وزنان فقط (٤٠٠ و٧٠٠ ⇐ ٨٠٠/٩٠٠).
+     ‎--sawa-font‎ تقرؤه sawa-chat وsawa-rtc أيضاً. */
+  @font-face{font-family:'Sawa Plex';font-style:normal;font-weight:100 500;font-display:swap;src:url(./fonts/plex-arabic-400.woff2) format('woff2');unicode-range:U+0600-06FF,U+0750-077F,U+0870-088E,U+0890-0891,U+0897-08E1,U+08E3-08FF,U+200C-200E,U+2010-2011,U+204F,U+2E41,U+FB50-FDFF,U+FE70-FE74,U+FE76-FEFC}
+  @font-face{font-family:'Sawa Plex';font-style:normal;font-weight:100 500;font-display:swap;src:url(./fonts/plex-latin-400.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+  @font-face{font-family:'Sawa Plex';font-style:normal;font-weight:600 900;font-display:swap;src:url(./fonts/plex-arabic-700.woff2) format('woff2');unicode-range:U+0600-06FF,U+0750-077F,U+0870-088E,U+0890-0891,U+0897-08E1,U+08E3-08FF,U+200C-200E,U+2010-2011,U+204F,U+2E41,U+FB50-FDFF,U+FE70-FE74,U+FE76-FEFC}
+  @font-face{font-family:'Sawa Plex';font-style:normal;font-weight:600 900;font-display:swap;src:url(./fonts/plex-latin-700.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+  :root{--sawa-font:'Sawa Plex',system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif}
   html,body,#root{height:100%;margin:0;background:#F5F7FA;
     -webkit-tap-highlight-color:transparent;overscroll-behavior:none}
-  body{font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif}
+  body{font-family:var(--sawa-font)}
   /* شاشة التحميل */
   #boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
     justify-content:center;gap:18px;background:#F5F7FA;z-index:9999;transition:opacity .3s}
   #boot img{width:120px;height:120px;image-rendering:auto}   /* C89b: شعارٌ ٣٨٤ بكسل (كان ٢٠٨ فيبدو مشوّشاً على الشاشات الحادّة) */
   #boot p{color:#6B7280;font-size:13px;margin:0}
-  .spin{width:26px;height:26px;border:3px solid #BFE0F5;border-top-color:#2F80C8;
+  .spin{width:26px;height:26px;border:3px solid #BFE0F5;border-top-color:#2774BA;
     border-radius:50%;animation:sp .8s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
+  /* C190: الوضع الداكن لشاشتَي التحميل والخطأ (القيم من darkColors) */
+  :root[data-theme=dark],:root[data-theme=dark] body,:root[data-theme=dark] #root,:root[data-theme=dark] #boot,:root[data-theme=dark] #err{background:#0E1116}
+  :root[data-theme=dark] #boot p,:root[data-theme=dark] #err p{color:#8A93A0!important}
+  :root[data-theme=dark] #err h2{color:#E5695C}
+  :root[data-theme=dark] #err pre{background:#171B21;border-color:#262B33;color:#EDEFF2}
+  :root[data-theme=dark] .spin{border-color:#173049;border-top-color:#5AA9E6}
+  /* C192: إطار التركيز — يظهر مع لوحة المفاتيح فقط (لا مع اللمس)، بلون المظهر. كانت ٤٤ عنصراً تُخفيه (outline-none). الحقول مستثناة: فيها المؤشّر. */
+  :is(button,a,summary,select,[role=button],[role=tab],[role=switch],[role=menuitem],[tabindex]):focus-visible{outline:2px solid var(--sawa-primary,#2774BA)!important;outline-offset:2px}
+  /* C192: مساحة لمسٍ ٤٠ بكسل على الأقلّ للأزرار الصغيرة (٢٠–٣٢ بكسل) دون تغيير شكلها: طبقةٌ شفّافة حولها. */
+  button:where(.w-5,.w-6,.w-7,.w-8,.sawa-hit):not(.absolute):not(.fixed):not(.sticky){position:relative}
+  button:where(.w-5,.w-6,.w-7,.w-8,.sawa-hit)::after{content:"";position:absolute;top:min(0px,calc((100% - 40px) / 2));bottom:min(0px,calc((100% - 40px) / 2));left:min(0px,calc((100% - 40px) / 2));right:min(0px,calc((100% - 40px) / 2))}
   #err{display:none;position:fixed;inset:0;padding:28px;background:#F5F7FA;z-index:10000;
     overflow:auto;direction:rtl;text-align:right}
-  #err h2{color:#C0392B;font-size:17px}
+  #err h2{color:#B42318;font-size:17px}
   #err pre{background:#fff;padding:14px;border-radius:12px;font-size:11px;
     white-space:pre-wrap;word-break:break-word;border:1px solid #E2E5E9;direction:ltr;text-align:left}
 </style>
@@ -60,7 +83,7 @@ window.__sawaParts=(function(){var N=9,jobs=[];for(var i=1;i<=N;i++)(function(k)
   <p style="font-size:13px;color:#6B7280">أرسل هذه الرسالة لتشخيص المشكلة:</p>
   <pre id="errmsg"></pre>
   <button onclick="location.reload()" style="width:100%;padding:12px;border:0;border-radius:12px;
-    background:#2F80C8;color:#fff;font-weight:700;font-size:14px">إعادة المحاولة</button>
+    background:#2774BA;color:#fff;font-weight:700;font-size:14px">إعادة المحاولة</button>
 </div>
 
 <div id="root"></div>
@@ -105,8 +128,8 @@ window.__sawaParts=(function(){var N=9,jobs=[];for(var i=1;i<=N;i++)(function(k)
     box.style.cssText = "text-align:center;font:600 14px system-ui;color:#374151;max-width:300px;line-height:1.7";
     box.innerHTML = (ar ? "تعذّر تحميل التطبيق كاملاً.<br>تحقّق من الاتصال ثمّ أعد المحاولة."
                         : "The app couldn't load completely.<br>Check your connection and try again.") +
-      '<div style="font:500 11px system-ui;color:#9CA3AF;margin-top:6px;direction:ltr">' + detail + "</div>" +
-      '<button style="margin-top:12px;padding:10px 18px;border:none;border-radius:12px;background:#2F80C8;color:#fff;font:700 14px system-ui">' +
+      '<div style="font:500 11px system-ui;color:#94A3B8;margin-top:6px;direction:ltr">' + detail + "</div>" +
+      '<button style="margin-top:12px;padding:10px 18px;border:none;border-radius:12px;background:#2774BA;color:#fff;font:700 14px system-ui">' +
       (ar ? "إعادة المحاولة" : "Try again") + "</button>";
     box.querySelector("button").onclick = function () { location.reload(); };
     b.appendChild(box);

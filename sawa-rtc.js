@@ -611,7 +611,7 @@
   function earOn() {
     if (earEl || !document.body) return;
     earEl = el("div", "position:fixed;inset:0;z-index:2147483646;background:#000;touch-action:none;display:flex;align-items:flex-end;justify-content:center;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 28px)");
-    earEl.appendChild(el("div", "color:#9aa5b1;font:600 13px system-ui;text-align:center;padding:0 24px", L("وضع الأذن — اضغط مطوّلاً لإظهار الشاشة", "Ear mode — press and hold to show the screen")));
+    earEl.appendChild(el("div", "color:#9aa0ab;font:600 13px var(--sawa-font,system-ui);text-align:center;padding:0 24px", L("وضع الأذن — اضغط مطوّلاً لإظهار الشاشة", "Ear mode — press and hold to show the screen")));
     var holdT = null;
     var down = function (e) { try { e.preventDefault(); } catch (x) {} clearTimeout(holdT); holdT = setTimeout(function () { earOff(); earArm(); }, 700); };
     var up = function () { clearTimeout(holdT); };
@@ -651,7 +651,7 @@
     var b = el("button", "width:54px;height:54px;border-radius:50%;border:0;font-size:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;background:" + bg, icon);
     b.setAttribute("aria-label", label);
     b.onclick = function (ev) { ev.stopPropagation(); onclick(); };
-    var t = el("span", "font:600 12px system-ui;color:#e8f5ee", label);
+    var t = el("span", "font:600 12px var(--sawa-font,system-ui);color:#e6f5ec", label);
     w.appendChild(b); w.appendChild(t); w._b = b; w._t = t;
     return w;
   }
@@ -694,7 +694,7 @@
   }
   function buildUi() {
     if (ui.root) return ui;
-    var r = el("div", "position:fixed;inset:0;z-index:2147483000;background:linear-gradient(160deg,#0f3d2c,#071a12);color:#fff;display:none;flex-direction:column;align-items:stretch;font-family:system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;overflow:hidden;user-select:none;-webkit-user-select:none");
+    var r = el("div", "position:fixed;inset:0;z-index:2147483000;background:linear-gradient(160deg,#0f3320,#071a12);color:#fff;display:none;flex-direction:column;align-items:stretch;font-family:var(--sawa-font,system-ui),-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;overflow:hidden;user-select:none;-webkit-user-select:none");
     r.id = "sawa-call";
     var rv = el("video", "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;display:none");
     rv.autoplay = true; rv.playsInline = true; rv.muted = true; rv.setAttribute("playsinline", "");
@@ -703,15 +703,15 @@
     lv.autoplay = true; lv.playsInline = true; lv.muted = true; lv.setAttribute("playsinline", "");
     pipDrag(lv);   // C111: صورتي الصغيرة تُسحب إلى أيّ زاوية (وتُحفظ الزاوية)
     var top = el("div", "position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 8px;background:linear-gradient(rgba(0,0,0,.45),transparent)");
-    var topName = el("div", "font:700 15px system-ui;opacity:0;transition:opacity .2s;text-shadow:0 1px 3px #000");
-    var minBtn = el("button", "background:rgba(255,255,255,.14);border:0;color:#fff;border-radius:18px;padding:7px 12px;font:600 12px system-ui;cursor:pointer", L("تصغير ▾", "Minimize ▾"));
+    var topName = el("div", "font:700 15px var(--sawa-font,system-ui);opacity:0;transition:opacity .2s;text-shadow:0 1px 3px #000");
+    var minBtn = el("button", "background:rgba(255,255,255,.14);border:0;color:#fff;border-radius:18px;padding:7px 12px;font:600 12px var(--sawa-font,system-ui);cursor:pointer", L("تصغير ▾", "Minimize ▾"));
     minBtn.onclick = function () { minimize(true); };
     top.appendChild(topName); top.appendChild(minBtn);
     var mid = el("div", "position:relative;z-index:1;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:0 20px;text-align:center");
-    var av = el("div", "width:112px;height:112px;border-radius:50%;background:#2e7d5b;display:flex;align-items:center;justify-content:center;font:800 46px system-ui;box-shadow:0 0 0 10px rgba(46,125,91,.25),0 0 0 22px rgba(46,125,91,.12)");
-    var nm = el("div", "font:800 24px system-ui;margin-top:14px");
-    var st = el("div", "font:600 15px system-ui;color:#bfe3d0");
-    var sub = el("div", "font:500 11px system-ui;color:#8fb8a4;min-height:14px");
+    var av = el("div", "width:112px;height:112px;border-radius:50%;background:#2e7d5b;display:flex;align-items:center;justify-content:center;font:800 46px var(--sawa-font,system-ui);box-shadow:0 0 0 10px rgba(46,125,91,.25),0 0 0 22px rgba(46,125,91,.12)");
+    var nm = el("div", "font:800 24px var(--sawa-font,system-ui);margin-top:14px");
+    var st = el("div", "font:600 15px var(--sawa-font,system-ui);color:#d0eddc");
+    var sub = el("div", "font:500 11px var(--sawa-font,system-ui);color:#8fb8a4;min-height:14px");
     // C124: المدير يبدّل محرّك الصوت للمكالمات الصوتيّة القادمة بلمس سطر الشبكة (أندرويد فقط)
     sub.addEventListener("click", function () {
       try {
@@ -725,7 +725,7 @@
     var bar = el("div", "position:relative;z-index:3;display:flex;flex-wrap:wrap;gap:8px 0;justify-content:space-evenly;align-items:flex-start;padding:14px 6px calc(env(safe-area-inset-bottom,0px) + 22px);background:linear-gradient(transparent,rgba(0,0,0,.55))");
     r.appendChild(rv); r.appendChild(ra); r.appendChild(lv); r.appendChild(top); r.appendChild(mid); r.appendChild(bar);
     // الشريط المصغّر
-    var pill = el("button", "position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:8px;background:#2e7d5b;color:#fff;border:0;border-radius:22px;padding:9px 16px;font:700 13px system-ui;box-shadow:0 4px 18px rgba(0,0,0,.35);direction:rtl;cursor:pointer");
+    var pill = el("button", "position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:8px;background:#2e7d5b;color:#fff;border:0;border-radius:22px;padding:9px 16px;font:700 13px var(--sawa-font,system-ui);box-shadow:0 4px 18px rgba(0,0,0,.35);direction:rtl;cursor:pointer");
     pill.onclick = function () { minimize(false); };
     document.body.appendChild(r); document.body.appendChild(pill);
     ui = { root: r, rv: rv, ra: ra, lv: lv, topName: topName, minBtn: minBtn, mid: mid, av: av, nm: nm, st: st, sub: sub, bar: bar, pill: pill, min: false };
@@ -787,14 +787,14 @@
       bar.appendChild(btn("✕", L("رفض", "Decline"), "#d64545", decline));
       return;
     }
-    var mute = btn(c.muted ? "🔇" : "🎤", c.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), c.muted ? "#e8f5ee" : "rgba(255,255,255,.16)", toggleMute);
+    var mute = btn(c.muted ? "🔇" : "🎤", c.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), c.muted ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleMute);
     if (c.muted) mute._b.style.color = "#123";
     bar.appendChild(mute);
     if (c.type === "video" && c.hasCam) {
-      bar.appendChild(btn(c.camOff ? "🚫" : "📷", c.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), c.camOff ? "#e8f5ee" : "rgba(255,255,255,.16)", toggleCam));
+      bar.appendChild(btn(c.camOff ? "🚫" : "📷", c.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), c.camOff ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleCam));
       bar.appendChild(btn("🔄", L("تبديل", "Flip"), "rgba(255,255,255,.16)", switchCam));
     }
-    if (c.routes || (RB())) { var sp = c.out !== "ear"; var rb = btn(sp ? "🔊" : "👂", sp ? L("المكبّر", "Speaker") : L("السمّاعة", "Earpiece"), sp ? "#e8f5ee" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
+    if (c.routes || (RB())) { var sp = c.out !== "ear"; var rb = btn(sp ? "🔊" : "👂", sp ? L("المكبّر", "Speaker") : L("السمّاعة", "Earpiece"), sp ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
     // C111: تحويل المكالمة الصوتيّة إلى فيديو (بموافقة الطرف الآخر)
     if (c.state === "connected" && c.type !== "video") bar.appendChild(btn("📹", c.vreqOut ? L("…بانتظاره", "…waiting") : L("فيديو", "Video"), "rgba(255,255,255,.16)", function () { askVideo(cur); }));
     if (c.state === "connected") bar.appendChild(btn("➕", L("إضافة", "Add"), "rgba(255,255,255,.16)", function () { pickPerson(cur); }));
@@ -1115,11 +1115,11 @@
     if (ui.min) minimize(false);
     var box = el("div", "position:absolute;left:16px;right:16px;top:38%;z-index:6;background:rgba(8,30,21,.96);border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:18px 16px;text-align:center;box-shadow:0 10px 34px rgba(0,0,0,.55)");
     box.setAttribute("role", "dialog");
-    box.appendChild(el("div", "font:800 26px system-ui;margin-bottom:6px", "📹"));
-    box.appendChild(el("div", "font:700 15px system-ui;margin-bottom:14px;line-height:1.6", L((c.name || "") + " يريد تحويل المكالمة إلى فيديو", (c.name || "") + " wants to switch to video")));
+    box.appendChild(el("div", "font:800 26px var(--sawa-font,system-ui);margin-bottom:6px", "📹"));
+    box.appendChild(el("div", "font:700 15px var(--sawa-font,system-ui);margin-bottom:14px;line-height:1.6", L((c.name || "") + " يريد تحويل المكالمة إلى فيديو", (c.name || "") + " wants to switch to video")));
     var row = el("div", "display:flex;gap:10px;justify-content:center");
-    var yes = el("button", "flex:1;max-width:150px;border:0;border-radius:14px;padding:11px;font:800 14px system-ui;color:#fff;background:#21a366;cursor:pointer", L("قبول", "Accept"));
-    var no = el("button", "flex:1;max-width:150px;border:0;border-radius:14px;padding:11px;font:700 14px system-ui;color:#fff;background:rgba(255,255,255,.16);cursor:pointer", L("رفض", "Decline"));
+    var yes = el("button", "flex:1;max-width:150px;border:0;border-radius:14px;padding:11px;font:800 14px var(--sawa-font,system-ui);color:#fff;background:#21a366;cursor:pointer", L("قبول", "Accept"));
+    var no = el("button", "flex:1;max-width:150px;border:0;border-radius:14px;padding:11px;font:700 14px var(--sawa-font,system-ui);color:#fff;background:rgba(255,255,255,.16);cursor:pointer", L("رفض", "Decline"));
     yes.onclick = function (e) { e.stopPropagation(); vPromptClose(c); c.vAccepted = n; c.ref.update({ vok: n }).catch(function () {}); toast(L("جارٍ التحويل إلى فيديو…", "Switching to video…")); };
     no.onclick = function (e) { e.stopPropagation(); vPromptClose(c); c.ref.update({ vno: n }).catch(function () {}); };
     row.appendChild(yes); row.appendChild(no); box.appendChild(row);
@@ -1531,7 +1531,7 @@
     var stars = 0, tags = {}, sent = false;
     var closeFn = sheet(L("كيف كانت جودة المكالمة؟", "How was the call quality?"), function (body, close) {
       body.parentNode.parentNode.style.direction = isAr() ? "rtl" : "ltr";
-      var info = el("div", "padding:0 18px 8px;text-align:center;font:600 12px system-ui;color:" + MUTED,
+      var info = el("div", "padding:0 18px 8px;text-align:center;font:600 12px var(--sawa-font,system-ui);color:" + MUTED,
         (meta.kind.indexOf("group") === 0 ? L("جماعيّة", "Group") : meta.kind === "video" ? L("فيديو", "Video") : L("صوتيّة", "Voice")) + " · " + fmt(secs) +
         (meta.engine === "native" ? " · ⚡" : "") + (meta.out === "spk" ? " · 🔊" : meta.out === "ear" ? " · 👂" : ""));
       body.appendChild(info);
@@ -1544,17 +1544,17 @@
         sb.push(b); row.appendChild(b);
       })(i);
       body.appendChild(row);
-      body.appendChild(el("div", "padding:0 18px 6px;font:700 12px system-ui;color:" + MUTED, L("ماذا لاحظت؟ (اختياريّ)", "What did you notice? (optional)")));
+      body.appendChild(el("div", "padding:0 18px 6px;font:700 12px var(--sawa-font,system-ui);color:" + MUTED, L("ماذا لاحظت؟ (اختياريّ)", "What did you notice? (optional)")));
       var tg = el("div", "display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 10px");
       QA_TAGS.forEach(function (t) {
-        var b = el("button", "padding:8px 12px;border-radius:999px;border:1px solid " + LINE + ";background:transparent;color:#e2e8f0;font:700 13px system-ui", L(t[1], t[2]));
+        var b = el("button", "padding:8px 12px;border-radius:999px;border:1px solid " + LINE + ";background:transparent;color:#e2e8f0;font:700 13px var(--sawa-font,system-ui)", L(t[1], t[2]));
         b.onclick = function () { tags[t[0]] = !tags[t[0]]; b.style.background = tags[t[0]] ? "rgba(96,165,250,.25)" : "transparent"; b.style.borderColor = tags[t[0]] ? "#60a5fa" : LINE; };
         tg.appendChild(b);
       });
       body.appendChild(tg);
-      var note = el("input", "margin:0 16px 10px;width:calc(100% - 32px);box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1px solid " + LINE + ";background:rgba(255,255,255,.06);color:#fff;font:600 13px system-ui");
+      var note = el("input", "margin:0 16px 10px;width:calc(100% - 32px);box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1px solid " + LINE + ";background:rgba(255,255,255,.06);color:#fff;font:600 13px var(--sawa-font,system-ui)");
       note.placeholder = L("ملاحظة قصيرة (اختياريّ)", "Short note (optional)"); body.appendChild(note);
-      var go = el("button", "margin:4px 16px 6px;width:calc(100% - 32px);padding:12px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 14px system-ui;opacity:.5", L("إرسال التقييم", "Send rating"));
+      var go = el("button", "margin:4px 16px 6px;width:calc(100% - 32px);padding:12px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 14px var(--sawa-font,system-ui);opacity:.5", L("إرسال التقييم", "Send rating"));
       go.disabled = true;
       go.onclick = function () {
         if (!stars || sent) return; sent = true;
@@ -1567,7 +1567,7 @@
         close();
       };
       body.appendChild(go);
-      var sk = el("button", "margin:0 16px 4px;width:calc(100% - 32px);padding:10px;border:0;background:transparent;color:" + MUTED + ";font:700 13px system-ui", L("تخطٍّ", "Skip"));
+      var sk = el("button", "margin:0 16px 4px;width:calc(100% - 32px);padding:10px;border:0;background:transparent;color:" + MUTED + ";font:700 13px var(--sawa-font,system-ui)", L("تخطٍّ", "Skip"));
       sk.onclick = function () { close(); }; body.appendChild(sk);
     });
     return closeFn;
@@ -1581,13 +1581,13 @@
     sheet(L("سجلّ المكالمات", "Call log (all calls)"), function (body, close) {
       body.parentNode.parentNode.style.direction = isAr() ? "rtl" : "ltr";
       var tabs = el("div", "display:flex;gap:6px;padding:0 14px 8px");
-      [1, 7, 30].forEach(function (d) { var b = el("button", "flex:1;padding:8px;border-radius:10px;border:1px solid " + (d === days ? PRI : LINE) + ";background:" + (d === days ? PRI : "transparent") + ";color:#fff;font:800 12.5px system-ui", d === 1 ? L("اليوم", "Today") : d + L(" أيّام", " days")); b.onclick = function () { close(); telReport(d); }; tabs.appendChild(b); });
+      [1, 7, 30].forEach(function (d) { var b = el("button", "flex:1;padding:8px;border-radius:10px;border:1px solid " + (d === days ? PRI : LINE) + ";background:" + (d === days ? PRI : "transparent") + ";color:#fff;font:800 12.5px var(--sawa-font,system-ui)", d === 1 ? L("اليوم", "Today") : d + L(" أيّام", " days")); b.onclick = function () { close(); telReport(d); }; tabs.appendChild(b); });
       body.appendChild(tabs);
       var box = el("div", "padding:0 14px 12px"); box.textContent = L("جارٍ التحميل…", "Loading…"); body.appendChild(box);
       var pct = function (a, b) { return b ? Math.round(a * 100 / b) + "%" : "–"; };
       var ms = function (v) { return v == null ? "–" : v >= 1000 ? (v / 1000).toFixed(1) + " s" : v + " ms"; };
-      var card = function (title) { var c = el("div", "padding:10px 12px;margin-bottom:10px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid " + LINE); if (title) c.appendChild(el("div", "font:800 13.5px system-ui;margin-bottom:6px", title)); box.appendChild(c); return c; };
-      var kv = function (c, k, v, warn) { var r0 = el("div", "display:flex;justify-content:space-between;gap:8px;font:600 12.5px system-ui;padding:2px 0"); r0.appendChild(el("span", "color:" + MUTED, k)); r0.appendChild(el("span", "direction:ltr;font-weight:800;color:" + (warn ? "#fbbf24" : "#fff"), v)); c.appendChild(r0); };
+      var card = function (title) { var c = el("div", "padding:10px 12px;margin-bottom:10px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid " + LINE); if (title) c.appendChild(el("div", "font:800 13.5px var(--sawa-font,system-ui);margin-bottom:6px", title)); box.appendChild(c); return c; };
+      var kv = function (c, k, v, warn) { var r0 = el("div", "display:flex;justify-content:space-between;gap:8px;font:600 12.5px var(--sawa-font,system-ui);padding:2px 0"); r0.appendChild(el("span", "color:" + MUTED, k)); r0.appendChild(el("span", "direction:ltr;font-weight:800;color:" + (warn ? "#fbbf24" : "#fff"), v)); c.appendChild(r0); };
       wcall("admin.tel", { days: days }).then(function (r) {
         box.innerHTML = "";
         if (!r || !r.admin) { box.textContent = L("للمدير فقط", "Admin only"); return; }
@@ -1610,7 +1610,7 @@
         kv(c1, L("التذبذب (jitter)", "Jitter"), ms(a.jit), a.jit > 40);
         if (a.fps != null) kv(c1, L("إطارات الفيديو", "Video fps"), a.fps + " fps", a.fps < 12);
         if (a.ringN) kv(c1, L("وصل إشعار الرنين", "Ring push delivered"), pct(a.ringOk, a.ringN), a.ringOk / a.ringN < 0.9);
-        c1.appendChild(el("div", "font:600 11px system-ui;color:" + MUTED + ";margin-top:4px", L("المعتاد عالميّاً: ١٥–٤٠٪ عبر الوسيط. الأصفر يستحقّ المراجعة.", "Typical: 15–40% relayed. Yellow deserves a look.")));
+        c1.appendChild(el("div", "font:600 11px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:4px", L("المعتاد عالميّاً: ١٥–٤٠٪ عبر الوسيط. الأصفر يستحقّ المراجعة.", "Typical: 15–40% relayed. Yellow deserves a look.")));
         // C215: نوع NAT لكلّ طرف (من قياس الهاتف قبل المكالمة) — يفسّر نسبة الوسيط
         var nt = a.nat || {}, nN = (nt.sym || 0) + (nt.eim || 0) + (nt.none || 0);
         if (nN) {
@@ -1622,7 +1622,7 @@
           // C217: من المكالمات نفسها (أدقّ من الفحص): كم مكالمةً عرض فيها الطرفان IPv6، وكم منها اتّصل عبره فعلاً
           if (a.v6both != null) kv(c1n, L("مكالمات عرض فيها الطرفان IPv6 · اتّصلت عبره", "Calls where both offered IPv6 · used it"), (a.v6both || 0) + " · " + (a.v6used || 0), a.v6both > 0 && (a.v6used || 0) < a.v6both);
           if (nt.unk) kv(c1n, L("لم يُقَس (نسخة أقدم)", "Not measured (older build)"), String(nt.unk));
-          c1n.appendChild(el("div", "font:600 11px system-ui;color:" + MUTED + ";margin-top:4px", L("إن كان الطرفان «متماثل» فلا اتّصال مباشر ممكن، والوسيط ضروريّ. يكفي أن يكون أحدهما «ثابت» ليُستعمل وسيطٌ واحد فقط.", "If both sides are symmetric, a direct path is impossible and a relay is required. One endpoint-independent side lets a single relay suffice.")));
+          c1n.appendChild(el("div", "font:600 11px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:4px", L("إن كان الطرفان «متماثل» فلا اتّصال مباشر ممكن، والوسيط ضروريّ. يكفي أن يكون أحدهما «ثابت» ليُستعمل وسيطٌ واحد فقط.", "If both sides are symmetric, a direct path is impossible and a relay is required. One endpoint-independent side lets a single relay suffice.")));
         }
         var rs = Object.keys(a.reasons || {}).sort(function (x, y) { return a.reasons[y] - a.reasons[x]; });
         if (rs.length) { var c2 = card(L("لم تتّصل — الأسباب", "Not connected — reasons")); rs.forEach(function (k) { kv(c2, TEL_REASON[k] ? L(TEL_REASON[k][0], TEL_REASON[k][1]) : k, String(a.reasons[k])); }); }
@@ -1632,17 +1632,17 @@
         if (g.n) { var c4 = card(L("المجموعات والغرف", "Groups & rooms")); kv(c4, L("الجلسات", "Sessions"), String(g.n)); kv(c4, L("عبر خادم الوسائط (SFU)", "Via SFU"), pct(g.sfu, g.n)); kv(c4, L("انضمّ بنجاح", "Joined"), pct(g.conn, g.n)); }
         // C181: الملخّص اليوميّ (٧ صباحاً) وتنبيه التراجع — تشغيل/إيقاف وتجربة
         var cq = card(L("الملخّص اليوميّ والتنبيهات", "Daily digest & alerts"));
-        cq.appendChild(el("div", "font:600 11.5px system-ui;color:" + MUTED + ";margin-bottom:8px", L("كلّ صباح (٧ بتوقيت السودان) يصلك ملخّص أمس، وتنبيهٌ فوريّ إن تراجعت المكالمات في آخر ساعتين.", "Every morning you get yesterday's summary, plus an instant alert if calls degrade in the last 2 hours.")));
+        cq.appendChild(el("div", "font:600 11.5px var(--sawa-font,system-ui);color:" + MUTED + ";margin-bottom:8px", L("كلّ صباح (٧ بتوقيت السودان) يصلك ملخّص أمس، وتنبيهٌ فوريّ إن تراجعت المكالمات في آخر ساعتين.", "Every morning you get yesterday's summary, plus an instant alert if calls degrade in the last 2 hours.")));
         var qr = el("div", "display:flex;gap:6px"); cq.appendChild(qr);
-        var qb = el("button", "flex:1;padding:9px;border-radius:10px;border:1px solid " + LINE + ";background:" + (r.qoff ? "transparent" : PRI) + ";color:#fff;font:800 12.5px system-ui", r.qoff ? L("متوقّف — تشغيل", "Off — turn on") : L("مفعّل — إيقاف", "On — turn off"));
+        var qb = el("button", "flex:1;padding:9px;border-radius:10px;border:1px solid " + LINE + ";background:" + (r.qoff ? "transparent" : PRI) + ";color:#fff;font:800 12.5px var(--sawa-font,system-ui)", r.qoff ? L("متوقّف — تشغيل", "Off — turn on") : L("مفعّل — إيقاف", "On — turn off"));
         qb.onclick = function () { qb.disabled = true; wcall("admin.qcfg", { off: !r.qoff }).then(function (x) { r.qoff = !!(x && x.qoff); qb.textContent = r.qoff ? L("متوقّف — تشغيل", "Off — turn on") : L("مفعّل — إيقاف", "On — turn off"); qb.style.background = r.qoff ? "transparent" : PRI; toast(r.qoff ? L("أُوقف الملخّص", "Digest off") : L("✓ الملخّص مفعّل", "✓ Digest on")); }).catch(function (e) { toast(String((e && e.message) || e)); }).then(function () { qb.disabled = false; }); };
-        var qt = el("button", "flex:1;padding:9px;border-radius:10px;border:1px solid " + LINE + ";background:transparent;color:#fff;font:800 12.5px system-ui", L("أرسل ملخّصاً الآن", "Send a digest now"));
+        var qt = el("button", "flex:1;padding:9px;border-radius:10px;border:1px solid " + LINE + ";background:transparent;color:#fff;font:800 12.5px var(--sawa-font,system-ui)", L("أرسل ملخّصاً الآن", "Send a digest now"));
         qt.onclick = function () { qt.disabled = true; wcall("admin.qcfg", { test: true, off: !!r.qoff }).then(function (x) { toast(x && x.sent ? L("✓ أُرسل — انظر الإشعارات", "✓ Sent — check notifications") : L("لم يُرسل — فعّل الإشعارات على هذا الهاتف", "Not sent — enable notifications on this phone")); }).catch(function (e) { toast(String((e && e.message) || e)); }).then(function () { qt.disabled = false; }); };
-        if (admOk(r)) { qr.appendChild(qb); qr.appendChild(qt); } else qr.appendChild(el("div", "font:700 12px system-ui;color:" + MUTED, (r.qoff ? L("متوقّف", "Off") : L("مفعّل", "On")) + " · " + L("👁 مشاهدة فقط", "👁 View only")));   // C195
+        if (admOk(r)) { qr.appendChild(qb); qr.appendChild(qt); } else qr.appendChild(el("div", "font:700 12px var(--sawa-font,system-ui);color:" + MUTED, (r.qoff ? L("متوقّف", "Off") : L("مفعّل", "On")) + " · " + L("👁 مشاهدة فقط", "👁 View only")));   // C195
         var c5 = card(L("آخر المكالمات", "Recent calls"));
         (r.recent || []).forEach(function (c) {
           var x = c.sides[0] || {}, ok = c.sides.some(function (y) { return y.ok; });
-          var row = el("div", "padding:6px 0;border-top:1px solid " + LINE + ";font:600 12px system-ui");
+          var row = el("div", "padding:6px 0;border-top:1px solid " + LINE + ";font:600 12px var(--sawa-font,system-ui)");
           row.appendChild(el("div", "display:flex;justify-content:space-between;gap:6px", ""));
           row.firstChild.appendChild(el("span", "font-weight:800", (ok ? "✅ " : "❌ ") + (x.k || "?") + (x.mode ? " · " + x.mode : "") + (x.n ? " · " + x.n + "👥" : "")));
           row.firstChild.appendChild(el("span", "color:" + MUTED + ";direction:ltr", new Date(c.ts).toLocaleString(isAr() ? "ar" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })));
@@ -1654,7 +1654,7 @@
           row.appendChild(el("div", "color:#64748b;font-size:10.5px;direction:ltr;text-align:start", "call_id " + c.cid));
           c5.appendChild(row);
         });
-        if (!(r.recent || []).length) c5.appendChild(el("div", "color:" + MUTED + ";font:600 12px system-ui", L("لا سجلّات بعد — تبدأ من المكالمات القادمة", "No records yet — starts with upcoming calls")));
+        if (!(r.recent || []).length) c5.appendChild(el("div", "color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui)", L("لا سجلّات بعد — تبدأ من المكالمات القادمة", "No records yet — starts with upcoming calls")));
       }).catch(function (e) { box.textContent = L("تعذّر التحميل: ", "Couldn't load: ") + ((e && e.message) || e); });
     });
   }
@@ -1666,23 +1666,23 @@
       body.appendChild(box);
       var paint = function (r) {
         box.innerHTML = "";
-        if (!r || !r.admin) { box.appendChild(el("div", "padding:20px;text-align:center;color:" + MUTED + ";font:600 13px system-ui", L("للمدير فقط", "Admin only"))); return; }
+        if (!r || !r.admin) { box.appendChild(el("div", "padding:20px;text-align:center;color:" + MUTED + ";font:600 13px var(--sawa-font,system-ui)", L("للمدير فقط", "Admin only"))); return; }
         if (!admOk(r)) go.style.display = "none";   // C195: المشاهد والمشرف بلا «فحص الآن»
         var lb = r.labels || {}, keys = Object.keys(r.svc || {});
         var name = function (k) { return lb[k] || (k.indexOf("metered:") === 0 ? L("وسيط Metered (", "Metered relay (") + k.slice(8) + ")" : k); };
-        box.appendChild(el("div", "font:600 12px system-ui;color:" + MUTED + ";margin-bottom:8px", r.at ? L("آخر فحص: ", "Last check: ") + new Date(r.at).toLocaleString(isAr() ? "ar" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }) : L("لم يُفحص بعد — اضغط «فحص الآن»", "Not checked yet — tap “Check now”")));
+        box.appendChild(el("div", "font:600 12px var(--sawa-font,system-ui);color:" + MUTED + ";margin-bottom:8px", r.at ? L("آخر فحص: ", "Last check: ") + new Date(r.at).toLocaleString(isAr() ? "ar" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }) : L("لم يُفحص بعد — اضغط «فحص الآن»", "Not checked yet — tap “Check now”")));
         keys.forEach(function (k) {
           var v = r.svc[k], h = (r.hist && r.hist[k]) || [];
           var card = el("div", "padding:10px 12px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid " + (v.ok ? LINE : "#b91c1c"));
           var top = el("div", "display:flex;align-items:center;gap:8px");
-          top.appendChild(el("span", "width:10px;height:10px;border-radius:5px;flex-shrink:0;background:" + (v.ok ? "#22c55e" : "#ef4444")));
-          top.appendChild(el("span", "flex:1;font:800 13.5px system-ui", name(k)));
-          top.appendChild(el("span", "font:700 12px system-ui;direction:ltr;color:" + MUTED, v.ok ? v.ms + " ms" : L("متعطّل", "down")));
+          top.appendChild(el("span", "width:10px;height:10px;border-radius:5px;flex-shrink:0;background:" + (v.ok ? "#16a34a" : "#ef4444")));
+          top.appendChild(el("span", "flex:1;font:800 13.5px var(--sawa-font,system-ui)", name(k)));
+          top.appendChild(el("span", "font:700 12px var(--sawa-font,system-ui);direction:ltr;color:" + MUTED, v.ok ? v.ms + " ms" : L("متعطّل", "down")));
           card.appendChild(top);
           var up = h.filter(function (x) { return x[1] >= 0; }).length;
           var sub = (v.ok ? L("يعمل منذ ", "Up since ") : L("متعطّل منذ ", "Down since ")) + new Date(v.since || v.at).toLocaleString(isAr() ? "ar" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }) + (h.length ? " · " + L("التوفّر ", "uptime ") + Math.round(up * 100 / h.length) + "%" : "");
-          card.appendChild(el("div", "font:600 11.5px system-ui;color:" + MUTED + ";margin-top:3px", sub));
-          if (!v.ok && v.err) card.appendChild(el("div", "font:600 11.5px system-ui;color:#fca5a5;margin-top:3px;direction:ltr;text-align:start;word-break:break-word", v.err));
+          card.appendChild(el("div", "font:600 11.5px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:3px", sub));
+          if (!v.ok && v.err) card.appendChild(el("div", "font:600 11.5px var(--sawa-font,system-ui);color:#fca5a5;margin-top:3px;direction:ltr;text-align:start;word-break:break-word", v.err));
           if (h.length > 1) {   // آخر القياسات: عمودٌ لكلّ فحص (الأحمر عطل)
             var mx = Math.max.apply(null, h.map(function (x) { return x[1]; }).concat([1]));
             var bars = el("div", "display:flex;align-items:flex-end;gap:2px;height:26px;margin-top:6px;direction:ltr");
@@ -1691,9 +1691,9 @@
           }
           box.appendChild(card);
         });
-        box.appendChild(el("div", "font:600 11px system-ui;color:" + MUTED + ";margin-top:4px", L("يُفحص الخادم كلّ ٢٠ دقيقة، ويصلك إشعارٌ حين تتعطّل خدمة أو تعود.", "Checked every 20 min; you're notified when a service goes down or recovers.")));
+        box.appendChild(el("div", "font:600 11px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:4px", L("يُفحص الخادم كلّ ٢٠ دقيقة، ويصلك إشعارٌ حين تتعطّل خدمة أو تعود.", "Checked every 20 min; you're notified when a service goes down or recovers.")));
       };
-      var go = el("button", "margin:4px 16px 12px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 14px system-ui", L("فحص الآن", "Check now"));
+      var go = el("button", "margin:4px 16px 12px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 14px var(--sawa-font,system-ui)", L("فحص الآن", "Check now"));
       go.onclick = function () { go.disabled = true; go.textContent = L("جارٍ الفحص…", "Checking…"); wcall("admin.health", { run: true }).then(paint).catch(function (e) { toast(L("تعذّر الفحص: ", "Check failed: ") + ((e && e.message) || e)); }).then(function () { go.disabled = false; go.textContent = L("فحص الآن", "Check now"); }); };
       body.appendChild(go);
       wcall("admin.health", {}).then(paint).catch(function (e) { box.textContent = L("تعذّر التحميل: ", "Couldn't load: ") + ((e && e.message) || e); });
@@ -1704,8 +1704,8 @@
   function relaySheet() { sheet(L("الوسيط الأساسيّ", "Primary relay"), function (body) { body.parentNode.parentNode.style.direction = isAr() ? "rtl" : "ltr"; body.appendChild(relaySwitchCard()); }); }
   function relaySwitchCard() {
     var card = el("div", "margin:0 14px 12px;padding:12px;border-radius:14px;background:rgba(47,128,200,.12);border:1px solid " + LINE);
-    card.appendChild(el("div", "font:800 14px system-ui;margin-bottom:2px", L("الوسيط الأساسيّ للمكالمات", "Primary call relay")));
-    var st = el("div", "font:600 12px system-ui;color:" + MUTED + ";margin-bottom:8px", L("جارٍ التحميل…", "Loading…"));
+    card.appendChild(el("div", "font:800 14px var(--sawa-font,system-ui);margin-bottom:2px", L("الوسيط الأساسيّ للمكالمات", "Primary call relay")));
+    var st = el("div", "font:600 12px var(--sawa-font,system-ui);color:" + MUTED + ";margin-bottom:8px", L("جارٍ التحميل…", "Loading…"));
     card.appendChild(st);
     var row = el("div", "display:flex;gap:6px");
     card.appendChild(row);
@@ -1716,7 +1716,7 @@
       st.textContent = L("الآن: ", "Now: ") + (eff === "cf" ? "Cloudflare" : "Metered") + (r.primary ? "" : L(" (إعداد الخادم)", " (server default)")) + L(" · والآخر احتياطيّ إن فشل", " · the other is the fallback") + (admOk(r) ? "" : L(" · 👁 مشاهدة فقط", " · 👁 View only"));
       opts.forEach(function (o) {
         var on = (r.primary || "") === o[0], off = (o[0] === "m" && r.has && !r.has.m) || (o[0] === "cf" && r.has && !r.has.cf);
-        var b = el("button", "flex:1;padding:9px 4px;border-radius:10px;border:1px solid " + (on ? PRI : LINE) + ";background:" + (on ? PRI : "transparent") + ";color:#fff;font:800 12.5px system-ui;opacity:" + (off ? ".4" : "1"), o[1]);
+        var b = el("button", "flex:1;padding:9px 4px;border-radius:10px;border:1px solid " + (on ? PRI : LINE) + ";background:" + (on ? PRI : "transparent") + ";color:#fff;font:800 12.5px var(--sawa-font,system-ui);opacity:" + (off ? ".4" : "1"), o[1]);
         b.disabled = off || !admOk(r);   // C195
         b.onclick = function () {
           if (on || !admOk(r)) return;
@@ -1742,7 +1742,7 @@
       sheet(L("تقييمات المكالمات", "Call ratings") + " (" + items.length + ")", function (body) {
         body.parentNode.parentNode.style.direction = isAr() ? "rtl" : "ltr";
         body.appendChild(relaySwitchCard());   // C175
-        if (!items.length) { body.appendChild(el("div", "padding:24px;text-align:center;color:" + MUTED + ";font:600 13px system-ui", L("لا تقييمات بعد — أرسل لمختبِريك الرابط sawaaap.com/?qa=1", "No ratings yet — send testers sawaaap.com/?qa=1"))); return; }
+        if (!items.length) { body.appendChild(el("div", "padding:24px;text-align:center;color:" + MUTED + ";font:600 13px var(--sawa-font,system-ui)", L("لا تقييمات بعد — أرسل لمختبِريك الرابط sawaaap.com/?qa=1", "No ratings yet — send testers sawaaap.com/?qa=1"))); return; }
         var groups = {};
         // C166: والوسيط في المفتاح — مقارنة Metered بـCloudflare (والمباشر)
         var via = function (x) { return x.route === "relay" ? (/metered/i.test(x.relay || "") ? String(x.relay).slice(0, 24) : /cloudflare/i.test(x.relay || "") ? "Cloudflare" : "relay ?") : x.route === "direct" ? "direct" : (x.route || "?"); };
@@ -1753,22 +1753,22 @@
           var tc = {}; g.forEach(function (x) { (x.tags || []).forEach(function (t) { tc[t] = (tc[t] || 0) + 1; }); });
           var tagTx = QA_TAGS.filter(function (t) { return tc[t[0]]; }).map(function (t) { return L(t[1], t[2]) + " " + Math.round(tc[t[0]] * 100 / g.length) + "%"; }).join(" · ");
           var card = el("div", "margin:0 14px 10px;padding:12px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid " + LINE);
-          card.appendChild(el("div", "font:800 14px system-ui;direction:ltr;text-align:start", k));
+          card.appendChild(el("div", "font:800 14px var(--sawa-font,system-ui);direction:ltr;text-align:start", k));
           var sr = el("div", "display:flex;align-items:baseline;gap:10px;margin-top:4px");
-          sr.appendChild(el("span", "font:800 22px system-ui;direction:ltr", "⭐ " + avg.toFixed(1) + " / 5"));
-          sr.appendChild(el("span", "font:700 12px system-ui;color:" + MUTED, g.length + " " + L("مكالمة", "calls")));
+          sr.appendChild(el("span", "font:800 22px var(--sawa-font,system-ui);direction:ltr", "⭐ " + avg.toFixed(1) + " / 5"));
+          sr.appendChild(el("span", "font:700 12px var(--sawa-font,system-ui);color:" + MUTED, g.length + " " + L("مكالمة", "calls")));
           card.appendChild(sr);
-          card.appendChild(el("div", "font:600 12px system-ui;color:" + MUTED + ";margin-top:4px;direction:ltr;text-align:start",
+          card.appendChild(el("div", "font:600 12px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:4px;direction:ltr;text-align:start",
             "RTT " + med(g.map(function (x) { return x.rtt && x.rtt.med; })) + "ms · buffer " + med(g.map(function (x) { return x.jb && x.jb.med; })) + "ms · loss " + med(g.map(function (x) { return x.loss && x.loss.med; })) + "%"));
-          if (tagTx) card.appendChild(el("div", "font:700 12px system-ui;color:#fbbf24;margin-top:4px", tagTx));
+          if (tagTx) card.appendChild(el("div", "font:700 12px var(--sawa-font,system-ui);color:#fbbf24;margin-top:4px", tagTx));
           body.appendChild(card);
         });
-        body.appendChild(el("div", "padding:6px 18px;font:800 13px system-ui", L("آخر التقييمات", "Latest ratings")));
+        body.appendChild(el("div", "padding:6px 18px;font:800 13px var(--sawa-font,system-ui)", L("آخر التقييمات", "Latest ratings")));
         items.slice(0, 60).forEach(function (x) {
           var d = new Date(x.ts || 0), when = d.getDate() + "/" + (d.getMonth() + 1) + " " + d.getHours() + ":" + pad2(d.getMinutes());
           var line = "⭐".repeat(x.stars || 0) + "  " + (x.engine === "native" ? "⚡ " : "") + (x.kind || "") + " · " + fmt(x.secs || 0) + (x.out === "spk" ? " · 🔊" : x.out === "ear" ? " · 👂" : "") +
             " · " + (x.route === "relay" ? "relay " + (x.relay || "") : x.route || "") + (x.rtt ? " · RTT " + x.rtt.med : "") + (x.jb ? " · buf " + x.jb.med : "") + (x.loss ? " · loss " + x.loss.med + "%" : "");
-          var r0 = el("div", "padding:8px 16px;border-top:1px solid " + LINE + ";font:600 12px system-ui;color:#e2e8f0");
+          var r0 = el("div", "padding:8px 16px;border-top:1px solid " + LINE + ";font:600 12px var(--sawa-font,system-ui);color:#e2e8f0");
           r0.appendChild(el("div", "direction:ltr;text-align:start", line));
           r0.appendChild(el("div", "color:" + MUTED + ";margin-top:2px", when + " · " + (x.byName || "") + " · " + (x.model || x.plat || "") + " · " + (x.ver || "") +
             ((x.tags || []).length ? " · " + x.tags.map(function (t) { var q = QA_TAGS.filter(function (z) { return z[0] === t; })[0]; return q ? L(q[1], q[2]) : t; }).join("، ") : "") + (x.note ? " · «" + x.note + "»" : "")));
@@ -2267,26 +2267,26 @@
   // ---------- الواجهة ----------
   function gBuild() {
     if (gui.root) return gui;
-    var r = el("div", "position:fixed;inset:0;z-index:2147483000;background:linear-gradient(160deg,#10324a,#071320);color:#fff;display:none;flex-direction:column;font-family:system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;overflow:hidden;user-select:none;-webkit-user-select:none");
+    var r = el("div", "position:fixed;inset:0;z-index:2147483000;background:linear-gradient(160deg,#173049,#111827);color:#fff;display:none;flex-direction:column;font-family:var(--sawa-font,system-ui),-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;overflow:hidden;user-select:none;-webkit-user-select:none");
     r.id = "sawa-gcall";
     var top = el("div", "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 10px");
     var hd = el("div", "min-width:0");
-    var title = el("div", "font:800 17px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
-    var sub = el("div", "font:600 12px system-ui;color:#a9c6dc;margin-top:2px");
+    var title = el("div", "font:800 17px var(--sawa-font,system-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
+    var sub = el("div", "font:600 12px var(--sawa-font,system-ui);color:#a9c6dc;margin-top:2px");
     hd.appendChild(title); hd.appendChild(sub);
-    var minBtn = el("button", "background:rgba(255,255,255,.14);border:0;color:#fff;border-radius:18px;padding:7px 12px;font:600 12px system-ui;cursor:pointer;flex-shrink:0", L("تصغير ▾", "Minimize ▾"));
+    var minBtn = el("button", "background:rgba(255,255,255,.14);border:0;color:#fff;border-radius:18px;padding:7px 12px;font:600 12px var(--sawa-font,system-ui);cursor:pointer;flex-shrink:0", L("تصغير ▾", "Minimize ▾"));
     minBtn.onclick = function () { gMinimize(true); };
     top.appendChild(hd); top.appendChild(minBtn);
     var reqs = el("div", "display:flex;flex-direction:column;gap:6px;padding:0 12px");
     var grid = el("div", "flex:1;min-height:0;display:grid;gap:8px;padding:8px 12px;align-content:center");
     var center = el("div", "flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:0 20px");
-    var av = el("div", "width:104px;height:104px;border-radius:50%;background:#2d6a9a;display:flex;align-items:center;justify-content:center;font:800 40px system-ui;box-shadow:0 0 0 10px rgba(45,106,154,.25)");
-    var cName = el("div", "font:800 22px system-ui"), cSt = el("div", "font:600 14px system-ui;color:#bcd6ea"), cWho = el("div", "font:500 12px system-ui;color:#8fb0c8");
+    var av = el("div", "width:104px;height:104px;border-radius:50%;background:#0369a1;display:flex;align-items:center;justify-content:center;font:800 40px var(--sawa-font,system-ui);box-shadow:0 0 0 10px rgba(45,106,154,.25)");
+    var cName = el("div", "font:800 22px var(--sawa-font,system-ui)"), cSt = el("div", "font:600 14px var(--sawa-font,system-ui);color:#bfe0f5"), cWho = el("div", "font:500 12px var(--sawa-font,system-ui);color:#8fb0c8");
     center.appendChild(av); center.appendChild(cName); center.appendChild(cSt); center.appendChild(cWho);
     var bar = el("div", "display:flex;justify-content:space-evenly;align-items:flex-start;padding:14px 8px calc(env(safe-area-inset-bottom,0px) + 22px);background:linear-gradient(transparent,rgba(0,0,0,.5))");
     var audios = el("div", "display:none");
     r.appendChild(top); r.appendChild(reqs); r.appendChild(grid); r.appendChild(center); r.appendChild(bar); r.appendChild(audios);
-    var pill = el("button", "position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:8px;background:#2d6a9a;color:#fff;border:0;border-radius:22px;padding:9px 16px;font:700 13px system-ui;box-shadow:0 4px 18px rgba(0,0,0,.35);direction:rtl;cursor:pointer");
+    var pill = el("button", "position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:8px;background:#0369a1;color:#fff;border:0;border-radius:22px;padding:9px 16px;font:700 13px var(--sawa-font,system-ui);box-shadow:0 4px 18px rgba(0,0,0,.35);direction:rtl;cursor:pointer");
     pill.onclick = function () { gMinimize(false); };
     document.body.appendChild(r); document.body.appendChild(pill);
     gui = { root: r, title: title, sub: sub, minBtn: minBtn, reqs: reqs, grid: grid, center: center, av: av, cName: cName, cSt: cSt, cWho: cWho, bar: bar, audios: audios, pill: pill, tiles: {}, min: false };
@@ -2343,11 +2343,11 @@
       return;
     }
     if (g.local) {
-      var mute = btn(g.muted ? "🔇" : "🎤", g.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), g.muted ? "#e8f5ee" : "rgba(255,255,255,.16)", gToggleMute);
+      var mute = btn(g.muted ? "🔇" : "🎤", g.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), g.muted ? "#e6f5ec" : "rgba(255,255,255,.16)", gToggleMute);
       if (g.muted) mute._b.style.color = "#123";
       bar.appendChild(mute);
       if (g.type === "video" && g.local.getVideoTracks().length) {
-        bar.appendChild(btn(g.camOff ? "🚫" : "📷", g.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), g.camOff ? "#e8f5ee" : "rgba(255,255,255,.16)", gToggleCam));
+        bar.appendChild(btn(g.camOff ? "🚫" : "📷", g.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), g.camOff ? "#e6f5ec" : "rgba(255,255,255,.16)", gToggleCam));
         bar.appendChild(btn("🔄", L("تبديل", "Flip"), "rgba(255,255,255,.16)", gSwitchCam));
       }
     }
@@ -2360,9 +2360,9 @@
     gui.reqs.innerHTML = "";
     Object.keys(g.reqs || {}).forEach(function (u) {
       var row = el("div", "display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.12);border-radius:14px;padding:8px 10px");
-      row.appendChild(el("span", "flex:1;font:700 13px system-ui", ((g.reqs[u] && g.reqs[u].name) || nameOf(u) || L("عضو", "Member")) + " " + L("يطلب الانضمام", "wants to join")));
-      var ok = el("button", "background:#21a366;color:#fff;border:0;border-radius:10px;padding:6px 10px;font:700 12px system-ui", L("قبول", "Admit"));
-      var no = el("button", "background:#d64545;color:#fff;border:0;border-radius:10px;padding:6px 10px;font:700 12px system-ui", L("رفض", "Deny"));
+      row.appendChild(el("span", "flex:1;font:700 13px var(--sawa-font,system-ui)", ((g.reqs[u] && g.reqs[u].name) || nameOf(u) || L("عضو", "Member")) + " " + L("يطلب الانضمام", "wants to join")));
+      var ok = el("button", "background:#21a366;color:#fff;border:0;border-radius:10px;padding:6px 10px;font:700 12px var(--sawa-font,system-ui)", L("قبول", "Admit"));
+      var no = el("button", "background:#d64545;color:#fff;border:0;border-radius:10px;padding:6px 10px;font:700 12px var(--sawa-font,system-ui)", L("رفض", "Deny"));
       ok.onclick = function () { gAdmit(u, true); }; no.onclick = function () { gAdmit(u, false); };
       row.appendChild(ok); row.appendChild(no); gui.reqs.appendChild(row);
     });
@@ -2370,11 +2370,11 @@
   function gTileEl(uid) {
     var t = gui.tiles[uid];
     if (t) return t;
-    var box = el("div", "position:relative;border-radius:16px;overflow:hidden;background:#13283a;min-height:0;display:flex;align-items:center;justify-content:center");
+    var box = el("div", "position:relative;border-radius:16px;overflow:hidden;background:#1e293b;min-height:0;display:flex;align-items:center;justify-content:center");
     var v = el("video", "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none");
     v.autoplay = true; v.playsInline = true; v.muted = true; v.setAttribute("playsinline", "");
-    var av = el("div", "width:64px;height:64px;border-radius:50%;background:#2d6a9a;display:flex;align-items:center;justify-content:center;font:800 26px system-ui");
-    var lab = el("div", "position:absolute;bottom:6px;right:8px;left:8px;font:700 12px system-ui;text-shadow:0 1px 3px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
+    var av = el("div", "width:64px;height:64px;border-radius:50%;background:#0369a1;display:flex;align-items:center;justify-content:center;font:800 26px var(--sawa-font,system-ui)");
+    var lab = el("div", "position:absolute;bottom:6px;right:8px;left:8px;font:700 12px var(--sawa-font,system-ui);text-shadow:0 1px 3px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
     box.appendChild(v); box.appendChild(av); box.appendChild(lab);
     var a = el("audio", ""); a.autoplay = true;
     gui.audios.appendChild(a);
@@ -2426,22 +2426,22 @@
     else if (gc) Object.keys(gc.members || {}).forEach(function (u) { inCall[u] = 1; });
     var list = [];
     try { list = C().contacts().filter(function (c) { return c.uid && c.uid !== me && !inCall[c.uid]; }); } catch (e) {}
-    var ov = el("div", "position:fixed;inset:0;z-index:2147483002;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;direction:rtl;font-family:system-ui");
-    var box = el("div", "background:#1b2633;color:#fff;border-radius:20px;width:min(92vw,380px);max-height:70vh;display:flex;flex-direction:column;overflow:hidden");
-    box.appendChild(el("div", "padding:16px 16px 4px;font:800 15px system-ui;text-align:center", L("إضافة شخص للمكالمة", "Add someone to the call")));
-    box.appendChild(el("div", "padding:0 16px 10px;font:500 11px system-ui;color:#9fb3c6;text-align:center", L("يُضاف دون قطع المكالمة", "They'll join without ending the call")));
+    var ov = el("div", "position:fixed;inset:0;z-index:2147483002;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;direction:rtl;font-family:var(--sawa-font,system-ui)");
+    var box = el("div", "background:#1e293b;color:#fff;border-radius:20px;width:min(92vw,380px);max-height:70vh;display:flex;flex-direction:column;overflow:hidden");
+    box.appendChild(el("div", "padding:16px 16px 4px;font:800 15px var(--sawa-font,system-ui);text-align:center", L("إضافة شخص للمكالمة", "Add someone to the call")));
+    box.appendChild(el("div", "padding:0 16px 10px;font:500 11px var(--sawa-font,system-ui);color:#9fb3c6;text-align:center", L("يُضاف دون قطع المكالمة", "They'll join without ending the call")));
     var sc = el("div", "flex:1;overflow-y:auto;padding:0 10px");
-    if (!list.length) sc.appendChild(el("div", "padding:20px;text-align:center;color:#8aa0b4;font:600 12px system-ui", L("لا أحد آخر في جهات اتّصالك", "No other contacts")));
+    if (!list.length) sc.appendChild(el("div", "padding:20px;text-align:center;color:#94a3b8;font:600 12px var(--sawa-font,system-ui)", L("لا أحد آخر في جهات اتّصالك", "No other contacts")));
     list.forEach(function (c) {
-      var b = el("button", "width:100%;display:flex;align-items:center;gap:10px;padding:10px 6px;background:transparent;border:0;color:#fff;font:700 13px system-ui;text-align:right;cursor:pointer");
-      var a = el("span", "width:34px;height:34px;border-radius:50%;background:#2d6a9a;display:flex;align-items:center;justify-content:center;font:800 14px system-ui;flex-shrink:0", (c.name || "؟").charAt(0));
+      var b = el("button", "width:100%;display:flex;align-items:center;gap:10px;padding:10px 6px;background:transparent;border:0;color:#fff;font:700 13px var(--sawa-font,system-ui);text-align:right;cursor:pointer");
+      var a = el("span", "width:34px;height:34px;border-radius:50%;background:#0369a1;display:flex;align-items:center;justify-content:center;font:800 14px var(--sawa-font,system-ui);flex-shrink:0", (c.name || "؟").charAt(0));
       b.appendChild(a); b.appendChild(el("span", "flex:1", c.name || ""));
-      if (c.online) b.appendChild(el("span", "width:8px;height:8px;border-radius:50%;background:#22c55e"));
+      if (c.online) b.appendChild(el("span", "width:8px;height:8px;border-radius:50%;background:#16a34a"));
       b.onclick = function () { ov.remove(); if (target === cur) upgrade(cur, c.uid, c.name); else gAdd(c.uid, c.name); };
       sc.appendChild(b);
     });
     box.appendChild(sc);
-    var cancel = el("button", "margin:10px 14px 14px;padding:10px;border:0;border-radius:12px;background:#2a3644;color:#e2e8f0;font:700 13px system-ui", L("إلغاء", "Cancel"));
+    var cancel = el("button", "margin:10px 14px 14px;padding:10px;border:0;border-radius:12px;background:#2a3644;color:#e2e8f0;font:700 13px var(--sawa-font,system-ui)", L("إلغاء", "Cancel"));
     cancel.onclick = function () { ov.remove(); };
     box.appendChild(cancel); ov.appendChild(box);
     ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
@@ -2555,7 +2555,7 @@
   function cleanCode(c) { var m = String(c || "").toUpperCase().match(/[A-Z0-9]{8}/); return m && /^[A-HJ-NP-Z2-9]{8}$/.test(m[0]) ? m[0] : null; }
   function roomLink(code) { try { return global.location.origin + global.location.pathname.replace(/[^/]*$/, "") + "?room=" + code; } catch (e) { return "?room=" + code; } }
   var RX = ["👏", "❤️", "😂", "👍", "🤲", "🎉"];
-  var NOTE = { point: ["💬", "نقطة", "Point", "#60A5FA"], decision: ["✅", "قرار", "Decision", "#22C55E"], task: ["📌", "مهمّة", "Task", "#F59E0B"] };
+  var NOTE = { point: ["💬", "نقطة", "Point", "#60A5FA"], decision: ["✅", "قرار", "Decision", "#16A34A"], task: ["📌", "مهمّة", "Task", "#F59E0B"] };
 
   function rNew(o) {
     o.peers = {}; o.members = {}; o.offs = []; o.timers = {}; o.sess = rid(8); o.mic = true; o.camOn = false; o.camTrack = null; o.facing = "user";
@@ -2658,9 +2658,9 @@
       var why = rStuckWhy(r);
       rui.cS.textContent = why.text;
       var row = el("div", "display:flex;gap:8px;justify-content:center;margin-top:10px");
-      var again = el("button", "padding:9px 16px;border:0;border-radius:12px;background:" + PRI + ";color:#fff;font:800 13px system-ui", L("إعادة المحاولة", "Try again"));
+      var again = el("button", "padding:9px 16px;border:0;border-radius:12px;background:" + PRI + ";color:#fff;font:800 13px var(--sawa-font,system-ui)", L("إعادة المحاولة", "Try again"));
       again.onclick = function () { r.silentRetry = true; rLeave(r, "retry"); rm = null; dbNudge("manual"); setTimeout(function () { roomJoin(code, Object.assign({}, opts, { tries: 2, create: false, title: r.title })); }, 600); };
-      var cp = el("button", "padding:9px 12px;border:0;border-radius:12px;background:" + LINE + ";color:#fff;font:800 13px system-ui", L("نسخ التشخيص", "Copy"));
+      var cp = el("button", "padding:9px 12px;border:0;border-radius:12px;background:" + LINE + ";color:#fff;font:800 13px var(--sawa-font,system-ui)", L("نسخ التشخيص", "Copy"));
       cp.onclick = function () { var t = "Sawa join diag: step=" + r.step + " key=" + why.key + " t=" + (Date.now() - r.t0) + "ms db=" + dbUp + " rtc " + VERSION; try { navigator.clipboard.writeText(t).then(function () { toast(L("نُسخ ✓", "Copied ✓")); }, function () { toast(t); }); } catch (e) { toast(t); } };
       row.appendChild(again); row.appendChild(cp); rui.cS.appendChild(row);
     }, r.tries ? 12000 : 25000);   // بعد محاولةٍ تلقائيّة فاشلة لا ننتظر طويلاً
@@ -2677,11 +2677,11 @@
     return new Promise(function (resolve, reject) {
       var closed = false;
       var close = sheet(L("رمز الدخول", "Room PIN"), function (body, cl) {
-        body.appendChild(el("div", "padding:0 16px 8px;color:" + MUTED + ";font:600 12px system-ui;text-align:center", L("هذه الغرفة محميّة برمزٍ من المضيف", "This room is protected by a PIN from the host")));
-        var inp = el("input", "display:block;margin:4px 16px 10px;width:calc(100% - 32px);box-sizing:border-box;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:12px;padding:11px;font:800 20px system-ui;letter-spacing:6px;text-align:center;direction:ltr");
+        body.appendChild(el("div", "padding:0 16px 8px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", L("هذه الغرفة محميّة برمزٍ من المضيف", "This room is protected by a PIN from the host")));
+        var inp = el("input", "display:block;margin:4px 16px 10px;width:calc(100% - 32px);box-sizing:border-box;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:12px;padding:11px;font:800 20px var(--sawa-font,system-ui);letter-spacing:6px;text-align:center;direction:ltr");
         inp.placeholder = "••••"; inp.inputMode = "numeric"; inp.maxLength = 6;
         body.appendChild(inp);
-        var go = el("button", "margin:0 16px 6px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px system-ui", L("دخول", "Enter"));
+        var go = el("button", "margin:0 16px 6px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px var(--sawa-font,system-ui)", L("دخول", "Enter"));
         go.onclick = function () {
           var v = String(inp.value || "").replace(/\D/g, "");
           if (v.length < 4) { toast(L("الرمز ٤ إلى ٦ أرقام", "PIN is 4–6 digits")); return; }
@@ -3266,8 +3266,8 @@
     if (h.length >= 3 && h.slice(-3).every(function (x) { return x === 0; }) && !r.low && !r.lowSuggested) { r.lowSuggested = true; toast(L("الشبكة سيّئة — جرّب «بيانات قليلة» من ⋯", "Bad network — try low-data mode from ⋯")); }
     rPaintHead(r);
   }
-  var QBARS = ["▁", "▃", "▅", "▇"], QCOL = ["#ef4444", "#f59e0b", "#a3e635", "#22c55e"];
-  function qTag(q) { if (q == null) return null; var t = el("span", "font:800 11px system-ui;letter-spacing:-1px;color:" + QCOL[q] + ";background:#00000055;border-radius:8px;padding:1px 5px", QBARS.slice(0, q + 1).join("") + "  "); t.title = [L("سيّئة", "bad"), L("ضعيفة", "weak"), L("جيّدة", "good"), L("ممتازة", "excellent")][q]; return t; }
+  var QBARS = ["▁", "▃", "▅", "▇"], QCOL = ["#ef4444", "#f59e0b", "#a3e635", "#16a34a"];
+  function qTag(q) { if (q == null) return null; var t = el("span", "font:800 11px var(--sawa-font,system-ui);letter-spacing:-1px;color:" + QCOL[q] + ";background:#00000055;border-radius:8px;padding:1px 5px", QBARS.slice(0, q + 1).join("") + "  "); t.title = [L("سيّئة", "bad"), L("ضعيفة", "weak"), L("جيّدة", "good"), L("ممتازة", "excellent")][q]; return t; }
   // ---------- المتحدّث النشط: مستوى الصوت الحقيقيّ ----------
   function rLevelWatch(r, uid, stream) {
     var p = uid === "__me" ? r : r.peers[uid];
@@ -3345,8 +3345,8 @@
     if (r.low) { toast(L("أوقف «بيانات قليلة» أوّلاً", "Turn off low-data mode first")); return; }
     if (r.meta.audioOnly && !amHost(r)) { toast(L("الغرفة صوتيّة فقط بقرار المضيف", "Audio-only room (host setting)")); return; }
     sheet(L("مشاركة الشاشة؟", "Share your screen?"), function (body, close) {
-      body.appendChild(el("div", "padding:4px 18px 12px;font:500 13px/1.8 system-ui;color:#cbd5e1;text-align:center", L("سيرى كلُّ من في الغرفة ما على شاشتك — ومنه الإشعارات والرسائل التي تظهر أثناءها. أغلق ما لا تريد عرضه قبل البدء.", "Everyone in the room will see your screen — including notifications. Close anything private first.")));
-      if (scrNative()) body.appendChild(el("div", "padding:0 18px 12px;font:500 12.5px/1.8 system-ui;color:#94a3b8;text-align:center", L("سيطلب الهاتف إذن «البدء» — بعدها انتقل إلى أيّ تطبيقٍ تريد عرضه، والغرفة والصوت يستمرّان. للإيقاف: إشعار «تعرض شاشتك» ← «إيقاف»، أو الشريط الأحمر هنا.", "Your phone will ask to start — then switch to any app; the room keeps going. To stop: the notification’s Stop button, or the red bar here.")));
+      body.appendChild(el("div", "padding:4px 18px 12px;font:500 13px/1.8 var(--sawa-font,system-ui);color:#cbd5e1;text-align:center", L("سيرى كلُّ من في الغرفة ما على شاشتك — ومنه الإشعارات والرسائل التي تظهر أثناءها. أغلق ما لا تريد عرضه قبل البدء.", "Everyone in the room will see your screen — including notifications. Close anything private first.")));
+      if (scrNative()) body.appendChild(el("div", "padding:0 18px 12px;font:500 12.5px/1.8 var(--sawa-font,system-ui);color:#94a3b8;text-align:center", L("سيطلب الهاتف إذن «البدء» — بعدها انتقل إلى أيّ تطبيقٍ تريد عرضه، والغرفة والصوت يستمرّان. للإيقاف: إشعار «تعرض شاشتك» ← «إيقاف»، أو الشريط الأحمر هنا.", "Your phone will ask to start — then switch to any app; the room keeps going. To stop: the notification’s Stop button, or the red bar here.")));
       item(body, "🖥", L("ابدأ مشاركة الشاشة", "Start sharing"), function () { close(); rScreenStart(r); });
       item(body, "✕", L("إلغاء", "Cancel"), function () { close(); });
     });
@@ -3405,10 +3405,10 @@
     Object.keys(want).forEach(function (k) {
       var w = want[k], t = rui.tiles[k];
       if (!t) {
-        var box = el("div", "position:relative;border-radius:16px;overflow:hidden;background:#000;min-height:0;display:flex;align-items:center;justify-content:center;border:2px solid #2F80C8");
+        var box = el("div", "position:relative;border-radius:16px;overflow:hidden;background:#000;min-height:0;display:flex;align-items:center;justify-content:center;border:2px solid #2774BA");
         var v = el("video", "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000"); v.autoplay = true; v.playsInline = true; v.muted = true; v.setAttribute("playsinline", "");
-        var lab = el("div", "position:absolute;bottom:8px;right:8px;max-width:70%;background:rgba(0,0,0,.55);color:#fff;border-radius:14px;padding:5px 10px;font:700 12px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
-        var fs = el("button", "position:absolute;bottom:8px;left:8px;width:38px;height:38px;border-radius:50%;border:0;background:rgba(255,255,255,.92);color:#111;font:800 17px system-ui;cursor:pointer", "⛶");
+        var lab = el("div", "position:absolute;bottom:8px;right:8px;max-width:70%;background:rgba(0,0,0,.55);color:#fff;border-radius:14px;padding:5px 10px;font:700 12px var(--sawa-font,system-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
+        var fs = el("button", "position:absolute;bottom:8px;left:8px;width:38px;height:38px;border-radius:50%;border:0;background:rgba(255,255,255,.92);color:#111;font:800 17px var(--sawa-font,system-ui);cursor:pointer", "⛶");
         fs.setAttribute("aria-label", L("ملء الشاشة", "Full screen"));
         fs.onclick = function (e) { e.stopPropagation(); try { if (document.fullscreenElement) document.exitFullscreen(); else (box.requestFullscreen || box.webkitRequestFullscreen).call(box); } catch (x) {} };
         box.appendChild(v); box.appendChild(lab); box.appendChild(fs);
@@ -3423,7 +3423,7 @@
   function rScrBar(r) {
     if (rui.scrBar) { try { rui.scrBar.remove(); } catch (e) {} rui.scrBar = null; }
     if (!r || !r.scr || !rui.root) return;
-    var b = el("button", "position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 112px);left:50%;transform:translateX(-50%);z-index:9;border:0;border-radius:20px;padding:8px 16px;background:#dc2626;color:#fff;font:800 13px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.4);cursor:pointer", L("🖥 تعرض شاشتك · إيقاف", "🖥 Presenting · Stop"));
+    var b = el("button", "position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 112px);left:50%;transform:translateX(-50%);z-index:9;border:0;border-radius:20px;padding:8px 16px;background:#ef4444;color:#fff;font:800 13px var(--sawa-font,system-ui);box-shadow:0 4px 16px rgba(0,0,0,.4);cursor:pointer", L("🖥 تعرض شاشتك · إيقاف", "🖥 Presenting · Stop"));
     b.onclick = function (e) { e.stopPropagation(); rScreenStop(r); };
     rui.root.appendChild(b); rui.scrBar = b;
   }
@@ -3514,10 +3514,10 @@
     var v = lastRoom();
     if (rejoinEl) { try { rejoinEl.remove(); } catch (e) {} rejoinEl = null; }
     if (!v || rm || !global.document || !document.body) return;
-    var w = el("div", "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 86px);z-index:2147482999;display:flex;align-items:center;gap:6px;background:#1E3A63;color:#fff;border-radius:24px;padding:6px 6px 6px 8px;box-shadow:0 8px 24px rgba(0,0,0,.3);direction:rtl;font-family:system-ui;max-width:calc(100vw - 32px)");
-    var go = el("button", "border:0;background:#2F80C8;color:#fff;border-radius:18px;padding:8px 14px;font:800 13px system-ui;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62vw", "🎥 " + L("الرجوع إلى «" + (v.title || L("الغرفة", "room")) + "»", "Back to «" + (v.title || "room") + "»"));
+    var w = el("div", "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 86px);z-index:2147482999;display:flex;align-items:center;gap:6px;background:#1E3A63;color:#fff;border-radius:24px;padding:6px 6px 6px 8px;box-shadow:0 8px 24px rgba(0,0,0,.3);direction:rtl;font-family:var(--sawa-font,system-ui);max-width:calc(100vw - 32px)");
+    var go = el("button", "border:0;background:#2774BA;color:#fff;border-radius:18px;padding:8px 14px;font:800 13px var(--sawa-font,system-ui);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62vw", "🎥 " + L("الرجوع إلى «" + (v.title || L("الغرفة", "room")) + "»", "Back to «" + (v.title || "room") + "»"));
     go.onclick = function () { lastRoomSet(null); rejoinPill(); roomJoin(v.code); };
-    var x = el("button", "border:0;background:rgba(255,255,255,.14);color:#fff;border-radius:50%;width:30px;height:30px;font:700 14px system-ui;cursor:pointer;flex-shrink:0", "✕");
+    var x = el("button", "border:0;background:rgba(255,255,255,.14);color:#fff;border-radius:50%;width:30px;height:30px;font:700 14px var(--sawa-font,system-ui);cursor:pointer;flex-shrink:0", "✕");
     x.setAttribute("aria-label", L("إخفاء", "Dismiss"));
     x.onclick = function () { lastRoomSet(null); rejoinPill(); };
     w.appendChild(go); w.appendChild(x); document.body.appendChild(w); rejoinEl = w;
@@ -3634,7 +3634,7 @@
   }
 
   // ---------- الواجهة ----------
-  var DARK = "#0b1220", CARD = "#151f36", LINE = "#26324a", MUTED = "#94a3b8", PRI = "#2F80C8", GRAD = "linear-gradient(135deg,#3b8fd6 0%,#2F80C8 45%,#1E3A63 100%)";
+  var DARK = "#111827", CARD = "#111827", LINE = "#1e293b", MUTED = "#94a3b8", PRI = "#2774BA", GRAD = "linear-gradient(135deg,#3b8fd6 0%,#2774BA 45%,#1E3A63 100%)";
   var AVG = [["#60a5fa", "#2563eb"], ["#34d399", "#0d9488"], ["#fbbf24", "#f97316"], ["#c084fc", "#7c3aed"], ["#f472b6", "#db2777"], ["#22d3ee", "#0e7490"]];
   function avGrad(k) { var h = 0, x = String(k || ""); for (var i = 0; i < x.length; i++) h = (h * 31 + x.charCodeAt(i)) >>> 0; var g = AVG[h % AVG.length]; return "linear-gradient(135deg," + g[0] + "," + g[1] + ")"; }
   function rb(icon, label, onclick, opts) {
@@ -3643,27 +3643,27 @@
     var b = el("button", "width:52px;height:52px;border-radius:18px;border:0;font-size:21px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;box-shadow:0 6px 16px rgba(0,0,0,.25);transition:transform .12s;background:" + (opts.bg || LINE), icon);
     b.onpointerdown = function () { b.style.transform = "scale(.94)"; }; b.onpointerup = b.onpointerleave = function () { b.style.transform = ""; };
     b.setAttribute("aria-label", label); b.onclick = function (ev) { ev.stopPropagation(); onclick(); };
-    w.appendChild(b); w.appendChild(el("span", "font:600 10px system-ui;color:#cbd5e1;white-space:nowrap", label));
-    if (opts.badge) w.appendChild(el("span", "position:absolute;top:-2px;left:4px;min-width:18px;height:18px;border-radius:9px;background:#ef4444;color:#fff;font:800 10px system-ui;display:flex;align-items:center;justify-content:center;padding:0 4px", String(opts.badge)));
+    w.appendChild(b); w.appendChild(el("span", "font:600 10px var(--sawa-font,system-ui);color:#cbd5e1;white-space:nowrap", label));
+    if (opts.badge) w.appendChild(el("span", "position:absolute;top:-2px;left:4px;min-width:18px;height:18px;border-radius:9px;background:#ef4444;color:#fff;font:800 10px var(--sawa-font,system-ui);display:flex;align-items:center;justify-content:center;padding:0 4px", String(opts.badge)));
     w._b = b; return w;
   }
   function rBuild() {
     if (rui.root) return rui;
-    var root = el("div", "position:fixed;inset:0;z-index:2147483000;background:" + DARK + ";color:#fff;display:none;flex-direction:column;font-family:system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;overflow:hidden");
+    var root = el("div", "position:fixed;inset:0;z-index:2147483000;background:" + DARK + ";color:#fff;display:none;flex-direction:column;font-family:var(--sawa-font,system-ui),-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;overflow:hidden");
     root.id = "sawa-room";
     var head = el("div", "display:flex;align-items:center;gap:8px;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 12px;background:" + GRAD + ";border-radius:0 0 24px 24px;box-shadow:0 8px 24px rgba(0,0,0,.3)");
     var hd = el("div", "flex:1;min-width:0");
-    var title = el("div", "font:800 16px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"), sub = el("div", "font:600 11px system-ui;color:#ffffffcc");
+    var title = el("div", "font:800 16px var(--sawa-font,system-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"), sub = el("div", "font:600 11px var(--sawa-font,system-ui);color:#ffffffcc");
     hd.appendChild(title); hd.appendChild(sub);
     var hostBtns = el("div", "display:flex;gap:6px");
-    var minB = el("button", "background:rgba(255,255,255,.18);border:0;color:#fff;border-radius:14px;padding:7px 11px;font:700 11px system-ui", L("تصغير ▾", "Minimize ▾"));
+    var minB = el("button", "background:rgba(255,255,255,.18);border:0;color:#fff;border-radius:14px;padding:7px 11px;font:700 11px var(--sawa-font,system-ui)", L("تصغير ▾", "Minimize ▾"));
     minB.onclick = function () { rMinimize(true); };
-    var viewB = el("button", "background:rgba(255,255,255,.18);border:0;color:#fff;border-radius:14px;padding:6px 11px;font:700 15px system-ui", "▦");
+    var viewB = el("button", "background:rgba(255,255,255,.18);border:0;color:#fff;border-radius:14px;padding:6px 11px;font:700 15px var(--sawa-font,system-ui)", "▦");
     viewB.setAttribute("aria-label", L("طريقة العرض", "View")); viewB.onclick = function () { rViewToggle(rm); };
     head.appendChild(hd); head.appendChild(hostBtns); head.appendChild(viewB); head.appendChild(minB);
     var link = el("div", "display:flex;align-items:center;gap:6px;margin:10px 12px 0;padding:7px 8px 7px 12px;border-radius:16px;background:" + CARD + ";box-shadow:0 4px 14px rgba(0,0,0,.2)");
-    var linkTx = el("div", "flex:1;min-width:0;font:700 12px system-ui;direction:ltr;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cbd5e1");
-    var pillB = function (t) { return el("button", "background:" + LINE + ";border:0;color:#fff;border-radius:12px;padding:7px 10px;font:700 11px system-ui", t); };
+    var linkTx = el("div", "flex:1;min-width:0;font:700 12px var(--sawa-font,system-ui);direction:ltr;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cbd5e1");
+    var pillB = function (t) { return el("button", "background:" + LINE + ";border:0;color:#fff;border-radius:12px;padding:7px 10px;font:700 11px var(--sawa-font,system-ui)", t); };
     var cp = pillB(L("نسخ", "Copy")), sh = pillB(L("مشاركة", "Share")), qr = pillB("QR");
     sh.style.background = PRI;
     cp.onclick = function () { rCopyLink(); }; sh.onclick = function () { rShareLink(); }; qr.onclick = function () { rShowQr(); };
@@ -3672,14 +3672,14 @@
     var grid = el("div", "flex:1;min-height:0;display:grid;gap:10px;padding:10px 12px;align-content:center");
     var center = el("div", "flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:0 24px");
     var cIcon = el("div", "width:92px;height:92px;border-radius:30px;background:" + GRAD + ";box-shadow:0 10px 30px rgba(47,128,200,.35);display:flex;align-items:center;justify-content:center;font-size:40px", "🎥");
-    var cT = el("div", "font:800 18px system-ui"), cS = el("div", "font:600 13px system-ui;color:" + MUTED);
+    var cT = el("div", "font:800 18px var(--sawa-font,system-ui)"), cS = el("div", "font:600 13px var(--sawa-font,system-ui);color:" + MUTED);
     center.appendChild(cIcon); center.appendChild(cT); center.appendChild(cS);
     var panel = el("div", "display:none;flex-direction:column;margin:0 12px 6px;border-radius:20px;background:" + CARD + ";box-shadow:0 6px 18px rgba(0,0,0,.25);max-height:45%;min-height:0;overflow:hidden");
     var bar = el("div", "display:flex;justify-content:space-evenly;align-items:flex-start;margin:6px 12px calc(env(safe-area-inset-bottom,0px) + 12px);padding:10px 4px 8px;border-radius:26px;background:" + CARD + ";box-shadow:0 10px 30px rgba(0,0,0,.35)");
     var floats = el("div", "position:absolute;inset:0;pointer-events:none;overflow:hidden");
     var audios = el("div", "display:none");
     root.appendChild(head); root.appendChild(link); root.appendChild(banners); root.appendChild(grid); root.appendChild(center); root.appendChild(panel); root.appendChild(bar); root.appendChild(floats); root.appendChild(audios);
-    var pill = el("button", "position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:8px;background:" + GRAD + ";color:#fff;border:0;border-radius:22px;padding:10px 18px;font:700 13px system-ui;box-shadow:0 6px 20px rgba(47,128,200,.45);direction:rtl");
+    var pill = el("button", "position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:8px;background:" + GRAD + ";color:#fff;border:0;border-radius:22px;padding:10px 18px;font:700 13px var(--sawa-font,system-ui);box-shadow:0 6px 20px rgba(47,128,200,.45);direction:rtl");
     pill.onclick = function () { rMinimize(false); };
     if (!document.getElementById("sawa-room-css")) {
       var st = document.createElement("style"); st.id = "sawa-room-css";
@@ -3741,17 +3741,17 @@
   }
   function miniBuild() {
     if (mini.el) return mini.el;
-    var w = el("div", "position:fixed;z-index:2147483001;width:min(44vw,240px);aspect-ratio:3/4;border-radius:18px;overflow:hidden;background:#0b1220;box-shadow:0 10px 30px rgba(0,0,0,.45);display:none;touch-action:none;user-select:none;-webkit-user-select:none;direction:rtl;font-family:system-ui;cursor:pointer");
+    var w = el("div", "position:fixed;z-index:2147483001;width:min(44vw,240px);aspect-ratio:3/4;border-radius:18px;overflow:hidden;background:#111827;box-shadow:0 10px 30px rgba(0,0,0,.45);display:none;touch-action:none;user-select:none;-webkit-user-select:none;direction:rtl;font-family:var(--sawa-font,system-ui);cursor:pointer");
     w.id = "sawa-mini"; w.setAttribute("data-no-back", "1");
     var v = el("video", "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;display:none");
     v.autoplay = true; v.muted = true; v.playsInline = true; v.setAttribute("playsinline", "");
-    var av = el("div", "position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);width:64px;height:64px;border-radius:50%;background:#2e7d5b;display:flex;align-items:center;justify-content:center;font:800 26px system-ui;color:#fff;background-size:cover;background-position:center");
+    var av = el("div", "position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);width:64px;height:64px;border-radius:50%;background:#2e7d5b;display:flex;align-items:center;justify-content:center;font:800 26px var(--sawa-font,system-ui);color:#fff;background-size:cover;background-position:center");
     var lab = el("div", "position:absolute;left:0;right:0;bottom:0;padding:22px 10px 8px;background:linear-gradient(transparent,rgba(0,0,0,.75));color:#fff;pointer-events:none");
-    var nm = el("div", "font:800 12.5px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"), sb = el("div", "font:600 10.5px system-ui;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
+    var nm = el("div", "font:800 12.5px var(--sawa-font,system-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"), sb = el("div", "font:600 10.5px var(--sawa-font,system-ui);opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
     lab.appendChild(nm); lab.appendChild(sb);
     var btns = el("div", "position:absolute;top:6px;left:6px;right:6px;display:flex;justify-content:space-between;direction:ltr");
-    var bcss = "width:34px;height:34px;border-radius:50%;border:0;color:#fff;font:700 15px system-ui;display:flex;align-items:center;justify-content:center;cursor:pointer";
-    var end = el("button", bcss + ";background:#dc2626", "✕"), mic = el("button", bcss + ";background:rgba(0,0,0,.55)");
+    var bcss = "width:34px;height:34px;border-radius:50%;border:0;color:#fff;font:700 15px var(--sawa-font,system-ui);display:flex;align-items:center;justify-content:center;cursor:pointer";
+    var end = el("button", bcss + ";background:#ef4444", "✕"), mic = el("button", bcss + ";background:rgba(0,0,0,.55)");
     end.setAttribute("aria-label", L("إنهاء", "End")); mic.setAttribute("aria-label", L("الميكروفون", "Microphone"));
     [end, mic].forEach(function (b) { b.addEventListener("pointerdown", function (e) { e.stopPropagation(); }); });
     end.onclick = function (e) { e.stopPropagation(); var k = mini.kind; if (k === "call") hangup(); else if (k === "group") groupLeave(); else if (k === "room" && rm) rLeave(rm, "left"); setTimeout(miniSync, 50); };
@@ -3867,7 +3867,7 @@
     // خمسة أزرار فقط تتّسع لأصغر شاشة — «ارفع يدك» و«تفاعل» في «المزيد» (الزرّ يتلوّن حين تكون يدك مرفوعة)
     bar.appendChild(rb("💬", L("دردشة", "Chat"), function () { rOpenPanel(r.panel === "chat" ? null : "chat"); }, { bg: r.panel === "chat" ? GRAD : LINE, badge: r.unread }));
     bar.appendChild(rb(r.hand ? "✋" : "⋯", r.hand ? L("يدك مرفوعة", "Hand up") : L("المزيد", "More"), function () { rMore(); }, { bg: r.hand ? "#f59e0b" : LINE }));
-    bar.appendChild(rb("📞", L("مغادرة", "Leave"), function () { rLeaveConfirm(); }, { bg: "linear-gradient(135deg,#f87171,#dc2626)" }));
+    bar.appendChild(rb("📞", L("مغادرة", "Leave"), function () { rLeaveConfirm(); }, { bg: "linear-gradient(135deg,#f87171,#ef4444)" }));
     bar.lastChild._b.style.transform = "rotate(135deg)";
   }
   function rPaintBanners(r) {
@@ -3875,25 +3875,25 @@
     var b = rui.banners; b.innerHTML = "";
     if (r.state !== "live" && r.state !== "reconnecting") return;   // C68: الطلبات تبقى ظاهرة أثناء إعادة الاتّصال
     var box = function (bg, bd) { return el("div", "display:flex;align-items:center;gap:8px;border-radius:12px;padding:7px 10px;background:" + bg + ";border:1px solid " + bd); };
-    var btnS = function (t, bg, fn) { var x = el("button", "border:0;border-radius:9px;padding:5px 9px;font:800 11px system-ui;color:#fff;background:" + bg, t); x.onclick = fn; return x; };
+    var btnS = function (t, bg, fn) { var x = el("button", "border:0;border-radius:9px;padding:5px 9px;font:800 11px var(--sawa-font,system-ui);color:#fff;background:" + bg, t); x.onclick = fn; return x; };
     if (amHost(r)) Object.keys(r.reqs || {}).forEach(function (u) {
       var row = box(PRI + "22", PRI + "66");
       var knock = !!(r.reqs[u] && r.reqs[u].knock);
-      row.appendChild(el("span", "flex:1;font:700 12px system-ui", (knock ? "🔒 " : "🚪 ") + (nameOf(u) || stranger(r.reqs[u] && r.reqs[u].name)) + " " + (knock ? L("يطرق — الغرفة مقفلة", "is knocking — room is locked") : L("في الانتظار", "is waiting"))));
-      row.appendChild(btnS(L("سماح", "Admit"), "#22c55e", function () { rAdmit(u, true); }));
+      row.appendChild(el("span", "flex:1;font:700 12px var(--sawa-font,system-ui)", (knock ? "🔒 " : "🚪 ") + (nameOf(u) || stranger(r.reqs[u] && r.reqs[u].name)) + " " + (knock ? L("يطرق — الغرفة مقفلة", "is knocking — room is locked") : L("في الانتظار", "is waiting"))));
+      row.appendChild(btnS(L("سماح", "Admit"), "#16a34a", function () { rAdmit(u, true); }));
       row.appendChild(btnS(L("رفض", "Deny"), LINE, function () { rAdmit(u, false); }));
       b.appendChild(row);
     });
     var hands = Object.keys(r.members).filter(function (u) { return r.members[u].hand; }).sort(function (a, c) { return r.members[a].hand - r.members[c].hand; });
     if (hands.length) {
       var hr = box("#f59e0b22", "#f59e0b55");
-      hr.appendChild(el("span", "flex:1;font:700 12px system-ui;color:#fbbf24", "✋ " + hands.map(function (u) { return rName(r, u); }).join("، ")));
+      hr.appendChild(el("span", "flex:1;font:700 12px var(--sawa-font,system-ui);color:#fbbf24", "✋ " + hands.map(function (u) { return rName(r, u); }).join("، ")));
       if (amHost(r)) hr.appendChild(btnS(L("إنزال الكلّ", "Lower all"), "#b45309", rLowerAll));
       b.appendChild(hr);
     }
     if (r.askUnmute && !r.mic) {
       var ar = box("#4f46e522", "#4f46e566");
-      ar.appendChild(el("span", "flex:1;font:700 12px system-ui", L("يطلب المضيف أن تفتح الميكروفون", "The host asks you to unmute")));
+      ar.appendChild(el("span", "flex:1;font:700 12px var(--sawa-font,system-ui)", L("يطلب المضيف أن تفتح الميكروفون", "The host asks you to unmute")));
       ar.appendChild(btnS(L("فتح", "Unmute"), "#4f46e5", function () { rToggleMic(r); }));
       ar.appendChild(btnS("✕", LINE, function () { r.askUnmute = false; rPaintBanners(r); }));
       b.appendChild(ar);
@@ -3903,8 +3903,8 @@
     var t = rui.tiles[uid]; if (t) return t;
     var box = el("div", "position:relative;border-radius:20px;overflow:hidden;background:" + CARD + ";border:2px solid transparent;min-height:0;display:flex;align-items:center;justify-content:center;transition:border-color .2s,box-shadow .2s;box-shadow:0 6px 18px rgba(0,0,0,.25)");
     var v = el("video", "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none"); v.autoplay = true; v.playsInline = true; v.muted = true; v.setAttribute("playsinline", "");
-    var av = el("div", "width:60px;height:60px;border-radius:50%;background:" + LINE + ";display:flex;align-items:center;justify-content:center;font:800 24px system-ui;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.3)");
-    var lab = el("div", "position:absolute;bottom:6px;right:8px;left:8px;font:700 11px system-ui;text-shadow:0 1px 3px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
+    var av = el("div", "width:60px;height:60px;border-radius:50%;background:" + LINE + ";display:flex;align-items:center;justify-content:center;font:800 24px var(--sawa-font,system-ui);color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.3)");
+    var lab = el("div", "position:absolute;bottom:6px;right:8px;left:8px;font:700 11px var(--sawa-font,system-ui);text-shadow:0 1px 3px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
     var tags = el("div", "position:absolute;top:6px;right:6px;left:6px;display:flex;justify-content:space-between;font-size:13px");
     box.appendChild(v); box.appendChild(av); box.appendChild(lab); box.appendChild(tags);
     var a = el("audio", ""); a.autoplay = true; rui.audios.appendChild(a);
@@ -3951,11 +3951,11 @@
     t.tags.appendChild(el("span", "", (hostU ? "👑 " : "") + ((isMe ? r.hand : m.hand) ? "✋" : "")));
     var right = el("span", "display:flex;gap:4px;align-items:center");
     if (!isMe && p && p.state === "connected") { var qt = qTag(p.q); if (qt) right.appendChild(qt); }
-    right.appendChild(el("span", "background:" + (mic ? "#22c55e33" : "#ef444455") + ";border-radius:10px;padding:1px 5px", mic ? "🎤" : "🔇"));
+    right.appendChild(el("span", "background:" + (mic ? "#16a34a33" : "#ef444455") + ";border-radius:10px;padding:1px 5px", mic ? "🎤" : "🔇"));
     t.tags.appendChild(right);
     var speaking = r.speaker === uid && mic;
-    t.box.style.borderColor = speaking ? "#22c55e" : isMe ? PRI + "99" : "transparent";
-    t.box.style.boxShadow = speaking ? "0 0 0 4px #22c55e44, 0 6px 18px rgba(0,0,0,.25)" : "0 6px 18px rgba(0,0,0,.25)";
+    t.box.style.borderColor = speaking ? "#16a34a" : isMe ? PRI + "99" : "transparent";
+    t.box.style.boxShadow = speaking ? "0 0 0 4px #16a34a44, 0 6px 18px rgba(0,0,0,.25)" : "0 6px 18px rgba(0,0,0,.25)";
     t.box.style.cursor = "pointer";
     rLayout(r);
   }
@@ -4034,10 +4034,10 @@
   }
   // ---------- لوحات منبثقة ----------
   function sheet(titleTx, build) {
-    var ov = el("div", "position:fixed;inset:0;z-index:2147483002;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;direction:rtl;font-family:system-ui");
+    var ov = el("div", "position:fixed;inset:0;z-index:2147483002;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;direction:rtl;font-family:var(--sawa-font,system-ui)");
     var box = el("div", "background:" + CARD + ";color:#fff;border-radius:28px 28px 0 0;width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 8px);box-shadow:0 -10px 30px rgba(0,0,0,.4)");
     box.appendChild(el("div", "width:42px;height:5px;border-radius:3px;background:" + LINE + ";margin:12px auto 8px"));
-    if (titleTx) box.appendChild(el("div", "padding:2px 18px 10px;font:800 16px system-ui;text-align:center", titleTx));
+    if (titleTx) box.appendChild(el("div", "padding:2px 18px 10px;font:800 16px var(--sawa-font,system-ui);text-align:center", titleTx));
     var body = el("div", "overflow-y:auto;flex:1;min-height:0"); box.appendChild(body);
     ov.appendChild(box); ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
     var close = function () { ov.remove(); };
@@ -4046,7 +4046,7 @@
     return close;
   }
   function item(body, icon, label, fn, danger) {
-    var b = el("button", "width:100%;display:flex;align-items:center;gap:12px;padding:11px 16px;background:transparent;border:0;border-top:1px solid " + LINE + ";color:" + (danger ? "#f87171" : "#e2e8f0") + ";font:700 13.5px system-ui;text-align:right");
+    var b = el("button", "width:100%;display:flex;align-items:center;gap:12px;padding:11px 16px;background:transparent;border:0;border-top:1px solid " + LINE + ";color:" + (danger ? "#f87171" : "#e2e8f0") + ";font:700 13.5px var(--sawa-font,system-ui);text-align:right");
     b.appendChild(el("span", "font-size:17px;width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:" + (danger ? "rgba(239,68,68,.15)" : "rgba(255,255,255,.07)"), icon)); b.appendChild(el("span", "flex:1", label));
     b.onclick = fn; body.appendChild(b); return b;
   }
@@ -4069,7 +4069,7 @@
     var lines = [], body0 = null;
     var paint = function (srv, routes) {
       if (!body0) return; body0.innerHTML = "";
-      var row = function (k, v, bad) { var d = el("div", "display:flex;justify-content:space-between;gap:10px;padding:7px 16px;border-top:1px solid " + LINE + ";font:600 12px system-ui"); d.appendChild(el("span", "color:" + MUTED, k)); d.appendChild(el("span", "color:" + (bad ? "#f87171" : "#e2e8f0") + ";text-align:left;direction:ltr", v)); body0.appendChild(d); lines.push(k + ": " + v); };
+      var row = function (k, v, bad) { var d = el("div", "display:flex;justify-content:space-between;gap:10px;padding:7px 16px;border-top:1px solid " + LINE + ";font:600 12px var(--sawa-font,system-ui)"); d.appendChild(el("span", "color:" + MUTED, k)); d.appendChild(el("span", "color:" + (bad ? "#f87171" : "#e2e8f0") + ";text-align:left;direction:ltr", v)); body0.appendChild(d); lines.push(k + ": " + v); };
       lines = [];
       var cv = ""; try { cv = (C() && C().version) || ""; } catch (e) {}
       row(L("الإصدار", "Version"), "rtc " + VERSION + " · chat " + cv);
@@ -4097,9 +4097,9 @@
       });
       row(L("محاولات الحارس", "Watchdog retries"), String(r.retries || 0) + " · " + L("عودات", "rejoins") + " " + (r.rejoins || 0) + "/" + (r.softRejoins || 0));
       var bt = el("div", "display:flex;gap:8px;padding:12px 16px");
-      var cp = el("button", "flex:1;padding:10px;border:0;border-radius:12px;background:" + LINE + ";color:#fff;font:800 12px system-ui", L("نسخ التقرير", "Copy report"));
+      var cp = el("button", "flex:1;padding:10px;border:0;border-radius:12px;background:" + LINE + ";color:#fff;font:800 12px var(--sawa-font,system-ui)", L("نسخ التقرير", "Copy report"));
       cp.onclick = function () { var t = "Sawa room diag\n" + lines.join("\n"); try { navigator.clipboard.writeText(t).then(function () { toast(L("نُسخ ✓", "Copied ✓")); }, function () { toast(t); }); } catch (e) { toast(t); } };
-      var rj = el("button", "flex:1;padding:10px;border:0;border-radius:12px;background:" + PRI + ";color:#fff;font:800 12px system-ui", L("إعادة الاتّصال", "Reconnect"));
+      var rj = el("button", "flex:1;padding:10px;border:0;border-radius:12px;background:" + PRI + ";color:#fff;font:800 12px var(--sawa-font,system-ui)", L("إعادة الاتّصال", "Reconnect"));
       rj.onclick = function () { r.rejoining = false; Object.keys(r.peers).forEach(function (u) { rDrop(r, u); }); rRejoin(r); toast(L("جارٍ إعادة الاتّصال…", "Reconnecting…")); };
       bt.appendChild(cp); bt.appendChild(rj); body0.appendChild(bt);
     };
@@ -4138,7 +4138,7 @@
   function rLockConfirm() {
     var r = rm; if (!r || !amHost(r)) return;
     sheet(L("قفل الغرفة؟", "Lock the room?"), function (body, close) {
-      body.appendChild(el("div", "padding:0 16px 8px;color:" + MUTED + ";font:600 12px system-ui;text-align:center", L("لا يدخل أحدٌ جديد تلقائيّاً. من يفتح الرابط «يطرق الباب» وتراه هنا وتسمح له بضغطة.", "No one joins automatically. Anyone opening the link knocks, and you can admit them with a tap.")));
+      body.appendChild(el("div", "padding:0 16px 8px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", L("لا يدخل أحدٌ جديد تلقائيّاً. من يفتح الرابط «يطرق الباب» وتراه هنا وتسمح له بضغطة.", "No one joins automatically. Anyone opening the link knocks, and you can admit them with a tap.")));
       item(body, "🔒", L("قفل", "Lock"), function () { close(); rSetMeta("locked", true); toast(L("قُفلت الغرفة — القادمون يطرقون وأنت تسمح", "Room locked — newcomers knock, you admit")); }, true);
       item(body, "↩", L("إلغاء", "Cancel"), close);
     });
@@ -4158,7 +4158,7 @@
     sheet(L("إعدادات الغرفة", "Room settings"), function (body, close) {
       var tog = function (icon, label, sub, on, fn) {
         var b = item(body, icon, label, function () { fn(); close(); again(); });
-        b.appendChild(el("span", "font:800 11px system-ui;padding:3px 9px;border-radius:9px;background:" + (on ? "#22c55e33" : LINE) + ";color:" + (on ? "#4ade80" : "#cbd5e1"), on ? L("مفعّل", "On") : L("متوقّف", "Off")));
+        b.appendChild(el("span", "font:800 11px var(--sawa-font,system-ui);padding:3px 9px;border-radius:9px;background:" + (on ? "#16a34a33" : LINE) + ";color:" + (on ? "#4ade80" : "#cbd5e1"), on ? L("مفعّل", "On") : L("متوقّف", "Off")));
         if (sub) b.appendChild(el("div", "position:absolute", ""));
       };
       tog("🔒", L("قفل الغرفة", "Lock room"), null, !!r.meta.locked, function () { rSetMeta("locked", !r.meta.locked); });
@@ -4166,15 +4166,15 @@
       tog("🎧", L("صوتٌ فقط (بلا كاميرات)", "Audio only (no cameras)"), null, !!r.meta.audioOnly, function () { rSetMeta("audioOnly", !r.meta.audioOnly); });
       // C45: غرفة كبيرة (حتى ٣٠) عبر خادم الوسائط
       var bg = item(body, "🏟", L("غرفة كبيرة (حتى " + SFU_MAX + ")", "Large room (up to " + SFU_MAX + ")"), function () { close(); rBigToggle(); });
-      bg.appendChild(el("span", "font:800 11px system-ui;padding:3px 9px;border-radius:9px;background:" + (rBig(r) ? "#22c55e33" : LINE) + ";color:" + (rBig(r) ? "#4ade80" : "#cbd5e1"), rBig(r) ? L("مفعّل", "On") : L("متوقّف", "Off")));
+      bg.appendChild(el("span", "font:800 11px var(--sawa-font,system-ui);padding:3px 9px;border-radius:9px;background:" + (rBig(r) ? "#16a34a33" : LINE) + ";color:" + (rBig(r) ? "#4ade80" : "#cbd5e1"), rBig(r) ? L("مفعّل", "On") : L("متوقّف", "Off")));
       var mx = item(body, "👥", L("الحدّ الأقصى للمشاركين", "Max participants"), function () { close(); rMaxPick(); });
-      mx.appendChild(el("span", "font:800 12px system-ui;color:#cbd5e1", String(rMax(r)) + (r.meta.max ? "" : " (" + L("الافتراض", "default") + ")")));
+      mx.appendChild(el("span", "font:800 12px var(--sawa-font,system-ui);color:#cbd5e1", String(rMax(r)) + (r.meta.max ? "" : " (" + L("الافتراض", "default") + ")")));
       var pn = item(body, "🔑", L("رمز الدخول", "Join PIN"), function () { close(); rPinPick(); });
-      pn.appendChild(el("span", "font:800 12px system-ui;color:" + (r.meta.pinOn ? "#4ade80" : "#cbd5e1"), r.meta.pinOn ? L("مفعّل", "On") : L("بلا رمز", "None")));
+      pn.appendChild(el("span", "font:800 12px var(--sawa-font,system-ui);color:" + (r.meta.pinOn ? "#4ade80" : "#cbd5e1"), r.meta.pinOn ? L("مفعّل", "On") : L("بلا رمز", "None")));
       var du = item(body, "⏱", L("مدّة الغرفة", "Room duration"), function () { close(); rDurationPick(); });
-      du.appendChild(el("span", "font:800 12px system-ui;color:#cbd5e1", r.meta.endsAt ? L("باقٍ ", "Left ") + fmt(Math.max(0, Math.round((r.meta.endsAt - now()) / 1000))) : L("بلا حدّ", "No limit")));
+      du.appendChild(el("span", "font:800 12px var(--sawa-font,system-ui);color:#cbd5e1", r.meta.endsAt ? L("باقٍ ", "Left ") + fmt(Math.max(0, Math.round((r.meta.endsAt - now()) / 1000))) : L("بلا حدّ", "No limit")));
       var al = item(body, "⏲", L("قفلٌ تلقائيّ بعد البدء", "Auto-lock after start"), function () { close(); rAutoLockPick(); });
-      al.appendChild(el("span", "font:800 12px system-ui;color:#cbd5e1", r.meta.lockAt ? (r.meta.locked ? L("قُفلت", "Locked") : L("بعد ", "in ") + fmt(Math.max(0, Math.round((r.meta.lockAt - now()) / 1000)))) : L("متوقّف", "Off")));
+      al.appendChild(el("span", "font:800 12px var(--sawa-font,system-ui);color:#cbd5e1", r.meta.lockAt ? (r.meta.locked ? L("قُفلت", "Locked") : L("بعد ", "in ") + fmt(Math.max(0, Math.round((r.meta.lockAt - now()) / 1000)))) : L("متوقّف", "Off")));
       item(body, "✏️", L("تغيير عنوان الغرفة", "Rename room"), function () { close(); rRenamePick(); });
     });
   }
@@ -4189,8 +4189,8 @@
     wcall("sfu.cfg", {}).then(function (b) {
       if (!b || !b.enabled) { toast(L("الغرف الكبيرة قيد التجهيز على الخادم", "Large rooms are being set up on the server")); return; }
       sheet(L("غرفة كبيرة؟", "Make it a large room?"), function (body, close) {
-        body.appendChild(el("div", "padding:0 18px 10px;color:#cbd5e1;font:500 13px/1.8 system-ui;text-align:center", L("حتى " + SFU_MAX + " مشاركاً و" + SFU_CAMS + " كاميرات. يمرّ الصوت والصورة عبر خادم وسائط فيرسل كلّ هاتفٍ مرّةً واحدة بدل الإرسال لكلّ مشارك — أخفّ على الهواتف والشبكة. سينقطع الصوت ثانيةً أو اثنتين أثناء الانتقال.", "Up to " + SFU_MAX + " people and " + SFU_CAMS + " cameras via a media server. Audio drops for a second while switching.")));
-        var go = el("button", "margin:0 16px 8px;width:calc(100% - 32px);padding:12px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 14px system-ui", L("تحويلها إلى غرفة كبيرة", "Make it large"));
+        body.appendChild(el("div", "padding:0 18px 10px;color:#cbd5e1;font:500 13px/1.8 var(--sawa-font,system-ui);text-align:center", L("حتى " + SFU_MAX + " مشاركاً و" + SFU_CAMS + " كاميرات. يمرّ الصوت والصورة عبر خادم وسائط فيرسل كلّ هاتفٍ مرّةً واحدة بدل الإرسال لكلّ مشارك — أخفّ على الهواتف والشبكة. سينقطع الصوت ثانيةً أو اثنتين أثناء الانتقال.", "Up to " + SFU_MAX + " people and " + SFU_CAMS + " cameras via a media server. Audio drops for a second while switching.")));
+        var go = el("button", "margin:0 16px 8px;width:calc(100% - 32px);padding:12px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 14px var(--sawa-font,system-ui)", L("تحويلها إلى غرفة كبيرة", "Make it large"));
         go.onclick = function () { close(); rSetMeta("big", true); };
         body.appendChild(go);
       });
@@ -4200,17 +4200,17 @@
     var r = rm; if (!r) return;
     sheet(L("الحدّ الأقصى للمشاركين", "Max participants"), function (body, close) {
       var big = rBig(r), cap = rCap0(r);
-      body.appendChild(el("div", "padding:0 16px 6px;color:" + MUTED + ";font:600 12px system-ui;text-align:center", big ? L("الغرفة الكبيرة تحتمل حتى " + SFU_MAX + " شخصاً و" + SFU_CAMS + " كاميرات", "Large room: up to " + SFU_MAX + " people, " + SFU_CAMS + " cameras") : L("الشبكة المباشرة تحتمل حتى ٨ أشخاص و٤ كاميرات — للأكثر فعّل «غرفة كبيرة»", "Direct mesh supports up to 8 people and 4 cameras")));
+      body.appendChild(el("div", "padding:0 16px 6px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", big ? L("الغرفة الكبيرة تحتمل حتى " + SFU_MAX + " شخصاً و" + SFU_CAMS + " كاميرات", "Large room: up to " + SFU_MAX + " people, " + SFU_CAMS + " cameras") : L("الشبكة المباشرة تحتمل حتى ٨ أشخاص و٤ كاميرات — للأكثر فعّل «غرفة كبيرة»", "Direct mesh supports up to 8 people and 4 cameras")));
       (big ? [10, 15, 20, 25, 30] : [2, 3, 4, 5, 6, 8]).forEach(function (n) { var b = item(body, "👥", String(n) + (n === cap ? " (" + L("الافتراض", "default") + ")" : ""), function () { rSetMeta("max", n === cap ? null : n); close(); }); if (rMax(r) === n) b.appendChild(el("span", "", "✓")); });
     });
   }
   function rPinPick() {
     var r = rm; if (!r) return;
     sheet(L("رمز الدخول", "Join PIN"), function (body, close) {
-      body.appendChild(el("div", "padding:0 16px 8px;color:" + MUTED + ";font:600 12px system-ui;text-align:center", L("من يعرف الرابط يحتاج هذا الرمز أيضاً (٤–٦ أرقام). من في الغرفة الآن لا يتأثّر.", "Anyone with the link also needs this PIN (4–6 digits). Current members aren't affected.")));
-      var inp = el("input", "display:block;margin:4px 16px 10px;width:calc(100% - 32px);box-sizing:border-box;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:12px;padding:11px;font:800 20px system-ui;letter-spacing:6px;text-align:center;direction:ltr");
+      body.appendChild(el("div", "padding:0 16px 8px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", L("من يعرف الرابط يحتاج هذا الرمز أيضاً (٤–٦ أرقام). من في الغرفة الآن لا يتأثّر.", "Anyone with the link also needs this PIN (4–6 digits). Current members aren't affected.")));
+      var inp = el("input", "display:block;margin:4px 16px 10px;width:calc(100% - 32px);box-sizing:border-box;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:12px;padding:11px;font:800 20px var(--sawa-font,system-ui);letter-spacing:6px;text-align:center;direction:ltr");
       inp.inputMode = "numeric"; inp.maxLength = 6; inp.placeholder = "••••"; body.appendChild(inp);
-      var go = el("button", "margin:0 16px 6px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px system-ui", L("تفعيل الرمز", "Set PIN"));
+      var go = el("button", "margin:0 16px 6px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px var(--sawa-font,system-ui)", L("تفعيل الرمز", "Set PIN"));
       go.onclick = function () {
         var v = String(inp.value || "").replace(/\D/g, "");
         if (v.length < 4 || v.length > 6) { toast(L("الرمز ٤ إلى ٦ أرقام", "PIN is 4–6 digits")); return; }
@@ -4224,7 +4224,7 @@
   function rAutoLockPick() {
     var r = rm; if (!r) return;
     sheet(L("قفلٌ تلقائيّ بعد البدء", "Auto-lock after start"), function (body, close) {
-      body.appendChild(el("div", "padding:0 16px 6px;color:" + MUTED + ";font:600 12px system-ui;text-align:center", L("بعد هذه المدّة لا يدخل أحدٌ جديد — يبقى الحاضرون", "After this, no one new can join")));
+      body.appendChild(el("div", "padding:0 16px 6px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", L("بعد هذه المدّة لا يدخل أحدٌ جديد — يبقى الحاضرون", "After this, no one new can join")));
       [[0, L("متوقّف", "Off")], [5, L("٥ دقائق", "5 min")], [10, L("١٠ دقائق", "10 min")], [15, L("١٥ دقيقة", "15 min")], [30, L("٣٠ دقيقة", "30 min")]].forEach(function (o) {
         item(body, "⏲", o[1], function () { if (rm) rm.autoLocked = false; rSetMeta("lockAt", o[0] ? now() + o[0] * 60000 : null); close(); });
       });
@@ -4233,9 +4233,9 @@
   function rRenamePick() {
     var r = rm; if (!r) return;
     sheet(L("عنوان الغرفة", "Room title"), function (body, close) {
-      var inp = el("input", "display:block;margin:4px 16px 10px;width:calc(100% - 32px);box-sizing:border-box;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:12px;padding:11px;font:700 14px system-ui");
+      var inp = el("input", "display:block;margin:4px 16px 10px;width:calc(100% - 32px);box-sizing:border-box;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:12px;padding:11px;font:700 14px var(--sawa-font,system-ui)");
       inp.value = r.title || ""; inp.maxLength = 80; inp.dir = "auto"; body.appendChild(inp);
-      var go = el("button", "margin:0 16px 6px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px system-ui", L("حفظ", "Save"));
+      var go = el("button", "margin:0 16px 6px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px var(--sawa-font,system-ui)", L("حفظ", "Save"));
       go.onclick = function () { var v = String(inp.value || "").trim().slice(0, 80); if (!v) return; rSetMeta("title", v); close(); };
       body.appendChild(go);
       setTimeout(function () { try { inp.focus(); inp.select(); } catch (e) {} }, 60);
@@ -4248,9 +4248,9 @@
       });
       // C38: مدّة حرّة بالدقائق
       var row = el("div", "display:flex;gap:8px;padding:10px 16px 6px;border-top:1px solid " + LINE);
-      var inp = el("input", "flex:1;min-width:0;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:10px;padding:9px 10px;font:700 14px system-ui;text-align:center;direction:ltr");
+      var inp = el("input", "flex:1;min-width:0;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:10px;padding:9px 10px;font:700 14px var(--sawa-font,system-ui);text-align:center;direction:ltr");
       inp.inputMode = "numeric"; inp.placeholder = L("دقائق (٥–٤٨٠)", "minutes (5–480)");
-      var go = el("button", "border:0;border-radius:10px;padding:0 14px;background:" + PRI + ";color:#fff;font:800 13px system-ui", L("تطبيق", "Apply"));
+      var go = el("button", "border:0;border-radius:10px;padding:0 14px;background:" + PRI + ";color:#fff;font:800 13px var(--sawa-font,system-ui)", L("تطبيق", "Apply"));
       go.onclick = function () { var n = parseInt(String(inp.value || "").replace(/\D/g, ""), 10); if (!(n >= 5 && n <= 480)) { toast(L("من ٥ إلى ٤٨٠ دقيقة", "5–480 minutes")); return; } rSetMeta("endsAt", now() + n * 60000); if (rm) rm.warned5 = false; close(); };
       row.appendChild(inp); row.appendChild(go); body.appendChild(row);
     });
@@ -4274,7 +4274,7 @@
     var r = rm; if (!r) return;
     sheet(L("امسح للانضمام", "Scan to join"), function (body, close) {
       var q = el("div", "width:220px;height:220px;margin:6px auto 10px;background:#fff;border-radius:16px;padding:10px;box-sizing:content-box"); body.appendChild(q);
-      body.appendChild(el("div", "text-align:center;font:700 12px system-ui;color:" + MUTED + ";direction:ltr;padding:0 16px 10px", L("الرمز: ", "Code: ") + r.code));
+      body.appendChild(el("div", "text-align:center;font:700 12px var(--sawa-font,system-ui);color:" + MUTED + ";direction:ltr;padding:0 16px 10px", L("الرمز: ", "Code: ") + r.code));
       try { C().qrLib().then(function (Q) { new Q(q, { text: roomLink(r.code), width: 220, height: 220, colorDark: "#1A1A2E", colorLight: "#FFFFFF", correctLevel: Q.CorrectLevel.M }); }).catch(function (e) { q.textContent = (e && e.message) || "QR"; }); } catch (e) {}
       item(body, "📋", L("نسخ الرابط", "Copy link"), function () { rCopyLink(); close(); });
     });
@@ -4285,12 +4285,12 @@
     var me = myUid(), picked = {}, list = [];
     try { list = C().contacts().filter(function (c) { return c.uid && c.uid !== me && !r.members[c.uid]; }); } catch (e) {}
     sheet(L("دعوة إلى الغرفة", "Invite to the room"), function (body, close) {
-      if (!list.length) body.appendChild(el("div", "padding:20px;text-align:center;color:" + MUTED + ";font:600 12px system-ui", L("لا أحد آخر في جهات اتّصالك", "No other contacts")));
+      if (!list.length) body.appendChild(el("div", "padding:20px;text-align:center;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui)", L("لا أحد آخر في جهات اتّصالك", "No other contacts")));
       list.forEach(function (c) {
         var fam = (c.families || []).map(function (f) { return f.name; }).join("، ");
         var b = item(body, "◻️", (c.name || "") + (fam ? " · " + fam : ""), function () { picked[c.uid] = !picked[c.uid]; b.firstChild.textContent = picked[c.uid] ? "☑️" : "◻️"; });
       });
-      var send = el("button", "margin:12px 16px 4px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px system-ui", L("إرسال الدعوة", "Send invite"));
+      var send = el("button", "margin:12px 16px 4px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px var(--sawa-font,system-ui)", L("إرسال الدعوة", "Send invite"));
       send.onclick = function () {
         var to = Object.keys(picked).filter(function (u) { return picked[u]; });
         if (!to.length) { toast(L("اختر شخصاً على الأقلّ", "Pick at least one")); return; }
@@ -4371,8 +4371,8 @@
     } else {
       box.appendChild(el("span", "font-size:22px", img ? "🖼️" : vid ? "🎬" : "📎"));
       var tx = el("div", "min-width:0");
-      tx.appendChild(el("div", "font:700 12.5px system-ui;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px", f.name || "file"));
-      tx.appendChild(el("div", "font:600 10.5px system-ui;color:" + MUTED, rFmtSize(f.size || 0) + " · " + L("اضغط للفتح", "tap to open")));
+      tx.appendChild(el("div", "font:700 12.5px var(--sawa-font,system-ui);color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px", f.name || "file"));
+      tx.appendChild(el("div", "font:600 10.5px var(--sawa-font,system-ui);color:" + MUTED, rFmtSize(f.size || 0) + " · " + L("اضغط للفتح", "tap to open")));
       box.appendChild(tx);
     }
     box.onclick = function () {
@@ -4393,7 +4393,7 @@
     var bar = el("div", "display:flex;gap:10px");
     var SC0 = C();
     [["⬇️ " + L("حفظ", "Save"), "save"], ["📤 " + L("مشاركة", "Share"), "share"], ["✕ " + L("إغلاق", "Close"), null]].forEach(function (x) {
-      var b = el("button", "border:0;border-radius:12px;padding:10px 16px;background:rgba(255,255,255,.15);color:#fff;font:800 13px system-ui", x[0]);
+      var b = el("button", "border:0;border-radius:12px;padding:10px 16px;background:rgba(255,255,255,.15);color:#fff;font:800 13px var(--sawa-font,system-ui)", x[0]);
       b.onclick = function (e) { e.stopPropagation(); if (!x[1]) return ov.remove(); if (SC0 && SC0.saveMediaUrl) SC0.saveMediaUrl(u, f.name, x[1], f.mime); };
       bar.appendChild(b);
     });
@@ -4406,45 +4406,45 @@
     var notes = r.panel === "notes";
     var head = el("div", "display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid " + LINE);
     [["chat", L("دردشة", "Chat")], ["notes", L("المحضر", "Minutes")]].forEach(function (x) {
-      var b = el("button", "border:1px solid " + LINE + ";border-radius:9px;padding:5px 10px;font:800 11px system-ui;color:#fff;background:" + (r.panel === x[0] ? PRI : "transparent"), x[1]);
+      var b = el("button", "border:1px solid " + LINE + ";border-radius:9px;padding:5px 10px;font:800 11px var(--sawa-font,system-ui);color:#fff;background:" + (r.panel === x[0] ? PRI : "transparent"), x[1]);
       b.onclick = function () { rOpenPanel(x[0]); }; head.appendChild(b);
     });
     head.appendChild(el("div", "flex:1"));
     if (notes) {
-      var sm = el("button", "border:0;border-radius:9px;padding:5px 9px;font:800 11px system-ui;color:#fff;background:#4f46e5", L("ملخّص ↗", "Summary ↗"));
+      var sm = el("button", "border:0;border-radius:9px;padding:5px 9px;font:800 11px var(--sawa-font,system-ui);color:#fff;background:#4f46e5", L("ملخّص ↗", "Summary ↗"));
       sm.onclick = rSummary; head.appendChild(sm);
     }
     var x = el("button", "border:0;background:transparent;color:" + MUTED + ";font-size:16px", "✕"); x.onclick = function () { rOpenPanel(null); }; head.appendChild(x);
     P.appendChild(head);
     var listEl = el("div", "flex:1;min-height:60px;overflow-y:auto;padding:6px 10px");
     var items = notes ? r.chat.filter(function (m) { return m.kind; }) : r.chat;
-    if (!items.length) listEl.appendChild(el("div", "text-align:center;color:#64748b;font:600 12px system-ui;padding:14px", notes ? L("سجّل القرارات والمهامّ والنقاط هنا — تُرسَل لاحقاً إلى مجموعة", "Record decisions, tasks and points — send them to a group later") : L("لا رسائل بعد", "No messages yet")));
+    if (!items.length) listEl.appendChild(el("div", "text-align:center;color:#64748b;font:600 12px var(--sawa-font,system-ui);padding:14px", notes ? L("سجّل القرارات والمهامّ والنقاط هنا — تُرسَل لاحقاً إلى مجموعة", "Record decisions, tasks and points — send them to a group later") : L("لا رسائل بعد", "No messages yet")));
     items.forEach(function (m) {
       var row = el("div", "padding:4px 0");
-      var nm = el("div", "font:700 10px system-ui;color:" + MUTED, (m.kind ? NOTE[m.kind][0] + " " + L(NOTE[m.kind][1], NOTE[m.kind][2]) + " · " : "") + (m.from === myUid() ? L("أنت", "You") : m.name));
+      var nm = el("div", "font:700 10px var(--sawa-font,system-ui);color:" + MUTED, (m.kind ? NOTE[m.kind][0] + " " + L(NOTE[m.kind][1], NOTE[m.kind][2]) + " · " : "") + (m.from === myUid() ? L("أنت", "You") : m.name));
       row.appendChild(nm);
       if (m.file) row.appendChild(rFileView(r, m.file));
-      else row.appendChild(el("div", "font:500 13px system-ui;color:#fff;white-space:pre-wrap;word-break:break-word", m.text));
+      else row.appendChild(el("div", "font:500 13px var(--sawa-font,system-ui);color:#fff;white-space:pre-wrap;word-break:break-word", m.text));
       listEl.appendChild(row);
     });
     P.appendChild(listEl);
     if (notes) {
       var kinds = el("div", "display:flex;gap:6px;padding:4px 10px");
       ["decision", "task", "point"].forEach(function (k) {
-        var on = r.noteKind === k, b = el("button", "border:1px solid " + (on ? NOTE[k][3] : LINE) + ";border-radius:9px;padding:4px 8px;font:800 11px system-ui;color:" + (on ? NOTE[k][3] : MUTED) + ";background:" + (on ? NOTE[k][3] + "22" : "transparent"), NOTE[k][0] + " " + L(NOTE[k][1], NOTE[k][2]));
+        var on = r.noteKind === k, b = el("button", "border:1px solid " + (on ? NOTE[k][3] : LINE) + ";border-radius:9px;padding:4px 8px;font:800 11px var(--sawa-font,system-ui);color:" + (on ? NOTE[k][3] : MUTED) + ";background:" + (on ? NOTE[k][3] + "22" : "transparent"), NOTE[k][0] + " " + L(NOTE[k][1], NOTE[k][2]));
         b.onclick = function () { r.noteKind = k; rPaintChat(r); }; kinds.appendChild(b);
       });
       P.appendChild(kinds);
     }
     var row = el("div", "display:flex;gap:6px;padding:6px 10px 10px");
-    var inp = el("input", "flex:1;min-width:0;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:10px;padding:8px 10px;font:500 13px system-ui");
+    var inp = el("input", "flex:1;min-width:0;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:10px;padding:8px 10px;font:500 13px var(--sawa-font,system-ui)");
     inp.placeholder = notes ? L("اكتب ", "Write a ") + L(NOTE[r.noteKind][1], NOTE[r.noteKind][2]) + "…" : L("اكتب رسالة…", "Message…");
     inp.dir = "auto";
-    var go = el("button", "border:0;border-radius:10px;padding:0 14px;background:" + PRI + ";color:#fff;font:800 13px system-ui", L("إرسال", "Send"));
+    var go = el("button", "border:0;border-radius:10px;padding:0 14px;background:" + PRI + ";color:#fff;font:800 13px var(--sawa-font,system-ui)", L("إرسال", "Send"));
     var fire = function () { rSendChat(r, inp.value, notes ? r.noteKind : null); inp.value = ""; };
     go.onclick = fire; inp.onkeydown = function (e) { if (e.key === "Enter") fire(); };
     // C89b: إرفاق صور وفيديو وملفّات في دردشة الغرفة
-    (r.ups || []).forEach(function (u) { listEl.appendChild(el("div", "font:700 11.5px system-ui;color:" + (u.err ? "#f87171" : MUTED) + ";padding:4px 0", (u.err ? "⚠ " : "⏳ ") + u.name + (u.err ? " — " + u.err : " · " + (u.pct || 0) + "%"))); });
+    (r.ups || []).forEach(function (u) { listEl.appendChild(el("div", "font:700 11.5px var(--sawa-font,system-ui);color:" + (u.err ? "#f87171" : MUTED) + ";padding:4px 0", (u.err ? "⚠ " : "⏳ ") + u.name + (u.err ? " — " + u.err : " · " + (u.pct || 0) + "%"))); });
     if (!notes) {
       var fi = el("input"); fi.type = "file"; fi.multiple = true; fi.style.display = "none";
       fi.onchange = function () { var fs = [].slice.call(fi.files || []); fi.value = ""; fs.slice(0, 5).forEach(function (f) { rSendFile(r, f); }); };
@@ -4474,12 +4474,12 @@
     var groups = [];
     try { var ch = C()._chats(); groups = Object.keys(ch).map(function (k) { return ch[k]; }).filter(function (c) { return c && (c.type === "group" || c.type === "family") && !c.deleted; }); } catch (e) {}
     sheet(L("ملخّص الغرفة", "Room summary"), function (body, close) {
-      body.appendChild(el("pre", "margin:0 14px 8px;padding:10px;border-radius:12px;background:" + DARK + ";color:#e2e8f0;font:500 12px system-ui;white-space:pre-wrap;max-height:30vh;overflow:auto;direction:rtl;text-align:right", text));
+      body.appendChild(el("pre", "margin:0 14px 8px;padding:10px;border-radius:12px;background:" + DARK + ";color:#e2e8f0;font:500 12px var(--sawa-font,system-ui);white-space:pre-wrap;max-height:30vh;overflow:auto;direction:rtl;text-align:right", text));
       item(body, "⬇️", L("تنزيل ملفّ نصّيّ", "Download text file"), function () {
         try { var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" })); a.download = L("محضر-", "minutes-") + r.code + ".txt"; document.body.appendChild(a); a.click(); a.remove(); } catch (e) {}
         close();
       });
-      if (!groups.length) body.appendChild(el("div", "padding:12px 18px;color:" + MUTED + ";font:600 12px system-ui", L("لا مجموعات لديك لإرسال المحضر إليها", "You have no groups to send to")));
+      if (!groups.length) body.appendChild(el("div", "padding:12px 18px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui)", L("لا مجموعات لديك لإرسال المحضر إليها", "You have no groups to send to")));
       groups.forEach(function (g) {
         item(body, "📤", L("إرسال إلى «", "Send to “") + (g.name || "") + L("»", "”") + (tasks.length ? L(" (+ قائمة مهامّ)", " (+ task list)") : ""), function () {
           C().send(g.cid, text);
@@ -4493,11 +4493,11 @@
   function roomJoinPrompt() {
     if (!enabled()) return false;
     sheet(L("انضمام إلى غرفة", "Join a room"), function (body, close) {
-      var inp = el("input", "display:block;margin:6px 16px 10px;width:calc(100% - 32px);box-sizing:border-box;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:12px;padding:11px;font:800 16px system-ui;letter-spacing:3px;text-align:center;direction:ltr");
+      var inp = el("input", "display:block;margin:6px 16px 10px;width:calc(100% - 32px);box-sizing:border-box;border:1px solid " + LINE + ";background:" + DARK + ";color:#fff;border-radius:12px;padding:11px;font:800 16px var(--sawa-font,system-ui);letter-spacing:3px;text-align:center;direction:ltr");
       inp.placeholder = "ABCD2345"; inp.setAttribute("autocapitalize", "characters");
-      body.appendChild(el("div", "padding:0 16px;color:" + MUTED + ";font:600 12px system-ui;text-align:center", L("الصق رابط الغرفة أو اكتب رمزها (٨ حروف)", "Paste the room link or type its 8-letter code")));
+      body.appendChild(el("div", "padding:0 16px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", L("الصق رابط الغرفة أو اكتب رمزها (٨ حروف)", "Paste the room link or type its 8-letter code")));
       body.appendChild(inp);
-      var go = el("button", "margin:0 16px 8px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px system-ui", L("انضمام", "Join"));
+      var go = el("button", "margin:0 16px 8px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px var(--sawa-font,system-ui)", L("انضمام", "Join"));
       go.onclick = function () { var c = cleanCode(inp.value); if (!c) { toast(L("رمز الغرفة غير صحيح", "Invalid room code")); return; } close(); roomJoin(c); };
       body.appendChild(go);
       setTimeout(function () { try { inp.focus(); } catch (e) {} }, 50);
@@ -4516,22 +4516,22 @@
     code = cleanCode(code);
     if (!code) { toast(L("رمز الغرفة غير صحيح", "Invalid room code")); return; }
     if (rm && rm.code === code) { if (rui.min) rMinimize(false); return; }
-    var ov = el("div", "position:fixed;inset:0;z-index:2147483003;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;font-family:system-ui");
+    var ov = el("div", "position:fixed;inset:0;z-index:2147483003;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;font-family:var(--sawa-font,system-ui)");
     ov.dir = isAr() ? "rtl" : "ltr";
     var box = el("div", "background:#fff;color:#1A1A2E;border-radius:28px 28px 0 0;width:100%;max-width:480px;padding:14px 18px calc(env(safe-area-inset-bottom,0px) + 18px);box-sizing:border-box;text-align:center;box-shadow:0 -10px 30px rgba(0,0,0,.2)");
     ov.appendChild(box); document.body.appendChild(ov);
     var close = function () { try { ov.remove(); } catch (e) {} };
     ov.onclick = function (e) { if (e.target === ov) close(); };
-    box.appendChild(el("div", "width:42px;height:5px;border-radius:3px;background:#e5e7eb;margin:0 auto 12px"));
+    box.appendChild(el("div", "width:42px;height:5px;border-radius:3px;background:#e2e8f0;margin:0 auto 12px"));
     box.appendChild(el("div", "width:76px;height:76px;border-radius:26px;margin:0 auto 6px;background:" + GRAD + ";display:flex;align-items:center;justify-content:center;font-size:34px;box-shadow:0 8px 20px rgba(47,128,200,.35)", "🎙️"));
-    var tt = el("div", "font:800 17px system-ui;margin:4px 0 2px", L("غرفة سوا", "Sawa room")); box.appendChild(tt);
-    var sub = el("div", "font:600 12.5px system-ui;color:#8796a5", "…"); box.appendChild(sub);
+    var tt = el("div", "font:800 17px var(--sawa-font,system-ui);margin:4px 0 2px", L("غرفة سوا", "Sawa room")); box.appendChild(tt);
+    var sub = el("div", "font:600 12.5px var(--sawa-font,system-ui);color:#8a93a0", "…"); box.appendChild(sub);
     var mic = false;
-    var mb = el("button", "margin:14px auto 4px;display:block;padding:10px 16px;border-radius:14px;border:0;background:#f3f4f6;font:800 13px system-ui;color:#1A1A2E");
+    var mb = el("button", "margin:14px auto 4px;display:block;padding:10px 16px;border-radius:14px;border:0;background:#f1f5f9;font:800 13px var(--sawa-font,system-ui);color:#1A1A2E");
     var paintMic = function () { mb.textContent = mic ? L("🎤 الميكروفون: يعمل عند الدخول", "🎤 Mic: on when joining") : L("🔇 الميكروفون: مكتوم عند الدخول", "🔇 Mic: muted when joining"); };
     mb.onclick = function () { mic = !mic; paintMic(); }; paintMic(); box.appendChild(mb);
-    var go = el("button", "margin:10px 0 0;width:100%;padding:14px;border:0;border-radius:16px;background:" + GRAD + ";color:#fff;font:800 15px system-ui;box-shadow:0 8px 20px rgba(47,128,200,.35)", L("انضمام", "Join"));
-    var no = el("button", "margin:8px 0 0;width:100%;padding:12px;border:0;border-radius:16px;background:#f3f4f6;color:#374151;font:800 14px system-ui", L("ليس الآن", "Not now"));
+    var go = el("button", "margin:10px 0 0;width:100%;padding:14px;border:0;border-radius:16px;background:" + GRAD + ";color:#fff;font:800 15px var(--sawa-font,system-ui);box-shadow:0 8px 20px rgba(47,128,200,.35)", L("انضمام", "Join"));
+    var no = el("button", "margin:8px 0 0;width:100%;padding:12px;border:0;border-radius:16px;background:#f1f5f9;color:#334155;font:800 14px var(--sawa-font,system-ui)", L("ليس الآن", "Not now"));
     go.onclick = function () { close(); roomJoin(code, { mic: mic }); };
     no.onclick = close;
     box.appendChild(go); box.appendChild(no);
@@ -4570,14 +4570,14 @@
     return L("بعد ", "in ") + Math.round(h / 24) + L(" يوم", " days");
   }
   function schedCard(box, go, no, code, m) {
-    var card = el("div", "margin:12px 0 2px;padding:12px;border-radius:16px;background:#EFF6FF;border:1px solid #BFDBFE;text-align:center");
-    card.appendChild(el("div", "font:800 15px system-ui;color:#1E3A8A", "📅 " + schedWhen(m.sched)));
-    var left = el("div", "font:700 12px system-ui;color:#2563EB;margin-top:3px", schedLeft(m.sched)); card.appendChild(left);
-    var st = el("div", "font:700 12px system-ui;color:#6B7280;margin-top:6px", "…"); card.appendChild(st);
+    var card = el("div", "margin:12px 0 2px;padding:12px;border-radius:16px;background:#F0F7FF;border:1px solid #C5D5F5;text-align:center");
+    card.appendChild(el("div", "font:800 15px var(--sawa-font,system-ui);color:#1E3A8A", "📅 " + schedWhen(m.sched)));
+    var left = el("div", "font:700 12px var(--sawa-font,system-ui);color:#2563EB;margin-top:3px", schedLeft(m.sched)); card.appendChild(left);
+    var st = el("div", "font:700 12px var(--sawa-font,system-ui);color:#6B7280;margin-top:6px", "…"); card.appendChild(st);
     box.insertBefore(card, box.children[4] || null);
     var tick = setInterval(function () { if (!card.isConnected) { clearInterval(tick); return; } left.textContent = schedLeft(m.sched); }, 30000);
     var soon = m.sched - Date.now() < 10 * 60000;
-    if (!soon) { go.textContent = L("ادخل الآن قبل الموعد", "Enter early"); go.style.background = "#f3f4f6"; go.style.color = "#1A1A2E"; go.style.boxShadow = "none"; no.textContent = L("حسناً", "OK"); }
+    if (!soon) { go.textContent = L("ادخل الآن قبل الموعد", "Enter early"); go.style.background = "#f1f5f9"; go.style.color = "#1A1A2E"; go.style.boxShadow = "none"; no.textContent = L("حسناً", "OK"); }
     if (m.host === myUid()) { st.textContent = L("أنت المضيف — هذا موعدك", "You're the host"); return; }
     if (!myUid() || !enabled()) { st.textContent = L("سجّل الدخول لإضافتها إلى مواعيدك", "Sign in to add it to your schedule"); return; }
     wcall("sched.join", { room: code }).then(function (b) {
@@ -4608,15 +4608,15 @@
     try { var cm = C()._chats() || {}; chats = Object.keys(cm).map(function (k) { var c = cm[k] || {}; return { id: k, name: c.name, type: c.type, left: c.left }; })
       .filter(function (c) { return (c.type === "group" || c.type === "family") && !c.left; }); } catch (e) {}
     sheet(L("إرسال في سوا", "Send in Sawa"), function (body, close) {
-      var q = el("input", "margin:0 16px 8px;width:calc(100% - 32px);box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1px solid " + LINE + ";background:rgba(255,255,255,.06);color:#fff;font:600 13px system-ui");
+      var q = el("input", "margin:0 16px 8px;width:calc(100% - 32px);box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1px solid " + LINE + ";background:rgba(255,255,255,.06);color:#fff;font:600 13px var(--sawa-font,system-ui)");
       q.placeholder = L("بحث بالاسم…", "Search…"); body.appendChild(q);
       var rows = [];
       var add = function (key, label) { var b = item(body, "◻️", label, function () { picked[key] = !picked[key]; b.firstChild.textContent = picked[key] ? "☑️" : "◻️"; }); b._tx = label.toLowerCase(); rows.push(b); };
       chats.forEach(function (c) { add("c:" + c.id, "👥 " + (c.name || L("مجموعة", "Group"))); });
       list.forEach(function (c) { var fam = (c.families || []).map(function (f) { return f.name; }).join("، "); add("u:" + c.uid, (c.name || "") + (fam ? " · " + fam : "")); });
-      if (!rows.length) body.appendChild(el("div", "padding:20px;text-align:center;color:" + MUTED + ";font:600 12px system-ui", L("لا جهات اتّصال بعد", "No contacts yet")));
+      if (!rows.length) body.appendChild(el("div", "padding:20px;text-align:center;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui)", L("لا جهات اتّصال بعد", "No contacts yet")));
       q.oninput = function () { var v = q.value.trim().toLowerCase(); rows.forEach(function (b) { b.style.display = !v || b._tx.indexOf(v) >= 0 ? "" : "none"; }); };
-      var send = el("button", "position:sticky;bottom:0;margin:12px 16px 4px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px system-ui", L("إرسال", "Send"));
+      var send = el("button", "position:sticky;bottom:0;margin:12px 16px 4px;width:calc(100% - 32px);padding:11px;border:0;border-radius:14px;background:" + GRAD + ";color:#fff;font:800 13px var(--sawa-font,system-ui)", L("إرسال", "Send"));
       send.onclick = function () {
         var keys = Object.keys(picked).filter(function (k) { return picked[k]; });
         if (!keys.length) { toast(L("اختر محادثة على الأقلّ", "Pick at least one")); return; }
@@ -4634,7 +4634,7 @@
     if (!o || !cleanCode(o.code)) { toast(L("لا رابط لهذه الغرفة", "No link for this room")); return; }
     var text = schedText(o);
     sheet(L("نشر الغرفة", "Share the room"), function (body, close) {
-      var pv = el("div", "margin:0 16px 10px;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.06);font:600 12.5px system-ui;white-space:pre-wrap;line-height:1.7;color:#e2e8f0;word-break:break-all", text);
+      var pv = el("div", "margin:0 16px 10px;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.06);font:600 12.5px var(--sawa-font,system-ui);white-space:pre-wrap;line-height:1.7;color:#e2e8f0;word-break:break-all", text);
       body.appendChild(pv);
       item(body, "📤", L("مشاركة إلى التطبيقات (واتساب، تيليجرام…)", "Share to apps (WhatsApp, Telegram…)"), function () { close(); shareOut(o.title, text); });
       item(body, "💬", L("إرسال في سوا", "Send in Sawa"), function () { close(); sendInSawa(text); });
@@ -4643,7 +4643,7 @@
         close();
         sheet(L("امسح لإضافتها إلى مواعيدك", "Scan to add it"), function (b2) {
           var q = el("div", "width:220px;height:220px;margin:6px auto 10px;background:#fff;border-radius:16px;padding:10px;box-sizing:content-box"); b2.appendChild(q);
-          b2.appendChild(el("div", "text-align:center;font:700 12px system-ui;color:" + MUTED + ";padding:0 16px 12px", (o.title || "") + " · " + schedWhen(o.at)));
+          b2.appendChild(el("div", "text-align:center;font:700 12px var(--sawa-font,system-ui);color:" + MUTED + ";padding:0 16px 12px", (o.title || "") + " · " + schedWhen(o.at)));
           try { C().qrLib().then(function (Q) { new Q(q, { text: roomLink(o.code), width: 220, height: 220, colorDark: "#1A1A2E", colorLight: "#FFFFFF", correctLevel: Q.CorrectLevel.M }); }).catch(function (e) { q.textContent = (e && e.message) || "QR"; }); } catch (e) {}
         });
       });

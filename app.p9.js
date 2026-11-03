@@ -1,6 +1,15 @@
 function App() {
     // C26: المظهر كان في useState فيضيع مع كلّ إعادة تحميل (ومنها التحديث) — صار محفوظاً
-    const [isDark, setIsDark] = usePersistedState("ui.dark", false, 50);
+    // C192: أوّل تشغيل يتبع مظهر الهاتف (null = لم يختر)، حتّى يختار المستخدم بنفسه. من اختار سابقاً يبقى على اختياره.
+    const [darkPref, setDarkPref] = usePersistedState("ui.dark", null, 50);
+    const [sysDark, setSysDark] = useState(() => { try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch (e) { return false; } });
+    useEffect(() => {
+        let mq; try { mq = window.matchMedia("(prefers-color-scheme: dark)"); } catch (e) { return; }
+        const on = (e) => setSysDark(e.matches);
+        if (mq.addEventListener) mq.addEventListener("change", on); else if (mq.addListener) mq.addListener(on);
+        return () => { if (mq.removeEventListener) mq.removeEventListener("change", on); else if (mq.removeListener) mq.removeListener(on); };
+    }, []);
+    const isDark = typeof darkPref === "boolean" ? darkPref : sysDark;
     // مفتاح إعادة البناء عند تبديل اللغة. اللغة تعيش في window لا في
     // حالة React، فنستمع لحدث يبثّه setLocale.
     const [langTick, setLangTick] = useState(function () { try { return localStorage.getItem("sawaLang") || "ar"; } catch (e) { return "ar"; } });
@@ -21,20 +30,31 @@ function App() {
     const base = isDark ? darkColors : lightColors;
     const colors = {
         ...base,
-        primary: accent.accent,
+        primary: isDark ? (accent.accentOnDark || accent.accent) : accent.accent,   // C192
         primaryDark: accent.accentDark,
+        // C193: نصٌّ على الخلفيّة الملوّنة الفاتحة (primaryLight). في الفاتح = primaryDark كما كان؛ في الداكن الخلفيّة داكنة فيصير فاتحاً — كان الحرف في صور المحادثات لا يُرى.
+        primaryInk: isDark ? accent.accentTint : accent.accentDark,
         primaryLight: isDark ? base.primaryLight : accent.accentTint,
         // تباين عالٍ: نص أسود/أبيض خالص + حدود أوضح، بدل الدرجات المتوسطة
         ...(highContrast
-            ? { text: isDark ? "#FFFFFF" : "#000000", border: isDark ? "#5A6472" : "#8A93A0", textMuted: isDark ? "#D6DCE2" : "#3A4249" }
+            ? { text: isDark ? "#FFFFFF" : "#000000", border: isDark ? "#5B6B7C" : "#8A93A0", textMuted: isDark ? "#DFE5EC" : "#3D4450" }
             : {}),
     };
     const theme = {
-        colors, isDark, toggleDark: () => setIsDark((v) => !v),
+        colors, isDark, toggleDark: () => setDarkPref(!isDark),
         accentKey, setAccentKey, accentThemes: ACCENT_THEMES,
         fontScale, setFontScale, highContrast, setHighContrast,
         dataSaver, setDataSaver,
     };
+    // C187: الألوان متغيّراتُ CSS على الجذر (‎--sawa-primary‎، ‎--sawa-text-muted‎…) + color-scheme، لما ليس داخل React
+    //   (شاشة التحميل، واجهات sawa-chat/sawa-rtc). ونحفظ المظهر لشاشة التحميل في الزيارة التالية.
+    useEffect(() => {
+        const r = document.documentElement;
+        Object.keys(colors).forEach((k) => { r.style.setProperty("--sawa-" + k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase()), colors[k]); });
+        r.style.colorScheme = isDark ? "dark" : "light";
+        r.setAttribute("data-theme", isDark ? "dark" : "light");
+        try { const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute("content", isDark ? colors.bg : colors.primary); } catch (e) {}
+    }, [isDark, accentKey, highContrast]);
     // حجم الخط: نطبّقه على الجذر عشان يؤثّر على كل وحدات rem المستخدمة بكل مكوّنات
     // Tailwind (text-xs/text-sm/...) — تأثير حقيقي وشامل، مو محلي لشاشة وحدة بس
     useEffect(() => {
@@ -44,8 +64,11 @@ function App() {
         document.documentElement.style.setProperty("--sfs", String(fontScale));
         if (!document.getElementById("sawa-fs-css")) {
             const st = document.createElement("style"); st.id = "sawa-fs-css";
-            st.textContent = ["7", "8", "9", "9.5", "10", "10.5", "11", "11.5", "12", "12.5", "13", "13.5", "14", "14.5", "15", "16", "17", "19", "22"].map((n) => `.text-\\[${n.replace(".", "\\.")}px\\]{font-size:calc(${n}px * var(--sfs, 1))}`).join("")
-                + [["xs", .75, 1], ["sm", .875, 1.25], ["base", 1, 1.5], ["lg", 1.125, 1.75], ["xl", 1.25, 1.75], ["2xl", 1.5, 2], ["3xl", 1.875, 2.25], ["4xl", 2.25, 2.5]].map(([k, f, l]) => `.text-${k}{font-size:calc(${f}rem * var(--sfs, 1));line-height:calc(${l}rem * var(--sfs, 1))}`).join("")
+            // C188: الحرف العربيّ يحتاج حجماً أكبر من اللاتينيّ ليُقرأ — النصوص الصغيرة تكبر (٩ ⇐ ١١، ١٠ ⇐ ١١٫٥، ١١ ⇐ ١٢، ١٢ ⇐ ١٣)، و١٣ فما فوق بلا تغيير.
+            //   الاسم يبقى (text-[10px]) والحجم المعروض من هذا الجدول؛ ٧ و٨ للشارات الصغيرة فتكبر قليلاً فقط.
+            const SFS_MAP = { "7": 8.5, "8": 9.5, "9": 11, "9.5": 11, "10": 11.5, "10.5": 12, "11": 12, "11.5": 12.5, "12": 13, "12.5": 13.5 };
+            st.textContent = ["7", "8", "9", "9.5", "10", "10.5", "11", "11.5", "12", "12.5", "13", "13.5", "14", "14.5", "15", "16", "17", "19", "22"].map((n) => `.text-\\[${n.replace(".", "\\.")}px\\]{font-size:calc(${SFS_MAP[n] || n}px * var(--sfs, 1))}`).join("")
+                + [["xs", .8125, 1.125], ["sm", .875, 1.3125], ["base", 1, 1.5], ["lg", 1.125, 1.75], ["xl", 1.25, 1.75], ["2xl", 1.5, 2], ["3xl", 1.875, 2.25], ["4xl", 2.25, 2.5]].map(([k, f, l]) => `.text-${k}{font-size:calc(${f}rem * var(--sfs, 1));line-height:calc(${l}rem * var(--sfs, 1))}`).join("")
                 + [["4", 1], ["5", 1.25], ["7", 1.75], ["8", 2]].map(([k, l]) => `.leading-${k}{line-height:calc(${l}rem * var(--sfs, 1))}`).join("")
                 + "body{font-size:calc(1rem * var(--sfs, 1))}";
             document.head.appendChild(st);
