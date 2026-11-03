@@ -130,7 +130,7 @@
       wcall("rtc.ice", {}).then(function (b) {
         var l = b && Array.isArray(b.iceServers) && b.iceServers.length ? b.iceServers : STUN;
         iceRelays = b && Array.isArray(b.relays) && b.relays.length ? b.relays : null;
-        relayPrimary = b && (b.primary === "m" || b.primary === "cf") ? b.primary : null;   // C165
+        relayPrimary = b && (b.primary === "m" || b.primary === "cf" || b.primary === "p") ? b.primary : null;   // C165 · C228: p = الأقرب للطرفين
         iceCache = relayIce() || l; iceAt = Date.now(); LOG.info("ice", { mode: b && b.turn ? "TURN" : "STUN", relays: iceRelays ? iceRelays.length : 0 }); relayAuto(); return iceCache;
       }),
       new Promise(function (r) { setTimeout(function () { r(iceCache || STUN); }, wait); })
@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c219";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c228";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -191,14 +191,75 @@
       lsSet("sawa-relay-ms2", JSON.stringify({ ms: ms, at: relayAt, net: relayNet }));
       var l = relayIce(); if (l) iceCache = l;
       LOG.info("relays", { ms: ms, best: (relayRank() || [])[0] && relayRank()[0].id });
+      setTimeout(probeUpload, 500);   // C228
       return ms;
     }, function () { relayBusy = null; return relayMs; });
     return relayBusy;
   }
+  // ---------- C228: القياس يُرسل إلى الخادم (rtc.probe) ليختار المتّصل وسيطاً يناسب الطرفين ----------
+  var probeSent = "";
+  function probeUpload() {
+    try {
+      var k = JSON.stringify(relayMs) + "|" + (cfColo || "");
+      if (!myUid() || !iceRelays || probeSent === k) return;
+      var any = false; for (var x in relayMs) if (typeof relayMs[x] === "number") any = true;
+      if (!any) return;
+      probeSent = k;
+      wcall("rtc.probe", { ms: relayMs, nat: natInfo && natInfo.t || "" }).catch(function () { probeSent = ""; });
+    } catch (e) {}
+  }
+  // قياسات الطرف الآخر (آخر ما أرسله هاتفه، حتّى 24 ساعة) — تُحفظ 10 دقائق، وننتظرها 700 مللي ث على الأكثر
+  var peerRly = {};
+  function peerProbe(peer, wait) {
+    var e = peerRly[peer];
+    if (e && Date.now() - e.at < 10 * 60000) return Promise.resolve(e.v);
+    var p = wcall("rtc.peer", { peer: peer }).then(function (r) { var v = r && r.ok !== false ? r : null; peerRly[peer] = { v: v, at: Date.now() }; return v; }, function () { return null; });
+    return Promise.race([p, new Promise(function (res) { setTimeout(function () { res(null); }, wait || 700); })]);
+  }
+  // الاختيار: لكلّ وسيطٍ قاسه الطرفان «أسوأ الزمنين» (لا مجموعهما — حتّى لا يُظلم طرفٌ لصالح الآخر)؛ الفاشل عند أيٍّ منهما يُستبعد.
+  // ما لم يقِسه الآخر يُحسب بزمني أنا + 200 مللي ث (عقوبة عدم اليقين). يُعاد { ids: [الأفضل، الاحتياطيّ], ms، pms }.
+  function pairRank(pms) {
+    if (!iceRelays || !iceRelays.length) return null;
+    var mine = function (id) { var v = relayMs[id]; return typeof v === "number" ? v : v === false ? -1 : null; };
+    var his = function (id) { var v = pms && pms[id]; return typeof v === "number" ? v : null; };
+    var l = iceRelays.map(function (r, i) {
+      var a = mine(r.id), b = his(r.id);
+      if (a === -1 || b === -1) return null;
+      var sc = a == null && b == null ? 5e3 : a == null ? b + 200 : b == null ? a + 200 : Math.max(a, b);
+      return { r: r, i: i, sc: sc, a: a, b: b };
+    }).filter(Boolean).sort(function (x, y) { return x.sc - y.sc || x.i - y.i; });
+    return l.length ? l : null;
+  }
+  function iceOfIds(ids) {
+    var out = STUN.slice(), n = 0;
+    ids.forEach(function (id) { var r = (iceRelays || []).filter(function (x) { return x.id === id; })[0]; if (r) { n++; (r.iceServers || []).forEach(function (x) { out.push(x); }); } });
+    return n ? out : null;
+  }
+  // المتّصل: يحدّد الوسيط (والاحتياطيّ) ويكتبهما في سجلّ المكالمة ليستعملهما الطرف الآخر نفسهما
+  function pairPlan(c, peerInfo) {
+    if (relayPrimary !== "p") return null;
+    var pms = peerInfo && peerInfo.ms;
+    var l = pairRank(pms); if (!l) return null;
+    var ids = l.slice(0, 2).map(function (x) { return x.r.id; });
+    var ice = iceOfIds(ids); if (!ice) return null;
+    c.rsel = ids[0]; c.psel = pms ? "p" : "o"; c.rms = l[0].a; c.pms = l[0].b;
+    LOG.info("pair", { ids: ids, sc: l[0].sc, peer: pms ? 1 : 0 });
+    return { ice: ice, rec: { id: ids[0], b: ids[1] || "" } };
+  }
+  // المستقبِل: يستعمل ما اختاره المتّصل (إن وُجد عنده ولم يفشل قياسه هنا)
+  function hintIce(c) {
+    var h = c && c.relayHint; if (!h || !iceRelays) return null;
+    var ids = [h.id, h.b].filter(function (id) { return id && relayMs[id] !== false; });
+    var ice = iceOfIds(ids); if (!ice) return null;
+    c.rsel = ids[0]; c.psel = "h"; c.rms = typeof relayMs[ids[0]] === "number" ? relayMs[ids[0]] : null;
+    return ice;
+  }
+  function getIceFor(c, wait) { return getIce(wait).then(function (ice) { return hintIce(c) || ice; }); }
   function relayAuto() {
     natAuto();   // C215
     if (!iceRelays || iceRelays.length < 2 || cur || gc || rm) return;
     loadColo();
+    if (relayAt && Date.now() - relayAt < 30 * 60000) setTimeout(probeUpload, 4000);   // C228: قياسٌ حديث محفوظ ⇒ يصل الخادم دون إعادة القياس
     setTimeout(function () { if (!cur && !gc && !rm) probeRelays(false); }, 1500);
   }
   try { var nc = global.navigator && global.navigator.connection; if (nc && nc.addEventListener) nc.addEventListener("change", function () { relayAt = 0; natAt = 0; setTimeout(relayAuto, 3000); }); } catch (e) {}
@@ -1167,15 +1228,19 @@
     c.native = nativeAudioOk(type);   // C95
     if (dbUp === false) dbNudge("call");   // C119: قاعدة البيانات منقطعة (بعد الخلفيّة) ⇒ إعادة الاتّصال الآن لا بعد ثوانٍ
     warmAt = 0; warmUp("call");
-    Promise.all([c.native ? Promise.resolve(nativeLocal()) : getMedia(type), getIce()]).then(function (r) {
+    // C228: قياسات الطرف الآخر بالتوازي مع الميكروفون (وضع «الأقرب للطرفين» فقط · 700 مللي ث على الأكثر)
+    var peerP = getIce().then(function () { return relayPrimary === "p" ? peerProbe(peer, 700) : null; });
+    Promise.all([c.native ? Promise.resolve(nativeLocal()) : getMedia(type), getIce(), peerP]).then(function (r) {
       if (c.done) { stopStream(r[0]); return; }
       c.local = r[0]; earlyRoute(c); attachLocal(c); paint(c);
-      c.pc = makePc(c, r[1]); addTracks(c);
+      var plan = pairPlan(c, r[2]); c.relayRec = plan ? plan.rec : null;
+      c.pc = makePc(c, plan ? plan.ice : r[1]); addTracks(c);
       return c.pc.createOffer().then(function (o) { return c.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); }).then(function (o) {
         if (c.done) return;
         c.ref = d.ref("calls/" + c.id);
         var rec = { from: me, to: peer, type: type, fromName: myName() || "", state: "ringing", ts: TS(), offer: sdpOf(o) };
         if (opt.from) rec.vfrom = opt.from;   // C111: تحويلٌ من مكالمة صوتيّة
+        if (c.relayRec) rec.relay = c.relayRec;   // C228: الوسيط الذي اختاره المتّصل للطرفين
         return c.ref.set(rec);
       }).then(function () {
         if (c.done) { if (c.ref) c.ref.remove().catch(function () {}); return; }
@@ -1259,6 +1324,7 @@
         return;
       }
       var c = cur = newCall({ id: id, role: "callee", peer: v.from, name: name, type: v.type === "video" ? "video" : "audio", state: "incoming", ref: ref, inbox: inbox, offer: v.offer });
+      if (v.relay && typeof v.relay.id === "string") c.relayHint = { id: String(v.relay.id).slice(0, 90), b: String(v.relay.b || "").slice(0, 90) };   // C228
       c.live = true;
       if (!v.rung) ref.update({ rung: TS() }).catch(function () {});   // C111: المتّصل يرى «يرنّ…» الآن
       show(c);
@@ -1307,7 +1373,7 @@
     if (!c || c.done || c.pre || c.pc || c.state !== "incoming" || !c.offer || !global.RTCPeerConnection) return;
     if (c.type === "audio" && nativeAudioOk("audio")) {   // المحرّك الأصليّ ⚡: يحجز الوسيط داخل التطبيق (بلا وصفٍ ولا صوت)
       if (!nativePreOk()) return;
-      getIce(2500).then(function (ice) {
+      getIceFor(c, 2500).then(function (ice) {   // C228: وسيط المتّصل المختار
         if (c.done || c.pre || c.pc || c.state !== "incoming") return;
         var nid = "p" + Date.now().toString(36) + rid(5);
         try { RTCB().rtcPre(nid, JSON.stringify(ice || [])); } catch (e) { return; }
@@ -1316,7 +1382,7 @@
       }).catch(function () {});
       return;
     }
-    getIce(2500).then(function (ice) {
+    getIceFor(c, 2500).then(function (ice) {   // C228
       if (c.done || c.pre || c.pc || c.state !== "incoming") return;
       var pc; try { pc = new global.RTCPeerConnection({ iceServers: ice, iceCandidatePoolSize: 1 }); } catch (e) { return; }
       c.preTracks = [];
@@ -1355,7 +1421,7 @@
         document.addEventListener("visibilitychange", on);
       });
     });
-    var mediaP = Promise.all([micP, getIce(2500)]);
+    var mediaP = Promise.all([micP, getIceFor(c, 2500)]);   // C228
     mediaP.catch(function () {});
     // C218: الردّ يُبنى بالتوازي مع حجزه (كان يُبنى بعد جولةٍ إلى القاعدة لحجز acc) — ولا يصل المتّصلَ شيءٌ قبل الحجز (iceHold)
     c.iceHold = true;
@@ -1460,7 +1526,8 @@
       route: c.route || "", proto: c.proto || "", relay: c.relayLbl || c.relayId || "", rst: c.reN || 0, err: c.errName || "", up: c.vin ? 1 : 0, ck: wantAnswerHit(c) ? 1 : 0, vis: document.visibilityState === "visible" ? 1 : 0,
       rtt: qaStat(S0.rtt), loss: qaStat(S0.loss), jb: qaStat(S0.jb), jit: qaStat(T0.jit), fps: qaStat(T0.fps), h: qaStat(T0.h),   // C179
       lct: c.lct || "", rct: c.rct || "", fam: c.fam || "", nat: natTel().nat, nsx: natTel().nsx, v6: natTel().v6,   // C215
-      v6l: c.v6l || 0, v6r: c.v6r || 0, pw: c.pw || 0 });   // C217 · C218
+      v6l: c.v6l || 0, v6r: c.v6r || 0, pw: c.pw || 0,   // C217 · C218
+      rsel: c.rsel || "", psel: c.psel || "", rms: c.rms == null ? null : c.rms, pms: c.pms == null ? null : c.pms });   // C228
   }
   // C216: سجلّ المكالمة لا يضيع. كان يُرسل مرّةً واحدة ويُهمل الخطأ — فإن فشل الطلب (شبكةٌ مزدحمة، التطبيق في الخلفيّة، انتهاء المهلة)
   //        ضاع السجلّ بصمت (مكالمة 01:02: سجلّ المستقبِل ⚡ لم يصل). الآن: يُحفظ في الهاتف قبل الإرسال ويُحذف عند نجاحه،
@@ -1624,6 +1691,25 @@
           if (nt.unk) kv(c1n, L("لم يُقَس (نسخة أقدم)", "Not measured (older build)"), String(nt.unk));
           c1n.appendChild(el("div", "font:600 11px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:4px", L("إن كان الطرفان «متماثل» فلا اتّصال مباشر ممكن، والوسيط ضروريّ. يكفي أن يكون أحدهما «ثابت» ليُستعمل وسيطٌ واحد فقط.", "If both sides are symmetric, a direct path is impossible and a relay is required. One endpoint-independent side lets a single relay suffice.")));
         }
+        // C228: الجودة حسب المسار (دولتا الطرفين من شبكة Cloudflare) وحسب الوسيط المستعمَل
+        var flag = function (cc) { return /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(127397 + cc.charCodeAt(0), 127397 + cc.charCodeAt(1)) + " " + cc : "؟"; };
+        var rlbl = function (id) { if (id === "cf") return "Cloudflare"; if (id === "direct") return L("مباشر", "Direct"); if (/^m:/.test(id)) return "Metered " + id.slice(2).split(".")[0]; return id === "?" ? L("غير معروف", "Unknown") : id; };
+        var qtxt = function (x) { return (x.conn || 0) + "/" + (x.n || 0) + " · RTT " + ms(x.rtt) + (x.rtt90 != null ? " (90٪ " + ms(x.rtt90) + ")" : "") + " · " + L("فقد ", "loss ") + (x.loss == null ? "–" : x.loss + "%") + (x.slow ? " · " + L("بطيئة ", "slow ") + x.slow : "") + (x.pair ? " · " + L("اختيار الطرفين ", "pair-picked ") + x.pair : ""); };
+        var rk = Object.keys(r.routes || {});
+        if (rk.length) {
+          var cr = card(L("الجودة حسب المسار (دولتا الطرفين)", "Quality by route (both countries)"));
+          cr.setAttribute("data-sawa", "routes");
+          rk.forEach(function (k) {
+            var x = r.routes[k], top = Object.keys(x.relays || {}).sort(function (p, q) { return x.relays[q] - x.relays[p]; })[0];
+            kv(cr, k.split("-").map(flag).join(" ↔ "), qtxt(x) + (top ? " · " + rlbl(top) : ""), x.rtt > 300 || (x.conn && x.slow / x.conn > 0.3));
+          });
+          cr.appendChild(el("div", "font:600 11px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:4px", L("الدولة من شبكة Cloudflare عند كلّ طرف. «بطيئة» = RTT فوق 300 مللي ث. «اختيار الطرفين» = اختير الوسيط بقياس الهاتفين معاً.", "Country as seen by Cloudflare for each side. «Slow» = RTT over 300 ms. «Pair-picked» = relay chosen from both phones' measurements.")));
+        }
+        var rb = Object.keys(r.byRelay || {});
+        if (rb.length) {
+          var crl = card(L("الجودة حسب الوسيط", "Quality by relay"));
+          rb.sort(function (p, q) { return (r.byRelay[q].conn || 0) - (r.byRelay[p].conn || 0); }).forEach(function (k) { var x = r.byRelay[k]; kv(crl, rlbl(k), qtxt(x), x.rtt > 300); });
+        }
         var rs = Object.keys(a.reasons || {}).sort(function (x, y) { return a.reasons[y] - a.reasons[x]; });
         if (rs.length) { var c2 = card(L("لم تتّصل — الأسباب", "Not connected — reasons")); rs.forEach(function (k) { kv(c2, TEL_REASON[k] ? L(TEL_REASON[k][0], TEL_REASON[k][1]) : k, String(a.reasons[k])); }); }
         var ps = Object.keys(r.byPlat || {});
@@ -1709,11 +1795,11 @@
     card.appendChild(st);
     var row = el("div", "display:flex;gap:6px");
     card.appendChild(row);
-    var opts = [["m", "Metered"], ["cf", "Cloudflare"], ["", L("تلقائيّ", "Auto")]];
+    var opts = [["p", L("الأقرب للطرفين", "Nearest to both")], ["m", "Metered"], ["cf", "Cloudflare"], ["", L("تلقائيّ", "Auto")]];   // C228
     var paint = function (r) {
       row.innerHTML = "";
       var eff = r.primary || r.envDefault;
-      st.textContent = L("الآن: ", "Now: ") + (eff === "cf" ? "Cloudflare" : "Metered") + (r.primary ? "" : L(" (إعداد الخادم)", " (server default)")) + L(" · والآخر احتياطيّ إن فشل", " · the other is the fallback") + (admOk(r) ? "" : L(" · 👁 مشاهدة فقط", " · 👁 View only"));
+      st.textContent = L("الآن: ", "Now: ") + (eff === "p" ? L("الأقرب للطرفين — يُختار لكلّ مكالمة من قياس الهاتفين", "Nearest to both — picked per call from both phones' measurements") : (eff === "cf" ? "Cloudflare" : "Metered") + L(" · والآخر احتياطيّ إن فشل", " · the other is the fallback")) + (r.primary ? "" : L(" (إعداد الخادم)", " (server default)")) + (admOk(r) ? "" : L(" · 👁 مشاهدة فقط", " · 👁 View only"));
       opts.forEach(function (o) {
         var on = (r.primary || "") === o[0], off = (o[0] === "m" && r.has && !r.has.m) || (o[0] === "cf" && r.has && !r.has.cf);
         var b = el("button", "flex:1;padding:9px 4px;border-radius:10px;border:1px solid " + (on ? PRI : LINE) + ";background:" + (on ? PRI : "transparent") + ";color:#fff;font:800 12.5px var(--sawa-font,system-ui);opacity:" + (off ? ".4" : "1"), o[1]);
@@ -1724,7 +1810,7 @@
           wcall("admin.relay", { primary: o[0] }).then(function (r2) {
             if (!r2 || !r2.admin) { toast(L("للمدير فقط", "Admin only")); return; }
             iceCache = null; iceAt = 0; fetchIce();   // هاتف المدير فوراً
-            paint(r2); toast(L("✓ الأساسيّ الآن: ", "✓ Primary now: ") + ((r2.primary || r2.envDefault) === "cf" ? "Cloudflare" : "Metered") + L(" — يصل بقيّة الهواتف خلال دقائق", " — other phones within minutes"));
+            paint(r2); toast(L("✓ الأساسيّ الآن: ", "✓ Primary now: ") + ((r2.primary || r2.envDefault) === "p" ? L("الأقرب للطرفين", "Nearest to both") : (r2.primary || r2.envDefault) === "cf" ? "Cloudflare" : "Metered") + L(" — يصل بقيّة الهواتف خلال دقائق", " — other phones within minutes"));
           }).catch(function (e) { st.textContent = L("تعذّر الحفظ: ", "Couldn't save: ") + ((e && e.message) || e); });
         };
         row.appendChild(b);
@@ -4743,7 +4829,7 @@
     _gc: function () { return gc; }, _pick: pickPerson, _gIncoming: groupIncoming,
     _native: { ok: nativeAudioOk, PC: NativePC }, qaReport: qaReport, relaySheet: relaySheet, healthSheet: healthSheet, telReport: telReport, _qaAsk: qaAsk,
     build: RTC_BUILD, relayPrimary: function () { return relayPrimary; }, relayMs: function () { return relayMs; },
-    _relay: { probe: probeRelays, rank: relayRank, ice: relayIce, ms: function () { return relayMs; }, list: function () { return iceRelays; }, ofUrl: relayOfUrl, text: callNetText }
+    _relay: { refresh: function () { iceCache = null; iceAt = 0; return fetchIce(); }, pairRank: pairRank, pairPlan: pairPlan, hintIce: hintIce, peerProbe: peerProbe, upload: probeUpload, setMs: function (m) { relayMs = m; }, primary: function () { return relayPrimary; }, probe: probeRelays, rank: relayRank, ice: relayIce, ms: function () { return relayMs; }, list: function () { return iceRelays; }, ofUrl: relayOfUrl, text: callNetText }
   };
   try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") schedRefresh(false); }); } catch (e) {}
   if (global.document && document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
