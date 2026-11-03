@@ -14,7 +14,7 @@
 
    المجموعات: معرّفها المحلّيّ (g-1…) غير فريد عالمياً ⇒ يولّده الخادم، والربط
    في sawa_group_map {localGid: serverGid}، والأدوار في sawa_group_roles.
-   الأشخاص والصلات: المعرّف المحلّيّ = معرّف الخادم (قرار §٨-١).
+   الأشخاص والصلات: المعرّف المحلّيّ = معرّف الخادم (قرار §8-1).
 
    الخصوصية: status_detail (ومنه «مريض») يُزامَن لأعضاء العائلة فقط (قرار خالد).
    photo و favorite و linkedTo تبقى محلّية؛ lastContactDate خاصٌّ بالمستخدم (contacts.sync).
@@ -27,7 +27,7 @@
   var WORKER = "https://sawa-deploy-test.khalidlinux87.workers.dev";
 
   // مطابقةٌ تماماً لقائمة ALLOWED في الـWorker (v8+).
-  // status_detail (مسافر/مغترب/متزوّج حديثاً/مريض) يُزامَن داخل العائلة — قرار خالد ٩ أكتوبر:
+  // status_detail (مسافر/مغترب/متزوّج حديثاً/مريض) يُزامَن داخل العائلة — قرار خالد 9 أكتوبر:
   // «مريض» يظهر لأهله ليطمئنّوا عليه. القراءة لأعضاء العائلة وحدهم (قواعد الأمان).
   // lastContactDate لا تُزامَن هنا: هي خاصّة بالمستخدم (contacts.sync أدناه).
   var SYNC_FIELDS = ["local_name", "gender", "kinship", "proximity", "birthYear", "birthday",
@@ -44,7 +44,7 @@
 
   // ---------- أدوات ----------
   // C197: السجلّ المنظَّم المشترك (SawaLog) — أوّل وحدة تُحمَّل تعرّفه والبقيّة تستعمله.
-  //   LOG.info/warn/error/debug(event, { fields }) · آخر ٣٠٠ حدث في SawaLog.recent(n) · الحدّ الأدنى للعرض: localStorage "sawa-log" (debug|info|warn|error).
+  //   LOG.info/warn/error/debug(event, { fields }) · آخر 300 حدث في SawaLog.recent(n) · الحدّ الأدنى للعرض: localStorage "sawa-log" (debug|info|warn|error).
   var SawaLog = global.SawaLog || (global.SawaLog = (function () {
     var LV = { debug: 10, info: 20, warn: 30, error: 40 }, buf = [], MAX = 300;
     function minLv() { try { return LV[localStorage.getItem("sawa-log")] || LV.info; } catch (e) { return LV.info; } }
@@ -155,7 +155,7 @@
       return u.getIdToken();
     } catch (e) { return Promise.reject(e); }
   }
-  // ⛔ مهلة ٢٥ث: طلبٌ بدأ قبل أن يُجمَّد التطبيق في الخلفية قد يعلق إلى الأبد — فيعلق خلفه كلّ الطابور (الرسائل على «⏱»)
+  // ⛔ مهلة 25ث: طلبٌ بدأ قبل أن يُجمَّد التطبيق في الخلفية قد يعلق إلى الأبد — فيعلق خلفه كلّ الطابور (الرسائل على «⏱»)
   function sendWith(tok, op, payload) {
     var ctl = null; try { ctl = new global.AbortController(); } catch (e) {}
     var timer = setTimeout(function () { try { if (ctl) ctl.abort(); } catch (e) {} }, 25000);
@@ -400,7 +400,7 @@
       var onErr = function (e) {
         w.err = (e && e.code) || "err"; w.note = "listen✗ " + w.err;
         LOG.warn("read.denied", { sg: sg, err: w.err }); paintBadge();
-        // C33: المستمع يموت بعد الخطأ (Firestore لا يعيده) ⇒ نعيده بعد ٣٠ ثانية (عودة صلاحيّة، أو عطلٌ عابر)
+        // C33: المستمع يموت بعد الخطأ (Firestore لا يعيده) ⇒ نعيده بعد 30 ثانية (عودة صلاحيّة، أو عطلٌ عابر)
         if (!w.retryT) w.retryT = setTimeout(function () { if (watchers[sg] === w) { stopWatch(sg); rewatch(); } }, 30000);
       };
       var offP = base.collection("persons").onSnapshot(function (snap) {
@@ -620,7 +620,7 @@
     if (photoBusy || !photoQueue.length || !state.uid) return;
     photoBusy = true;
     var job = photoQueue[0];
-    // مهلة ١٥ث: صورةٌ لا يكتمل فكّها لا تعطّل طابور الصور كلّه
+    // مهلة 15ث: صورةٌ لا يكتمل فكّها لا تعطّل طابور الصور كلّه
     var tmo = null;
     var squeeze = job.data ? Promise.race([compressImpl(job.data), new Promise(function (r) { tmo = setTimeout(function () { state.photoWhy = "timeout"; r(null); }, 15000); })]) : Promise.resolve(null);
     squeeze = squeeze.then(function (v) { if (tmo) clearTimeout(tmo); return v; });
@@ -754,7 +754,7 @@
     if (w.err) { w.note = "listen✗ " + w.err; return; }
     if (!w.persons || !w.relations) { w.note = "waiting-snap"; return; }
     if (outboxLen() > 0 || state.sending) { w.note = "defer(Q)"; return; }   // تعديلاتنا أوّلاً
-    // ⛔ بعد إرسالٍ ناجح لا نطبّق لقطةً أقدم منه (كانت تُرجع التعديل لحظةً ثمّ يعود) — ننتظر لقطةً أحدث (≤ ٤ث)
+    // ⛔ بعد إرسالٍ ناجح لا نطبّق لقطةً أقدم منه (كانت تُرجع التعديل لحظةً ثمّ يعود) — ننتظر لقطةً أحدث (≤ 4ث)
     if (awaitingEcho(w)) { w.note = "await-echo"; return; }
     var lg = w.lg;
     if (serverGid(lg) !== w.sg) { w.note = "gid≠"; return; }
@@ -1430,10 +1430,10 @@
     var r = roles(); delete r[sg]; lsSet("sawa_group_roles", r);
     stopWatch(sg); rewatch();
   }
-  function fmtNum(n) { try { return Number(n || 0).toLocaleString(isAr() ? "ar-EG" : "en-US"); } catch (e) { return String(n); } }
+  function fmtNum(n) { try { return Number(n || 0).toLocaleString(isAr() ? "ar-EG-u-nu-latn" : "en-US"); } catch (e) { return String(n); } }
   function fmtWhen(ts) {
     if (!ts) return "";
-    try { return new Date(ts).toLocaleString(isAr() ? "ar-EG" : "en-GB", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }); }
+    try { return new Date(ts).toLocaleString(isAr() ? "ar-EG-u-nu-latn" : "en-GB", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }); }
     catch (e) { return ""; }
   }
   function deleteGroup(sg) {

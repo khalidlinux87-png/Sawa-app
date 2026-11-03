@@ -890,7 +890,7 @@ function walletMaskCard(num) {
     const last4 = digits.slice(-4) || "0000";
     return `•••• •••• •••• ${last4}`;
 }
-// C221: مبلغٌ بإشارته — الإشارة يسار الأرقام دائماً (عزلٌ ثنائيّ الاتّجاه؛ كانت «٣٬٠٠٠-» في العربيّة) والعملة بعده بخطٍّ أصغر
+// C221: مبلغٌ بإشارته — الإشارة يسار الأرقام دائماً (عزلٌ ثنائيّ الاتّجاه؛ كانت «3,000-» في العربيّة) والعملة بعده بخطٍّ أصغر
 function walletAmt(sign, n, cur) {
     return React.createElement("span", { className: "inline-flex items-baseline gap-1 whitespace-nowrap" },
         React.createElement("span", { dir: "ltr", style: { unicodeBidi: "isolate" } }, (sign || "") + Number(n || 0).toLocaleString(wLoc())),
@@ -1045,7 +1045,7 @@ function kycLoadImage(src) {
     // ⚠️ لا new Image(): «Image» في التطبيق أيقونة Lucide (من window.__L) تحجب منشئ المتصفّح
     return new Promise((res, rej) => { const im = document.createElement("img"); im.onload = () => res(im); im.onerror = () => rej(new Error("decode")); im.src = src; });
 }
-// إضاءةٌ متوسّطة (٠–٢٥٥) ووضوحٌ (تباين لابلاسيان على صورةٍ مصغّرة بعرض ٤٨٠) — مقياسان بسيطان يكشفان المظلمة والمهزوزة
+// إضاءةٌ متوسّطة (0–255) ووضوحٌ (تباين لابلاسيان على صورةٍ مصغّرة بعرض 480) — مقياسان بسيطان يكشفان المظلمة والمهزوزة
 function kycMeasure(im) {
     const W = Math.min(480, im.naturalWidth || im.width), H = Math.max(1, Math.round(W * (im.naturalHeight || im.height) / (im.naturalWidth || im.width)));
     const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
@@ -1061,7 +1061,7 @@ function kycMeasure(im) {
     const mean = n ? m / n : 0;
     return { lum: Math.round(sum / (W * H)), sharp: n ? Math.round(m2 / n - mean * mean) : 0 };
 }
-// صورةٌ للمعاينة (أطول ضلع ١٢٨٠، JPEG) — للعرض في الهاتف فقط
+// صورةٌ للمعاينة (أطول ضلع 1280، JPEG) — للعرض في الهاتف فقط
 function kycPreview(im) {
     const s = Math.min(1, 1280 / Math.max(im.naturalWidth, im.naturalHeight));
     const cv = document.createElement("canvas"); cv.width = Math.round(im.naturalWidth * s); cv.height = Math.round(im.naturalHeight * s);
@@ -1073,7 +1073,7 @@ async function kycCheckFile(file, kind) {
     const issues = [];
     const add = (lvl, ar, en) => issues.push({ lvl, ar, en });
     if (!file || !/^image\//.test(file.type || "")) { add("err", "الملفّ ليس صورة — اختر صورة JPG أو PNG", "Not an image — choose a JPG or PNG"); return { ok: false, issues }; }
-    if (file.size > KYC_LIMITS.maxBytes) add("err", "الصورة أكبر من ١٠ م.ب", "Image is larger than 10 MB");
+    if (file.size > KYC_LIMITS.maxBytes) add("err", "الصورة أكبر من 10 م.ب", "Image is larger than 10 MB");
     if (file.size < KYC_LIMITS.minBytes) add("err", "الصورة صغيرةٌ جدّاً — يبدو أنّها مصغّرة أو لقطة شاشة", "Image is too small — looks like a thumbnail or screenshot");
     const url0 = URL.createObjectURL(file);
     let im;
@@ -1599,7 +1599,7 @@ const INTL_DEMO_COUNTRIES = [
     { code: "DE", flag: "🇩🇪", ar: "ألمانيا", en: "Germany", cur: "EUR", rate: 650, methods: ["bank"] },
     { code: "US", flag: "🇺🇸", ar: "الولايات المتّحدة", en: "United States", cur: "USD", rate: 600, methods: ["bank"] },
 ];
-const INTL_DEMO_FEE = { pct: 0.015, min: 2000 };   // ١٫٥٪ وحدّ أدنى ٢٬٠٠٠ ج.س (تجريبيّ)
+const INTL_DEMO_FEE = { pct: 0.015, min: 2000 };   // 1.5٪ وحدّ أدنى 2,000 ج.س (تجريبيّ)
 const INTL_DEMO_LIMITS = { min: 5000, max: 2000000 };   // لكلّ تحويل (تجريبيّ)
 const INTL_METHODS = {
     bank: { ar: "حساب مصرفيّ", en: "Bank account", Icon: Landmark },
@@ -1775,7 +1775,7 @@ function IntlTransferScreen({ balance, walletPinForConfirm, kycStatus, history, 
 }
 // ============================================================================
 // C224: حسابات العملات والبطاقات الافتراضيّة — نموذجٌ تجريبيّ داخل «محفظة سوا» (لا أموال حقيقيّة)
-// • حسابٌ لكلّ عملة برقمٍ تجريبيّ بصيغة SAWA-USD-…(ليس IBAN) · تحويلٌ بين العملات بأسعارٍ ثابتة ورسوم ١٪
+// • حسابٌ لكلّ عملة برقمٍ تجريبيّ بصيغة SAWA-USD-…(ليس IBAN) · تحويلٌ بين العملات بأسعارٍ ثابتة ورسوم 1٪
 // • بطاقاتٌ افتراضيّة: أرقامها تبدأ بـ0000 (لا تطابق أيّ بطاقةٍ حقيقيّة) · إظهار التفاصيل برمز المحفظة · تجميد · حدٌّ شهريّ · حذف
 // الربط الحقيقيّ يحتاج مصرفاً شريكاً أو مُصدِر بطاقاتٍ مرخَّصاً — يُستبدل FX_CURS والدوالّ في AppInner فقط.
 // ============================================================================
@@ -1788,7 +1788,7 @@ const FX_CURS = [
     { cur: "QAR", flag: "🇶🇦", ar: "ريال قطريّ", en: "Qatari riyal", rate: 165 },
     { cur: "EGP", flag: "🇪🇬", ar: "جنيه مصريّ", en: "Egyptian pound", rate: 12 },
 ];
-const FX_FEE = 0.01;   // ١٪ (تجريبيّ)
+const FX_FEE = 0.01;   // 1٪ (تجريبيّ)
 const VCARD_MAX = 5;
 const VCARD_COLORS = [["#1E3A63", "#2774BA"], ["#0C4854", "#187854"], ["#5F3F78", "#8B5FA8"], ["#7A431E", "#E8823D"]];
 function fxInfo(cur) { return cur === "SDG" ? { cur: "SDG", flag: "🇸🇩", ar: "جنيه سودانيّ", en: "Sudanese pound", rate: 1 } : (FX_CURS.find((c) => c.cur === cur) || null); }
@@ -1812,8 +1812,8 @@ function vcardNew(name, cur, colorIx) {
 function vcardGroup(num) { return String(num).replace(/(\d{4})(?=\d)/g, "$1 "); }
 // C199: نغمة المحفظة — لونها (SERVICE_COLORS.wallet) في كلّ أيقونات خدماتها وبنوكها وإعداداتها وبطاقاتها الكبيرة، بدل ألوان باستيل ثابتة
 //   (أخضر/أزرق/بنفسجيّ/أصفر…) كانت تسطع في الوضع الداكن، وبطاقاتٍ كحليّة بخلاف رأسها. الأحمر/الأخضر للمبالغ الداخلة والخارجة فقط.
-// C199: المحفظة بالأرقام الغربيّة (45,200) مثل رقم البطاقة والأوقات وأرقام الهواتف والرموز — كانت المبالغ عربيّة هنديّة (٤٥٬٢٠٠) فيجتمع النظامان في سطرٍ واحد
-function wLoc() { return isRTL() ? "ar-SD-u-nu-latn" : "en-GB"; }
+// C199: المحفظة بالأرقام الغربيّة (45,200) مثل رقم البطاقة والأوقات وأرقام الهواتف والرموز — كانت المبالغ عربيّة هنديّة (45,200) فيجتمع النظامان في سطرٍ واحد
+function wLoc() { return loc(); }   // C200: صار loc() نفسه غربيّ الأرقام
 function walletDarkNow() { try { return document.documentElement.getAttribute("data-theme") === "dark"; } catch (e) { return false; } }   // للمكوّنات التي تأخذ colors دون useTheme
 function walletTone(isDark) {
     const c = SERVICE_COLORS.wallet;
@@ -1911,7 +1911,7 @@ function FxCardsScreens({ view, setView, balance, fxAccounts, cards, walletPinFo
         const q = fxQuote(amt, from, to), a0 = Number(amt) || 0, have = balOf(from);
         const err = !to || from === to ? tl("اختر عملتين مختلفتين", "Pick two different currencies") : a0 > have ? tl("الرصيد لا يكفي", "Insufficient balance") : null;
         return shell(tl("تحويل العملات", "Convert currency"), React.createElement("div", null,
-            React.createElement(WalletDemoNote, { ar: "أسعارٌ ثابتة للتجربة وليست أسعار السوق · رسوم ١٪.", en: "Fixed demo rates, not market rates · 1% fee." }),
+            React.createElement(WalletDemoNote, { ar: "أسعارٌ ثابتة للتجربة وليست أسعار السوق · رسوم 1٪.", en: "Fixed demo rates, not market rates · 1% fee." }),
             fxAccounts.length === 0 && React.createElement(Card, null,
                 React.createElement("div", { className: `text-xs mb-2 ${textStart()}`, style: { color: colors.textMuted } }, tl("افتح حساب عملةٍ أوّلاً لتحوّل إليه.", "Open a currency account first.")),
                 React.createElement(Button, { label: tl("فتح حساب عملة", "Open a currency account"), onPress: () => setView("fxAdd") })),
@@ -1925,7 +1925,7 @@ function FxCardsScreens({ view, setView, balance, fxAccounts, cards, walletPinFo
                 React.createElement("input", { dir: "ltr", value: amt, onChange: (e) => setAmt(e.target.value.replace(from === "SDG" ? /[^0-9]/g : /[^0-9.]/g, "")), inputMode: "decimal", placeholder: "0", className: "w-full border rounded-xl px-3 py-3 text-lg font-bold text-center mb-3", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
                 a0 > 0 && to && from !== to && React.createElement(Card, { className: "p-0 overflow-hidden" },
                     row(tl("السعر (تجريبيّ)", "Rate (demo)"), "⁦" + "1 " + (from === "SDG" ? to : from) + "⁩" + " = " + fxFmt(fxRate(from === "SDG" ? to : from) / fxRate(from === "SDG" ? "SDG" : to), from === "SDG" || to === "SDG" ? "SDG" : to) + " " + fxCode(from === "SDG" || to === "SDG" ? "SDG" : to)),
-                    row(tl("الرسوم ١٪", "Fee 1%"), fxFmt(q.fee, from) + " " + fxCode(from)),
+                    row(tl("الرسوم 1٪", "Fee 1%"), fxFmt(q.fee, from) + " " + fxCode(from)),
                     row(tl("تستلم", "You get"), fxFmt(q.out, to) + " " + fxCode(to), true)),
                 err && a0 > 0 && React.createElement("div", { className: "text-xs font-bold text-center mb-3", style: { color: colors.danger } }, err),
                 React.createElement(Button, { label: tl("تحويل", "Convert"), disabled: !!err || !(a0 > 0) || !(q.out > 0), onPress: () => { onExchange({ from, to, amt: fxRound(a0, from), fee: q.fee, out: q.out }); setAmt(""); setSelFx(from === "SDG" ? to : from); setView(to === "SDG" && from === "SDG" ? "home" : "fxAcct"); } }))));
@@ -1938,7 +1938,7 @@ function FxCardsScreens({ view, setView, balance, fxAccounts, cards, walletPinFo
                 React.createElement(CreditCard, { size: 34, color: colors.textMuted }),
                 React.createElement("div", { className: "text-xs mt-2", style: { color: colors.textMuted } }, tl("لا بطاقات بعد — أنشئ بطاقةً للشراء عبر الإنترنت", "No cards yet — create one for online purchases"))),
             cards.map((cd) => React.createElement("button", { key: cd.id, onClick: () => { setSelCard(cd.id); setRevealUntil(0); setPin(""); setConfirmDel(false); setLimitIn(cd.limit ? String(cd.limit) : ""); setView("cardDetail"); }, className: "w-full block mb-3" }, React.createElement(VirtualCardFace, { card: cd }))),
-            React.createElement(Button, { label: cards.length >= VCARD_MAX ? tl("الحدّ ٥ بطاقات", "Limit: 5 cards") : tl("بطاقةٌ جديدة", "New card"), icon: Plus, disabled: cards.length >= VCARD_MAX, onPress: () => { setCName(""); setCCur("SDG"); setCColor(cards.length % VCARD_COLORS.length); setView("cardNew"); } })));
+            React.createElement(Button, { label: cards.length >= VCARD_MAX ? tl("الحدّ 5 بطاقات", "Limit: 5 cards") : tl("بطاقةٌ جديدة", "New card"), icon: Plus, disabled: cards.length >= VCARD_MAX, onPress: () => { setCName(""); setCCur("SDG"); setCColor(cards.length % VCARD_COLORS.length); setView("cardNew"); } })));
     }
     if (view === "cardNew") {
         const preview = { name: cName || tl("بطاقتي", "My card"), cur: cCur, num: "0000000000000000", exp: "••/••", color: cColor, frozen: false };
@@ -2602,7 +2602,7 @@ function PhoneFrame({ children, dir: framedir = "rtl" }) {
         document.head.appendChild(styleEl);
         return () => document.head.removeChild(styleEl);
     }, []);
-    // C62: على الهاتف (أو التطبيق المثبّت، أو أيّ شاشةٍ أضيق من ٦٤٠ أو أقصر من ٧٨٠) يملأ التطبيق الشاشة كلّها —
+    // C62: على الهاتف (أو التطبيق المثبّت، أو أيّ شاشةٍ أضيق من 640 أو أقصر من 780) يملأ التطبيق الشاشة كلّها —
     //      كان يُعرض داخل «بطاقة هاتف» بحوافّ زرقاء وزوايا مدوّرة (تصميم معاينة لسطح المكتب) فيضيع جزءٌ من الشاشة.
     const fullNow = () => {
         try {

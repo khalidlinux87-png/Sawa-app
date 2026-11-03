@@ -120,7 +120,7 @@ function FamilySuggestionsScreen({ groupId, persons, relations, events, dismisse
         const isAncestor = ANCESTOR_KINSHIPS.has(p.kinship) || Object.values(parentOfMap).includes(p.id);
         // "بعيد" = الجد فصاعداً — وجوده في الشجرة يعني بالضرورة أنه تزوّج وأنجب
         // كل سلف في الشجرة تزوّج وأنجب بالضرورة — وإلا ما وُجد من ينحدر منه.
-        // يشمل ذلك الوالد والوالدة (عمق ١)، لا الجدّ فصاعداً فقط.
+        // يشمل ذلك الوالد والوالدة (عمق 1)، لا الجدّ فصاعداً فقط.
         const isDeepAncestor = isAncestor && (genDepth(p.id) >= 1
             || /الوالد|الوالدة|الجد|الجدة|عم الوالد|خال الوالد|عم الوالدة|خال الوالدة/.test(p.kinship)
             // من سُجِّل أباً لأحد في الشجرة فهو سلف يقيناً مهما كانت صلته
@@ -368,7 +368,7 @@ function FamilyActivityLogScreen({ groupId, activityLog, onBack }) {
                     React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, a.text),
                     React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, new Date(a.ts).toLocaleString(loc(), { day: "numeric", month: "long", hour: "numeric", minute: "numeric" })))))))));
 }
-// C109: المرحلة ٤ — اقتراحات الربط بالأرقام الموثَّقة + ربط عضوٍ بشخصه من شاشة الأعضاء
+// C109: المرحلة 4 — اقتراحات الربط بالأرقام الموثَّقة + ربط عضوٍ بشخصه من شاشة الأعضاء
 function famSG(gid) { const SS = window.SawaSync; return SS && SS.serverGid ? SS.serverGid(gid) : null; }
 function famLinkCall(gid, payload) {
     const SS = window.SawaSync, sg = famSG(gid);
@@ -565,7 +565,7 @@ function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, se
                         React.createElement("button", { onClick: () => setTransferFor(null), className: "rounded-2xl px-3 py-2.5 text-xs font-bold", style: { backgroundColor: colors.bg, color: colors.textMuted } }, tl("إلغاء", "Cancel"))))))))));
 }
 // ============================================================================
-// C37: منازل الأقارب وتنبيه القرب — «منزل عمّك على بعد ٥٠٠ م: فرصةٌ للزيارة أو للاتّصال»
+// C37: منازل الأقارب وتنبيه القرب — «منزل عمّك على بعد 500 م: فرصةٌ للزيارة أو للاتّصال»
 //   الموقع يُحفظ في person.locations[0] = { type:"home", lat, lng, radius_meters, address_text } ويُزامَن مع العائلة.
 //   الفحص عند فتح التطبيق وكلّ دقيقتين ما دام ظاهراً (المتصفّح لا يعطي الموقع والتطبيق مغلق).
 // ============================================================================
@@ -576,7 +576,7 @@ function geoDist(a, b) {   // هافرساين بالأمتار
     return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 function geoValid(lat, lng) { return typeof lat === "number" && typeof lng === "number" && isFinite(lat) && isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && !(lat === 0 && lng === 0); }
-// C37b: نطاق التنبيه العامّ (إعداد المستخدم، ١ كم افتراضاً) — يُطبَّق على كلّ قريبٍ لم يُحدَّد له نطاقٌ خاصّ
+// C37b: نطاق التنبيه العامّ (إعداد المستخدم، 1 كم افتراضاً) — يُطبَّق على كلّ قريبٍ لم يُحدَّد له نطاقٌ خاصّ
 function proxDefaultRadius() { try { const v = Number(JSON.parse(localStorage.getItem(SAWA_STORE_PREFIX + "ui.proxRadius"))); return v >= 100 && v <= 5000 ? v : 1000; } catch (e) { return 1000; } }
 function homeOf(p) { const l = (p && p.locations || []).find((x) => x && geoValid(Number(x.lat), Number(x.lng))); return l ? { lat: Number(l.lat), lng: Number(l.lng), radius: Number(l.radius_meters) > 0 ? Number(l.radius_meters) : proxDefaultRadius(), own: Number(l.radius_meters) > 0, label: l.address_text || "", type: l.type || "home" } : null; }
 function fmtDist(m) { const n = Math.round(m); return n < 1000 ? tl(n.toLocaleString(loc()) + " م", n + " m") : tl((n / 1000).toLocaleString(loc(), { maximumFractionDigits: 1 }) + " كم", (n / 1000).toFixed(1) + " km"); }
@@ -1555,9 +1555,9 @@ function SwipeableConvCard({ children, onArchive, onMute, onPin, onDelete, isMut
     const armedRef = useRef(0);      // للاهتزاز مرّةً عند الوصول لحدّ التنفيذ
     // null = لم يُحسم الاتجاه بعد · "x" = سحب أفقي · "y" = تمرير رأسي
     const axisRef = useRef(null);
-    // C140: كانت حسّاسةً جدّاً — تنحسم أفقيّةً بعد ١٠ بكسل وبأيّ ميل، وتقفز البطاقة بمقدار ذلك فوراً.
-    //       الآن: منطقةٌ ميّتة ٢٤ بكسل لا تتحرّك فيها البطاقة · أفقيّة فقط إن كان الأفقيّ ضعف الرأسيّ · مقاومة بعد حدّ الفتح ·
-    //       الفتح بعد ٩٠ بكسل · التنفيذ المباشر (أرشفة/حذف) بعد ٢٦٠ بكسل أو ٦٥٪ من عرض البطاقة.
+    // C140: كانت حسّاسةً جدّاً — تنحسم أفقيّةً بعد 10 بكسل وبأيّ ميل، وتقفز البطاقة بمقدار ذلك فوراً.
+    //       الآن: منطقةٌ ميّتة 24 بكسل لا تتحرّك فيها البطاقة · أفقيّة فقط إن كان الأفقيّ ضعف الرأسيّ · مقاومة بعد حدّ الفتح ·
+    //       الفتح بعد 90 بكسل · التنفيذ المباشر (أرشفة/حذف) بعد 260 بكسل أو 65٪ من عرض البطاقة.
     const DEAD = 24;
     const THRESHOLD = 90;
     const W = (typeof window !== "undefined" && window.innerWidth) || 380;
@@ -1583,7 +1583,7 @@ function SwipeableConvCard({ children, onArchive, onMute, onPin, onDelete, isMut
         if (axisRef.current === "y") return;
         // بلا قفزة: تبدأ الحركة من نهاية المنطقة الميّتة
         let x = baseRef.current + (dx > 0 ? dx - DEAD : dx + DEAD);
-        // مقاومة بعد حدّ الفتح: كلّ بكسلٍ من الإصبع يحرّك البطاقة ٦٠٪
+        // مقاومة بعد حدّ الفتح: كلّ بكسلٍ من الإصبع يحرّك البطاقة 60٪
         const lim = THRESHOLD + 30, ax = Math.abs(x);
         if (ax > lim) x = Math.sign(x) * (lim + (ax - lim) * 0.6);
         x = Math.max(-LONG_SWIPE - 30, Math.min(LONG_SWIPE + 30, x));
@@ -1731,7 +1731,7 @@ const FamilyReminderCard = React.memo(function FamilyReminderCard({ onOpenPerson
 const StoriesRow = React.memo(function StoriesRow({ momentsPosts, onOpenMoments, conversations, onOpenChat, myName = "أنت" }) {
     const { colors } = useTheme();
     const SC = window.SawaChat;
-    // C90: القصص الحقيقيّة (لجهات الاتّصال، ٢٤ ساعة) — تتحدّث مع كلّ تغيير
+    // C90: القصص الحقيقيّة (لجهات الاتّصال، 24 ساعة) — تتحدّث مع كلّ تغيير
     const [, bump] = useState(0);
     useEffect(() => { const f = () => bump((x) => x + 1); window.addEventListener("sawa-stories", f); return () => window.removeEventListener("sawa-stories", f); }, []);
     const S = SC && SC.stories ? SC.stories() : null;
@@ -2063,7 +2063,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                             React.createElement(Sparkles, { size: 20, color: "#db2777" })),
                         React.createElement("div", { className: "flex-1", style: { textAlign: isRTL() ? "right" : "left" } },
                             React.createElement("span", { className: "text-[15.5px] font-bold block leading-snug", style: { color: colors.text } }, tl("قصّة جديدة", "New story")),
-                            React.createElement("span", { className: "text-[12.5px] block mt-0.5", style: { color: colors.textMuted } }, tl("نصّ أو صورة أو فيديو · ٢٤ ساعة", "Text, photo or video · 24 h")))),
+                            React.createElement("span", { className: "text-[12.5px] block mt-0.5", style: { color: colors.textMuted } }, tl("نصّ أو صورة أو فيديو · 24 ساعة", "Text, photo or video · 24 h")))),
                     window.SawaChat && window.SawaChat.e2eNewSheet && React.createElement("button", { onClick: () => { setShowNewMenu(false); window.SawaChat.e2eNewSheet(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },
                         React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "#16a34a18" } },
                             React.createElement(Lock, { size: 20, color: "#16a34a" })),
@@ -2125,7 +2125,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
         ); }))),
         React.createElement("div", { ref: listScrollRef, className: "flex-1 overflow-y-auto min-h-0", style: { overflowAnchor: "none" },
             // C129: اهتزاز التبويبات عند التمرير للأسفل — إخفاؤها يغيّر ارتفاع القائمة فيقفز scrollTop فتعود فتختفي…
-            //       الآن: لا إخفاء إلّا إن كانت القائمة أطول من الشاشة بوضوح · مسافة ٢٤ بكسل في الاتّجاه نفسه · تجاهل الأحداث ٣٥٠ مللي ث بعد كلّ تبديل
+            //       الآن: لا إخفاء إلّا إن كانت القائمة أطول من الشاشة بوضوح · مسافة 24 بكسل في الاتّجاه نفسه · تجاهل الأحداث 350 مللي ث بعد كلّ تبديل
             onScroll: function(e) {
                 var el = e.currentTarget, y = el.scrollTop, now = Date.now(), st = lastScrollY;
                 if (st.lock && now < st.lock) { st.current = y; st.acc = 0; return; }

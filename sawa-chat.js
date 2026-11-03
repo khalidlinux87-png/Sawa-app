@@ -30,7 +30,7 @@
   function toast(m) { try { S().toast(m); } catch (e) {} }
   function call(op, payload) { return S().call(op, payload || {}); }
   // C197: السجلّ المنظَّم المشترك (SawaLog) — أوّل وحدة تُحمَّل تعرّفه والبقيّة تستعمله.
-  //   LOG.info/warn/error/debug(event, { fields }) · آخر ٣٠٠ حدث في SawaLog.recent(n) · الحدّ الأدنى للعرض: localStorage "sawa-log" (debug|info|warn|error).
+  //   LOG.info/warn/error/debug(event, { fields }) · آخر 300 حدث في SawaLog.recent(n) · الحدّ الأدنى للعرض: localStorage "sawa-log" (debug|info|warn|error).
   var SawaLog = global.SawaLog || (global.SawaLog = (function () {
     var LV = { debug: 10, info: 20, warn: 30, error: 40 }, buf = [], MAX = 300;
     function minLv() { try { return LV[localStorage.getItem("sawa-log")] || LV.info; } catch (e) { return LV.info; } }
@@ -186,7 +186,7 @@
   // ---------- جهات الاتّصال ----------
   // الشكل الذي يراه التطبيق: { id: uid, uid, name, anon, families:[{groupId,name}], via:[…], online, lastSeen, onSawa:true }
   // التسمية: اسمٌ أختاره أنا لجهة الاتّصال (يظهر لي وحدي، ويتزامن بين أجهزتي) ← اسمه في سوا ← «ضيف · رمز» يميّز الضيوف
-  // C88: رمز سوا (١٠ أرقام) لجهات الاتّصال بدل الوسم القديم (آخر ٤ حروف من المعرّف) — يُجلب من الخادم ويُحفظ هنا
+  // C88: رمز سوا (10 أرقام) لجهات الاتّصال بدل الوسم القديم (آخر 4 حروف من المعرّف) — يُجلب من الخادم ويُحفظ هنا
   var peerCodes = lsGet("sawa_codes_v1", {});   // uid -> { c: "1234567890" | null, t: وقت الجلب }
   function peerCode(uid) { var e = peerCodes[uid]; return e && e.c ? e.c : null; }
   function guestTag(uid) {
@@ -212,7 +212,7 @@
   function displayName(p) {
     return nickOf(p.uid) || p.name || (p.anon ? L("ضيف · ", "Guest · ") + guestTag(p.uid) : L("عضو", "Member") + " · " + guestTag(p.uid));
   }
-  // ---------- C25: صور الحسابات — avatars/{uid} في Firestore (يكتبها الخادم)، تُقرأ على دفعاتٍ وتُخزَّن ١٢ ساعة ----------
+  // ---------- C25: صور الحسابات — avatars/{uid} في Firestore (يكتبها الخادم)، تُقرأ على دفعاتٍ وتُخزَّن 12 ساعة ----------
   var AVK = "sawa_avatars", avCache = null, avWant = {}, avT = null, avFetching = {};
   function avAll() { if (!avCache) { avCache = lsGet(AVK, {}); if (!avCache || typeof avCache !== "object") avCache = {}; } return avCache; }
   function avSave() { var all = avAll(), ks = Object.keys(all); if (ks.length > 400) { ks.sort(function (a, b) { return (all[a].at || 0) - (all[b].at || 0); }); ks.slice(0, ks.length - 400).forEach(function (k) { delete all[k]; }); } lsSet(AVK, all); }
@@ -261,7 +261,7 @@
       var all = avAll(); all[state.uid] = { d: dataUrl || null, at: Date.now() }; avSave(); avChanged();
     });
   }
-  // صورةٌ صغيرة مربّعة (١٢٨px, JPEG) ≤ ٢٠ ألف حرف
+  // صورةٌ صغيرة مربّعة (128px, JPEG) ≤ 20 ألف حرف
   function squareThumb(blob) {
     return loadImg(blob).then(function (r) {
       var img = r.img, w = img.naturalWidth, h = img.naturalHeight, m = Math.min(w, h), sizes = [160, 128, 96, 72], qs = [0.8, 0.72, 0.62, 0.5];
@@ -335,7 +335,7 @@
       box.appendChild(cn); ov.appendChild(box); document.body.appendChild(ov);
     });
   }
-  // محرّر القصّ: الصورة تُسحب وتُكبَّر داخل دائرة؛ «حفظ» يرسم الجزء الظاهر إلى ١٦٠ بكسل (≤ ٢٠ ألف حرف)
+  // محرّر القصّ: الصورة تُسحب وتُكبَّر داخل دائرة؛ «حفظ» يرسم الجزء الظاهر إلى 160 بكسل (≤ 20 ألف حرف)
   function cropPhoto(file) {
     return loadImg(file).then(function (r) {
       return new Promise(function (res) {
@@ -818,7 +818,7 @@
       }).catch(function (e) { finish(null, new Error(e && e.name === "NotAllowedError" ? L("لا إذن للكاميرا — اسمح بها من إعدادات المتصفّح", "No camera permission") : L("تعذّر فتح الكاميرا", "Couldn't open the camera"))); });
     });
   }
-  // C20: ما يُمسح يُوجَّه بحسب نوعه — رابط شخص · رابط مجموعة · رابط غرفة · رمز سوا (١٠ أرقام). وكلّها تسأل قبل التنفيذ.
+  // C20: ما يُمسح يُوجَّه بحسب نوعه — رابط شخص · رابط مجموعة · رابط غرفة · رمز سوا (10 أرقام). وكلّها تسأل قبل التنفيذ.
   function routeScanned(txt) {
     var t = String(txt || "").trim(), m;
     if ((m = t.match(/[?&]group=([A-Za-z0-9-]{8,80})/))) { whenReady(function () { linkConfirm("group", m[1]); }); return "group"; }
@@ -1018,7 +1018,7 @@
     Object.keys(typingRefs).forEach(function (cid) { try { typingRefs[cid].off(); } catch (e) {} });
     typingRefs = {}; typingNow = {};
   }
-  // ---------- رسائل محادثةٍ مفتوحة: آخر ٧ أيّامٍ فيها رسائل (وثيقةٌ لكلّ يوم) ----------
+  // ---------- رسائل محادثةٍ مفتوحة: آخر 7 أيّامٍ فيها رسائل (وثيقةٌ لكلّ يوم) ----------
   var prefetched = {};
   function ensureDays(cid) {
     var d = fsdb(); if (!d || !isCloud(cid) || !state.uid) return;
@@ -1039,7 +1039,7 @@
     };
     dayUnsubs[cid] = coll.orderBy(firebase.firestore.FieldPath.documentId(), "desc").limit(DAYS_WINDOW).onSnapshot(onDays, function (e) {
       LOG.warn("days", { cid: cid, err: e && e.code });
-      // احتياط: إن طلب Firestore فهرساً للترتيب التنازليّ نقرأ آخر ١٤ يوماً تصاعديّاً (لا يحتاج فهرساً)
+      // احتياط: إن طلب Firestore فهرساً للترتيب التنازليّ نقرأ آخر 14 يوماً تصاعديّاً (لا يحتاج فهرساً)
       if (e && e.code === "failed-precondition") {
         var from = new Date(Date.now() - 14 * 86400000), key = from.getUTCFullYear() + String(from.getUTCMonth() + 1).padStart(2, "0") + String(from.getUTCDate()).padStart(2, "0");
         dayUnsubs[cid] = coll.orderBy(firebase.firestore.FieldPath.documentId()).startAt(key).onSnapshot(onDays, function (e2) { LOG.warn("days2", { cid: cid, err: e2 && e2.code }); });
@@ -1085,7 +1085,7 @@
     markTimer = null;
     var list = Object.keys(markQ).map(function (k) { return markQ[k]; }); markQ = {};
     if (!list.length || !state.uid) return;
-    call("chat.mark", { marks: list }).then(function () { markFails = 0; }).catch(function (e) {   // C14: تُعاد (حتّى ٣ مرّات) بعد ٢٠ ثانية — كانت تضيع فلا تزرقّ علامات المرسل
+    call("chat.mark", { marks: list }).then(function () { markFails = 0; }).catch(function (e) {   // C14: تُعاد (حتّى 3 مرّات) بعد 20 ثانية — كانت تضيع فلا تزرقّ علامات المرسل
       LOG.warn("chat.mark", { err: (e && e.message) || e });
       if (++markFails <= 3) setTimeout(function () { list.forEach(function (x) { queueMark(x.cid, { r: x.r, rc: x.rc, d: x.d }); }); }, 20000);
     });
@@ -1149,7 +1149,7 @@
       var m = (e && e.message) || String(e);
       // C100: «الرقم مأخوذ» = وصلت فعلاً في محاولةٍ سابقة انقطع ردّها (مهلة) أو أرسلها تبويبٌ آخر ⇒ نجاح لا «لم تُرسل»
       if (/message id taken/i.test(m)) { sentOk(); return; }
-      // C100: رسالةٌ عالقة لا تحجز الطابور كلّه: بعد ١٠ محاولات أو ٢٤ ساعة ⇒ «لم تُرسل» (مع إعادة المحاولة يدويّاً)
+      // C100: رسالةٌ عالقة لا تحجز الطابور كلّه: بعد 10 محاولات أو 24 ساعة ⇒ «لم تُرسل» (مع إعادة المحاولة يدويّاً)
       var tries = bumpTries(job.msg.id);
       if (!PERMANENT.test(m) && tries < 10 && !(job.ts && Date.now() - job.ts > 86400000)) {        // الشبكة أو الخادم مؤقّتاً: نعيد لاحقاً
         draining = false;
@@ -1245,13 +1245,13 @@
       call("chat.react", { cid: cid, day: day, id: id, emoji: emoji || null }).then(function () { if (adminCached()) toast("✓ " + (emoji || L("أُزيل", "removed")) + " · " + day); }, fail);
     } catch (e) { toast(L("تعذّر التفاعل: ", "Reaction failed: ") + ((e && e.message) || e)); }
   }
-  // C227: حتّى ٣ رسائل مثبّتة (الأحدث أوّلاً) — c.pins، و c.pinned = أوّلها (للنسخ الأقدم)
+  // C227: حتّى 3 رسائل مثبّتة (الأحدث أوّلاً) — c.pins، و c.pinned = أوّلها (للنسخ الأقدم)
   var PIN_MAX = 3;
   function pinsOf(c) { return c ? (Array.isArray(c.pins) ? c.pins.slice() : (c.pinned ? [c.pinned] : [])) : []; }
   function pin(cid, id) {
     var c = chats[cid]; if (!c || !id) return;
     var p = pinsOf(c), had = p.indexOf(id) >= 0;
-    if (!had && p.length >= PIN_MAX) toast(L("تُثبَّت ٣ رسائل على الأكثر — أُزيلت أقدمها", "Up to 3 pinned messages — the oldest was unpinned"));
+    if (!had && p.length >= PIN_MAX) toast(L("تُثبَّت 3 رسائل على الأكثر — أُزيلت أقدمها", "Up to 3 pinned messages — the oldest was unpinned"));
     p = had ? p.filter(function (x) { return x !== id; }) : [id].concat(p).slice(0, PIN_MAX);
     c.pins = p; c.pinned = p[0] || null; publishChats();
     call("chat.pin", { cid: cid, id: id, toggle: true }).catch(fail);
@@ -1709,8 +1709,8 @@
   }
 
   // ==================================================================
-  // C4: الوسائط — صور (تُصغَّر) · فيديو · صوت · ملفّات (≤ ١٦ MB) · مشاهدة مرّة واحدة
-  //     الرفع: الجهاز يكتب chats/{cid}/media/{mid} (+ قطع base64 ≤ ٧٠٠ ألف حرف في c/{i}) مباشرةً (القواعد تسمح للعضو المالك)،
+  // C4: الوسائط — صور (تُصغَّر) · فيديو · صوت · ملفّات (≤ 16 MB) · مشاهدة مرّة واحدة
+  //     الرفع: الجهاز يكتب chats/{cid}/media/{mid} (+ قطع base64 ≤ 700 ألف حرف في c/{i}) مباشرةً (القواعد تسمح للعضو المالك)،
   //     ثمّ يُرسل الرسالة عبر الـWorker (يتحقّق أنّ الوسيط له واكتمل). التنزيل عند الحاجة، ويُحفظ في IndexedDB.
   // ==================================================================
   var CHUNK = 700000, MAX_MEDIA = 16 * 1024 * 1024, AUTO_DL = 5 * 1024 * 1024;
@@ -1747,14 +1747,14 @@
     return c;
   }
   function canvasBlob(c, q) { return new Promise(function (res) { c.toBlob(function (b) { res(b); }, "image/jpeg", q); }); }
-  function smallThumb(src, w, h) {   // ≤ ٦٠٠٠ حرف: معاينةٌ فوريّة داخل الرسالة نفسها
+  function smallThumb(src, w, h) {   // ≤ 6000 حرف: معاينةٌ فوريّة داخل الرسالة نفسها
     var sizes = [96, 72, 56], qs = [0.5, 0.4, 0.3];
     for (var i = 0; i < sizes.length; i++) { var d = drawTo(src, w, h, sizes[i]).toDataURL("image/jpeg", qs[i]); if (d.length <= 6000) return d; }
     return null;
   }
   function prepareImage(blob) {
     if (/gif/.test(blob.type) && blob.size < 2 * 1024 * 1024) return loadImg(blob).then(function (r) { var th = smallThumb(r.img, r.img.naturalWidth, r.img.naturalHeight); URL.revokeObjectURL(r.url); return { blob: blob, thumb: th, w: r.img.naturalWidth, h: r.img.naturalHeight }; });
-    // C187: الصورة الصغيرة تُرسل كما هي (لقطات الشاشة والنصوص تفقد وضوحها بإعادة الترميز)؛ الكبيرة تُصغَّر إلى ٢٠٤٨ بجودة ٠٫٩
+    // C187: الصورة الصغيرة تُرسل كما هي (لقطات الشاشة والنصوص تفقد وضوحها بإعادة الترميز)؛ الكبيرة تُصغَّر إلى 2048 بجودة 0.9
     return loadImg(blob).then(function (r) {
       var w = r.img.naturalWidth, h = r.img.naturalHeight, th = smallThumb(r.img, w, h);
       if (blob.size <= 6 * 1024 * 1024 && /^image\/(jpeg|png|webp)$/.test(blob.type)) { URL.revokeObjectURL(r.url); return { blob: blob, thumb: th, w: w, h: h }; }
@@ -1776,7 +1776,7 @@
     });
   }
   // kind: image | video | voice | file · src: Blob/File أو dataURL
-  // C32: مشاركة الموقع — يُطلب من الجهاز (دقّةٌ عالية، ١٥ ثانية) ويُرسل كرسالة «location» (وتُشفَّر في السرّيّة كغيرها)
+  // C32: مشاركة الموقع — يُطلب من الجهاز (دقّةٌ عالية، 15 ثانية) ويُرسل كرسالة «location» (وتُشفَّر في السرّيّة كغيرها)
   function sendLocation(cid, label) {
     if (!isCloud(cid) || !state.uid) return Promise.resolve(null);
     if (!(global.navigator && navigator.geolocation)) { toast(L("هذا الجهاز لا يدعم تحديد الموقع", "Location isn't supported on this device")); return Promise.resolve(null); }
@@ -1859,7 +1859,7 @@
     if (secret && e2eState(chats[cid]) !== "ready") { toast(e2eUi(chats[cid]).title || ""); return null; }   // C23
     var src = opts.blob || (opts.dataUrl ? dataUrlToBlob(opts.dataUrl) : null);
     if (!src) { toast(L("تعذّر قراءة الملفّ", "Couldn't read the file")); return null; }
-    if (src.size > MAX_MEDIA - (secret ? 64 : 0)) { toast(L("الحدّ الأقصى ١٦ ميجابايت", "The limit is 16 MB")); return null; }
+    if (src.size > MAX_MEDIA - (secret ? 64 : 0)) { toast(L("الحدّ الأقصى 16 ميجابايت", "The limit is 16 MB")); return null; }
     var kind = opts.kind, id = newMsgId(), mid = newMediaId();
     var extra = { mid: mid, name: opts.name || src.name || null, mime: src.type || null, size: src.size };
     if (opts.viewOnce) extra.viewOnce = true;
@@ -1906,10 +1906,10 @@
   function uploadMedia(cid, mid, blob, extra, onProgress) {
     var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
     var meta = d.collection("chats").doc(cid).collection("media").doc(mid);
-    // C16: حجز الرفع من الخادم أوّلاً (القواعد تطلبه) — حدٌّ يوميّ، وما لم يُرسل يُحذف بعد ٢٤ ساعة
+    // C16: حجز الرفع من الخادم أوّلاً (القواعد تطلبه) — حدٌّ يوميّ، وما لم يُرسل يُحذف بعد 24 ساعة
     return call("media.begin", { cid: cid, mid: mid, size: blob.size }).catch(function (e) {
       var m = (e && e.message) || String(e);
-      if (/quota/.test(m)) throw new Error(L("تجاوزت حدّ الرفع اليوميّ (٣٠٠ ميغابايت) — جرّب غداً", "Daily upload limit reached (300 MB)"));
+      if (/quota/.test(m)) throw new Error(L("تجاوزت حدّ الرفع اليوميّ (300 ميغابايت) — جرّب غداً", "Daily upload limit reached (300 MB)"));
       if (/unknown op/.test(m)) return null;   // خادمٌ أقدم
       throw e;
     }).then(function () { return blobToB64(blob); }).then(function (b64) {
@@ -1964,7 +1964,7 @@
       return b64ToBlob(parts.map(function (p) { return p.d; }).join(""), m.mime);
     });
   }
-  // C140: طابور تنزيل — ٣ في وقتٍ واحد، المحادثة المفتوحة أوّلاً، والأحدث طلباً أوّلاً (آخر الرسائل قبل أقدمها).
+  // C140: طابور تنزيل — 3 في وقتٍ واحد، المحادثة المفتوحة أوّلاً، والأحدث طلباً أوّلاً (آخر الرسائل قبل أقدمها).
   //       كان كلّ وسيطٍ في المحادثة يبدأ تنزيله معاً فتتزاحم وتتأخّر الصورة التي وصلت للتوّ.
   var dlQ = [], dlRun = 0, DL_MAX = 3;
   function dlSlot(cid) {
@@ -1994,7 +1994,7 @@
       mediaUrls[mid] = URL.createObjectURL(blob); delete mediaLoading[mid]; publishMessages(cid); return mediaUrls[mid];
     }).catch(function (e) {
       delete mediaLoading[mid]; mediaFailed[mid] = (e && e.message) || "x"; publishMessages(cid);
-      // C18: تعثّر التنزيل (شبكة ضعيفة) ⇒ إعادة تلقائيّة بعد ٥ ثم ٢٠ ثم ٦٠ ثانية — كان يبقى «لم يصل» حتّى إعادة فتح التطبيق
+      // C18: تعثّر التنزيل (شبكة ضعيفة) ⇒ إعادة تلقائيّة بعد 5 ثم 20 ثم 60 ثانية — كان يبقى «لم يصل» حتّى إعادة فتح التطبيق
       var n = (mediaTries[mid] = (mediaTries[mid] || 0) + 1);
       if (!/gone/.test(mediaFailed[mid]) && n <= 5) setTimeout(function () { if (mediaFailed[mid] && !mediaUrls[mid]) { delete mediaFailed[mid]; ensureMedia(cid, mid, noCache); } }, [5000, 15000, 45000, 120000, 300000][n - 1]);
       return null;
@@ -2140,7 +2140,7 @@
   function saveMediaUrl(u, name, action, mime) { if (!u) return Promise.resolve(false); return blobOfUrl(u).then(function (b) { return saveBlob(b, name, action, mime); }); }
 
   // ==================================================================
-  // C90: القصص (الاستوري) — لجهات اتّصالي · نصّ/صورة/فيديو (≤٣٠ ث) · ٢٤ ساعة · «شاهدها» · الردّ في الخاصّة · الإخفاء عن أشخاص
+  // C90: القصص (الاستوري) — لجهات اتّصالي · نصّ/صورة/فيديو (≤30 ث) · 24 ساعة · «شاهدها» · الردّ في الخاصّة · الإخفاء عن أشخاص
   //   Firestore: stories/{u} {name, aud[], hide[], items[]} (يكتبه الخادم) · stories/{u}/media/{mid}+c/{i} (يرفعها صاحبها)
   // ==================================================================
   var ST_BG = [["#2774BA", "#1E3A63"], ["#16a34a", "#065f46"], ["#e11d48", "#7f1d1d"], ["#7c3aed", "#1a237e"], ["#f59e0b", "#b45309"], ["#0ea5e9", "#0f766e"], ["#334155", "#111827"], ["#db2777", "#6a1b9a"]];
@@ -2182,7 +2182,7 @@
       throw e;
     }).then(function () { return blobToB64(blob); }).then(function (b64) {
       var n = Math.max(1, Math.ceil(b64.length / CHUNK));
-      if (n > 33) throw new Error(L("الملفّ كبير — الحدّ ١٦ ميجابايت", "File too large (16 MB)"));
+      if (n > 33) throw new Error(L("الملفّ كبير — الحدّ 16 ميجابايت", "File too large (16 MB)"));
       return meta.set({ by: state.uid, mime: blob.type || "application/octet-stream", size: blob.size, n: n, ts: Date.now(), done: false }).then(function () {
         var i = 0, worker = function () { if (i >= n) return Promise.resolve(); var k = i++; return meta.collection("c").doc(String(k)).set({ d: b64.slice(k * CHUNK, (k + 1) * CHUNK) }).then(worker); };
         return Promise.all([worker(), worker(), worker()]);
@@ -2212,7 +2212,7 @@
 
   // ==================================================================
   // C133: لحظات الأصدقاء — منشوراتٌ دائمة لجمهورٍ يختاره الناشر (جهات اتّصالي · المقرّبون · عائلة/مجموعة · قائمة بثّ · أشخاص محدّدون)
-  //   نصّ · حتّى ٤ صور أو فيديو ≤ ٣٠ ث · موقع · استطلاع · إعجاب وتعليقات (يكتبها الخادم) · إبلاغ وإخفاء
+  //   نصّ · حتّى 4 صور أو فيديو ≤ 30 ث · موقع · استطلاع · إعجاب وتعليقات (يكتبها الخادم) · إبلاغ وإخفاء
   //   الخلاصة: moments where aud array-contains me (المعرّف مرتّبٌ زمنيّاً عكسيّاً ⇒ بلا فهرسٍ مركّب)
   // ==================================================================
   var mo = { list: [], unsub: null, limit: 30, more: false, loaded: false, err: null, urls: {}, prefs: null, view: null, notes: [], nUnsub: null, filter: null };
@@ -2271,7 +2271,7 @@
       throw e;
     }).then(function () { return blobToB64(blob); }).then(function (b64) {
       var n = Math.max(1, Math.ceil(b64.length / CHUNK));
-      if (n > 33) throw new Error(L("الملفّ كبير — الحدّ ١٦ ميجابايت", "File too large (16 MB)"));
+      if (n > 33) throw new Error(L("الملفّ كبير — الحدّ 16 ميجابايت", "File too large (16 MB)"));
       return meta.set({ by: state.uid, mime: blob.type || "application/octet-stream", size: blob.size, n: n, ts: Date.now(), done: false }).then(function () {
         var i = 0, worker = function () { if (i >= n) return Promise.resolve(); var k = i++; return meta.collection("c").doc(String(k)).set({ d: b64.slice(k * CHUNK, (k + 1) * CHUNK) }).then(worker); };
         return Promise.all([worker(), worker(), worker()]);
@@ -2481,7 +2481,7 @@
     else if (n === 3) { g.style.gridTemplateColumns = "2fr 1fr"; g.style.gridTemplateRows = "1fr 1fr"; }
     else g.style.gridTemplateColumns = "1fr 1fr";
     m.forEach(function (it, i) {
-      // C137: كانت max-height تُضيّق عرض الفيديو الطوليّ فيظهر شريطٌ رماديّ بجانبه ⇒ نسبةٌ لا تقلّ عن ٤:٥ وعرضٌ كامل (الزائد يُقصّ)
+      // C137: كانت max-height تُضيّق عرض الفيديو الطوليّ فيظهر شريطٌ رماديّ بجانبه ⇒ نسبةٌ لا تقلّ عن 4:5 وعرضٌ كامل (الزائد يُقصّ)
       var ratio = n === 1 && it.w && it.h ? Math.max(0.8, Math.min(1.6, it.w / it.h)) : 1;
       var cell = mk("button", "position:relative;width:100%;border:0;padding:0;overflow:hidden;background:#111 center/cover no-repeat;" + (n === 1 ? "aspect-ratio:" + ratio : "aspect-ratio:1") + (n === 3 && i === 0 ? ";grid-row:span 2;aspect-ratio:auto" : ""));
       var cover = it.poster || it.thumb;   // C137: غلاف الفيديو بدقّةٍ واضحة (poster) — والقديم مصغّرٌ ضبابيّ
@@ -2793,7 +2793,7 @@
     try {
       unsub = fsdb().collection("moments").doc(p.id).collection("cm").limit(400).onSnapshot(function (snap) {
         var a = []; snap.forEach(function (d) { var v = d.data() || {}; v.id = d.id; a.push(v); });
-        var hid = moHidden();   // C150: المُبلَّغ عنه عندي، والمحجوب بعد ٣ بلاغات (إلّا لصاحبه)
+        var hid = moHidden();   // C150: المُبلَّغ عنه عندي، والمحجوب بعد 3 بلاغات (إلّا لصاحبه)
         a = a.filter(function (x) { return !hid[p.id + "/" + x.id] && (!x.held || x.by === state.uid); });
         a.sort(function (x, y) { return (x.ts || 0) - (y.ts || 0); }); list = a;
         if (first) { first = false; if (o.focus) { stick = false; paint(); focusTo(o.focus); return; } stick = true; }
@@ -2991,7 +2991,7 @@
     var c = {}, rx = p.rx || {}; (p.likes || []).forEach(function (u) { var e = rx[u] || "❤️"; c[e] = (c[e] || 0) + 1; });
     return Object.keys(c).map(function (e) { return [e, c[e]]; }).sort(function (a, b) { return b[1] - a[1]; });
   }
-  // C136: لوحة التفاعلات — ١٠ تفاعلات بأسمائها (صفّان × ٥) فوق الزرّ (أو تحته إن لم تتّسع)
+  // C136: لوحة التفاعلات — 10 تفاعلات بأسمائها (صفّان × 5) فوق الزرّ (أو تحته إن لم تتّسع)
   function moRxPicker(anchor, cur, cb) {
     moCss();
     var r = anchor.getBoundingClientRect(), W = 5 * 58 + 16, H = 2 * 62 + 16;
@@ -3025,7 +3025,7 @@
     el.addEventListener("click", function (e) { if (fired) { fired = false; e.stopPropagation(); e.preventDefault(); } }, true);
   }
 
-  // C137: غلاف الفيديو — إطارٌ واضح (حتّى ٧٢٠ بكسل، JPEG ≤ ~٩٠ كيلوبايت) بدل المصغّر الضبابيّ (٨ آلاف حرف)
+  // C137: غلاف الفيديو — إطارٌ واضح (حتّى 720 بكسل، JPEG ≤ ~90 كيلوبايت) بدل المصغّر الضبابيّ (8 آلاف حرف)
   function moPosterOf(blob, dur) {
     return new Promise(function (res, rej) {
       var url = URL.createObjectURL(blob), v = document.createElement("video"), done = false;
@@ -3185,7 +3185,7 @@
     };
     var fiImg = mk("input"); fiImg.type = "file"; fiImg.accept = "image/*"; fiImg.multiple = true; fiImg.style.display = "none"; ov.appendChild(fiImg);
     var fiVid = mk("input"); fiVid.type = "file"; fiVid.accept = "video/*"; fiVid.style.display = "none"; ov.appendChild(fiVid);
-    tool(MI.img, "#16A34A", L("صور", "Photos"), function () { if (media.some(function (m) { return m.video; })) { toast(L("لحظةٌ بالفيديو لا تجمع صوراً", "A video moment can't include photos")); return; } if (media.length >= 4) { toast(L("الحدّ ٤ صور", "Max 4 photos")); return; } fiImg.click(); });
+    tool(MI.img, "#16A34A", L("صور", "Photos"), function () { if (media.some(function (m) { return m.video; })) { toast(L("لحظةٌ بالفيديو لا تجمع صوراً", "A video moment can't include photos")); return; } if (media.length >= 4) { toast(L("الحدّ 4 صور", "Max 4 photos")); return; } fiImg.click(); });
     tool(MI.vid, "#7C3AED", L("فيديو", "Video"), function () { if (media.length) { toast(L("أزل الصور أوّلاً — فيديو واحد في اللحظة", "Remove photos first — one video per moment")); return; } fiVid.click(); });
     tool(MI.pin, "#EF4444", L("موقع", "Location"), function () { addLoc(); });
     tool(MI.at, "#0EA5E9", L("إشارة", "Mention"), function () { mm.insertAt(); });
@@ -3233,9 +3233,9 @@
     }
     function addFiles(files, video) {
       Array.prototype.slice.call(files || [], 0, video ? 1 : 4 - media.length).forEach(function (f) {
-        if (f.size > MAX_MEDIA - 64 && video) { toast(L("الحدّ ١٦ ميجابايت", "Limit is 16 MB")); return; }
+        if (f.size > MAX_MEDIA - 64 && video) { toast(L("الحدّ 16 ميجابايت", "Limit is 16 MB")); return; }
         (video ? prepareVideo(f) : prepareImage(f)).then(function (r) {
-          if (video && r.duration && r.duration > 31) { toast(L("الفيديو أطول من ٣٠ ثانية — قصّه أوّلاً", "Video is longer than 30 s — trim it first")); return; }
+          if (video && r.duration && r.duration > 31) { toast(L("الفيديو أطول من 30 ثانية — قصّه أوّلاً", "Video is longer than 30 s — trim it first")); return; }
           if (!video && media.length >= 4) return;
           var b = r.blob || f, item = { blob: b, video: video, url: URL.createObjectURL(b), thumb: r.thumb || null, w: r.w || null, h: r.h || null, dur: r.duration || null };
           media.push(item); paint();
@@ -3245,7 +3245,7 @@
     }
     fiImg.onchange = function () { var f = fiImg.files; addFiles(f, false); fiImg.value = ""; };
     fiVid.onchange = function () { var f = fiVid.files; addFiles(f, true); fiVid.value = ""; };
-    // C133b: الموقع — كان يُطلب بدقّةٍ عالية فقط (١٥ ث) فيفشل داخل البيوت، ومن ينشر قبل وصوله تُنشر اللحظة بلا موقع.
+    // C133b: الموقع — كان يُطلب بدقّةٍ عالية فقط (15 ث) فيفشل داخل البيوت، ومن ينشر قبل وصوله تُنشر اللحظة بلا موقع.
     //        الآن: سريعٌ أوّلاً (الشبكة) ثمّ دقيق، وبطاقة «جارٍ تحديد موقعك…»، و«نشر» ينتظره.
     function geo(hi, ms) { return new Promise(function (res, rej) { navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: hi, timeout: ms, maximumAge: 300000 }); }); }
     function addLoc() {
@@ -3332,7 +3332,7 @@
           ch.onclick = function () { fi.click(); }; stage.appendChild(ch);
           bottom.appendChild(cap);
         } else {
-          var pk = mk("button", "border:2px dashed rgba(255,255,255,.35);border-radius:20px;padding:30px 24px;background:transparent;color:#fff;font:800 15px var(--sawa-font,system-ui)", L("📷 اختر صورة أو فيديو (حتّى ٣٠ ثانية)", "📷 Pick a photo or video (≤ 30 s)"));
+          var pk = mk("button", "border:2px dashed rgba(255,255,255,.35);border-radius:20px;padding:30px 24px;background:transparent;color:#fff;font:800 15px var(--sawa-font,system-ui)", L("📷 اختر صورة أو فيديو (حتّى 30 ثانية)", "📷 Pick a photo or video (≤ 30 s)"));
           pk.onclick = function () { fi.click(); }; stage.appendChild(pk);
         }
       }
@@ -3341,9 +3341,9 @@
     fi.onchange = function () {
       var f = fi.files && fi.files[0]; fi.value = ""; if (!f) return;
       var video = /^video\//.test(f.type);
-      if (f.size > MAX_MEDIA - 64 && !/^image\//.test(f.type)) { toast(L("الحدّ ١٦ ميجابايت", "Limit is 16 MB")); return; }
+      if (f.size > MAX_MEDIA - 64 && !/^image\//.test(f.type)) { toast(L("الحدّ 16 ميجابايت", "Limit is 16 MB")); return; }
       (video ? prepareVideo(f) : prepareImage(f)).then(function (r) {
-        if (video && r.duration && r.duration > 31) { toast(L("الفيديو أطول من ٣٠ ثانية — قصّه أوّلاً", "Video is longer than 30 s — trim it first")); return; }
+        if (video && r.duration && r.duration > 31) { toast(L("الفيديو أطول من 30 ثانية — قصّه أوّلاً", "Video is longer than 30 s — trim it first")); return; }
         if (picked && picked.url) URL.revokeObjectURL(picked.url);
         var b = r.blob || f; picked = { blob: b, video: video, url: URL.createObjectURL(b), thumb: r.thumb || null, w: r.w || null, h: r.h || null, dur: r.duration || null };
         mode = "media"; paint();
@@ -3544,7 +3544,7 @@
     files.forEach(function (f) { lines.push((kindOfMime(f.mime) === "image" ? "🖼️ " : kindOfMime(f.mime) === "video" ? "🎬 " : "📎 ") + f.name + " · " + Math.max(1, Math.round(f.size / 1024)) + " KB"); });
     if (text) lines.push(text);
     pv.textContent = lines.join("\n") || "—"; s.box.appendChild(pv);
-    if (tooLarge.length || big.length) s.box.appendChild(note(L("لن يُرسل (أكبر من ١٦ ميجابايت): ", "Not sent (over 16 MB): ") + tooLarge.concat(big).map(function (f) { return f.name; }).join("، "), "#b42318", "#fdecec"));
+    if (tooLarge.length || big.length) s.box.appendChild(note(L("لن يُرسل (أكبر من 16 ميجابايت): ", "Not sent (over 16 MB): ") + tooLarge.concat(big).map(function (f) { return f.name; }).join("، "), "#b42318", "#fdecec"));
     var cap = null;
     if (files.length) { cap = mk("input", "width:100%;box-sizing:border-box;border:1px solid #dfe5ec;border-radius:12px;padding:10px 12px;font:600 14px var(--sawa-font,system-ui);margin-bottom:8px"); cap.placeholder = L("تعليق (اختياريّ)", "Caption (optional)");
       // C185: اسم الملف (وهو ما يصل نصّاً مع المشاركة من تطبيقٍ آخر) ليس تعليقاً — كان يُرسل رسالةً نصّيّة ثانية باسم الملف
@@ -3642,7 +3642,7 @@
       o.mediaLoading = !url && !mediaFailed[mid]; o.mediaFailed = !url && !!mediaFailed[mid];   // C18: الفقاعة تعرض «يُنزَّل…» أو «اضغط لإعادة التنزيل»
     } else { o.text = ex.name || L("ملفّ", "File"); o.fileUrl = url; }
     // C140: التنزيل المسبق — ما وصلني في آخر يومين يُنزَّل ولو لم تُفتح المحادثة بعد (فيكون جاهزاً عند فتحها)،
-    //       والفيديو حتّى ١٦ ميغابايت على شبكةٍ جيّدة (كان ٥ فيبقى «اضغط للتنزيل»)
+    //       والفيديو حتّى 16 ميغابايت على شبكةٍ جيّدة (كان 5 فيبقى «اضغط للتنزيل»)
     var fresh = !mine && (Date.now() - (m.ts || 0)) < 2 * 86400000;
     var auto = (cid === openCid || (fresh && (m.type !== "video" || (ex.size || 0) <= AUTO_DL))) && !url && !mediaFailed[mid] && !(ex.viewOnce && (mine || viewedByMe || m.gone))
       && (m.type !== "file") && (m.type !== "video" || (ex.size || 0) <= autoVideoMax());
@@ -3672,7 +3672,7 @@
   }
   function registerToken(tok) {
     var prev = lsGet("sawa_push", {});
-    // C84: نجدّد التسجيل كلّ ٣ أيّام ولو لم يتغيّر الرمز — الخادم يحذف الأجهزة القديمة (٦٠ يوماً/أكثر من ٥)، وكان الهاتف يظنّ نفسه مسجّلاً للأبد
+    // C84: نجدّد التسجيل كلّ 3 أيّام ولو لم يتغيّر الرمز — الخادم يحذف الأجهزة القديمة (60 يوماً/أكثر من 5)، وكان الهاتف يظنّ نفسه مسجّلاً للأبد
     // C129: لغة الإشعارات = لغة التطبيق — تُرسل مع التسجيل، وتغيير اللغة يعيد التسجيل
     var lang = isAr() ? "ar" : "en";
     // C151: الآيفون — رمز VoIP (PushKit) مع الجهاز ⇒ الخادم يرسل الرنين إلى شاشة المكالمة في النظام (CallKit)
@@ -3714,7 +3714,7 @@
     return isIOS()
       ? L("الإشعارات محظورة لسوا. افتح «الإعدادات» ← «الإشعارات» ← «سوا» وفعّل «السماح بالإشعارات».",
           "Notifications are blocked for Sawa. Open Settings → Notifications → Sawa and turn on Allow Notifications.")
-      : L("الإشعارات محظورة لسوا. افعل الاثنين ثمّ أعد فتح سوا:\n١) اضغط مطوّلاً على أيقونة سوا ← «معلومات التطبيق» ← «الإشعارات» ← سماح.\n٢) افتح Chrome ← ⋮ ← الإعدادات ← إعدادات المواقع ← الإشعارات ← ابحث عن sawaaap.com ← سماح (أو احذفه من قائمة «محظور»).",
+      : L("الإشعارات محظورة لسوا. افعل الاثنين ثمّ أعد فتح سوا:\n1) اضغط مطوّلاً على أيقونة سوا ← «معلومات التطبيق» ← «الإشعارات» ← سماح.\n2) افتح Chrome ← ⋮ ← الإعدادات ← إعدادات المواقع ← الإشعارات ← ابحث عن sawaaap.com ← سماح (أو احذفه من قائمة «محظور»).",
           "Notifications are blocked for Sawa. Do both, then reopen Sawa:\n1) Long-press the Sawa icon → App info → Notifications → Allow.\n2) Open Chrome → ⋮ → Settings → Site settings → Notifications → find sawaaap.com → Allow (or remove it from the Blocked list).");
   }
   function enablePush() {
@@ -3773,7 +3773,7 @@
   function pushEnabled() { return pushState() === "granted"; }
   // بعد الدخول: إن سبق السماح نجدّد الرمز بصمت (يتغيّر أحياناً، أو تغيّر الحساب)؛ وإلا نعرض بطاقة التفعيل
   // C60: الرمز يموت أحياناً عند FCM بصمت (تغيّر اشتراك المتصفّح، مسح بيانات، خمول طويل) بينما يراه التطبيق صالحاً ⇒ الإشعارات والمكالمات لا تصل حتى «إعادة التسجيل».
-  //   العلاج: تجديدٌ قسريّ (حذف الرمز ثمّ طلب رمزٍ جديد وتسجيله) كلّ ٧ أيّام، وفوراً حين يبلّغ عامل الخدمة بتغيّر الاشتراك (pushsubscriptionchange).
+  //   العلاج: تجديدٌ قسريّ (حذف الرمز ثمّ طلب رمزٍ جديد وتسجيله) كلّ 7 أيّام، وفوراً حين يبلّغ عامل الخدمة بتغيّر الاشتراك (pushsubscriptionchange).
   var PUSH_ROTATE_MS = 7 * 86400000, rotating = null;
   function rotateToken(why) {
     if (rotating) return rotating;
@@ -3793,7 +3793,7 @@
     if (lsGet("sawa_push_resub", 0)) return Promise.resolve(true);
     try { if (!global.caches) return Promise.resolve(false); return caches.open("flags-sawa").then(function (c) { return c.match("/push-resub"); }).then(function (r) { return !!r; }).catch(function () { return false; }); } catch (e) { return Promise.resolve(false); }
   }
-  // C87: الإصلاح الذاتيّ — عند كلّ فتح (كلّ ٢٠ دقيقة على الأكثر) نسأل الخادم: هل رمز هذا الجهاز عندك؟ إن لا ⇒ يُسجَّل فوراً
+  // C87: الإصلاح الذاتيّ — عند كلّ فتح (كلّ 20 دقيقة على الأكثر) نسأل الخادم: هل رمز هذا الجهاز عندك؟ إن لا ⇒ يُسجَّل فوراً
   function pushSelfCheck(force) {
     if (!state.uid || pushState() !== "granted") return Promise.resolve(null);
     var last = lsGet("sawa_push_chk", 0); if (!force && Date.now() - last < 20 * 60000) return Promise.resolve(null);
@@ -3916,31 +3916,31 @@
     var fix = mkBtn(L("إعادة تسجيل هذا الجهاز", "Re-register this device")); fix.style.marginTop = "8px";
     var en = mkBtn(st === "denied" ? L("كيف أفتح الإشعارات؟", "How do I unblock?") : L("تفعيل الإشعارات", "Turn on notifications"), "primary"); en.style.marginTop = "8px";
     if (st === "granted") box.appendChild(test); else box.appendChild(en);
-    // C71: الاختبار الحقيقيّ — التطبيق مغلق. يُرسل الخادم بعد ١٥ ثانية؛ أغلق سوا الآن وانتظر
-    var bg = mkBtn(L("🕒 اختبار والتطبيق مغلق (بعد ١٥ ثانية)", "🕒 Test with the app closed (in 15s)")); bg.style.marginTop = "8px";
+    // C71: الاختبار الحقيقيّ — التطبيق مغلق. يُرسل الخادم بعد 15 ثانية؛ أغلق سوا الآن وانتظر
+    var bg = mkBtn(L("🕒 اختبار والتطبيق مغلق (بعد 15 ثانية)", "🕒 Test with the app closed (in 15s)")); bg.style.marginTop = "8px";
     bg.onclick = function () {
       bg.disabled = true; bg.textContent = "…";
       call("push.test", { delay: 15000 }).then(function () {
-        bg.textContent = L("أُرسل ✓ — أغلق سوا الآن (زرّ الرئيسيّة) وانتظر ١٥ ثانية", "Queued ✓ — close Sawa now (Home) and wait 15s");
-        toast(L("أغلق التطبيق الآن — سيصلك إشعار بعد ١٥ ثانية إن كانت الإشعارات تعمل في الخلفيّة", "Close the app now — a notification should arrive in 15s"));
-      }, function (e) { bg.disabled = false; bg.textContent = L("🕒 اختبار والتطبيق مغلق (بعد ١٥ ثانية)", "🕒 Test with the app closed (in 15s)"); toast((e && e.message) || String(e)); });
+        bg.textContent = L("أُرسل ✓ — أغلق سوا الآن (زرّ الرئيسيّة) وانتظر 15 ثانية", "Queued ✓ — close Sawa now (Home) and wait 15s");
+        toast(L("أغلق التطبيق الآن — سيصلك إشعار بعد 15 ثانية إن كانت الإشعارات تعمل في الخلفيّة", "Close the app now — a notification should arrive in 15s"));
+      }, function (e) { bg.disabled = false; bg.textContent = L("🕒 اختبار والتطبيق مغلق (بعد 15 ثانية)", "🕒 Test with the app closed (in 15s)"); toast((e && e.message) || String(e)); });
     };
     if (st === "granted") box.appendChild(bg);
     // C85: الإشعار التجريبيّ يصل والمكالمة لا ⇒ اختبارٌ بشكل المكالمة نفسه (رنين وشاشة كاملة)
     if (st === "granted" && NB()) {
-      var cb = mkBtn(L("📞 اختبار مكالمة والتطبيق مغلق (بعد ١٥ ثانية)", "📞 Test a call with the app closed (in 15s)")); cb.style.marginTop = "8px";
+      var cb = mkBtn(L("📞 اختبار مكالمة والتطبيق مغلق (بعد 15 ثانية)", "📞 Test a call with the app closed (in 15s)")); cb.style.marginTop = "8px";
       cb.onclick = function () {
         cb.disabled = true; cb.textContent = "…";
         call("push.test", { delay: 15000, kind: "call" }).then(function () {
           cb.textContent = L("أُرسل ✓ — أغلق سوا الآن (زرّ الرئيسيّة) وانتظر الرنين", "Queued ✓ — close Sawa now and wait for the ring");
-          toast(L("أغلق التطبيق الآن — يجب أن يرنّ الهاتف بعد ١٥ ثانية", "Close the app now — the phone should ring in 15s"));
-        }, function (e) { cb.disabled = false; cb.textContent = L("📞 اختبار مكالمة والتطبيق مغلق (بعد ١٥ ثانية)", "📞 Test a call with the app closed (in 15s)"); toast((e && e.message) || String(e)); });
+          toast(L("أغلق التطبيق الآن — يجب أن يرنّ الهاتف بعد 15 ثانية", "Close the app now — the phone should ring in 15s"));
+        }, function (e) { cb.disabled = false; cb.textContent = L("📞 اختبار مكالمة والتطبيق مغلق (بعد 15 ثانية)", "📞 Test a call with the app closed (in 15s)"); toast((e && e.message) || String(e)); });
       };
       box.appendChild(cb);
     }
     if (st === "granted") box.appendChild(fix);
     var tips = note(sa
-      ? L("إن قال الخادم «وصل» ولم يظهر شيء على هاتفك:\n١) اضغط مطوّلاً على أيقونة سوا ← «معلومات التطبيق» ← «الإشعارات» ← مسموح.\n٢) في «معلومات التطبيق» أيضاً: «البطاريّة» ← «بلا قيود» (هواتف Tecno/Infinix/Xiaomi/Huawei توقف الخلفية).\n٣) Chrome ← ⋮ ← الإعدادات ← إعدادات الموقع ← الإشعارات ← sawaaap.com مسموح.\nالمكالمات تصل كإشعارٍ يرنّ؛ اضغطه لترُدّ.",
+      ? L("إن قال الخادم «وصل» ولم يظهر شيء على هاتفك:\n1) اضغط مطوّلاً على أيقونة سوا ← «معلومات التطبيق» ← «الإشعارات» ← مسموح.\n2) في «معلومات التطبيق» أيضاً: «البطاريّة» ← «بلا قيود» (هواتف Tecno/Infinix/Xiaomi/Huawei توقف الخلفية).\n3) Chrome ← ⋮ ← الإعدادات ← إعدادات الموقع ← الإشعارات ← sawaaap.com مسموح.\nالمكالمات تصل كإشعارٍ يرنّ؛ اضغطه لترُدّ.",
           "If the server says delivered but nothing shows:\n1) Long-press the Sawa icon → App info → Notifications → Allowed.\n2) App info → Battery → Unrestricted (Tecno/Infinix/Xiaomi/Huawei kill background apps).\n3) Chrome → ⋮ → Settings → Site settings → Notifications → sawaaap.com allowed.\nCalls arrive as a ringing notification; tap it to answer.")
       : L("للمكالمات والرسائل والتطبيق مغلق: ثبّت سوا على الشاشة الرئيسيّة وفعّل الإشعارات، وفي «معلومات التطبيق» اجعل البطاريّة «بلا قيود».", "For calls and messages while closed: install Sawa to the home screen, allow notifications, and set Battery → Unrestricted in App info."), "#5b6b7c", "#f5f7fa");
     tips.style.whiteSpace = "pre-line"; tips.style.marginTop = "12px"; box.appendChild(tips);
@@ -3960,7 +3960,7 @@
         if (!b.devices) { out.appendChild(note(L("لا جهاز مسجّلاً عند الخادم — اضغط «إعادة تسجيل هذا الجهاز».", "No device registered on the server — tap Re-register."), "#b42318", "#fdecec")); return; }
         markMine(b.results);
         (b.results || []).forEach(function (r) {
-          out.appendChild(note((r.ok ? "✓ " : "✗ ") + (myTail && r.tail === myTail ? L("📱 هذا الهاتف · ", "📱 this phone · ") : "") + (r.ua || L("جهاز", "device")) + " · " + timeAgo(r.ts || 0) + (r.ok ? L(" — أرسله الخادم. إن لم يظهر خلال ١٠ ثوانٍ فالمشكلة في إعدادات الهاتف (انظر أدناه).", " — sent by the server. If nothing shows in 10 s, the phone's settings block it (see below).") : r.err === "gone" ? L(" — رمزٌ ميّت (حُذف) — أعد التسجيل.", " — dead token (removed) — re-register.") : " — " + r.err), r.ok ? "#2e7d5b" : "#b42318", r.ok ? "#e6f5ec" : "#fdecec"));
+          out.appendChild(note((r.ok ? "✓ " : "✗ ") + (myTail && r.tail === myTail ? L("📱 هذا الهاتف · ", "📱 this phone · ") : "") + (r.ua || L("جهاز", "device")) + " · " + timeAgo(r.ts || 0) + (r.ok ? L(" — أرسله الخادم. إن لم يظهر خلال 10 ثوانٍ فالمشكلة في إعدادات الهاتف (انظر أدناه).", " — sent by the server. If nothing shows in 10 s, the phone's settings block it (see below).") : r.err === "gone" ? L(" — رمزٌ ميّت (حُذف) — أعد التسجيل.", " — dead token (removed) — re-register.") : " — " + r.err), r.ok ? "#2e7d5b" : "#b42318", r.ok ? "#e6f5ec" : "#fdecec"));
         });
       }).catch(function (e) { out.appendChild(note(L("تعذّر الاختبار: ", "Test failed: ") + ((e && e.message) || e), "#b42318", "#fdecec")); })
         .then(function () { test.disabled = false; test.textContent = L("أرسل إشعاراً تجريبيّاً الآن", "Send a test notification now"); });
@@ -4092,7 +4092,7 @@
     checkUpdate(true).then(draw);
     return s;
   }
-  // فحصٌ بعد الفتح بقليل، وكلّ ١٠ دقائق والتطبيق ظاهر
+  // فحصٌ بعد الفتح بقليل، وكلّ 10 دقائق والتطبيق ظاهر
   setTimeout(function () { checkUpdate(false); }, 6000);
   setInterval(function () { if (document.visibilityState === "visible") checkUpdate(false); }, 10 * 60000);
   (function swUpdates() {
@@ -4159,8 +4159,8 @@
   }
 
   // ==================================================================
-  // C10: رمز سوا (١٠ أرقام) + طلبات التواصل + الدخول بالبريد + شاشات البداية للمستخدم الجديد
-  //   الرمز: ٩ أرقام عشوائيّة (أوّلها ١–٩) + رقم تحقّق (Luhn) يكشف خطأ رقمٍ واحد أو تبديل رقمين.
+  // C10: رمز سوا (10 أرقام) + طلبات التواصل + الدخول بالبريد + شاشات البداية للمستخدم الجديد
+  //   الرمز: 9 أرقام عشوائيّة (أوّلها 1–9) + رقم تحقّق (Luhn) يكشف خطأ رقمٍ واحد أو تبديل رقمين.
   //   من يُدخل الرمز يرى الاسم فقط ويرسل «طلب تواصل» — لا مراسلة ولا اتّصال قبل القبول.
   // ==================================================================
   function codeDigits(x) {
@@ -4194,7 +4194,7 @@
     var m = (e && e.message) || String(e);
     if (/bad_code/.test(m)) return L("الرمز غير صحيح — تأكّد من الأرقام العشرة", "That code isn't valid — check the 10 digits");
     if (/rate_limited/.test(m)) return L("محاولاتٌ كثيرة — انتظر قليلاً ثمّ أعد المحاولة", "Too many tries — wait a little");
-    if (/too_many_pending/.test(m)) return L("لديك ٢٠ طلباً بانتظار الموافقة — ألغِ بعضها أوّلاً", "You have 20 pending requests — cancel some first");
+    if (/too_many_pending/.test(m)) return L("لديك 20 طلباً بانتظار الموافقة — ألغِ بعضها أوّلاً", "You have 20 pending requests — cancel some first");
     if (/not_found/.test(m)) return L("لا يوجد حسابٌ بهذا الرمز", "No account with this code");
     if (/bad_phone/.test(m)) return L("رقم الهاتف غير صحيح — مثال: +249912345678", "Invalid phone — e.g. +249912345678");
     if (/no_phone/.test(m)) return L("أضف رقم هاتفك أوّلاً من «حسابي»", "Add your phone number first (Me)");
@@ -4203,11 +4203,11 @@
     if (/not_contact/.test(m)) return L("لستما جهتي اتّصال", "You're not contacts");
     // C198
     if (/guest_limited/.test(m)) return L("البحث بالرقم أو البريد يحتاج ربط حسابك بـGoogle أو Apple أو بريد — ويمكنك البحث بالرمز الآن", "Searching by phone or email needs a linked Google / Apple / email account — you can search by code now");
-    if (/voucher_too_new/.test(m)) return L("حسابك جديد — يمكنك تأكيد أرقام الآخرين بعد ٣٠ يوماً من إنشائه، أو بعد توثيق رقمك عبر واتساب", "Your account is new — you can confirm others' numbers 30 days after creating it, or after verifying your number via WhatsApp");
-    if (/contact_too_new/.test(m)) return L("يمكن التأكيد بعد ٧ أيّام من تواصلكما في سوا", "You can confirm 7 days after you connected on Sawa");
+    if (/voucher_too_new/.test(m)) return L("حسابك جديد — يمكنك تأكيد أرقام الآخرين بعد 30 يوماً من إنشائه، أو بعد توثيق رقمك عبر واتساب", "Your account is new — you can confirm others' numbers 30 days after creating it, or after verifying your number via WhatsApp");
+    if (/contact_too_new/.test(m)) return L("يمكن التأكيد بعد 7 أيّام من تواصلكما في سوا", "You can confirm 7 days after you connected on Sawa");
     if (/vouch_quota/.test(m)) return L("أكّدت أرقاماً كثيرة هذا الشهر — حاول لاحقاً", "You've confirmed many numbers this month — try later");
     if (/bad_email/.test(m)) return L("البريد غير صحيح", "Invalid email");
-    if (/^wait$/.test(m)) return L("غيّرتَ رمزك قبل قليل — انتظر ١٠ دقائق", "You changed your code a moment ago — wait 10 minutes");
+    if (/^wait$/.test(m)) return L("غيّرتَ رمزك قبل قليل — انتظر 10 دقائق", "You changed your code a moment ago — wait 10 minutes");
     if (/fetch|network|timeout/i.test(m)) return L("تحقّق من الاتّصال بالإنترنت", "Check your internet connection");
     return m;
   }
@@ -4224,9 +4224,9 @@
       : "background:#fff;color:#1A1A2E;border:1.5px solid #dfe5ec";
     return mk("button", css + ";border-radius:12px;padding:12px 14px;font:800 14px var(--sawa-font,system-ui);width:100%;box-sizing:border-box;cursor:pointer", text);
   }
-  // C196: النوافذ المنبثقة في الوضع الداكن. أُنشئت كلّها بألوانٍ فاتحة مكتوبة مباشرة (٤٠ نافذة)، فكانت تبقى بيضاء فوق شاشةٍ داكنة.
+  // C196: النوافذ المنبثقة في الوضع الداكن. أُنشئت كلّها بألوانٍ فاتحة مكتوبة مباشرة (40 نافذة)، فكانت تبقى بيضاء فوق شاشةٍ داكنة.
   //   في الداكن فقط: الخلفيّات الفاتحة ⇐ بطاقة/خلفيّة التطبيق الداكنة · الملوّنة الفاتحة ⇐ صبغةٌ داكنة من لونها · النصّ الداكن ⇐ نصّ التطبيق ·
-  //   النصّ الملوّن الداكن ⇐ يُفتَّح حتّى ٤٫٥:١ · الحدود الفاتحة ⇐ حدود التطبيق. الأزرار الملوّنة بنصٍّ أبيض لا تتغيّر، وcanvas (رمز QR) لا يُمسّ.
+  //   النصّ الملوّن الداكن ⇐ يُفتَّح حتّى 4.5:1 · الحدود الفاتحة ⇐ حدود التطبيق. الأزرار الملوّنة بنصٍّ أبيض لا تتغيّر، وcanvas (رمز QR) لا يُمسّ.
   //   الألوان من متغيّرات ‎--sawa-*‎ التي تنشرها App (C187). يعمل على المحتوى الذي يُضاف لاحقاً أيضاً (MutationObserver).
   function sdIsDark() { try { return document.documentElement.getAttribute("data-theme") === "dark"; } catch (e) { return false; } }
   function sdVar(n, d) { try { var v = getComputedStyle(document.documentElement).getPropertyValue("--sawa-" + n).trim(); return v || d; } catch (e) { return d; } }
@@ -4325,7 +4325,7 @@
     if (m < 1) return L("الآن", "now");
     if (m < 60) return L("قبل " + m + " د", m + "m ago");
     var h = Math.round(m / 60); if (h < 24) return L("قبل " + h + " س", h + "h ago");
-    return new Date(ts).toLocaleDateString(isAr() ? "ar" : "en");
+    return new Date(ts).toLocaleDateString(isAr() ? "ar-u-nu-latn" : "en");
   }
   // ==================================================================
   // C107: طلبات ربط حسابي بشخصٍ في شجرة عائلة (أرسلها محرّرٌ برمزي أو من جهات اتّصاله) — لا ربط بلا موافقتي
@@ -4485,7 +4485,7 @@
     function setMode(m) {
       mode = m; res.innerHTML = ""; inp.value = "";
       Object.keys(segBtns).forEach(function (k) { segBtns[k].style.background = k === m ? "#fff" : "transparent"; segBtns[k].style.color = k === m ? "#1A1A2E" : "#5b6b7c"; segBtns[k].style.boxShadow = k === m ? "0 1px 3px rgba(0,0,0,.12)" : "none"; });
-      if (m === "code") { intro.textContent = L("اطلب من الشخص رمزه (في «حسابي» عنده) واكتبه هنا — ١٠ أرقام.", "Ask for their code (in their «Me» tab) and type it here — 10 digits."); inp.setAttribute("inputmode", "numeric"); inp.type = "text"; inp.placeholder = "000 000 0000"; inp.style.font = "800 24px ui-monospace,Menlo,monospace"; inp.style.letterSpacing = "2px"; }
+      if (m === "code") { intro.textContent = L("اطلب من الشخص رمزه (في «حسابي» عنده) واكتبه هنا — 10 أرقام.", "Ask for their code (in their «Me» tab) and type it here — 10 digits."); inp.setAttribute("inputmode", "numeric"); inp.type = "text"; inp.placeholder = "000 000 0000"; inp.style.font = "800 24px ui-monospace,Menlo,monospace"; inp.style.letterSpacing = "2px"; }
       else if (m === "phone") { intro.textContent = L("يُعثر على من وثّق رقمه عبر واتساب فقط. اكتب الرقم بالصيغة الدوليّة أو المحلّيّة.", "Finds only people who verified their number via WhatsApp. International or local format."); inp.setAttribute("inputmode", "tel"); inp.type = "tel"; inp.placeholder = "+249 9X XXX XXXX"; inp.style.font = "700 18px var(--sawa-font,system-ui)"; inp.style.letterSpacing = "0"; }
       else { intro.textContent = L("يُعثر على أصحاب حسابات Google أو البريد المؤكَّد الذين لم يخفوا أنفسهم.", "Finds people with a Google or confirmed email account who haven't hidden themselves."); inp.setAttribute("inputmode", "email"); inp.type = "email"; inp.placeholder = "name@example.com"; inp.style.font = "700 16px var(--sawa-font,system-ui)"; inp.style.letterSpacing = "0"; }
       inp.style.direction = "ltr"; sync();
@@ -4584,7 +4584,7 @@
 
   // ---------- C43: توثيق الرقم عبر واتساب ----------
   //  phone.start ⇒ رمز SAWA-XXXXXX ورابط wa.me برقم سوا · المستخدم يرسله من واتسابه · Meta ⇒ Worker /wa/webhook ⇒ phoneVerified
-  //  الرقم الذي أرسل الرمز هو الذي يُوثَّق (حتّى لو كتب رقماً آخر). الورقة تستطلع phone.status كلّ ٣ ثوانٍ.
+  //  الرقم الذي أرسل الرمز هو الذي يُوثَّق (حتّى لو كتب رقماً آخر). الورقة تستطلع phone.status كلّ 3 ثوانٍ.
   function verifySheet() {
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
     var p = profile();
@@ -4605,7 +4605,7 @@
         body.innerHTML = "";
         body.appendChild(mk("div", "font:600 13px var(--sawa-font,system-ui);color:#5b6b7c;direction:ltr;text-align:center;margin:2px 0 8px", p.phone));
         if (st.phoneVerified) { state.me = Object.assign({}, state.me || {}, { phoneVerified: true, verifiedBy: st.verifiedBy || "whatsapp" }); publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} body.appendChild(note(L("رقمك موثَّق ✓", "Verified ✓"), "#187854", "#e6f5ec")); return; }
-        // ١) عبر المعارف
+        // 1) عبر المعارف
         var c1 = mk("div", "border:1px solid #e2e5e9;border-radius:16px;padding:12px;margin:8px 0");
         c1.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui)", L("👥 عبر معارفك", "👥 Through people you know")));
         c1.appendChild(note(L("اطلب من اثنين من جهات اتّصالك (بحساب Google أو بريدٍ مؤكَّد) أن يؤكّدا أنّ هذا رقمك. بلا رسائل ولا تكلفة.", "Ask two of your contacts (with a Google or confirmed-email account) to confirm this is your number. No messages, no cost.")));
@@ -4618,7 +4618,7 @@
         var ask = mkBtn(L("اطلب من معارفك", "Ask my contacts"), "primary"); c1.appendChild(ask);
         ask.onclick = function () { pickVouchers(function () { home(); }); };
         body.appendChild(c1);
-        // ٢) عبر واتساب
+        // 2) عبر واتساب
         var c2 = mk("div", "border:1px solid #e2e5e9;border-radius:16px;padding:12px;margin:8px 0");
         c2.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui)", L("💬 عبر واتساب", "💬 Via WhatsApp")));
         if (wa) { c2.appendChild(note(L("ترسل رمزاً قصيراً إلى رقم سوا على واتساب فيُوثَّق رقمك فوراً.", "Send a short code to Sawa's WhatsApp and your number is verified instantly."))); var g2 = mkBtn(L("ابدأ — افتح واتساب", "Start — open WhatsApp")); g2.onclick = intro; c2.appendChild(g2); }
@@ -4626,12 +4626,12 @@
         body.appendChild(c2);
       }).catch(function (e) { body.innerHTML = ""; body.appendChild(note(codeErr(e), "#b42318")); });
     }
-    // اختيار المعارف (حتى ٥)
+    // اختيار المعارف (حتى 5)
     function pickVouchers(done) {
       var ppl = (state.people || []).filter(function (x) { return !x.anon; });
       var s2 = sheet(L("من يؤكّد رقمك؟", "Who can confirm your number?"));
       if (!ppl.length) { s2.box.appendChild(note(L("لا جهات اتّصال بعد — أضف معارفك أوّلاً.", "No contacts yet — add people first."))); return; }
-      s2.box.appendChild(note(L("اختر حتى ٥ أشخاص يعرفون رقمك. يصلهم طلبٌ بسيط: «هل هذا رقم فلان؟».", "Pick up to 5 people who know your number. They get a simple question: “Is this their number?”.")));
+      s2.box.appendChild(note(L("اختر حتى 5 أشخاص يعرفون رقمك. يصلهم طلبٌ بسيط: «هل هذا رقم فلان؟».", "Pick up to 5 people who know your number. They get a simple question: “Is this their number?”.")));
       var chosen = {}, list = mk("div", "max-height:50vh;overflow-y:auto;margin:6px 0");
       ppl.slice(0, 200).forEach(function (x) {
         var row = mk("button", "width:100%;display:flex;align-items:center;gap:10px;padding:8px 6px;border:0;border-bottom:1px solid #f1f5f9;background:transparent;text-align:start;font:600 14px var(--sawa-font,system-ui);color:#1A1A2E");
@@ -4667,7 +4667,7 @@
     }
     function stage(r) {
       body.innerHTML = "";
-      body.appendChild(note(L("١) يفتح واتساب برسالة جاهزة فيها الرمز — اضغط «إرسال» فقط.\n٢) عد إلى سوا؛ نتحقّق تلقائيّاً خلال ثوانٍ.", "1) WhatsApp opens with the code ready — just tap Send.\n2) Come back to Sawa; we verify automatically in seconds.")));
+      body.appendChild(note(L("1) يفتح واتساب برسالة جاهزة فيها الرمز — اضغط «إرسال» فقط.\n2) عد إلى سوا؛ نتحقّق تلقائيّاً خلال ثوانٍ.", "1) WhatsApp opens with the code ready — just tap Send.\n2) Come back to Sawa; we verify automatically in seconds.")));
       var codeEl = mk("div", "font:800 26px ui-monospace,Menlo,monospace;letter-spacing:3px;text-align:center;direction:ltr;background:#f1f5f9;border-radius:14px;padding:12px;margin:8px 0", "SAWA-" + r.code);
       body.appendChild(codeEl);
       var open = mkBtn(L("📲 افتح واتساب وأرسل الرمز", "📲 Open WhatsApp and send the code"), "primary"); body.appendChild(open);
@@ -4832,7 +4832,7 @@
       "auth/credential-already-in-use": L("هذا البريد مسجّلٌ سلفاً — اختر «لديّ حساب»", "This email is already registered"),
       "auth/invalid-email": L("البريد غير صحيح", "Invalid email"),
       "auth/missing-email": L("اكتب بريدك", "Enter your email"),
-      "auth/weak-password": L("كلمة المرور قصيرة — ٦ أحرف على الأقلّ", "Password too short — at least 6 characters"),
+      "auth/weak-password": L("كلمة المرور قصيرة — 6 أحرف على الأقلّ", "Password too short — at least 6 characters"),
       "auth/missing-password": L("اكتب كلمة المرور", "Enter a password"),
       "auth/wrong-password": L("البريد أو كلمة المرور غير صحيحة", "Wrong email or password"),
       "auth/invalid-credential": L("البريد أو كلمة المرور غير صحيحة", "Wrong email or password"),
@@ -4868,13 +4868,13 @@
       tCreate.style.color = mode === "create" ? "#1A1A2E" : "#6b7a89"; tSign.style.color = mode === "signin" ? "#1A1A2E" : "#6b7a89";
       go.textContent = mode === "create" ? L("إنشاء الحساب", "Create account") : L("دخول", "Sign in");
       pw.autocomplete = mode === "create" ? "new-password" : "current-password";
-      pw.placeholder = mode === "create" ? L("كلمة مرور (٦ أحرف على الأقلّ)", "Password (6+ characters)") : L("كلمة المرور", "Password");
+      pw.placeholder = mode === "create" ? L("كلمة مرور (6 أحرف على الأقلّ)", "Password (6+ characters)") : L("كلمة المرور", "Password");
       forgot.style.display = mode === "signin" ? "" : "none"; msg.textContent = "";
     }
     go.onclick = function () {
       var e = em.value.trim(), p = pw.value;
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)) { msg.textContent = L("البريد غير صحيح", "Invalid email"); return; }
-      if (p.length < 6) { msg.textContent = L("كلمة المرور قصيرة — ٦ أحرف على الأقلّ", "Password too short — at least 6 characters"); return; }
+      if (p.length < 6) { msg.textContent = L("كلمة المرور قصيرة — 6 أحرف على الأقلّ", "Password too short — at least 6 characters"); return; }
       if (!S() || !S().linkEmail) { msg.textContent = emailErr({ code: "sawa/no-server" }); return; }
       go.disabled = true; go.textContent = "…"; msg.textContent = "";
       S().linkEmail(e, p, mode).then(function () { if (mode === "create") sendVerify(true); onDone && onDone(); }).catch(function (x) {
@@ -4948,7 +4948,7 @@
       bl.appendChild(blk); bl.appendChild(mk("span", "", L("احظره أيضاً", "Also block"))); s.box.appendChild(bl);
     }
     s.box.appendChild(note(opts.moment ? L("يصل البلاغ إلى فريق سوا مع نصّ المحتوى لمراجعته، ويختفي عندك فوراً. لا يُبلَّغ صاحبه. إن أبلغ عنه ثلاثة أشخاص يُحجب عن الجميع حتّى المراجعة.", "Your report and the content go to the Sawa team; it's hidden for you right away. The author isn't notified. After 3 reports it's hidden for everyone until reviewed.")
-      : L("يصل البلاغ إلى فريق سوا مع آخر ٢٠ رسالة من هذه المحادثة لمراجعتها. لا يُبلَّغ الطرف الآخر.", "Your report and the last 20 messages of this chat are sent to the Sawa team for review. The other person isn't notified.")));
+      : L("يصل البلاغ إلى فريق سوا مع آخر 20 رسالة من هذه المحادثة لمراجعتها. لا يُبلَّغ الطرف الآخر.", "Your report and the last 20 messages of this chat are sent to the Sawa team for review. The other person isn't notified.")));
     var go = mkBtn(L("إرسال البلاغ", "Send report"), "danger"); go.disabled = true; go.style.opacity = ".5"; go.style.marginTop = "8px";
     s.box.appendChild(go);
     go.onclick = function () {
@@ -4973,7 +4973,7 @@
     var v = ""; try { v = (IOSB() && IOSB().voip) || ""; } catch (e) {}
     body.appendChild(note(v ? L("رمز VoIP لهذا الجهاز: موجود ✓ — أغلق سوا (أو اقفل الشاشة) خلال ثوانٍ لترى شاشة المكالمة.", "This device has a VoIP token ✓ — lock the screen to see the call screen.")
       : L("لا رمز VoIP على هذا الجهاز — يلزم تطبيق الآيفون بعد C151 وتفعيل الإشعارات.", "No VoIP token on this device — needs the iPhone app after C151."), v ? "#2e7d5b" : "#b45309"));
-    var go = mkBtn(L("أرسل مكالمة اختبار بعد ٥ ثوانٍ", "Send a test call in 5 s"), "primary"); go.style.marginTop = "8px"; s.box.appendChild(go);
+    var go = mkBtn(L("أرسل مكالمة اختبار بعد 5 ثوانٍ", "Send a test call in 5 s"), "primary"); go.style.marginTop = "8px"; s.box.appendChild(go);
     var out = mk("div", ""); s.box.appendChild(out);
     go.onclick = function () {
       go.disabled = true; go.textContent = "…";
@@ -5029,7 +5029,7 @@
       var items = r.items || [];
       canAct = !r.role || ADM_RANK[r.role] >= ADM_RANK.moderator;   // C195: المشاهد يرى بلا أزرار
       if (!canAct) body.appendChild(note(L("👁 مشاهدة فقط — يظهر لك عدد البلاغات ونوعها وسببها، دون محتوى الرسائل.", "👁 View only — counts, type and reason without message content."), "#475569", "#f1f5f9"));
-      body.appendChild(note(items.length ? L("بلاغاتٌ مفتوحة: ", "Open reports: ") + items.length + (canAct ? L(" — راجعها خلال ٢٤ ساعة.", " — review within 24 h.") : "") : L("لا بلاغات مفتوحة ✓", "No open reports ✓")));
+      body.appendChild(note(items.length ? L("بلاغاتٌ مفتوحة: ", "Open reports: ") + items.length + (canAct ? L(" — راجعها خلال 24 ساعة.", " — review within 24 h.") : "") : L("لا بلاغات مفتوحة ✓", "No open reports ✓")));
       items.forEach(function (it) { body.appendChild(card(it)); });
     }, function (e) { body.innerHTML = ""; body.appendChild(note(L("تعذّر التحميل: ", "Couldn't load: ") + codeErr(e), "#b42318")); });
   }
@@ -5060,7 +5060,7 @@
     body.appendChild(note(L("أضف بريد Google لمن تريد. تعمل الصلاحية حين يدخل سوا بالبريد نفسه (حتّى لو لم يسجّل بعد).", "Add a Google email. Access starts when they sign in with that email."), "#475569", "#f1f5f9"));
     body.appendChild(em); body.appendChild(roleRow); body.appendChild(desc); body.appendChild(add); body.appendChild(list); body.appendChild(logBox);
     paintRoles();
-    function errT(e) { var m = codeErr(e); return /bad email/.test(m) ? L("البريد غير صحيح", "Invalid email") : /owner/.test(m) ? L("هذا بريد المالك", "That's the owner's email") : /team full/.test(m) ? L("الفريق ممتلئ (٥٠)", "Team is full (50)") : m; }
+    function errT(e) { var m = codeErr(e); return /bad email/.test(m) ? L("البريد غير صحيح", "Invalid email") : /owner/.test(m) ? L("هذا بريد المالك", "That's the owner's email") : /team full/.test(m) ? L("الفريق ممتلئ (50)", "Team is full (50)") : m; }
     function paint(r) {
       list.innerHTML = ""; logBox.innerHTML = "";
       if (!r || !r.admin) { list.appendChild(note(L("إدارة الفريق للمالك وحده.", "Owner only."), "#b42318")); add.disabled = true; return; }
@@ -5367,7 +5367,7 @@
   }
   function oi(name) { var s = mk("span"); s.style.display = "contents"; s.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ONB_ICON[name] || "") + "</svg>"; return s; }
   function oc(tag, cls, text) { var e = mk(tag, "", text); e.className = cls; return e; }
-  function arNum(n) { return isAr() ? String(n).replace(/\d/g, function (d) { return "٠١٢٣٤٥٦٧٨٩"[d]; }) : String(n); }
+  function arNum(n) { return String(n); }   // C200: أرقامٌ غربيّة في كلّ التطبيق
   function onbStart() {
     if (onb || !document.body) return;
     onbCss();
@@ -5850,7 +5850,7 @@
   //    ثمّ يُغلَّف ذلك المفتاح لكلّ جهازٍ مربوط (ولجهازي) بمفتاحٍ مشترك: ECDH ⇒ HKDF-SHA256 ⇒ AES-GCM.
   //  - AAD يربط النصّ المشفّر بالمحادثة والرسالة والمرسل وجهازه: لا يستطيع الخادم نقله إلى محادثةٍ أخرى ولا نسبته لغير صاحبه.
   //  - الوسائط تُشفَّر بمفتاحٍ خاصّ قبل الرفع؛ الخادم يرى حجمها فقط.
-  //  - رمز الأمان: SHA-512 لمفتاحي الجهازين ⇒ ٦٠ رقماً يقارنها الطرفان. ومفتاح كلّ جهازٍ يُثبَّت عند أوّل رؤية (لا يُبدَّل بصمت).
+  //  - رمز الأمان: SHA-512 لمفتاحي الجهازين ⇒ 60 رقماً يقارنها الطرفان. ومفتاح كلّ جهازٍ يُثبَّت عند أوّل رؤية (لا يُبدَّل بصمت).
   //  - الحدود (نقولها بصراحة): لا «سرّيّة أماميّة» — مفاتيح الأجهزة ثابتة؛ والخادم يرى من يراسل من ومتى وحجم الرسائل والتفاعلات.
   // ==================================================================
   var e2e = (function () {
@@ -5862,7 +5862,7 @@
     function rnd(n) { var u = new Uint8Array(n); CR.getRandomValues(u); return u; }
     function cat(a, b) { var x = new Uint8Array(a), y = new Uint8Array(b), u = new Uint8Array(x.length + y.length); u.set(x, 0); u.set(y, x.length); return u; }
     function hex(u) { var s = ""; for (var i = 0; i < u.length; i++) s += (u[i] < 16 ? "0" : "") + u[i].toString(16); return s; }
-    // معرّف الجهاز = أوّل ١٢ بايت من SHA-256 لمفتاحه العامّ (الخادم يتحقّق أيضاً): لا ينتحل أحدٌ معرّف جهاز غيره
+    // معرّف الجهاز = أوّل 12 بايت من SHA-256 لمفتاحه العامّ (الخادم يتحقّق أيضاً): لا ينتحل أحدٌ معرّف جهاز غيره
     function devIdOf(pub) { return subtle.digest("SHA-256", unb64(pub)).then(function (h) { return hex(new Uint8Array(h).slice(0, 12)); }); }
     var devChk = {};
     function devMatches(d, pub) { var k = d + "|" + pub; return devChk[k] || (devChk[k] = devIdOf(pub).then(function (x) { return x === d; }, function () { return false; })); }
@@ -6303,7 +6303,7 @@
       });
     }).catch(function (e) { body.appendChild(note(e2eErrText(e), "#b42318", "#fdecec")); });
   }
-  function e2eSampleOf(cid) {   // للبلاغ: آخر ٢٠ رسالة مفكوكة على هذا الجهاز
+  function e2eSampleOf(cid) {   // للبلاغ: آخر 20 رسالة مفكوكة على هذا الجهاز
     return appMessages(cid).filter(function (o) { return o.type !== "system"; }).slice(-20).map(function (o) {
       return { by: realId(o.senderUserId || o.senderId || "") || null, text: String(o.text || "").slice(0, 300), ts: o.createdAt || 0 };
     });

@@ -900,7 +900,7 @@ function FeedbackSheet({ onClose, currentScreen = "" }) {
             return;
         }
         const msg = buildMessage();
-        // ١. واتساب مباشرةً إن ضُبط الرقم
+        // 1. واتساب مباشرةً إن ضُبط الرقم
         if (FEEDBACK_WHATSAPP) {
             try {
                 window.open(`https://wa.me/${FEEDBACK_WHATSAPP}?text=${encodeURIComponent(msg)}`, "_blank");
@@ -909,9 +909,9 @@ function FeedbackSheet({ onClose, currentScreen = "" }) {
             }
             catch (_a) { }
         }
-        // ٢. مشاركة النظام — يختار المستخدم واتساب أو غيره
+        // 2. مشاركة النظام — يختار المستخدم واتساب أو غيره
         const shared = shareText({ title: t("fb_mlahza_ala_swa"), text: msg });
-        // ٣. shareText ينسخ تلقائياً عند الفشل
+        // 3. shareText ينسخ تلقائياً عند الفشل
         showToast(shared ? t("fb_akhtr_watsab") : t("fb_nskht_almlahza"));
         setSent(true);
     }
@@ -1830,7 +1830,7 @@ function AppInner() {
     }
     function togglePinMessage(conversationId, messageId) {
         if (cloudChat(conversationId)) { cloudChat(conversationId).pin(conversationId, messageId); return; }
-        // C227: حتّى ٣ رسائل مثبّتة (محلّيّاً كما في السحابة)
+        // C227: حتّى 3 رسائل مثبّتة (محلّيّاً كما في السحابة)
         setConversations((prev) => prev.map((c) => { if (c.id !== conversationId) return c; const cur = pinIdsOf(c); const next = cur.indexOf(messageId) >= 0 ? cur.filter((x) => x !== messageId) : [messageId].concat(cur).slice(0, 3); return { ...c, pinnedMessageIds: next, pinnedMessageId: next[0] || null }; }));
     }
     function toggleStarMessage(conversationId, messageId, text) {
@@ -2444,7 +2444,7 @@ function AppInner() {
         setLinkedPaymentMethods((prev) => [...prev, { id: `pm-${Date.now()}`, ...data }]);
         showToast(data.type === "card" ? t("ai_rbt_btaqa") : t("ai_rbt_hsab"), "success");
     }
-    // C223: الطلب يحمل وصف المستند ونتائج الفحص فقط (الصور لا تُحفظ). المراجعة محاكاة (~٥ ث) — في الإنتاج: مزوّد توثيق أو مراجعةٌ يدويّة.
+    // C223: الطلب يحمل وصف المستند ونتائج الفحص فقط (الصور لا تُحفظ). المراجعة محاكاة (~5 ث) — في الإنتاج: مزوّد توثيق أو مراجعةٌ يدويّة.
     const [kycMeta, setKycMeta] = useState(null);
     function submitKyc(meta) {
         setKycMeta(Object.assign({ at: Date.now() }, meta || {}));
