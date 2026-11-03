@@ -2464,7 +2464,7 @@ ${txn.note}
                                 React.createElement("div", { className: "w-10 h-10 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: txn.type === "credit" ? colors.success + "18" : colors.danger + "18" } }, txn.type === "credit" ? React.createElement(ArrowDownLeft, { size: 16, color: colors.success }) : React.createElement(ArrowUpRight, { size: 16, color: colors.danger })),
                                 React.createElement("div", { className: "flex-1 min-w-0" },
                                     React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.35 } }, txn.note),
-                                    React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, new Date(txn.ts).toLocaleTimeString(wLoc(), { hour: "2-digit", minute: "2-digit" }))),
+                                    React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, new Date(txn.ts).toLocaleTimeString(wLoc(), { hour: "numeric", minute: "2-digit" }))),
                                 React.createElement("span", { className: "text-sm font-extrabold tabular-nums shrink-0", style: { color: txn.type === "credit" ? colors.success : colors.danger } }, walletAmt(txn.type === "credit" ? "+" : "\u2212", txn.amount)))))))));
                 })())))),
         navTab === "services" && (React.createElement(React.Fragment, null,

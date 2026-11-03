@@ -1731,7 +1731,7 @@
           var row = el("div", "padding:6px 0;border-top:1px solid " + LINE + ";font:600 12px var(--sawa-font,system-ui)");
           row.appendChild(el("div", "display:flex;justify-content:space-between;gap:6px", ""));
           row.firstChild.appendChild(el("span", "font-weight:800", (ok ? "✅ " : "❌ ") + (x.k || "?") + (x.mode ? " · " + x.mode : "") + (x.n ? " · " + x.n + "👥" : "")));
-          row.firstChild.appendChild(el("span", "color:" + MUTED + ";direction:ltr", new Date(c.ts).toLocaleString(isAr() ? "ar-u-nu-latn" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })));
+          row.firstChild.appendChild(el("span", "color:" + MUTED + ";direction:ltr", new Date(c.ts).toLocaleString(isAr() ? "ar-u-nu-latn" : "en", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" })));
           c.sides.forEach(function (y) {
             row.appendChild(el("div", "color:" + MUTED + ";direction:ltr;text-align:start;margin-top:2px;word-break:break-word",
               [y.role, y.plat, y.eng, y.ck ? "📲sys" : "", y.vis === 0 ? "bg" : "", y.ok ? ms(y.setup) : (TEL_REASON[y.reason] ? L(TEL_REASON[y.reason][0], TEL_REASON[y.reason][1]) : y.reason), y.err ? "err " + y.err : "", y.up ? "📹+" : "", y.route ? y.route + "/" + (y.proto || "?") + (y.relay ? " " + y.relay : "") : "", y.lct ? y.lct + "↔" + (y.rct || "?") + (y.fam === "6" ? " IPv6" : "") : "", y.nat ? "NAT " + (NAT_TX[y.nat] ? L(NAT_TX[y.nat][0], NAT_TX[y.nat][1]) : y.nat) + (y.v6 ? " +v6" : "") : "", y.v6l || y.v6r ? "IPv6 " + (y.v6l ? "✓" : "✗") + "/" + (y.v6r ? "✓" : "✗") : "", y.rtt ? "RTT " + y.rtt.med : "", y.loss ? "loss " + y.loss.med + "%" : "", y.secs ? y.secs + "s" : "", y.qd ? "⏳" + (y.qd >= 60 ? Math.round(y.qd / 60) + "h" : y.qd + "m") : ""].filter(Boolean).join(" · ")));
@@ -1756,7 +1756,7 @@
         if (!admOk(r)) go.style.display = "none";   // C195: المشاهد والمشرف بلا «فحص الآن»
         var lb = r.labels || {}, keys = Object.keys(r.svc || {});
         var name = function (k) { return lb[k] || (k.indexOf("metered:") === 0 ? L("وسيط Metered (", "Metered relay (") + k.slice(8) + ")" : k); };
-        box.appendChild(el("div", "font:600 12px var(--sawa-font,system-ui);color:" + MUTED + ";margin-bottom:8px", r.at ? L("آخر فحص: ", "Last check: ") + new Date(r.at).toLocaleString(isAr() ? "ar-u-nu-latn" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }) : L("لم يُفحص بعد — اضغط «فحص الآن»", "Not checked yet — tap “Check now”")));
+        box.appendChild(el("div", "font:600 12px var(--sawa-font,system-ui);color:" + MUTED + ";margin-bottom:8px", r.at ? L("آخر فحص: ", "Last check: ") + new Date(r.at).toLocaleString(isAr() ? "ar-u-nu-latn" : "en", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }) : L("لم يُفحص بعد — اضغط «فحص الآن»", "Not checked yet — tap “Check now”")));
         keys.forEach(function (k) {
           var v = r.svc[k], h = (r.hist && r.hist[k]) || [];
           var card = el("div", "padding:10px 12px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid " + (v.ok ? LINE : "#b91c1c"));
@@ -1766,7 +1766,7 @@
           top.appendChild(el("span", "font:700 12px var(--sawa-font,system-ui);direction:ltr;color:" + MUTED, v.ok ? v.ms + " ms" : L("متعطّل", "down")));
           card.appendChild(top);
           var up = h.filter(function (x) { return x[1] >= 0; }).length;
-          var sub = (v.ok ? L("يعمل منذ ", "Up since ") : L("متعطّل منذ ", "Down since ")) + new Date(v.since || v.at).toLocaleString(isAr() ? "ar-u-nu-latn" : "en", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }) + (h.length ? " · " + L("التوفّر ", "uptime ") + Math.round(up * 100 / h.length) + "%" : "");
+          var sub = (v.ok ? L("يعمل منذ ", "Up since ") : L("متعطّل منذ ", "Down since ")) + new Date(v.since || v.at).toLocaleString(isAr() ? "ar-u-nu-latn" : "en", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }) + (h.length ? " · " + L("التوفّر ", "uptime ") + Math.round(up * 100 / h.length) + "%" : "");
           card.appendChild(el("div", "font:600 11.5px var(--sawa-font,system-ui);color:" + MUTED + ";margin-top:3px", sub));
           if (!v.ok && v.err) card.appendChild(el("div", "font:600 11.5px var(--sawa-font,system-ui);color:#fca5a5;margin-top:3px;direction:ltr;text-align:start;word-break:break-word", v.err));
           if (h.length > 1) {   // آخر القياسات: عمودٌ لكلّ فحص (الأحمر عطل)
