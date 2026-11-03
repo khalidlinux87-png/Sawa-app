@@ -930,7 +930,7 @@
       toast(msg); paintBadge(); renderPanel(); refreshMyGroups();
       return b;
     }).catch(function (e) {
-      toast(L("تعذّر الرفع: ", "Upload failed: ") + ((e && e.message) || e)); renderPanel();
+      LOG.warn("upload.fail", { err: (e && e.message) || e }); toast(L("تعذّر الرفع. ", "Upload failed. ") + friendlyErr(e)); renderPanel();
       return null;
     });
   }
@@ -1044,7 +1044,7 @@
     id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: function (r) {
       var w = gsiWaiters; gsiWaiters = [];
       if (!r || !r.credential) { w.forEach(function (f) { f(false); }); return; }
-      googleCredential(r.credential).then(function () { w.forEach(function (f) { f(true); }); }, function (e) { toast(L("تعذّر الدخول: ", "Sign-in failed: ") + ((e && (e.code || e.message)) || e)); w.forEach(function (f) { f(false); }); });
+      googleCredential(r.credential).then(function () { w.forEach(function (f) { f(true); }); }, function (e) { LOG.warn("signin.fail", { err: (e && (e.code || e.message)) || e }); toast(L("تعذّر الدخول. ", "Sign-in failed. ") + friendlyErr(e)); w.forEach(function (f) { f(false); }); });
     }, use_fedcm_for_prompt: true, itp_support: true, ux_mode: "popup", auto_select: false, cancel_on_tap_outside: true, context: "signin" });
     return id;
   }
@@ -1577,17 +1577,17 @@
     var ar = isAr(), dir = ar ? "rtl" : "ltr";
     var lg = currentLocalGid(), sg = serverGid(lg), role = sg ? roleOf(sg) : null;
     var btn = function (act, label, primary, extra) {
-      return '<button data-act="' + act + '"' + (extra || "") + ' style="display:block;width:100%;margin:8px 0 0;padding:12px 14px;border-radius:12px;font:700 15px system-ui;cursor:pointer;' +
-        (primary ? 'background:#187854;color:#fff;border:none;' : 'background:#fff;color:#1E3A63;border:1.5px solid #cfdbe8;') + '">' + label + '</button>';
+      return '<button data-act="' + act + '"' + (extra || "") + ' style="display:block;width:100%;margin:8px 0 0;padding:12px 14px;border-radius:12px;font:700 15px var(--sawa-font,system-ui);cursor:pointer;' +
+        (primary ? 'background:var(--sawa-primary,#2774BA);color:#fff;border:none;'   /* C196: بلون المظهر — كان أخضر ثابتاً */ : 'background:#fff;color:#1E3A63;border:1.5px solid #cfdbe8;') + '">' + label + '</button>';
     };
     var sec = function (title, body) {
-      return '<div style="background:#f5f8fb;border-radius:14px;padding:14px;margin-top:12px"><div style="font:800 13px system-ui;color:#5b6b7c;margin-bottom:6px">' + title + '</div>' + body + '</div>';
+      return '<div style="background:#f5f8fb;border-radius:14px;padding:14px;margin-top:12px"><div style="font:800 13px var(--sawa-font,system-ui);color:#5b6b7c;margin-bottom:6px">' + title + '</div>' + body + '</div>';
     };
-    var p = function (txt, color) { return '<div style="font:500 14px/1.6 system-ui;color:' + (color || "#1f2d3a") + '">' + txt + '</div>'; };
+    var p = function (txt, color) { return '<div style="font:500 14px/1.6 var(--sawa-font,system-ui);color:' + (color || "#1f2d3a") + '">' + txt + '</div>'; };
 
     var acct;
     if (!state.uid) acct = state.error
-      ? p(L("تعذّر الاتصال بالخادم: ", "Couldn't reach the server: ") + esc(state.error), "#b42318") + btn("retry", L("إعادة المحاولة", "Retry"))
+      ? p(esc(friendlyErr(state.error)), "#b42318") + btn("retry", L("إعادة المحاولة", "Retry"))
       : p(L("جارٍ الاتصال بالخادم…", "Connecting…"), "#8a6d1f");
     else if (state.isAnon) acct = p(L("ضيف — هويّتك محفوظة في هذا المتصفّح فقط وقد تضيع عند مسح بياناته أو تغيير الهاتف. اربطها بحساب لتصل لمحادثاتك وعائلتك من أيّ جهاز.",
                                        "Guest — your identity lives in this browser only. Link an account to reach your chats and family from any device.")) +
@@ -1595,7 +1595,7 @@
                                (global.SawaChat && global.SawaChat.emailSheet ? btn("email", L("الدخول بالبريد الإلكتروني", "Continue with email")) : "");
     else acct = p("✓ " + esc(state.email || L("حسابك مربوط", "Account linked")), "#187854");
 
-    var fam = '<div style="font:800 16px system-ui;color:#1f2d3a">' + esc(groupName(lg)) + '</div>';
+    var fam = '<div style="font:800 16px var(--sawa-font,system-ui);color:#1f2d3a">' + esc(groupName(lg)) + '</div>';
     if (pendingDup && pendingDup.localGid === lg) {
       var pct = Math.round(pendingDup.ratio * 100);
       fam += p(L("هذه الشجرة مرفوعةٌ مسبقاً على حسابك باسم «" + esc(pendingDup.name) + "» (تطابق " + pct + "٪ — على الخادم " + pendingDup.serverCount + " شخصاً، وعلى هذا الجهاز " + pendingDup.localCount + ").",
@@ -1631,16 +1631,16 @@
       else mine = all.map(function (g) {
         var here = localGidOf(g.groupId), isCur = here && here === lg;
         var meta = roleLabel(g.role) + " · " + fmtNum(g.personCount) + L(" شخصاً", " people") + (g.createdTs ? " · " + fmtWhen(g.createdTs) : "");
-        var tag = here ? '<div style="font:700 12px system-ui;color:#187854;margin-top:2px">' + (isCur ? L("مربوطة · المفتوحة الآن ✓", "Linked · open now ✓") : L("مربوطة بهذا الجهاز ✓", "Linked on this device ✓")) + '</div>' : "";
+        var tag = here ? '<div style="font:700 12px var(--sawa-font,system-ui);color:#187854;margin-top:2px">' + (isCur ? L("مربوطة · المفتوحة الآن ✓", "Linked · open now ✓") : L("مربوطة بهذا الجهاز ✓", "Linked on this device ✓")) + '</div>' : "";
         var smallBtn = function (act, label, bg, fg, border) {
-          return '<button data-act="' + act + '" data-gid="' + esc(g.groupId) + '" style="padding:8px 12px;border-radius:10px;border:' + (border || "none") + ';background:' + bg + ';color:' + fg + ';font:700 13px system-ui">' + label + '</button>';
+          return '<button data-act="' + act + '" data-gid="' + esc(g.groupId) + '" style="padding:8px 12px;border-radius:10px;border:' + (border || "none") + ';background:' + bg + ';color:' + fg + ';font:700 13px var(--sawa-font,system-ui)">' + label + '</button>';
         };
         var actions = (!here ? smallBtn("restore", L("استعادة", "Restore"), "#2F80C8", "#fff") : "") +
                       (g.role === "owner" ? smallBtn("delete", L("حذف", "Delete"), "#fff", "#b23b3b", "1.5px solid #e6b4b4")
                                           : smallBtn("leave", L("مغادرة", "Leave"), "#fff", "#5b6b7c", "1.5px solid #cfdbe8"));
         return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 0;border-top:1px solid #e3eaf1">' +
-          '<div><div style="font:700 15px system-ui">' + esc(g.name) + '</div>' +
-          '<div style="font:500 12.5px system-ui;color:#5b6b7c;margin-top:2px">' + esc(meta) + '</div>' + tag + '</div>' +
+          '<div><div style="font:700 15px var(--sawa-font,system-ui)">' + esc(g.name) + '</div>' +
+          '<div style="font:500 12.5px var(--sawa-font,system-ui);color:#5b6b7c;margin-top:2px">' + esc(meta) + '</div>' + tag + '</div>' +
           '<div style="display:flex;gap:6px;flex-shrink:0">' + actions + '</div></div>';
       }).join("");
     }
@@ -1650,38 +1650,48 @@
     panelEl.innerHTML =
       '<div style="background:#fff;width:100%;max-width:520px;max-height:88vh;overflow:auto;border-radius:20px 20px 0 0;padding:18px 16px 24px;box-shadow:0 -6px 24px rgba(0,0,0,.2)">' +
         '<div style="display:flex;align-items:center;justify-content:space-between">' +
-          '<div style="font:800 19px system-ui;color:#1f2d3a">' + L("السحابة والمشاركة", "Cloud & sharing") + '</div>' +
-          '<button data-act="close" aria-label="close" style="border:none;background:#eef2f6;border-radius:50%;width:34px;height:34px;font:700 18px system-ui;cursor:pointer">×</button>' +
+          '<div style="font:800 19px var(--sawa-font,system-ui);color:#1f2d3a">' + L("السحابة والمشاركة", "Cloud & sharing") + '</div>' +
+          '<button data-act="close" aria-label="close" style="border:none;background:#eef2f6;border-radius:50%;width:34px;height:34px;font:700 18px var(--sawa-font,system-ui);cursor:pointer">×</button>' +
         '</div>' +
         sec(L("حسابك", "Your account"), acct) +
         sec(L("هذه العائلة", "This family"), fam) +
         reviewsSection(lg, sg) +
         sec(L("عائلات على حسابك", "Families on your account"), mine) +
       '</div>';
+    try { if (global.sawaDarkify) global.sawaDarkify(panelEl.firstChild); } catch (e) {}   // C196: الوضع الداكن
+  }
+
+  // C196: رسالة خطأٍ يفهمها المستخدم بدل نصّ Firebase الخامّ بالإنجليزيّة (يبقى الخامّ في السجلّ LOG).
+  function friendlyErr(e) {
+    var r = String((e && (e.code || e.message)) || e || "");
+    if (/network|timeout|unavailable|offline|failed to fetch/i.test(r)) return L("تعذّر الاتّصال بالإنترنت. تحقّق من الاتّصال ثمّ أعد المحاولة.", "Couldn't connect. Check your internet and try again.");
+    if (/popup-closed|cancelled-popup|user-cancel/i.test(r)) return L("أُلغي الدخول.", "Sign-in was cancelled.");
+    if (/too-many-requests/i.test(r)) return L("محاولاتٌ كثيرة. انتظر قليلاً ثمّ أعد المحاولة.", "Too many attempts. Wait a moment and try again.");
+    return L("حدث خطأ غير متوقّع. أعد المحاولة بعد قليل.", "Something went wrong. Try again in a moment.");
   }
 
   function reviewsSection(lg, sg) {
     if (!sg || !canReview(sg) || (watchers[sg] && watchers[sg].err)) return "";
     var items = reviewsBy[sg];
     var body;
-    if (!items) body = '<div style="font:500 14px system-ui;color:#5b6b7c">' + (reviewsLoading ? L("جارٍ التحميل…", "Loading…") : "") + '</div>';
-    else if (!items.length) body = '<div style="font:500 14px system-ui;color:#5b6b7c">' + L("لا تعديلات تنتظر المراجعة ✓", "Nothing awaiting review ✓") + '</div>';
+    if (!items) body = '<div style="font:500 14px var(--sawa-font,system-ui);color:#5b6b7c">' + (reviewsLoading ? L("جارٍ التحميل…", "Loading…") : "") + '</div>';
+    else if (!items.length) body = '<div style="font:500 14px var(--sawa-font,system-ui);color:#5b6b7c">' + L("لا تعديلات تنتظر المراجعة ✓", "Nothing awaiting review ✓") + '</div>';
     else body = items.map(function (it) {
       var d = describeReview(lg, it);
-      var b = function (act, label, bg, fg, bd) { return '<button data-act="' + act + '" data-rid="' + esc(it.id) + '" style="padding:8px 14px;border-radius:10px;border:' + (bd || "none") + ';background:' + bg + ';color:' + fg + ';font:700 13px system-ui">' + label + '</button>'; };
+      var b = function (act, label, bg, fg, bd) { return '<button data-act="' + act + '" data-rid="' + esc(it.id) + '" style="padding:8px 14px;border-radius:10px;border:' + (bd || "none") + ';background:' + bg + ';color:' + fg + ';font:700 13px var(--sawa-font,system-ui)">' + label + '</button>'; };
       var acts = d.actions.map(function (a) {
         return a === "apply" ? b("rv-apply", L("قبول", "Accept"), "#187854", "#fff")
              : a === "ack" ? b("rv-ack", L("تمّ", "Done"), "#187854", "#fff")
              : b("rv-reject", L("رفض", "Reject"), "#fff", "#b23b3b", "1.5px solid #e6b4b4");
       }).join("");
       return '<div style="padding:10px 0;border-top:1px solid #e3eaf1">' +
-        '<div style="font:700 14px/1.6 system-ui;color:#1f2d3a">' + d.title + (it.mine ? ' <span style="font-weight:500;color:#5b6b7c">' + L("(منك)", "(yours)") + '</span>' : "") + '</div>' +
-        (d.why ? '<div style="font:500 12.5px/1.6 system-ui;color:#8a5a00;margin-top:2px">' + d.why + '</div>' : "") +
+        '<div style="font:700 14px/1.6 var(--sawa-font,system-ui);color:#1f2d3a">' + d.title + (it.mine ? ' <span style="font-weight:500;color:#5b6b7c">' + L("(منك)", "(yours)") + '</span>' : "") + '</div>' +
+        (d.why ? '<div style="font:500 12.5px/1.6 var(--sawa-font,system-ui);color:#8a5a00;margin-top:2px">' + d.why + '</div>' : "") +
         '<div style="display:flex;gap:8px;margin-top:8px">' + acts + '</div></div>';
     }).join("");
     var n = items ? items.length : 0;
     return '<div style="background:' + (n ? "#fff8e6" : "#f5f8fb") + ';border-radius:14px;padding:14px;margin-top:12px">' +
-      '<div style="font:800 13px system-ui;color:#5b6b7c;margin-bottom:6px">' + L("مراجعات معلّقة", "Pending reviews") + (n ? " (" + n + ")" : "") + '</div>' + body + '</div>';
+      '<div style="font:800 13px var(--sawa-font,system-ui);color:#5b6b7c;margin-bottom:6px">' + L("مراجعات معلّقة", "Pending reviews") + (n ? " (" + n + ")" : "") + '</div>' + body + '</div>';
   }
 
   // ---------- القراءة الحيّة ----------
@@ -1727,7 +1737,7 @@
       if (!toastEl) {
         toastEl = document.createElement("div");
         toastEl.style.cssText = "position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:2147483646;" +
-          "background:rgba(20,30,40,.92);color:#fff;font:600 14px system-ui;padding:10px 16px;border-radius:12px;" +
+          "background:rgba(20,30,40,.92);color:#fff;font:600 14px var(--sawa-font,system-ui);padding:10px 16px;border-radius:12px;" +
           "max-width:86vw;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.3);transition:opacity .25s;pointer-events:none";
         document.body.appendChild(toastEl);
       }
@@ -1752,7 +1762,7 @@
       if (!badgeEl) {
         badgeEl = document.createElement("div");
         badgeEl.style.cssText = "position:fixed;left:8px;right:8px;top:8px;z-index:2147483647;" +
-          "font:700 13px system-ui;padding:9px 12px;border-radius:10px;text-align:center;" +
+          "font:700 13px var(--sawa-font,system-ui);padding:9px 12px;border-radius:10px;text-align:center;" +
           "box-shadow:0 2px 10px rgba(0,0,0,.35);direction:ltr;pointer-events:none;";
         document.body.appendChild(badgeEl);
       }

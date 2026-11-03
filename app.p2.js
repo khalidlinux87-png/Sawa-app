@@ -1043,18 +1043,25 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         ...(isAdm ? [{ key: "relay", label: tl("الوسيط الأساسيّ للمكالمات", "Primary call relay") + admTag, icon: Radio, onPress: () => { if (window.SawaRTC && window.SawaRTC.relaySheet) window.SawaRTC.relaySheet(); } }] : []),   // C175
         ...(isAdm ? [{ key: "qa", label: tl("تقييمات المكالمات", "Call ratings") + admTag, icon: Star, onPress: () => { if (window.SawaRTC && window.SawaRTC.qaReport) window.SawaRTC.qaReport(); }, color: "#F59E0B" }] : []),
         // C83: تحديث التطبيق لكلّ مستخدم — النسخة، ما الجديد، وتحديثٌ قسريّ آمن
-        ...(SCm && SCm.updateSheet ? [{ key: "update", label: updAvail ? tl("تحديث التطبيق • نسخةٌ جديدة ✨", "App update • new ✨") : tl("تحديث التطبيق", "App update"), icon: RotateCcw, onPress: () => SCm.updateSheet(), color: updAvail ? "#B45309" : "#2774BA" }] : []),
+        ...(SCm && SCm.updateSheet ? [{ key: "update", label: updAvail ? tl("تحديث التطبيق · نسخةٌ جديدة", "App update · new version") : tl("تحديث التطبيق", "App update"), icon: RotateCcw, onPress: () => SCm.updateSheet(), color: updAvail ? "#B45309" : "#2774BA" }] : []),
         // C11: صفحاتٌ عامّة على الموقع (Google Play يطلب رابطيها)
         { key: "legal", label: tl("الخصوصيّة والشروط", "Privacy & terms"), icon: ShieldCheck, onPress: () => { location.href = "/privacy"; }, color: "#64748B" },
         { key: "cloud", label: t("me_rfa_alshjra"), icon: Cloud, onPress: () => { if (window.SawaSync) (window.SawaSync.openPanel ? window.SawaSync.openPanel() : window.SawaSync.uploadCurrent()); }, color: "#187854" },
         // في مرحلة التجربة: الوصول للملاحظات من مكان ثابت يعرفه المجرِّب
     ];
+    // C196: القائمة في أقسام، والأيقونات بلون المظهر (كانت ١٠ صفوف متتالية بلا ترتيب، كلّ أيقونة بلون). لونٌ مختلف للحالة فقط:
+    //   ربط حساب الضيف (تنبيه) · طلبات تواصل جديدة · نسخة جديدة. صفوف الإدارة في قسمٍ أخير.
+    const ME_SEC = { mycode: "acct", link: "acct", requests: "acct", cloud: "fam", export: "fam", import: "fam",
+        settings: "app", notifications: "app", pushcheck: "app", devices: "app", wrapped: "app", update: "app", install: "app", apk: "app",
+        feedback: "about", legal: "about" };
+    const ME_SEC_ORDER = [["acct", tl("الحساب", "Account")], ["fam", tl("العائلة", "Family")], ["app", tl("التطبيق", "App")], ["about", tl("عن سوا", "About Sawa")], ["admin", tl("الإدارة", "Admin")]];
+    const meIconColor = (it) => it.key === "link" ? colors.warning : it.key === "requests" && reqCount ? colors.danger : it.key === "update" && updAvail ? colors.warning : (ME_SEC[it.key] ? colors.primary : colors.textMuted);
+    const meGroups = ME_SEC_ORDER.map(([id, title]) => [id, title, listItems.filter((it) => (ME_SEC[it.key] || "admin") === id)]).filter((g) => g[2].length);
     // اختبار قلب الاتجاه — شاشة ثانية
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 flex flex-col overflow-y-auto", style: { backgroundColor: colors.bg } },
         React.createElement("div", { style: { background: `linear-gradient(160deg, ${colors.primary} 0%, ${colors.primaryDark} 100%)`, paddingBottom: 132, position: "relative" } },
             React.createElement("div", { className: `flex ${rowStart()} items-center justify-between px-5 pt-5 pb-4` },
-                React.createElement("span", { className: "text-base font-extrabold text-white tracking-wide" }, appName()),
-                React.createElement("span", { className: "text-xs font-bold", style: { color: "rgba(255,255,255,0.6)" } }, t("hsaby")))),
+                React.createElement("h2", { className: "text-xl font-extrabold text-white" }, t("hsaby")))),   // C196: عنوان التبويب «حسابي» مثل باقي التبويبات (كان «سوا» كبيراً و«حسابي» صغيراً)
         React.createElement("div", { className: "mx-4 rounded-2xl shadow-lg px-5 pt-5 pb-4", style: { backgroundColor: colors.card, marginTop: -120, position: "relative", zIndex: 2, border: `1px solid ${colors.border}` } },
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-4` },
                 React.createElement("div", { className: "shrink-0 rounded-2xl overflow-hidden flex items-center justify-center", style: { width: 68, height: 68, backgroundColor: colors.primaryLight, border: `3px solid ${colors.primary}` } },
@@ -1068,9 +1075,9 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
                             myProfile.phoneVerified
                                 ? React.createElement("span", { className: "text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0", style: { color: "#187854", backgroundColor: "#E6F5EC" } }, myProfile.verifiedBy === "contacts" ? tl("مؤكَّد من معارفك ✓", "Confirmed by contacts ✓") : tl("موثّق ✓", "Verified ✓"))
                                 : React.createElement("button", { onClick: () => { try { SCm.verifySheet(); } catch (e) {} }, className: "text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0", style: { color: "#B8720A", backgroundColor: "#FEF3C7" } }, tl("غير موثّق — وثّقه", "Unverified — verify")))
-                        : React.createElement("button", { onClick: editMe, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, "+ أضف رقم هاتفك"))
-                        : meState === "err" ? React.createElement("button", { onClick: () => { try { SCm.refresh(); } catch (e) {} meTick((n) => n + 1); }, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, tl("↻ إعادة المحاولة", "↻ Retry"))
-                        : meState === "noauth" ? React.createElement("button", { onClick: () => { try { SCm.startOnboarding(); } catch (e) {} }, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, tl("تسجيل الدخول ←", "Sign in →"))
+                        : React.createElement("button", { onClick: editMe, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, tl("+ أضف رقم هاتفك", "+ Add your phone number")))
+                        : meState === "err" ? React.createElement("button", { onClick: () => { try { SCm.refresh(); } catch (e) {} meTick((n) => n + 1); }, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, tl("إعادة المحاولة", "Retry"))
+                        : meState === "noauth" ? React.createElement("button", { onClick: () => { try { SCm.startOnboarding(); } catch (e) {} }, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, tl("تسجيل الدخول", "Sign in"))
                         : React.createElement("p", { className: "text-xs mt-0.5 truncate", style: { color: colors.textMuted } }, meState === "loading" ? tl("لحظات…", "One moment…") : ""),
                     cloudMe && myProfile.code && SCm.fmtCode && React.createElement("button", { onClick: () => SCm.codeSheet(), className: `flex ${rowStart()} items-center gap-1.5 mt-1`, style: { color: colors.primary } },
                         React.createElement("span", { className: "text-[11px] font-bold" }, tl("رمزك:", "Code:")),
@@ -1081,11 +1088,13 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
                         React.createElement("span", { className: "text-[11px] font-bold", style: { color: currentStatus.color } }, currentStatus.label))),
                 React.createElement("button", { "aria-label": t("tadyl"), onClick: editMe, className: "shrink-0 rounded-xl flex items-center justify-center", style: { width: 36, height: 36, backgroundColor: colors.primaryLight } },
                     React.createElement(Edit2, { size: 15, color: colors.primary })))),
-        React.createElement("div", { className: "mt-4 flex flex-col", style: { backgroundColor: colors.card } }, listItems.map((item, i) => (React.createElement("button", { "aria-label": t("altaly"), key: item.key, onClick: item.onPress, className: `w-full flex ${rowStart()} items-center justify-between px-4 py-3.5`, style: { borderBottom: i < listItems.length - 1 ? `1px solid ${colors.border}` : "none" } },
-            React.createElement(item.icon, { size: 18, color: item.color || colors.primary }),
-            React.createElement("span", { className: `flex-1 text-sm font-bold ${textStart()} ${ms("2")}`, style: { color: colors.text } }, item.label),
-            React.createElement(ChevronLeft, { size: 16, color: colors.textMuted, style: { transform: isRTL() ? "none" : "scaleX(-1)" } }))))),
-        React.createElement("div", { className: "mt-2", style: { backgroundColor: colors.card } },
+        meGroups.map(([id, title, items]) => React.createElement("section", { key: id, className: "mt-4 px-4", "aria-label": title },
+            React.createElement("h4", { className: `text-[12px] font-bold mb-1.5 px-1 ${textStart()}`, style: { color: colors.textMuted } }, title),
+            React.createElement("div", { className: "flex flex-col rounded-2xl overflow-hidden border", style: { backgroundColor: colors.card, borderColor: colors.border } }, items.map((item, i) => (React.createElement("button", { key: item.key, onClick: item.onPress, className: `w-full flex ${rowStart()} items-center justify-between px-4 py-3.5`, style: { borderBottom: i < items.length - 1 ? `1px solid ${colors.border}` : "none" } },
+                React.createElement(item.icon, { size: 18, color: meIconColor(item), "aria-hidden": true }),
+                React.createElement("span", { className: `flex-1 text-sm font-bold ${textStart()} ${ms("2")}`, style: { color: colors.text } }, item.label),
+                React.createElement(ChevronLeft, { size: 16, color: colors.textMuted, "aria-hidden": true, style: { transform: isRTL() ? "none" : "scaleX(-1)" } }))))))),
+        React.createElement("div", { className: "mt-4 mx-4 rounded-2xl overflow-hidden border", style: { backgroundColor: colors.card, borderColor: colors.border } },
             React.createElement("button", { onClick: onLogout, className: `w-full flex ${rowStart()} items-center gap-2 px-4 py-3.5` },
                 React.createElement(LogOut, { size: 18, color: colors.danger }),
                 React.createElement("span", { className: "text-sm font-bold", style: { color: colors.danger } }, t("tsjyl_alkhrwj"))),
@@ -1304,7 +1313,7 @@ function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiome
     // تجربة أولى لقلب الاتجاه على شاشة واحدة.
     // dir سمة موروثة من <html>، فنفرضها هنا لعزل الشاشة عن بقية التطبيق.
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col relative" },
-        React.createElement(TopBar, { title: t("iadadat_almlf_alshkhsy"), onBack: onBack }),
+        React.createElement(TopBar, { title: t("me_iadadat_almlf")   /* C196: «الإعدادات» — محتواها إعدادات التطبيق لا الملف الشخصيّ */, onBack: onBack }),
         React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
             !RELEASE_UI && React.createElement("p", { className: "text-xs font-bold mb-2", style: { color: colors.textMuted } }, t("alswra_alshkhsya")),
             !RELEASE_UI && React.createElement("div", { className: `flex ${rowStart()} items-center gap-3 mb-5` },

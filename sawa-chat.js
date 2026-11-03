@@ -4052,7 +4052,7 @@
     Promise.all(jobs).catch(function () {}).then(function () { global.location.replace("/?fresh=" + Date.now()); });
   }
   function updateSheet() {
-    var s = sheet(L("🔄 تحديث التطبيق", "🔄 App update"));
+    var s = sheet(L("تحديث التطبيق", "App update"));   // C196: بلا إيموجي
     var box = s.box;
     var row = function (k, v, good) { var r = mk("div", "display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #f1f5f9;font:600 13px var(--sawa-font,system-ui)"); r.appendChild(mk("span", "color:#5b6b7c", k)); r.appendChild(mk("span", "color:" + (good === false ? "#b45309" : good ? "#2e7d5b" : "#1e293b") + ";text-align:end", v)); return r; };
     var body = mk("div"); box.appendChild(body);
@@ -4062,8 +4062,9 @@
       body.appendChild(row(L("نسخة سوا على جهازك", "Version on this device"), (upd.local || "…").replace("sawa-", ""), upd.local ? !upd.available : null));
       body.appendChild(row(L("أحدث نسخة", "Latest version"), (upd.server || "…").replace("sawa-", "")));
       if (nbp) body.appendChild(row(L("تطبيق أندرويد", "Android app"), nbp.replace("android/", "v")));
-      body.appendChild(row(L("ملفّ المحادثات المحمَّل", "Chat module loaded"), CHAT_BUILD));
-      body.appendChild(row(L("ملفّ المكالمات المحمَّل", "Calls module loaded"), (global.SawaRTC && global.SawaRTC.build) || L("قديم (قبل c167)", "old")));   // C167   // C160: ما يعمل فعلاً في هذه الصفحة (لا ما خزّنه عامل الخدمة)
+      // C196: سطران تقنيّان للمشرفين فقط
+      if (adminAtLeast("viewer")) body.appendChild(row(L("ملفّ المحادثات المحمَّل", "Chat module loaded"), CHAT_BUILD));
+      if (adminAtLeast("viewer")) body.appendChild(row(L("ملفّ المكالمات المحمَّل", "Calls module loaded"), (global.SawaRTC && global.SawaRTC.build) || L("قديم (قبل c167)", "old")));   // C167   // C160: ما يعمل فعلاً في هذه الصفحة (لا ما خزّنه عامل الخدمة)
       body.appendChild(row(L("آخر فحص", "Last checked"), upd.checkedAt ? timeAgo(upd.checkedAt) : "…"));
       body.appendChild(note(upd.available ? L("✨ نسخةٌ جديدة متاحة — اضغط «تحديث الآن».", "✨ A new version is available — tap Update now.")
         : upd.err === "missing" ? L("⚠️ ملفّ sw.js غير موجود على الخادم باسمه الصحيح — تأكّد أنّه مرفوعٌ باسم sw.js تماماً في جذر Sawa-app.", "⚠️ sw.js isn't on the server under that exact name.")
@@ -4216,19 +4217,59 @@
   function fsx(css) { return css.indexOf("px") < 0 ? css : css.replace(/(^|;)(\s*font:\s*(?:[0-9]{3}|bold|normal|italic)?\s*)([0-9.]+)px/g, "$1$2calc($3px * var(--sfs, 1))").replace(/(^|;)(\s*font-size:\s*)([0-9.]+)px/g, "$1$2calc($3px * var(--sfs, 1))"); }
   function mk(tag, css, text) { var e = document.createElement(tag); if (css) e.style.cssText = fsx(css); if (text != null) e.textContent = text; return e; }
   function mkBtn(text, kind) {
-    var css = kind === "primary" ? "background:#2e7d5b;color:#fff;border:0"
+    // C196: الزرّ الأساسيّ وزرّ الرابط بلون المظهر في كلّ النوافذ (كان الأساسيّ أخضر ثابتاً والرابط أزرق ثابتاً)
+    var css = kind === "primary" ? "background:var(--sawa-primary,#2774BA);color:#fff;border:0"
       : kind === "danger" ? "background:#fdecec;color:#b42318;border:0"
-      : kind === "ghost" ? "background:transparent;color:#2774BA;border:0"
+      : kind === "ghost" ? "background:transparent;color:var(--sawa-primary,#2774BA);border:0"
       : "background:#fff;color:#1A1A2E;border:1.5px solid #dfe5ec";
     return mk("button", css + ";border-radius:12px;padding:12px 14px;font:800 14px var(--sawa-font,system-ui);width:100%;box-sizing:border-box;cursor:pointer", text);
   }
+  // C196: النوافذ المنبثقة في الوضع الداكن. أُنشئت كلّها بألوانٍ فاتحة مكتوبة مباشرة (٤٠ نافذة)، فكانت تبقى بيضاء فوق شاشةٍ داكنة.
+  //   في الداكن فقط: الخلفيّات الفاتحة ⇐ بطاقة/خلفيّة التطبيق الداكنة · الملوّنة الفاتحة ⇐ صبغةٌ داكنة من لونها · النصّ الداكن ⇐ نصّ التطبيق ·
+  //   النصّ الملوّن الداكن ⇐ يُفتَّح حتّى ٤٫٥:١ · الحدود الفاتحة ⇐ حدود التطبيق. الأزرار الملوّنة بنصٍّ أبيض لا تتغيّر، وcanvas (رمز QR) لا يُمسّ.
+  //   الألوان من متغيّرات ‎--sawa-*‎ التي تنشرها App (C187). يعمل على المحتوى الذي يُضاف لاحقاً أيضاً (MutationObserver).
+  function sdIsDark() { try { return document.documentElement.getAttribute("data-theme") === "dark"; } catch (e) { return false; } }
+  function sdVar(n, d) { try { var v = getComputedStyle(document.documentElement).getPropertyValue("--sawa-" + n).trim(); return v || d; } catch (e) { return d; } }
+  function sdRgb(v) { var m = /rgba?\(\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/.exec(v || ""); if (m) return [+m[1], +m[2], +m[3], m[4] == null ? 1 : +m[4]];
+    m = /^#([0-9a-f]{6})$/i.exec(v || ""); return m ? [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16), 1] : null; }
+  function sdLum(c) { var f = function (x) { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); }
+  function sdSat(c) { var mx = Math.max(c[0], c[1], c[2]), mn = Math.min(c[0], c[1], c[2]); return mx ? (mx - mn) / mx : 0; }
+  function sdMix(a, b, t) { return [0, 1, 2].map(function (i) { return Math.round(a[i] * (1 - t) + b[i] * t); }); }
+  function sdCss(c) { return "rgb(" + c[0] + "," + c[1] + "," + c[2] + ")"; }
+  function sdCon(a, b) { var x = sdLum(a), y = sdLum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+  function darkify(root) {
+    if (!root || !sdIsDark()) return;
+    var card = sdRgb(sdVar("card", "#171B21")), bg = sdRgb(sdVar("bg", "#0E1116")), text = sdVar("text", "#EDEFF2"), muted = sdVar("text-muted", "#8A93A0"), border = sdVar("border", "#262B33");
+    var nodes = [root].concat(Array.prototype.slice.call(root.querySelectorAll("*")));
+    nodes.forEach(function (el) {
+      var st = el.style; if (!st || el.tagName === "CANVAS" || el.tagName === "IMG" || el.tagName === "VIDEO") return;
+      var b = sdRgb(st.backgroundColor), surf = card;
+      if (b && b[3] > 0.5 && sdLum(b) > 0.6) {
+        var nb = sdSat(b) < 0.12 ? (sdLum(b) > 0.93 ? card : bg) : sdMix(card, b, 0.2);
+        st.backgroundColor = sdCss(nb); surf = nb;
+      } else if (b && b[3] > 0.5) surf = b;
+      var c = sdRgb(st.color);
+      if (c && sdLum(c) < 0.4 && sdCon(c, surf) < 4.5) {
+        if (sdSat(c) < 0.25) st.color = sdLum(c) < 0.06 ? text : muted;
+        else { var t = 0.15, nc = c; while (t <= 0.95 && sdCon(nc = sdMix(c, [255, 255, 255], t), surf) < 4.5) t += 0.1; st.color = sdCss(nc); }
+      }
+      ["Top", "Right", "Bottom", "Left"].forEach(function (k) { var bc = sdRgb(st["border" + k + "Color"]); if (bc && sdLum(bc) > 0.55 && sdSat(bc) < 0.25) st["border" + k + "Color"] = border; });
+    });
+  }
+  function darkifyLive(root) {
+    if (!sdIsDark() || typeof MutationObserver === "undefined") return;
+    darkify(root); var busy = false;
+    var mo = new MutationObserver(function () { if (busy) return; busy = true; try { darkify(root); } finally { busy = false; } });
+    mo.observe(root, { childList: true, subtree: true });
+  }
+  try { global.sawaDarkify = darkifyLive; } catch (e) {}   // لنافذة السحابة في sawa-sync
   function sheet(title) {
     var ov = mk("div", "position:fixed;inset:0;z-index:2147483002;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;font-family:var(--sawa-font,system-ui)");
     ov.dir = isAr() ? "rtl" : "ltr";
     var box = mk("div", "background:#fff;color:#1A1A2E;border-radius:20px 20px 0 0;width:100%;max-width:480px;max-height:92vh;overflow-y:auto;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 18px);box-sizing:border-box");
     box.appendChild(mk("div", "width:40px;height:4px;border-radius:2px;background:#dfe5ec;margin:0 auto 12px"));
     if (title) box.appendChild(mk("div", "font:800 17px var(--sawa-font,system-ui);text-align:center;margin-bottom:6px", title));
-    ov.appendChild(box); document.body.appendChild(ov);
+    ov.appendChild(box); document.body.appendChild(ov); darkifyLive(box);   // C196
     var api = { ov: ov, box: box, close: function () { try { ov.remove(); } catch (e) {} } };
     ov.onclick = function (e) { if (e.target === ov) api.close(); };
     return api;
