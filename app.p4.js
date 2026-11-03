@@ -1546,6 +1546,11 @@ function ChatSettingsScreen({ chatBackupEnabled, setChatBackupEnabled, chatFolde
 // ============================================================
 // SwipeableConvCard — بطاقة محادثة قابلة للسحب
 // ============================================================
+// C201: صفّ قائمةٍ مسطّح (مثل «جهات الاتّصال» و«مكالمات») بدل Card — بلا حدودٍ ولا زوايا، وفاصلٌ سفليّ.
+function FlatRow({ children, className = "", style }) {
+    const { colors } = useTheme();
+    return React.createElement("div", { className: `px-4 py-3 ${className}`, style: { backgroundColor: colors.bg, borderBottom: `1px solid ${colors.border}`, ...style } }, children);
+}
 function SwipeableConvCard({ children, onArchive, onMute, onPin, onDelete, isMuted, isPinned }) {
     const { colors } = useTheme();
     const [swipeX, setSwipeX] = useState(0);
@@ -1608,7 +1613,7 @@ function SwipeableConvCard({ children, onArchive, onMute, onPin, onDelete, isMut
     const deleteArmed = swipeX <= -LONG_SWIPE;
     const archiveArmed = swipeX >= LONG_SWIPE;
     function act(fn) { setSwipeX(0); if (fn) fn(); }
-    return (React.createElement("div", { className: "relative overflow-hidden rounded-xl mb-1.5", style: { backgroundColor: colors.bg } },
+    return (React.createElement("div", { className: "relative overflow-hidden", style: { backgroundColor: colors.bg } },   // C201: بلا زوايا ولا مسافة — الصفّ مسطّح
         // يسار البطاقة: يظهر عند السحب يميناً — الأرشفة
         React.createElement("div", { className: "absolute inset-y-0 left-0 flex flex-row items-center justify-center", style: { width: archiveArmed ? Math.abs(swipeX) : REST_ARCHIVE, backgroundColor: swipeX > 6 ? "#8B5CF6" : "transparent", transition: "background 0.15s", borderRadius: 12 } },
             swipeX > 6 && React.createElement("button", { "aria-label": t("arshfa"), onClick: () => act(onArchive), className: "flex flex-col items-center justify-center gap-0.5 w-full h-full" },
@@ -2017,7 +2022,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
     const listScrollRef = useRef(null);
     const [showTabs, setShowTabs] = useState(true);
     const lastScrollY = useRef(0);
-    return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col", style: { backgroundColor: colors.bg } },
+    return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col relative", style: { backgroundColor: colors.bg } },
         previewPhoto && React.createElement(PhotoViewer, { photo: previewPhoto, onClose: () => setPreviewPhoto(null) }),   // C186
         selectionMode && (React.createElement("div", { style: { display: "flex", flexDirection: "row", direction: "ltr", alignItems: "center", gap: 14, padding: "0.75rem 1rem", borderBottom: `1px solid ${colors.border}`, backgroundColor: colors.primaryLight } },
             React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => setSelectedIds([]), className: "shrink-0" },
@@ -2045,35 +2050,25 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
             React.createElement("div", { style: { flex: 1, display: "flex", justifyContent: "center" } }),
             React.createElement("div", { style: { flex: 1, display: "flex", justifyContent: isRTL() ? "flex-end" : "flex-start" } },
                 React.createElement("h2", { dir: isRTL() ? "rtl" : "ltr", className: "text-xl font-extrabold", style: { color: colors.text } }, appName())),
-            showNewMenu && (React.createElement(React.Fragment, null,
+            showNewMenu && (React.createElement(React.Fragment, null,   // C201: «محادثة جديدة» صارت الزرّ العائم؛ «مهامّي» في «أخرى»؛ كلّ الأيقونات بلون المظهر (كانت ستّة ألوان)
                 React.createElement("div", { onClick: () => setShowNewMenu(false), style: { position: "fixed", inset: 0, zIndex: 15 } }),
                 React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "rounded-2xl border shadow-lg overflow-hidden backdrop-blur-md sawa-pop-in", style: { position: "fixed", top: "3.9rem", [isRTL() ? "left" : "right"]: "0.75rem", zIndex: 20, backgroundColor: colors.card, borderColor: colors.border, minWidth: 288, maxWidth: "calc(100vw - 1.5rem)", maxHeight: "calc(100vh - 8rem)", overflowY: "auto", boxShadow: "0 18px 40px rgba(15,23,42,.22)", padding: "6px 0" } },
                     React.createElement("div", { className: "px-4 pt-2 pb-1.5" },
                         React.createElement("span", { className: "text-[12px] font-extrabold tracking-wide", style: { color: colors.textMuted } }, t("mnw_insha"))),
-                    React.createElement("button", { onClick: () => { setShowNewMenu(false); onNewConversation(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },
-                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "18" } },
-                            React.createElement(MessageCircle, { size: 20, color: colors.primary })),
-                        React.createElement("span", { className: "text-[15.5px] font-bold", style: { color: colors.text } }, t("mhadtha_jdyda"))),
                     React.createElement("button", { onClick: () => { setShowNewMenu(false); onNewGroup(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },
-                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.accent + "18" } },
-                            React.createElement(Users2, { size: 20, color: colors.accent })),
+                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "18" } },
+                            React.createElement(Users2, { size: 20, color: colors.primary })),
                         React.createElement("span", { className: "text-[15.5px] font-bold", style: { color: colors.text } }, t("mjmwaa_jdyda"))),
                     window.SawaChat && window.SawaChat.storyComposer && React.createElement("button", { onClick: () => { setShowNewMenu(false); window.SawaChat.storyComposer(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },
-                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "#db277718" } },
-                            React.createElement(Sparkles, { size: 20, color: "#db2777" })),
+                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "18" } },
+                            React.createElement(Sparkles, { size: 20, color: colors.primary })),
                         React.createElement("div", { className: "flex-1", style: { textAlign: isRTL() ? "right" : "left" } },
                             React.createElement("span", { className: "text-[15.5px] font-bold block leading-snug", style: { color: colors.text } }, tl("قصّة جديدة", "New story")),
                             React.createElement("span", { className: "text-[12.5px] block mt-0.5", style: { color: colors.textMuted } }, tl("نصّ أو صورة أو فيديو · 24 ساعة", "Text, photo or video · 24 h")))),
                     window.SawaChat && window.SawaChat.e2eNewSheet && React.createElement("button", { onClick: () => { setShowNewMenu(false); window.SawaChat.e2eNewSheet(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },
-                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "#16a34a18" } },
-                            React.createElement(Lock, { size: 20, color: "#16a34a" })),
+                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "18" } },
+                            React.createElement(Lock, { size: 20, color: colors.primary })),
                         React.createElement("span", { className: "text-[15.5px] font-bold", style: { color: colors.text } }, tl("محادثة أو مجموعة سرّيّة", "Secret chat or group"))),
-                    React.createElement("button", { onClick: () => { setShowNewMenu(false); openMyTasks(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },   // C173
-                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.success + "18" } },
-                            React.createElement(CheckCircle2, { size: 20, color: colors.success })),
-                        React.createElement("div", { className: "flex-1", style: { textAlign: isRTL() ? "right" : "left" } },
-                            React.createElement("span", { className: "text-[15.5px] font-bold block leading-snug", style: { color: colors.text } }, tl("مهامّي", "My tasks")),
-                            React.createElement("span", { className: "text-[12.5px] block mt-0.5", style: { color: colors.textMuted } }, tl("ما أُسند إليك في كلّ المجموعات", "Assigned to you, across groups")))),
                     React.createElement("button", { onClick: () => { setShowNewMenu(false); onNewBroadcastList(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },
                         React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "18" } },
                             React.createElement(Send, { size: 19, color: colors.primary, style: { transform: "scaleX(-1)" } })),
@@ -2082,44 +2077,52 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                     React.createElement("div", { className: "px-4 pt-2 pb-1.5" },
                         React.createElement("span", { className: "text-[12px] font-extrabold tracking-wide", style: { color: colors.textMuted } }, t("mnw_ghrf"))),
                     React.createElement("button", { onClick: () => { setShowNewMenu(false); onOpenRoom(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },
-                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "#6366f118" } },
-                            React.createElement(Video, { size: 20, color: "#6366f1" })),
+                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "18" } },
+                            React.createElement(Video, { size: 20, color: colors.primary })),
                         React.createElement("div", { className: "flex-1", style: { textAlign: isRTL() ? "right" : "left" } },
                             React.createElement("span", { className: "text-[15.5px] font-bold block leading-snug", style: { color: colors.text } }, t("ghrfa_swa_jdyda")),
                             React.createElement("span", { className: "text-[12.5px] block mt-0.5", style: { color: colors.textMuted } }, t("mnw_abda_alan")))),
                     React.createElement("button", { onClick: () => { setShowNewMenu(false); onScheduleRoom === null || onScheduleRoom === void 0 ? void 0 : onScheduleRoom(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },
-                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "#6366f118" } },
-                            React.createElement(CalendarDays, { size: 20, color: "#6366f1" })),
+                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "18" } },
+                            React.createElement(CalendarDays, { size: 20, color: colors.primary })),
                         React.createElement("div", { className: "flex-1", style: { textAlign: isRTL() ? "right" : "left" } },
                             React.createElement("span", { className: "text-[15.5px] font-bold block leading-snug", style: { color: colors.text } }, t("jdwla_ghrfa")),
                             React.createElement("span", { className: "text-[12.5px] block mt-0.5", style: { color: colors.textMuted } }, t("mnw_hdd_wqta_lahqa")))),
                     onJoinRoomCode && (React.createElement("button", { onClick: () => { setShowNewMenu(false); onJoinRoomCode(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },
-                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "#6366f118" } },
-                            React.createElement(Link2, { size: 20, color: "#6366f1" })),
+                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "18" } },
+                            React.createElement(Link2, { size: 20, color: colors.primary })),
                         React.createElement("div", { className: "flex-1", style: { textAlign: isRTL() ? "right" : "left" } },
                             React.createElement("span", { className: "text-[15.5px] font-bold block leading-snug", style: { color: colors.text } }, tl("انضمام إلى غرفة", "Join a room")),
                             React.createElement("span", { className: "text-[12.5px] block mt-0.5", style: { color: colors.textMuted } }, tl("برابطها أو رمزها", "By link or code"))))),
                     React.createElement("div", { style: { height: 1, backgroundColor: colors.border, margin: "6px 0" } }),
+                    React.createElement("div", { className: "px-4 pt-2 pb-1.5" },
+                        React.createElement("span", { className: "text-[12px] font-extrabold tracking-wide", style: { color: colors.textMuted } }, tl("أخرى", "More"))),
+                    React.createElement("button", { onClick: () => { setShowNewMenu(false); openMyTasks(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },   // C173
+                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "18" } },
+                            React.createElement(CheckCircle2, { size: 20, color: colors.primary })),
+                        React.createElement("div", { className: "flex-1", style: { textAlign: isRTL() ? "right" : "left" } },
+                            React.createElement("span", { className: "text-[15.5px] font-bold block leading-snug", style: { color: colors.text } }, tl("مهامّي", "My tasks")),
+                            React.createElement("span", { className: "text-[12.5px] block mt-0.5", style: { color: colors.textMuted } }, tl("ما أُسند إليك في كلّ المجموعات", "Assigned to you, across groups")))),
                     React.createElement("button", { onClick: () => { setShowNewMenu(false); onScanQr(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },
-                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.textMuted + "18" } },
-                            React.createElement(QrCode, { size: 20, color: colors.textMuted })),
+                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "18" } },
+                            React.createElement(QrCode, { size: 20, color: colors.primary })),
                         React.createElement("div", { className: "flex-1", style: { textAlign: isRTL() ? "right" : "left" } },
                             React.createElement("span", { className: "text-[15.5px] font-bold block leading-snug", style: { color: colors.text } }, t("msh_qr")),
                             React.createElement("span", { className: "text-[12.5px] block mt-0.5", style: { color: colors.textMuted } }, t("mnw_thqq_mn_hwya")))),
                     React.createElement("button", { onClick: () => { setShowNewMenu(false); onOpenChatSettings(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3", style: { paddingBottom: 12 } },
-                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.textMuted + "18" } },
-                            React.createElement(SettingsIcon, { size: 20, color: colors.textMuted })),
+                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "18" } },
+                            React.createElement(SettingsIcon, { size: 20, color: colors.primary })),
                         React.createElement("span", { className: "text-[15.5px] font-bold", style: { color: colors.text } }, t("iadadat_almhadthat")))))))),
         React.createElement("div", { style: { borderBottom: `1px solid ${colors.border}`, backgroundColor: colors.bg } },
             showSearch && React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-4 py-2 border-b shrink-0`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement(Search, { size: 15, color: colors.textMuted }),
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", autoFocus: true, value: searchQuery, onChange: (e) => setSearchQuery(e.target.value), placeholder: t("bhth_2"), className: "flex-1 bg-transparent text-sm outline-none", style: { color: colors.text } }),
             searchQuery.length > 0 && React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: () => setSearchQuery("") }, React.createElement(X, { size: 14, color: colors.textMuted }))),
-        React.createElement("div", { style: { display: "flex", flexDirection: "row", direction: isRTL() ? "rtl" : "ltr", alignItems: "center", borderBottom: "1px solid " + colors.border, backgroundColor: colors.card, overflow: "hidden", overflowX: showTabs ? "auto" : "hidden", scrollbarWidth: "none", maxHeight: showTabs ? "calc(44px * var(--sfs, 1))" : "0px", opacity: showTabs ? 1 : 0, transition: "max-height 0.25s ease, opacity 0.2s ease" } }, TABS.map(function(tab) { return (
-            React.createElement("button", { key: tab.key, onClick: function() { setActiveTab(tab.key); }, style: { flex: "1 0 auto", paddingBottom: 7, paddingTop: 6, paddingLeft: 8, paddingRight: 8, borderBottom: activeTab === tab.key ? ("2px solid " + colors.primary) : "2px solid transparent", backgroundColor: "transparent" } },
+        React.createElement("div", { style: { display: "flex", flexDirection: "row", direction: isRTL() ? "rtl" : "ltr", alignItems: "center", borderBottom: "1px solid " + colors.border, backgroundColor: colors.bg, gap: 8, padding: showTabs ? "8px 16px" : "0 16px", overflow: "hidden", overflowX: showTabs ? "auto" : "hidden", scrollbarWidth: "none", maxHeight: showTabs ? "calc(48px * var(--sfs, 1))" : "0px",   /* C201: كبسولات مثل «جهات الاتّصال» (كانت تبويباتٍ بخطٍّ سفليّ) */ opacity: showTabs ? 1 : 0, transition: "max-height 0.25s ease, opacity 0.2s ease" } }, TABS.map(function(tab) { return (
+            React.createElement("button", { key: tab.key, "aria-pressed": activeTab === tab.key, onClick: function() { setActiveTab(tab.key); }, className: "px-3 py-1.5 rounded-full shrink-0", style: { backgroundColor: activeTab === tab.key ? colors.primary : colors.card, border: "1px solid " + (activeTab === tab.key ? colors.primary : colors.border) } },
                 React.createElement("span", { className: "relative inline-flex items-center gap-1" },
-                    React.createElement("span", { className: "text-[11px] font-bold whitespace-nowrap", style: { color: activeTab === tab.key ? colors.primary : colors.textMuted } }, tab.label),
-                    tab.badge > 0 && React.createElement("span", { className: "w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-extrabold text-white", style: { backgroundColor: tab.badgeColor || colors.primary, minWidth: 16 } }, tab.badge > 9 ? "9+" : tab.badge)
+                    React.createElement("span", { className: "text-xs font-bold whitespace-nowrap", style: { color: activeTab === tab.key ? "#fff" : colors.text } }, tab.label),
+                    tab.badge > 0 && React.createElement("span", { className: "rounded-full flex items-center justify-center text-[9px] font-extrabold", style: { backgroundColor: activeTab === tab.key ? "#fff" : (tab.badgeColor || colors.primary), color: activeTab === tab.key ? colors.primary : "#fff", minWidth: 16, height: 16, padding: "0 4px" } }, tab.badge > 9 ? "9+" : tab.badge)
                 )
             )
         ); }))),
@@ -2138,7 +2141,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
             } },
             showStoriesRow && (React.createElement(StoriesRow, { momentsPosts: momentsPosts, onOpenMoments: onOpenMoments, conversations: conversations, onOpenChat: onOpenChat, myName: myName })),
             showFamilyReminders && (React.createElement(FamilyReminderCard, { groupPersons: groupPersons, groupSchedules: groupSchedules, conversations: conversations, onStartChat: onOpenChat, onOpenPerson: onOpenFamilyPerson })),
-            activeTab === "groups" && (React.createElement("div", { className: `flex ${rowStart()} items-center justify-between px-4 py-2`, style: { borderBottom: `1px solid ${colors.border}` } },
+            activeTab === "groups" && groups.length > 0 && (React.createElement("div", { className: `flex ${rowStart()} items-center justify-between px-4 py-2`, style: { borderBottom: `1px solid ${colors.border}` } },   /* C201: مع مجموعاتٍ فقط — الفارغة تعرض دعوةً واحدة */
                 React.createElement("button", { onClick: onNewGroup, className: `flex ${rowStart()} items-center gap-1.5 px-3 py-1.5 rounded-xl`, style: { backgroundColor: colors.primaryLight } },
                     React.createElement(Plus, { size: 14, color: colors.primary }),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.primary } }, t("mjmwaa_jdyda"))),
@@ -2153,7 +2156,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                     upcomingBirthdays.length > 1 && (React.createElement("span", { className: "text-[10px] block mt-0.5", style: { color: colors.textMuted } },
                         tl("\u0648" + (upcomingBirthdays.length - 1) + " \u0645\u0646\u0627\u0633\u0628\u0629 \u0623\u062E\u0631\u0649 \u0647\u0630\u0627 \u0627\u0644\u0623\u0633\u0628\u0648\u0639", "+" + (upcomingBirthdays.length - 1) + " more this week")))),
                 React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0", style: { backgroundColor: colors.accent, color: "#fff" } }, t("hdha_alasbwa")))),
-            React.createElement("div", { className: "px-3 py-2" },
+            React.createElement("div", { className: "pb-24" },   // C201: صفوفٌ مسطّحة بعرض الشاشة (كانت بطاقاتٍ داخل هامش) + مسافةٌ للزرّ العائم
                 visibleConversations.length === 0 && groups.length === 0 && broadcastLists.length === 0 && React.createElement(EmptyState, { icon: MessageCircle, label: t("la_twjd_mhadthat_bad") }),
                 activeTab === "starred" && tabConversations.length === 0 && React.createElement(EmptyState, { icon: Star, label: t("ma_hfzt_ay_mhadtha") }),
                 activeTab === "unread" && tabConversations.length === 0 && React.createElement(EmptyState, { icon: MessageCircle, label: t("kl_almhadthat_mqrwa") }),
@@ -2165,7 +2168,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                     React.createElement("button", { onClick: onNewGroup, className: `flex ${rowStart()} items-center gap-2 px-4 py-2.5 rounded-2xl`, style: { backgroundColor: colors.primary } },
                         React.createElement(Plus, { size: 16, color: "#fff" }),
                         React.createElement("span", { className: "text-sm font-bold text-white" }, t("insha_mjmwaa"))))),
-                tabBroadcasts.map((b) => (React.createElement(Card, { key: b.id, className: `flex ${rowStart()} items-center cursor-pointer`, style: { cursor: "pointer" } },
+                tabBroadcasts.map((b) => (React.createElement(FlatRow, { key: b.id, className: `flex ${rowStart()} items-center cursor-pointer`, style: { cursor: "pointer" } },
                     React.createElement("button", { onClick: () => onOpenBroadcastList(b), /* flex-row صريحة لا rowStart(): ترميز هذا الصف مرتّب من اليمين
                                (صورة ← نص ← سهم) كأخويه — صفّ المحادثة وصفّ المجموعة */
                             className: `w-full flex flex-row items-center ${textStart()}` },
@@ -2177,24 +2180,24 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                                 b.recipientIds.length,
                                 tl(" \u0645\u0633\u062A\u0644\u0645 \u00B7 \u0642\u0627\u0626\u0645\u0629 \u0628\u062B", " recipients · Broadcast list"))),
                         React.createElement(isRTL() ? ChevronLeft : ChevronRight, { size: 16, color: colors.textMuted }))))),
-                activeTab === "all" && scheduledRooms.filter((r) => r.at > Date.now()).slice(0, 2).map((r) => (React.createElement("div", { key: r.id, className: `rounded-xl px-3 py-2.5 mb-1.5 flex ${rowStart()} items-center gap-3`, style: { backgroundColor: colors.accent + "12", border: `1px solid ${colors.accent}40` } },
+                activeTab === "all" && scheduledRooms.filter((r) => r.at > Date.now()).slice(0, 2).map((r) => (React.createElement("div", { key: r.id, className: `mx-3 mt-2 rounded-xl px-3 py-2.5 mb-1.5 flex ${rowStart()} items-center gap-3`, style: { backgroundColor: colors.accent + "12", border: `1px solid ${colors.accent}40` } },
                     React.createElement(CalendarDays, { size: 17, color: colors.accent, className: "shrink-0" }),
                     React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
                         React.createElement("p", { className: "text-xs font-extrabold truncate", style: { color: colors.text } }, r.title),
-                        React.createElement("p", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, new Date(r.at).toLocaleString(loc(), { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))),
+                        React.createElement("p", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, new Date(r.at).toLocaleString(loc(), { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }))),
                     React.createElement("button", { onClick: () => onJoinScheduled === null || onJoinScheduled === void 0 ? void 0 : onJoinScheduled(r.code), className: "px-2.5 py-1.5 rounded-xl text-[10px] font-extrabold shrink-0", style: { backgroundColor: colors.accent, color: "#fff" } }, t("abda")),
                     React.createElement("button", { onClick: () => onCancelScheduled === null || onCancelScheduled === void 0 ? void 0 : onCancelScheduled(r.id), className: "shrink-0", "aria-label": t("ilgha_almwad") },
                         React.createElement(X, { size: 14, color: colors.textMuted }))))),
-                activeTab === "all" && onOpenScheduledRooms && scheduledRooms.some((r) => (r.end || r.at + 3600000) > Date.now()) && (React.createElement("button", { onClick: onOpenScheduledRooms, className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2 mb-1.5 rounded-xl`, style: { backgroundColor: colors.accent + "12", border: `1px dashed ${colors.accent}60` } },
+                activeTab === "all" && onOpenScheduledRooms && scheduledRooms.some((r) => (r.end || r.at + 3600000) > Date.now()) && (React.createElement("button", { onClick: onOpenScheduledRooms, className: `mx-3 mt-2 flex ${rowStart()} items-center gap-2 px-3 py-2 mb-1.5 rounded-xl`, style: { backgroundColor: colors.accent + "12", border: `1px dashed ${colors.accent}60` } },
                     React.createElement(CalendarDays, { size: 15, color: colors.accent }),
                     React.createElement("span", { className: `flex-1 ${textStart()} text-xs font-extrabold`, style: { color: colors.text } }, tl("كلّ الغرف المجدولة", "All scheduled rooms") + " (" + scheduledRooms.filter((r) => (r.end || r.at + 3600000) > Date.now()).length + ")"),
                     React.createElement(isRTL() ? ChevronLeft : ChevronRight, { size: 15, color: colors.textMuted }))),
-                activeTab === "all" && archivedCount > 0 && (React.createElement("button", { onClick: onOpenArchived, className: `w-full flex ${rowStart()} items-center gap-3 px-3 py-2.5 mb-1.5 rounded-xl`, style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
+                activeTab === "all" && archivedCount > 0 && (React.createElement("button", { onClick: onOpenArchived, className: `mx-3 mt-2 flex ${rowStart()} items-center gap-3 px-3 py-2.5 mb-1.5 rounded-xl`, style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                     React.createElement(Archive, { size: 17, color: colors.textMuted }),
                     React.createElement("span", { className: `flex-1 ${textStart()} text-sm font-bold`, style: { color: colors.text } }, t("almwrshfa")),
                     archivedUnreadCount > 0 && (React.createElement("span", { className: "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold text-white shrink-0", style: { backgroundColor: colors.primary } }, archivedUnreadCount)),
                     React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.textMuted } }, archivedCount))),
-                (() => { /* C13e: المحادثات والمجموعات معاً بحسب آخر نشاط — لا مجموعاتٍ ثابتةً في الأعلى */ const rowG = (g) => (React.createElement(Card, { key: g.id, className: `flex ${rowStart()} items-center cursor-pointer`, style: { cursor: "pointer" } },
+                (() => { /* C13e: المحادثات والمجموعات معاً بحسب آخر نشاط — لا مجموعاتٍ ثابتةً في الأعلى */ const rowG = (g) => (React.createElement(FlatRow, { key: g.id, className: `flex ${rowStart()} items-center cursor-pointer`, style: { cursor: "pointer" } },
                     React.createElement("button", { onClick: () => onOpenGroup(g), /* flex-row صريحة لا rowStart(): ترميز هذا الصف مرتّب من اليمين
                                (صورة ← نص ← عدّاد ← سهم) فلا يحتاج عكساً */
                             className: `w-full flex flex-row items-center gap-3 ${textStart()}` },
@@ -2207,7 +2210,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                             React.createElement("div", { className: "mt-0.5 flex items-center gap-1.5", style: { direction: isRTL() ? "rtl" : "ltr" } },
                                 React.createElement("div", { className: "text-xs truncate flex-1", style: { color: colors.textMuted, textAlign: isRTL() ? "right" : "left", minWidth: 0 } }, chatDrafts && chatDrafts["g:" + g.id] ? React.createElement(React.Fragment, null, React.createElement("span", { style: { color: colors.danger, fontWeight: 700 } }, tl("مسودّة: ", "Draft: ")), chatDrafts["g:" + g.id]) : (g.lastMessage || t("aada_mjmwaa", { length: g.members.length }))),
                                 g.unread > 0 && (React.createElement("span", { className: "min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center text-[10.5px] font-extrabold text-white shrink-0", style: { backgroundColor: colors.primary } }, g.unread))))))); const rowC = (c) => (React.createElement(SwipeableConvCard, { key: c.id, isMuted: mutedConversations.includes(c.id), isPinned: pinnedConversations.includes(c.id), onArchive: () => handleArchive(c.id, c.name), onMute: () => onMuteConv === null || onMuteConv === void 0 ? void 0 : onMuteConv(c.id), onPin: () => onPinConv === null || onPinConv === void 0 ? void 0 : onPinConv(c.id), onDelete: () => setConfirmDeleteId(c.id) },
-                    React.createElement(Card, { className: `flex ${rowStart()} items-center cursor-pointer`, style: { cursor: "pointer" } },
+                    React.createElement(FlatRow, { className: `flex ${rowStart()} items-center cursor-pointer`, style: { cursor: "pointer" } },
                         React.createElement("button", { onClick: () => { if (selectionMode) {
                                 if (!c.isSavedMessages)
                                     toggleSelect(c.id);
@@ -2290,7 +2293,10 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                 React.createElement("button", { onClick: () => { onDeleteConv === null || onDeleteConv === void 0 ? void 0 : onDeleteConv(confirmDeleteId); setConfirmDeleteId(null); }, className: "w-full px-5 py-3.5 border-t", style: { borderColor: colors.border } },
                     React.createElement("span", { className: `block ${textStart()} text-sm font-extrabold`, style: { color: colors.danger } }, t("hdhf_almhadtha"))),
                 React.createElement("button", { onClick: () => setConfirmDeleteId(null), className: "w-full px-5 py-3.5 border-t", style: { borderColor: colors.border } },
-                    React.createElement("span", { className: `block ${textStart()} text-sm font-bold`, style: { color: colors.textMuted } }, t("ilgha"))))))));
+                    React.createElement("span", { className: `block ${textStart()} text-sm font-bold`, style: { color: colors.textMuted } }, t("ilgha")))))),
+        // C201: زرّ «محادثة جديدة» العائم بلون المظهر — مثل «جهات الاتّصال» و«مكالمات» (كانت المحادثة الجديدة داخل قائمة ⋮ وحدها)
+        React.createElement("button", { "aria-label": t("mhadtha_jdyda"), onClick: onNewConversation, className: "absolute flex items-center justify-center rounded-full shadow-lg", style: { bottom: 20, [isRTL() ? "left" : "right"]: 20, width: 56, height: 56, backgroundColor: colors.primary, zIndex: 12 } },
+            React.createElement(MessageCircle, { size: 24, color: "#fff", "aria-hidden": true }))));
 }
 // نصوص التذكير اليوميّ — تُقرأ من daily.json ليمكن تعديلها بلا إعادة بناء.
 // النسخة المدمجة أدناه احتياطية فقط (لو تعذّر تحميل الملف أو كان المستخدم دون اتصال).
@@ -2386,12 +2392,12 @@ function formatChatTime(ts) {
     if (mins < 60)
         return t("d_mins", { mins });
     if (hours < 24)
-        return new Date(ts).toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" });
+        return new Date(ts).toLocaleTimeString(loc(), { hour: "numeric", minute: "2-digit" });
     if (days === 1)
         return t("wqt_ams");
     if (days < 7)
         return new Date(ts).toLocaleDateString(loc(), { weekday: "short" });
-    return new Date(ts).toLocaleDateString(loc(), { day: "numeric", month: "numeric" });
+    return new Date(ts).toLocaleDateString(loc(), { day: "numeric", month: "long" });   // C201: «26 أكتوبر» — «26/10» كان يظهر «2610/» (علامات اتّجاهٍ في نصٍّ عربيّ)
 }
 const DEMO_REPLIES = [
     "حسناً، وصلتني رسالتك 😊",
@@ -2590,7 +2596,7 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
             tl("صُدِّرت في ", "Exported on ") + new Date().toLocaleString(loc()) + "\n" +
             tl("عدد الرسائل: ", "Messages: ") + messages.length + "\n" + "=".repeat(40) + "\n\n";
         const body = messages.map((m) => {
-            const ts = new Date(m.createdAt).toLocaleString(loc(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+            const ts = new Date(m.createdAt).toLocaleString(loc(), { day: "2-digit", month: "2-digit", hour: "numeric", minute: "2-digit" });
             const who = m.senderUserId === "me" ? tl("أنا", "Me") : conversation.name;
             const txt = m.type === "text" ? m.text
                 : m.type === "voice" ? tl("[رسالة صوتية]", "[Voice message]")

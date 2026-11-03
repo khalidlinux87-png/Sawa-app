@@ -209,7 +209,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
         setChatMessages((m) => [...m, {
                 id: Date.now(), sender: t("rm_alnzam"), system: true,
                 text: t("rm_tlb_almdyf_mn") + (p === null || p === void 0 ? void 0 : p.name) + t("rm_fth_almyk_sfx"),
-                time: new Date().toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" }),
+                time: new Date().toLocaleTimeString(loc(), { hour: "numeric", minute: "2-digit" }),
             }]);
         if (!chatOpen)
             setUnreadChat((u) => u + 1);
@@ -327,7 +327,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                 text: chatText.trim(),
                 kind: chatMode === "business" ? noteKind : null,
                 atSecond: elapsed,
-                time: new Date().toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" }),
+                time: new Date().toLocaleTimeString(loc(), { hour: "numeric", minute: "2-digit" }),
             }]);
         setChatText("");
     }

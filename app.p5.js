@@ -1715,7 +1715,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                                 renderRichText(m.text, { mine, colors }),
                                 m.edited && React.createElement("span", { className: "text-[10px] opacity-70" }, t("ch_madla")),
                                 (!m.type || m.type === "text") && urlsIn(m.text).length ? React.createElement(LinkCard, { text: m.text, mine }) : null)),
-                                (["image", "video", "file"].includes(m.type) && m.extra && m.extra.cap && !m.viewOnce && !m.deleted) ? React.createElement("p", { className: "text-sm rounded-xl px-3 py-2 mt-1 whitespace-pre-wrap break-words", style: { backgroundColor: mine ? myBubbleColor : colors.card, color: mine ? "#fff" : colors.text, direction: textDir(m.extra.cap), maxWidth: 320 } }, m.extra.cap) : null, React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 justify-end`, style: { marginTop: 2, marginBottom: -2 } }, mine && m.status && (React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : m.status === "pending" ? t("c2_pending") : m.status === "failed" ? t("c2_failed") : t("ch_tm_alirsal") }, m.status === "pending" ? (m.uploadPct != null ? React.createElement("span", { className: "text-[10px] font-bold", style: { color: onTint ? "rgba(255,255,255,0.9)" : colors.textMuted } }, "⏫ " + m.uploadPct + "%") : React.createElement(Clock, { size: 11, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted })) : m.status === "failed" ? React.createElement("button", { onClick: (e) => { e.stopPropagation(); if (window.SawaChat && window.SawaChat.failedSheet) window.SawaChat.failedSheet(m.id); }, className: "inline-flex items-center gap-1", style: { color: colors.danger, fontSize: 10, fontWeight: 700 } }, React.createElement(AlertCircle, { size: 12, color: colors.danger }), tl("لم تُرسل · اضغط", "Not sent · tap")) : m.status === "sent" ? React.createElement(Check, { size: 12, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted }) : React.createElement(CheckCheck, { size: 12, color: m.status === "read" ? (onTint ? "#BFE0F5" : colors.primary) : (onTint ? "rgba(255,255,255,0.85)" : colors.textMuted) }))), React.createElement("span", { className: "text-[10px]", style: { color: onTint ? "rgba(255,255,255,0.75)" : colors.textMuted } }, m.time || (m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" }) : "")))),
+                                (["image", "video", "file"].includes(m.type) && m.extra && m.extra.cap && !m.viewOnce && !m.deleted) ? React.createElement("p", { className: "text-sm rounded-xl px-3 py-2 mt-1 whitespace-pre-wrap break-words", style: { backgroundColor: mine ? myBubbleColor : colors.card, color: mine ? "#fff" : colors.text, direction: textDir(m.extra.cap), maxWidth: 320 } }, m.extra.cap) : null, React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 justify-end`, style: { marginTop: 2, marginBottom: -2 } }, mine && m.status && (React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : m.status === "pending" ? t("c2_pending") : m.status === "failed" ? t("c2_failed") : t("ch_tm_alirsal") }, m.status === "pending" ? (m.uploadPct != null ? React.createElement("span", { className: "text-[10px] font-bold", style: { color: onTint ? "rgba(255,255,255,0.9)" : colors.textMuted } }, "⏫ " + m.uploadPct + "%") : React.createElement(Clock, { size: 11, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted })) : m.status === "failed" ? React.createElement("button", { onClick: (e) => { e.stopPropagation(); if (window.SawaChat && window.SawaChat.failedSheet) window.SawaChat.failedSheet(m.id); }, className: "inline-flex items-center gap-1", style: { color: colors.danger, fontSize: 10, fontWeight: 700 } }, React.createElement(AlertCircle, { size: 12, color: colors.danger }), tl("لم تُرسل · اضغط", "Not sent · tap")) : m.status === "sent" ? React.createElement(Check, { size: 12, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted }) : React.createElement(CheckCheck, { size: 12, color: m.status === "read" ? (onTint ? "#BFE0F5" : colors.primary) : (onTint ? "rgba(255,255,255,0.85)" : colors.textMuted) }))), React.createElement("span", { className: "text-[10px]", style: { color: onTint ? "rgba(255,255,255,0.75)" : colors.textMuted } }, m.time || (m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "numeric", minute: "2-digit" }) : "")))),
                         m.reaction && React.createElement(ReactionChip, { m, colors, nameOf: () => conversation.name, onSet: (e) => onReact(m.id, e) }))));
                 }),
                 // C147: «يكتب…» في جهة الطرف الآخر (حيث تظهر رسائله) في اللغتين — كانت items-end فتنقلب في الإنجليزيّة
@@ -2701,7 +2701,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                 // رسالة يزدحم ويكرّر ما هو متاح أصلاً. الوقت مكانهما كما في الخاص.
                 React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-0.5` },
                     React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } },
-                        m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" }) : ""),
+                        m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "numeric", minute: "2-digit" }) : ""),
                     m.uploadPct != null && React.createElement("span", { className: "text-[10px] font-bold", style: { color: colors.textMuted } }, "⏫ " + m.uploadPct + "%"),
                     // C149: علامات الوصول في المجموعات كالخاصّ — ✓ أُرسلت · ✓✓ وصلت للجميع · ✓✓ زرقاء قرأها الجميع (كانت لا تظهر)
                     mine && m.status && m.status !== "failed" && m.uploadPct == null && React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : m.status === "pending" ? t("c2_pending") : t("ch_tm_alirsal"), className: "inline-flex items-center" },
@@ -3029,23 +3029,25 @@ function UnifiedSearchScreen({ conversations, groups, shipments, taxiTripsHistor
 }
 function NewConversationScreen({ onCreate, onClose, contacts = null, onPickContact }) {
     const { colors } = useTheme();
-    const [name, setName] = useState("");
-    // C2: على السحابة لا أسماء تجريبيّة — المحادثة مع جهة اتّصالٍ حقيقيّة
-    if (contacts) {
-        return (React.createElement("div", { className: "absolute inset-0 z-40 flex flex-col", style: { backgroundColor: colors.bg } },
-            React.createElement(TopBar, { title: t("mhadtha_jdyda"), onBack: onClose }),
-            React.createElement("div", { className: "flex-1 overflow-y-auto" },
-                React.createElement("p", { className: `text-xs font-bold px-4 pt-4 pb-2 ${textStart()}`, style: { color: colors.textMuted } }, t("c2_pick_contact")),
-                contacts.length === 0 && React.createElement("p", { className: "text-xs px-4 py-6 text-center", style: { color: colors.textMuted } }, t("c2_no_contacts")),
-                contacts.map((c) => React.createElement(ContactRow, { key: c.id, contact: c, isOnline: !!c.online, colors: colors, onPress: () => onPickContact && onPickContact(c) })))));
-    }
+    const [q, setQ] = useState("");
+    const SC = window.SawaChat;
+    // C201: شاشةٌ واحدة: بحث + «أدخل رمز شخص» + جهات الاتّصال. حين لا تعمل خدمة المحادثات بعد ⇒ «جارٍ الاتّصال» بدل نموذج
+    //   الاسم اليدويّ التجريبيّ («مؤقّتاً للتجربة فقط… يحتاج إلى خدمة إضافية في الخادم») الذي كان يظهر للمستخدم.
+    const list = (contacts || []).filter((c) => !q || normAr(c.name || "").includes(normAr(q)));
     return (React.createElement("div", { className: "absolute inset-0 z-40 flex flex-col", style: { backgroundColor: colors.bg } },
         React.createElement(TopBar, { title: t("mhadtha_jdyda"), onBack: onClose }),
-        React.createElement("div", { className: "flex-1 overflow-y-auto p-4" },
-            React.createElement("p", { className: "text-[11px] mb-3", style: { color: colors.textMuted } }, t("mwqta_bs_lltjrba_bdwn")),
-            React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, t("asm_jha_alatsal_tjryby")),
-            React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: name, onChange: (e) => setName(e.target.value), placeholder: t("mthal_namat_babkr"), className: "w-full border rounded-xl px-3 py-3 text-sm mb-4", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
-            React.createElement(Button, { label: t("abda_almhadtha"), onPress: () => name.trim() && onCreate(name.trim()), disabled: !name.trim() }))));
+        React.createElement("div", { className: "flex-1 overflow-y-auto" },
+            !contacts ? React.createElement(EmptyState, { icon: Wifi, label: tl("جارٍ الاتّصال بالخادم… أعد المحاولة بعد لحظات.", "Connecting to the server… try again in a moment.") }) : React.createElement(React.Fragment, null,
+                React.createElement("div", { className: `mx-4 mt-3 flex ${rowStart()} items-center gap-2 px-3 py-2.5 rounded-2xl border`, style: { backgroundColor: colors.card, borderColor: colors.border } },
+                    React.createElement(Search, { size: 15, color: colors.textMuted, "aria-hidden": true }),
+                    React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: q, onChange: (e) => setQ(e.target.value), placeholder: tl("ابحث في جهات اتّصالك", "Search your contacts"), "aria-label": tl("بحث", "Search"), className: "flex-1 bg-transparent text-sm outline-none", style: { color: colors.text } })),
+                SC && SC.findSheet && React.createElement("button", { onClick: () => { onClose(); SC.findSheet(); }, className: `w-full flex ${rowStart()} items-center gap-3 px-4 py-3 mt-2` },
+                    React.createElement("div", { className: "w-11 h-11 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primaryLight } }, React.createElement(UserPlus, { size: 20, color: colors.primary, "aria-hidden": true })),
+                    React.createElement("span", { className: `flex-1 text-sm font-bold ${textStart()}`, style: { color: colors.text } }, tl("أدخل رمز شخص", "Enter a person's code"))),
+                React.createElement("p", { className: `text-xs font-bold px-4 pt-3 pb-1 ${textStart()}`, style: { color: colors.textMuted } }, t("c2_pick_contact")),
+                contacts.length === 0 && React.createElement("p", { className: "text-xs px-4 py-6 text-center", style: { color: colors.textMuted } }, t("c2_no_contacts")),
+                contacts.length > 0 && list.length === 0 && React.createElement("p", { className: "text-xs px-4 py-6 text-center", style: { color: colors.textMuted } }, t("la_twjd_ntayj")),
+                list.map((c) => React.createElement(ContactRow, { key: c.id, contact: c, isOnline: !!c.online, colors: colors, onPress: () => onPickContact && onPickContact(c) }))))));
 }
 function NewBroadcastListScreen({ conversations, onCreate, onClose }) {
     const { colors } = useTheme();
@@ -3147,11 +3149,9 @@ function NewGroupScreen({ onCreate, onClose, contacts = [] }) {
                             React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-extrabold", style: { backgroundColor: on ? colors.primary : colors.primaryLight, color: on ? "#fff" : colors.primary } }, on ? "✓" : (c.name || "?").charAt(0)),
                             React.createElement("div", { className: "flex-1", style: { minWidth: 0, textAlign: "right" } },
                                 React.createElement("span", { className: "text-sm font-bold block truncate", style: { color: colors.text } }, c.name),
-                                React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } }, c.source)));
+                                c.source && c.source !== t("ai_mhadthaty") && React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } }, c.source)));   // C201: المصدر حين يفيد فقط (كانت «محادثاتي» تحت كلّ اسم)
                     })),
-            React.createElement("div", { className: "flex flex-row items-center gap-2 mb-4" },
-                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: manualName, onChange: (e) => setManualName(e.target.value), placeholder: t("misc_aw_aktb"), className: "flex-1 border rounded-xl px-3 py-2.5 text-sm", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
-                React.createElement("button", { onClick: addManual, className: "rounded-xl px-3 py-2.5 text-xs font-extrabold", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("idafa"))),
+            // C201: حُذفت «أو اكتب اسماً يدوياً» — عضو المجموعة جهة اتّصالٍ على سوا
             React.createElement(Button, { label: t("insha_almjmwaa"), onPress: () => name.trim() && onCreate(name.trim(), selected), disabled: !name.trim() || selected.length === 0 }))));
 }
 

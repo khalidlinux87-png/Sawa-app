@@ -187,7 +187,7 @@ function ScheduledRoomsScreen({ rooms = [], onJoin, onCancel, onNew, onBack }) {
         .sort((a, b) => (a.st.k === "past") - (b.st.k === "past") || a.r.at - b.r.at);
     const linkOf = (r) => r.link || (window.SawaRTC && window.SawaRTC.roomLink ? window.SawaRTC.roomLink(r.code) : "?room=" + r.code);
     const copy = (r) => { const l = linkOf(r); try { navigator.clipboard.writeText(l).then(() => showToast(tl("نُسخ الرابط ✓", "Link copied ✓"), "success"), () => window.prompt(tl("انسخ الرابط:", "Copy:"), l)); } catch (e) { window.prompt(tl("انسخ الرابط:", "Copy:"), l); } };
-    const share = (r) => { const l = linkOf(r), txt = tl("أدعوك إلى غرفة سوا «" + r.title + "» — ", "Join my Sawa room «" + r.title + "» — ") + new Date(r.at).toLocaleString(loc(), { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+    const share = (r) => { const l = linkOf(r), txt = tl("أدعوك إلى غرفة سوا «" + r.title + "» — ", "Join my Sawa room «" + r.title + "» — ") + new Date(r.at).toLocaleString(loc(), { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
         try { if (window.SawaRTC && window.SawaRTC.schedPublish) { window.SawaRTC.schedPublish({ code: r.code, title: r.title, at: r.at }); return; } } catch (e) { }
         try { if (navigator.share) { navigator.share({ title: r.title, text: txt, url: l }).catch(() => { }); return; } } catch (e) { } copy(r); };
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col" },
@@ -204,7 +204,7 @@ function ScheduledRoomsScreen({ rooms = [], onJoin, onCancel, onNew, onBack }) {
                     React.createElement("div", { style: { minWidth: 0, flex: 1 } },
                         React.createElement("p", { className: "text-sm font-extrabold truncate", style: { color: colors.text } }, r.title),
                         React.createElement("p", { className: "text-[11px] mt-0.5", style: { color: colors.textMuted } },
-                            new Date(r.at).toLocaleString(loc(), { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }))),
+                            new Date(r.at).toLocaleString(loc(), { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" }))),
                     React.createElement("span", { className: "text-[11px] font-extrabold px-2 py-1 rounded-lg shrink-0", style: { color: st.k === "live" ? "#15803d" : st.k === "past" ? colors.textMuted : st.live ? "#b45309" : colors.primary, backgroundColor: st.k === "live" ? "#dcfce7" : st.k === "past" ? colors.bg : st.live ? "#fef3c7" : colors.primaryLight } }, st.text)),
                 React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mt-2.5 rounded-xl px-2.5 py-2`, style: { backgroundColor: colors.bg } },
                     React.createElement(Link2, { size: 14, color: colors.textMuted, className: "shrink-0" }),
@@ -262,7 +262,7 @@ function callTimeLabel(ts) {
     const d = new Date(ts), n = new Date();
     const h = d.getHours(), m = String(d.getMinutes()).padStart(2, "0");
     const ar = isRTL();
-    const hm = ar ? `${h % 12 || 12}:${m}${h < 12 ? "ص" : "م"}` : `${h % 12 || 12}:${m} ${h < 12 ? "AM" : "PM"}`;
+    const hm = d.toLocaleTimeString(loc(), { hour: "numeric", minute: "2-digit" });   // C201: صيغةٌ واحدة للوقت في كلّ التطبيق «6:27 م» (كان «6:27م» يدويّاً)
     const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
     const diff = Math.round((day(n) - day(d)) / 86400000);
     if (diff === 0) return (ar ? "اليوم " : "Today ") + hm;
