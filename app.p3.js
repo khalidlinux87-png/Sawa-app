@@ -116,16 +116,17 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
     useEffect(() => { const f = () => momBump((x) => x + 1); window.addEventListener("sawa-moments", f); return () => window.removeEventListener("sawa-moments", f); }, []);
     const momNew = (() => { try { const SCm = window.SawaChat && window.SawaChat.moments; if (!SCm) return 0; const seen = Number(localStorage.getItem("sawa_mom_seen") || 0), me = window.SawaChat.profile && window.SawaChat.profile().uid; return SCm.list().filter((x) => x.by !== me && (x.ts || 0) > seen).length; } catch (e) { return 0; } })();
     const momNotes = (() => { try { const SCm = window.SawaChat && window.SawaChat.moments; return SCm && SCm.unread ? SCm.unread() : 0; } catch (e) { return 0; } })();   // C135
-    const discoverSvcCard = ({ onPress, Icon, grad, shadow, title, sub }) => React.createElement("button", { key: title, onClick: onPress, className: `w-full ${textStart()} rounded-2xl p-4 relative overflow-hidden mb-3`, style: { background: grad, boxShadow: `0 10px 24px ${shadow}` } },
-        React.createElement("div", { style: { position: "absolute", insetInlineEnd: -14, bottom: -18, opacity: 0.12, lineHeight: 0, pointerEvents: "none" } }, React.createElement(Icon, { size: 92, color: "#fff" })),
-        React.createElement("div", { className: `relative z-10 flex ${rowStart()} items-center gap-3` },
-            React.createElement("div", { className: "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "rgba(255,255,255,0.18)" } }, React.createElement(Icon, { size: 24, color: "#fff" })),
+    // C195: بطاقات الخدمات بعد «صلة الرحم» — شكلٌ واحد هادئ: خلفيّة البطاقة، ولون الخدمة في مربّع أيقونتها فقط (ونفسه في رأس شاشتها).
+    //   كانت أربعة تدرّجاتٍ قويّة ثابتة (وردي/أخضر/برتقاليّ) لا تتبع المظهر، ولون البطاقة غير لون الشاشة التي تفتحها.
+    const discoverSvcCard = ({ onPress, Icon, color, title, sub, demo, count }) => React.createElement("button", { key: title, onClick: onPress, className: `w-full ${textStart()} rounded-2xl p-4 mb-3 border`, style: { backgroundColor: colors.card, borderColor: colors.border } },
+        React.createElement("div", { className: `flex ${rowStart()} items-center gap-3` },
+            React.createElement("div", { className: "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: color } }, React.createElement(Icon, { size: 24, color: "#fff", "aria-hidden": true })),
             React.createElement("div", { className: "flex-1", style: { minWidth: 0 } },
-                React.createElement("span", { className: `flex ${rowStart()} items-center gap-2 flex-wrap` },
-                    React.createElement("span", { className: "text-lg font-extrabold text-white" }, title),
-                    React.createElement("span", { className: "text-[9px] font-extrabold rounded-full px-2 py-0.5", style: { backgroundColor: "rgba(255,255,255,0.22)", color: "#fff" } }, tl("تجريبيّ · للمشرف والمدير", "Demo · moderators & admins"))),
-                React.createElement("span", { className: "block text-[11px] mt-0.5", style: { color: "rgba(255,255,255,0.8)" } }, sub)),
-            React.createElement(ChevronLeft, { size: 18, color: "rgba(255,255,255,0.6)", className: "shrink-0", style: { transform: isRTL() ? "none" : "scaleX(-1)" } })));
+                React.createElement("span", { className: "block text-base font-extrabold", style: { color: colors.text } }, title),
+                React.createElement("span", { className: "block text-[12px] mt-0.5", style: { color: colors.textMuted } }, sub),
+                demo && React.createElement("span", { className: "inline-block text-[10px] font-bold rounded-full px-2 py-0.5 mt-1.5 border", style: { borderColor: colors.border, color: colors.textMuted } }, tl("تجريبيّ · للمشرف والمدير", "Demo · moderators & admins"))),
+            count > 0 && React.createElement("span", { className: "rounded-full px-2 py-0.5 text-[11px] font-extrabold shrink-0", style: { backgroundColor: color, color: "#fff" } }, count > 9 ? "9+" : count),
+            React.createElement(ChevronLeft, { size: 18, color: colors.textMuted, className: "shrink-0", style: { transform: isRTL() ? "none" : "scaleX(-1)" } })));
     const soonBadge = () => React.createElement("span", { className: "absolute top-2 text-[9px] font-extrabold px-2 py-0.5 rounded-full", style: { insetInlineEnd: 8, backgroundColor: colors.border, color: colors.textMuted } }, tl("قريباً", "Soon"));
     const [loading, setLoading] = useState(true);
     // معلومة حيّة تُغني عن عدّاد ساكن: الأقرب استحقاقاً للتواصل أو أقرب مناسبة
@@ -184,27 +185,19 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
                         React.createElement(UsersRound, { size: 24, color: "#fff" })),
                     React.createElement("div", { className: "flex-1", style: { minWidth: 0 } },
                         React.createElement("span", { className: "block text-lg font-extrabold text-white" }, t("sla_alrhm")),
-                        React.createElement("span", { className: "block text-[11px] mt-0.5", style: { color: "rgba(255,255,255,0.65)" } }, t("nzm_twaslk_ma_aqarbk"))),
+                        React.createElement("span", { className: "block text-[12px] mt-0.5", style: { color: "rgba(255,255,255,0.88)" } }, t("nzm_twaslk_ma_aqarbk"))),
                     React.createElement(ChevronLeft, { size: 18, color: "rgba(255,255,255,0.5)", className: "shrink-0", style: { transform: isRTL() ? "none" : "scaleX(-1)" } })),
                 familyHint && (React.createElement("div", { className: `relative z-10 mt-3 flex ${rowStart()} items-center gap-1.5 rounded-xl px-3 py-2`, style: { backgroundColor: familyHint.urgent ? "rgba(239,68,68,0.18)" : "rgba(255,255,255,0.12)" } },
                     familyHint.urgent
                         ? React.createElement(AlertCircle, { size: 13, color: "#fca5a5", className: "shrink-0" })
                         : React.createElement(Sparkles, { size: 13, color: "rgba(255,255,255,0.8)", className: "shrink-0" }),
                     React.createElement("span", { className: "text-[11px] font-bold", style: { color: familyHint.urgent ? "#fca5a5" : "rgba(255,255,255,0.9)" } }, familyHint.text)))),
-            // C133: لحظات الأصدقاء (حقيقيّة الآن)
-            onOpenMoments && React.createElement("button", { onClick: onOpenMoments, className: `w-full ${textStart()} rounded-2xl p-4 relative overflow-hidden mb-3`, style: { background: "linear-gradient(135deg,#DB2777,#7C3AED)", boxShadow: "0 10px 24px rgba(124,58,237,0.28)" } },
-                React.createElement("div", { className: `relative z-10 flex ${rowStart()} items-center gap-3` },
-                    React.createElement("div", { className: "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: "rgba(255,255,255,0.18)" } },
-                        React.createElement(Images, { size: 24, color: "#fff" })),
-                    React.createElement("div", { className: "flex-1", style: { minWidth: 0 } },
-                        React.createElement("span", { className: "block text-lg font-extrabold text-white" }, tl("لحظات الأصدقاء", "Friends' moments")),
-                        React.createElement("span", { className: "block text-[11px] mt-0.5", style: { color: "rgba(255,255,255,0.75)" } }, momNotes > 0 ? tl("🔔 إشعارات جديدة على لحظاتك: " + momNotes, "🔔 New activity on your moments: " + momNotes) : momNew > 0 ? tl(momNew + " لحظة جديدة من أصدقائك", momNew + " new from your friends") : tl("شارك صورك وأفكارك مع أصدقائك وأهلك", "Share photos and thoughts with friends and family"))),
-                    (momNew + momNotes) > 0 && React.createElement("span", { className: "rounded-full px-2 py-0.5 text-[11px] font-extrabold shrink-0", style: { backgroundColor: "#fff", color: "#7C3AED" } }, (momNew + momNotes) > 9 ? "9+" : (momNew + momNotes)),
-                    React.createElement(ChevronLeft, { size: 18, color: "rgba(255,255,255,0.6)", className: "shrink-0", style: { transform: isRTL() ? "none" : "scaleX(-1)" } }))),
+            // C133: لحظات الأصدقاء (حقيقيّة الآن) · C195: بنمط بطاقات الخدمات
+            onOpenMoments && discoverSvcCard({ onPress: onOpenMoments, Icon: Images, color: SERVICE_COLORS.moments, title: tl("لحظات الأصدقاء", "Friends' moments"), sub: momNotes > 0 ? tl("إشعارات جديدة على لحظاتك: " + momNotes, "New activity on your moments: " + momNotes) : momNew > 0 ? tl(momNew + " لحظة جديدة من أصدقائك", momNew + " new from your friends") : tl("شارك صورك وأفكارك مع أصدقائك وأهلك", "Share photos and thoughts with friends and family"), count: momNew + momNotes }),
             // C226: «محفظة سوا» و«إرسال إكسبريس» بنمط بطاقات «استكشف» نفسه (تدرّج · أيقونةٌ بيضاء في مربّعٍ شفّاف · عنوانٌ كبير)
             //        مع شارة «تجريبيّ · للمشرف والمدير» بدل الإطار المتقطّع
-            intlAdm && onOpenWallet && discoverSvcCard({ onPress: onOpenWallet, Icon: Wallet, grad: "linear-gradient(135deg,#059669,#0F766E)", shadow: "rgba(5,150,105,0.28)", title: tl("محفظة سوا", "Sawa Wallet"), sub: tl("الرصيد والتحويل والعملات والبطاقات", "Balance, transfers, currencies and cards") }),
-            intlAdm && onOpenErsal && discoverSvcCard({ onPress: onOpenErsal, Icon: Truck, grad: "linear-gradient(135deg,#E65100,#B45309)", shadow: "rgba(234,88,12,0.28)", title: tl("إرسال إكسبريس", "Ersal Express"), sub: tl("شحنٌ وتوصيلٌ بين المدن", "Intercity shipping and delivery") }),
+            intlAdm && onOpenWallet && discoverSvcCard({ onPress: onOpenWallet, Icon: Wallet, color: SERVICE_COLORS.wallet, demo: true, title: tl("محفظة سوا", "Sawa Wallet"), sub: tl("الرصيد والتحويل والعملات والبطاقات", "Balance, transfers, currencies and cards") }),
+            intlAdm && onOpenErsal && discoverSvcCard({ onPress: onOpenErsal, Icon: Truck, color: SERVICE_COLORS.ersal, demo: true, title: tl("إرسال إكسبريس", "Ersal Express"), sub: tl("شحنٌ وتوصيلٌ بين المدن", "Intercity shipping and delivery") }),
             SHOW_SOON_SERVICES && React.createElement("div", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("alkhdmat")),
             SHOW_SOON_SERVICES && React.createElement("div", { className: "grid grid-cols-2 gap-3" },
                 React.createElement("button", { onClick: soon, "aria-disabled": true, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { position: "relative", opacity: 0.55, backgroundColor: colors.card, borderColor: colors.border, minHeight: 138, justifyContent: "center" } },

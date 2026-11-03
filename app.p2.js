@@ -260,6 +260,10 @@ const SAWA_LOGO_SM = "data:image/webp;base64,UklGRvIqAABXRUJQVlA4WAoAAAAQAAAAjwA
 // نظام الثيم (نفس بنية سوا/صلة الرحم بالضبط)
 // ============================================================================
 // 4 مظاهر قابلة للتبديل — نفس القيم الموثّقة رسمياً بمستند سوا
+// C195: لون كلّ خدمة في «استكشف» — يظهر في مربّع أيقونتها وفي رأس شاشتها، فتشبه البطاقةُ الشاشةَ التي تفتحها.
+//   صلة الرحم بلون المظهر (الخدمة الأساسيّة). إرسال = لونه الموثّق في ERSAL_THEMES.default. الأيقونة البيضاء على كلٍّ منها ≥ ٣:١.
+//   (نسخةٌ من moments في sawa-chat.js: MO_SERVICE_COLOR — غيّرهما معاً)
+const SERVICE_COLORS = { moments: "#7C3AED", wallet: "#0F766E", ersal: "#1565C0" };
 const ACCENT_THEMES = {
     // C192: accentOnDark — درجة المظهر في الوضع الداكن. اللون نفسه نصٌّ على الخلفيّة الداكنة وتعبئةٌ تحت نصٍّ أبيض، فاختيرت درجةٌ
     //   تعطي ~٤٫١ في الاتّجاهين (أقصى توازنٍ ممكن). كان الكحليّ في الداكن ١٫٥ فلا تكاد تُرى الروابط والتبويب النشط.
@@ -424,12 +428,18 @@ function PhotoViewer({ photo, onClose }) {
         React.createElement("img", { src: photo, alt: "", style: { width: "min(88vw, 88vh)", height: "min(88vw, 88vh)", objectFit: "cover", borderRadius: 16 } }),
         React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: onClose, style: { position: "absolute", top: "calc(env(safe-area-inset-top,0px) + 14px)", insetInlineEnd: 14, width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" } }, React.createElement(X, { size: 20, color: "#fff" })));
 }
+// C195: يلوّن رؤوس TopBar داخل خدمةٍ بلونها، دون تغيير باقي الألوان (الأزرار تبقى بلون المظهر).
+function ServiceTheme({ color, children }) {
+    const th = useTheme();
+    const v = useMemo(() => Object.assign({}, th, { colors: Object.assign({}, th.colors, { header: color }) }), [th, color]);
+    return React.createElement(ThemeContext.Provider, { value: v }, children);
+}
 function TopBar({ title, subtitle, onBack, actions, avatar, photo, onTitlePress }) {
     const { colors } = useTheme();
     // C146: اتّجاهٌ صريح + ترتيبٌ طبيعيّ — «رجوع» ثمّ الصورة ثمّ الاسم من جهة البداية، والأزرار في الطرف الآخر:
     //       العربيّة: رجوع يميناً والأزرار يساراً · الإنجليزيّة: العكس. (كان flex-row-reverse داخل صفحةٍ عربيّة يقلبه فيصير الرجوع يساراً)
     const rtl = isRTL();
-    return (React.createElement("div", { dir: rtl ? "rtl" : "ltr", className: "flex flex-row items-center px-3 pb-2.5", style: { backgroundColor: colors.primary, paddingTop: "calc(env(safe-area-inset-top,0px) + 12px)", minHeight: 60 } },   // C117: كان pt-10 ثابتاً
+    return (React.createElement("div", { dir: rtl ? "rtl" : "ltr", className: "flex flex-row items-center px-3 pb-2.5", style: { backgroundColor: colors.header || colors.primary,   /* C195: لون الخدمة داخل شاشاتها (ServiceTheme) */ paddingTop: "calc(env(safe-area-inset-top,0px) + 12px)", minHeight: 60 } },   // C117: كان pt-10 ثابتاً
         onBack && React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { marginInlineEnd: 4 } },
             React.createElement(rtl ? ChevronRight : ChevronLeft, { color: "#fff", size: 22 })),
         React.createElement("div", { className: "flex-1 min-w-0 flex flex-row items-center justify-start gap-2", onClick: onTitlePress || undefined, style: Object.assign({ marginInlineEnd: 12 }, onTitlePress ? { cursor: "pointer" } : {}) },

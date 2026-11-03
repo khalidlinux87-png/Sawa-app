@@ -4,7 +4,7 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v425';
+const VERSION = 'sawa-v426';
 // C197: سجلّ منظَّم داخل عامل الخدمة (لا SawaLog هنا).
 function slog(lvl, ev, f) { try { (console[lvl] || console.log)('[sw] ' + ev, Object.assign({ v: VERSION }, f || {})); } catch (e) {} }
 // C83: «ما الجديد» — يظهر لكلّ مستخدم في «حسابي ← تحديث التطبيق». سطرٌ واحد بلا علامة ' (‎\n‎ لسطرٍ جديد). يُحدَّث مع كلّ نسخة.
@@ -15,7 +15,7 @@ const NOTES = '• المكالمة الصوتيّة تبدأ على سمّاع�
 const MOVED_TO = 'https://www.sawaaap.com';
 const MOVED = /\.netlify\.app$/i.test(self.location.hostname) || /^sawaap\.pages\.dev$/i.test(self.location.hostname) || /^sawaaap\.com$/i.test(self.location.hostname);
 // C139: الحجم المتوقَّع (بالبايت) للملفّات المرفوعة مع هذه النسخة — إن اختلف على الخادم (لم يُرفع، أو رُفع ناقصاً) يُسجَّل ويُنبَّه المستخدم
-const EXPECT = { './sawa-rtc.js': 420479, './sawa-chat.js': 560334 };
+const EXPECT = { './sawa-rtc.js': 420479, './sawa-chat.js': 561670 };
 const REPORT = [];
 const ASSETS = [
   './',
