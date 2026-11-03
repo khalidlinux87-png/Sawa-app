@@ -1843,14 +1843,14 @@
   function mapsUrl(lat, lng) { return "https://www.google.com/maps/search/?api=1&query=" + lat + "," + lng; }
   // C99: نسخة الملفّ المختار في الذاكرة فوراً — ملفّات منتقي الصور في أندرويد تُقرأ من مصدرٍ قد تنتهي صلاحيّته قبل اكتمال
   //      الرفع (فيفشل أو يظهر عند المرسل مكسوراً)، والنوع يُستنتج من الامتداد إن جاء فارغاً
-  var EXT_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", heic: "image/heic", heif: "image/heif", mp4: "video/mp4", "3gp": "video/3gpp", mov: "video/quicktime", webm: "video/webm", mkv: "video/x-matroska", pdf: "application/pdf" };
-  function mimeOf(f) { if (f && f.type) return f.type; var m = /\.([a-z0-9]+)$/i.exec((f && f.name) || ""); return (m && EXT_MIME[m[1].toLowerCase()]) || ""; }
+  var MEDIA_EXT_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", heic: "image/heic", heif: "image/heif", mp4: "video/mp4", "3gp": "video/3gpp", mov: "video/quicktime", webm: "video/webm", mkv: "video/x-matroska", pdf: "application/pdf" };
+  function mediaMimeOf(f) { if (f && f.type) return f.type; var m = /\.([a-z0-9]+)$/i.exec((f && f.name) || ""); return (m && MEDIA_EXT_MIME[m[1].toLowerCase()]) || ""; }
   function sendMedia(cid, opts) {
     if (opts && opts.blob && typeof File !== "undefined" && opts.blob instanceof File && !opts._copied && opts.blob.arrayBuffer) {
       var f0 = opts.blob, o2 = Object.assign({}, opts, { _copied: true });
       if (!isCloud(cid) || !state.uid) return null;
       var tmpId = newMsgId();
-      f0.arrayBuffer().then(function (buf) { o2.blob = new Blob([buf], { type: mimeOf(f0) }); o2.name = o2.name || f0.name; sendMedia(cid, o2); },
+      f0.arrayBuffer().then(function (buf) { o2.blob = new Blob([buf], { type: mediaMimeOf(f0) }); o2.name = o2.name || f0.name; sendMedia(cid, o2); },
         function () { toast(L("تعذّر قراءة الملفّ — اختره مرّةً أخرى", "Couldn't read the file — pick it again")); });
       return tmpId;
     }
@@ -5221,7 +5221,6 @@
     back: '<path d="m9 6 6 6-6 6"/>',
     chev: '<path d="m15 6-6 6 6 6"/>',
     copy: '<rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
-    share: '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4"/>',
     check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
     send: '<path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/>',
     cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 8.5a4.5 4.5 0 0 1-.5 9.5H7z"/>',
@@ -5229,7 +5228,6 @@
     share: '<path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>',
     plus: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/>',
     menu: '<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>',
-    check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
     download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
     home: '<path d="m3 11 9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>'
   };

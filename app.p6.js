@@ -293,6 +293,7 @@ function callMatch(c, q) {
 }
 function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteContacts, onToggleFavorite, onLogCall, callSettings, onUpdateCallSettings, speedDialContacts, onUpdateSpeedDial, onClearCallLog, scheduledCalls, onAddScheduledCall, onDeleteScheduledCall, onDeleteCallEntry, }) {
     const { colors } = useTheme();
+    const { showToast } = useToast();   // كان showToast غير معرَّف هنا ⇒ ReferenceError عند فشل المكالمة/لوحة الأرقام
     const [activeCall, setActiveCallRaw] = useState(null); // null | { name, callType }
     // C6: جهة اتّصالٍ على سوا ⇒ مكالمةٌ حقيقيّة؛ غير ذلك (لوحة الأرقام…) الواجهة التجريبيّة
     const setActiveCall = (v) => {
