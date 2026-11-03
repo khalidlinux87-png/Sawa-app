@@ -1114,7 +1114,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                         dupLineage(p)))),
                     React.createElement("p", { className: "text-[10px] mt-1", style: { color: colors.textMuted } }, t("lw_kan_shkhsa_akhr"))))),
             React.createElement("label", { className: `text-[11.5px] font-bold mb-1.5 block ${textStart()}`, style: { color: colors.textMuted } }, t("sla_alqraba")),
-            React.createElement("button", { "aria-label": t("altaly"), onClick: () => setShowKinshipPicker(true), className: `w-full flex ${rowStart()} items-center justify-between rounded-2xl px-3.5 py-3 mb-4`, style: { backgroundColor: colors.bg } },
+            React.createElement("button", { onClick: () => setShowKinshipPicker(true), className: `w-full flex ${rowStart()} items-center justify-between rounded-2xl px-3.5 py-3 mb-4`, style: { backgroundColor: colors.bg } },
                 React.createElement("span", { className: "text-sm font-extrabold", style: { color: colors.primary } }, kinshipLabel(kinship)),
                 React.createElement(ChevronLeft, { size: 15, color: colors.textMuted, style: { transform: "rotate(-90deg)" } })),
             showKinshipPicker && (React.createElement(React.Fragment, null,

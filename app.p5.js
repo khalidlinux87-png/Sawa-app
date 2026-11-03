@@ -3218,7 +3218,7 @@ function NotificationCenterScreen({ notifications, onMarkRead, onBack }) {
     const availableCategories = NOTIF_CATEGORIES.filter((c) => c.key === "all" || notifications.some((n) => NOTIF_CATEGORY_MAP[n.type] === c.key));
     const filtered = category === "all" ? notifications : notifications.filter((n) => NOTIF_CATEGORY_MAP[n.type] === category);
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col" },
-        React.createElement(TopBar, { title: t("mrkz_alishaarat"), onBack: onBack }),
+        React.createElement(TopBar, { title: RELEASE_UI ? tl("التذكيرات", "Reminders") : t("mrkz_alishaarat")   /* C196: الاسم نفسه في الصفّ والشاشة */, onBack: onBack }),
         availableCategories.length > 2 && (React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 px-4 py-2.5 border-b`, style: { borderColor: colors.border } }, availableCategories.map((c) => React.createElement(Chip, { key: c.key, label: t(c.labelKey), active: category === c.key, onPress: () => setCategory(c.key) })))),
         React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
             filtered.length === 0 && React.createElement(EmptyState, { icon: BellIcon, label: category === "all" ? tl("لا توجد إشعارات جديدة", "No new notifications") : tl("لا توجد إشعارات بهذا التصنيف", "No notifications in this category") }),
@@ -3324,7 +3324,7 @@ function CallSettingsScreen({ settings, onUpdate, onClearLog, onOpenSpeedDial, o
     ];
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
         React.createElement(TopBar, { title: t("iadadat_almkalmat"), onBack: onBack }),
-        React.createElement("div", { className: "flex-1 overflow-y-auto", style: { backgroundColor: colors.bg } }, categories.map((cat) => (React.createElement("button", { "aria-label": t("altaly"), key: cat.key, onClick: () => (cat.external ? onOpenSpeedDial() : setSubSection(cat.key)), className: `w-full flex ${rowStart()} items-center gap-3 px-4 py-3.5 border-b`, style: { borderColor: colors.border, backgroundColor: colors.bg } },
+        React.createElement("div", { className: "flex-1 overflow-y-auto", style: { backgroundColor: colors.bg } }, categories.map((cat) => (React.createElement("button", { key: cat.key, onClick: () => (cat.external ? onOpenSpeedDial() : setSubSection(cat.key)), className: `w-full flex ${rowStart()} items-center gap-3 px-4 py-3.5 border-b`, style: { borderColor: colors.border, backgroundColor: colors.bg } },
             React.createElement("div", { className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primaryLight } }, React.createElement(cat.icon, { size: 16, color: colors.primaryInk })),
             React.createElement("div", { className: `flex-1 ${textStart()}` },
                 React.createElement("span", { className: "text-sm font-bold block", style: { color: colors.text } }, cat.label),
