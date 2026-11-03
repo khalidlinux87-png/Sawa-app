@@ -1956,7 +1956,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                 React.createElement("div", { style: { position: "absolute", insetInlineEnd: -10, bottom: -16, opacity: 0.12, lineHeight: 0, pointerEvents: "none" } }, React.createElement(Truck, { size: 96, color: "#fff" })),
                 React.createElement("div", { className: "text-xs font-bold", style: { color: "rgba(255,255,255,0.75)" } }, hr < 12 ? t("sbah_alkhyr") : tl("مساء الخير", "Good evening")),
                 React.createElement("div", { className: "text-lg font-extrabold text-white mb-3" }, t("jahz_lnql_shy")),
-                React.createElement("button", { onClick: () => { setMainTab("ship"); setShipFlowView("goods"); }, className: `flex ${rowStart()} items-center gap-2 rounded-xl px-4 py-2.5 font-extrabold text-sm`, style: { backgroundColor: "#fff", color: colors.primaryInk } }, React.createElement(Package, { size: 16, color: colors.primaryInk }), t("shhna_jdyda"))),
+                React.createElement("button", { onClick: () => { setMainTab("ship"); setShipFlowView("goods"); }, className: `flex ${rowStart()} items-center gap-2 rounded-xl px-4 py-2.5 font-extrabold text-sm`, style: { backgroundColor: "#fff", color: colors.primaryDark } }, React.createElement(Package, { size: 16, color: colors.primaryDark }), t("shhna_jdyda"))),
             React.createElement(Card, { style: { padding: 12 } },
                 React.createElement("label", { className: "text-xs font-bold mb-2 block", style: { color: colors.text } }, t("ttba_ay_shhna_brqmha")),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },

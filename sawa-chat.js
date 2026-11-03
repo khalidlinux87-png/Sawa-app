@@ -2318,7 +2318,10 @@
     s.setAttribute("fill", "none"); s.setAttribute("stroke", color || "currentColor"); s.setAttribute("stroke-width", "2"); s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round");
     s.innerHTML = path; return s;
   }
+  // C195: لون خدمة «لحظات الأصدقاء» — رأس شاشاتها بلونها (مثل المحفظة وإرسال). = SERVICE_COLORS.moments في app.p2، غيّرهما معاً.
+  var MO_SERVICE_COLOR = "#7C3AED", MO_HB = "width:38px;height:38px;border-radius:50%;border:0;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;color:#fff";
   var MI = {
+    gear: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
     heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/>',
     chat: '<path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5z"/>',
     share: '<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/>',
@@ -2339,20 +2342,20 @@
     var T = moTheme(opts.colors);
     host.innerHTML = ""; host.dir = isAr() ? "rtl" : "ltr";
     host.style.cssText = "flex:1;min-height:0;display:flex;flex-direction:column;background:" + T.bg + ";color:" + T.text + ";font-family:var(--sawa-font,system-ui)";
-    var head = mk("div", "display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;background:" + T.card + ";border-bottom:1px solid " + T.border + ";flex-shrink:0");
-    var bk = mk("button", "width:38px;height:38px;border-radius:50%;border:0;background:" + T.bg + ";display:flex;align-items:center;justify-content:center;color:" + T.text);
+    var head = mk("div", "display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;background:" + MO_SERVICE_COLOR + ";color:#fff;flex-shrink:0");   // C195
+    var bk = mk("button", MO_HB);
     var bi = moIcon(MI.back, 20); if (!isAr()) {} else bi.style.transform = "scaleX(-1)"; bk.appendChild(bi); bk.setAttribute("aria-label", L("رجوع", "Back"));
     bk.onclick = function () { if (opts.onBack) opts.onBack(); };
     var tt = mk("div", "flex:1;min-width:0"); tt.appendChild(mk("div", "font:800 18px var(--sawa-font,system-ui)", L("لحظات الأصدقاء", "Friends' moments")));
-    var sub = mk("div", "font:600 12px var(--sawa-font,system-ui);color:" + T.muted); tt.appendChild(sub);
-    var nb = mk("button", "height:38px;border-radius:19px;border:0;padding:0 14px;display:flex;align-items:center;gap:6px;background:" + T.primary + ";color:#fff;font:800 13.5px var(--sawa-font,system-ui)");
-    nb.appendChild(moIcon(MI.plus, 18, "#fff")); nb.appendChild(document.createTextNode(L("لحظة", "Moment"))); nb.onclick = function () { momentComposer(opts); };
-    var gear = mk("button", "width:38px;height:38px;border-radius:50%;border:0;background:" + T.bg + ";color:" + T.text + ";font-size:17px", "⚙︎");
+    var sub = mk("div", "font:600 12px var(--sawa-font,system-ui);color:rgba(255,255,255,.85)"); tt.appendChild(sub);
+    var nb = mk("button", "height:38px;border-radius:19px;border:0;padding:0 14px;display:flex;align-items:center;gap:6px;background:#fff;color:" + MO_SERVICE_COLOR + ";font:800 13.5px var(--sawa-font,system-ui)");
+    nb.appendChild(moIcon(MI.plus, 18, MO_SERVICE_COLOR)); nb.appendChild(document.createTextNode(L("لحظة", "Moment"))); nb.onclick = function () { momentComposer(opts); };
+    var gear = mk("button", MO_HB); gear.appendChild(moIcon(MI.gear, 19));   // C195: أيقونة بدل الرمز النصّيّ ⚙︎
     gear.setAttribute("aria-label", L("إعدادات اللحظات", "Moments settings")); gear.onclick = function () { moSettings(); };
     // C135: الإشعارات (تفاعلات · تعليقات · ردود · إشارات) بعدد غير المقروء
-    var bell = mk("button", "position:relative;width:38px;height:38px;border-radius:50%;border:0;background:" + T.bg + ";color:" + T.text + ";display:flex;align-items:center;justify-content:center");
+    var bell = mk("button", "position:relative;" + MO_HB);
     bell.setAttribute("aria-label", L("إشعارات اللحظات", "Moments notifications")); bell.appendChild(moIcon(MI.bell, 19));
-    var badge = mk("span", "position:absolute;top:-2px;" + (isAr() ? "left" : "right") + ":-2px;min-width:18px;height:18px;border-radius:9px;background:#E11D48;color:#fff;font:800 11.5px/18px var(--sawa-font,system-ui);text-align:center;padding:0 4px;box-sizing:border-box;display:none");
+    var badge = mk("span", "position:absolute;top:-2px;" + (isAr() ? "left" : "right") + ":-2px;min-width:18px;height:18px;border-radius:9px;background:#E11D48;color:#fff;font:800 11.5px/18px var(--sawa-font,system-ui);text-align:center;padding:0 4px;box-sizing:border-box;box-shadow:0 0 0 2px " + MO_SERVICE_COLOR + ";display:none");
     bell.appendChild(badge); bell.onclick = function () { moNotesSheet(); };
     head.appendChild(bk); head.appendChild(tt); head.appendChild(bell); head.appendChild(gear); head.appendChild(nb); host.appendChild(head);
     var scroll = mk("div", "flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 0 calc(env(safe-area-inset-bottom,0px) + 80px)");
@@ -2399,7 +2402,10 @@
   }
   function moEmpty(T, ic, title, sub) {
     var e = mk("div", "text-align:center;padding:48px 28px;color:" + T.muted);
-    e.appendChild(mk("div", "font-size:46px;margin-bottom:10px", ic)); e.appendChild(mk("div", "font:800 16px var(--sawa-font,system-ui);color:" + T.text + ";margin-bottom:6px", title));
+    if (ic === "⏳") {   // C195: مؤشّر تحميلٍ بدل الإيموجي ⏳
+      if (!document.getElementById("sawa-mo-spin")) { var st = document.createElement("style"); st.id = "sawa-mo-spin"; st.textContent = "@keyframes sawa-mo-spin{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.sawa-mo-spin{animation-duration:2.4s!important}}"; document.head.appendChild(st); }
+      var sp = mk("div", "width:34px;height:34px;margin:0 auto 16px;border-radius:50%;border:3px solid " + T.border + ";border-top-color:" + T.primary + ";animation:sawa-mo-spin .8s linear infinite"); sp.className = "sawa-mo-spin"; sp.setAttribute("aria-hidden", "true"); e.appendChild(sp);
+    } else e.appendChild(mk("div", "font-size:46px;margin-bottom:10px", ic)); e.appendChild(mk("div", "font:800 16px var(--sawa-font,system-ui);color:" + T.text + ";margin-bottom:6px", title));
     if (sub) e.appendChild(mk("div", "font:500 13.5px/1.8 var(--sawa-font,system-ui)", sub)); return e;
   }
   function moCard(p, view) {
@@ -3107,8 +3113,8 @@
     var T = moTheme(mo.view && mo.view.opts && mo.view.opts.colors), p = null, unsub = null, opened = false;
     var ov = mk("div", "position:fixed;inset:0;z-index:2147483001;background:" + T.bg + ";color:" + T.text + ";display:flex;flex-direction:column;font-family:var(--sawa-font,system-ui)");
     ov.dir = isAr() ? "rtl" : "ltr"; ov.setAttribute("data-mo-ov", "1");
-    var head = mk("div", "display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;background:" + T.card + ";border-bottom:1px solid " + T.border + ";flex-shrink:0");
-    var bk = mk("button", "width:38px;height:38px;border-radius:50%;border:0;background:" + T.bg + ";display:flex;align-items:center;justify-content:center;color:" + T.text);
+    var head = mk("div", "display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;background:" + MO_SERVICE_COLOR + ";color:#fff;flex-shrink:0");   // C195
+    var bk = mk("button", MO_HB);
     var bi = moIcon(MI.back, 20); if (isAr()) bi.style.transform = "scaleX(-1)"; bk.appendChild(bi); bk.setAttribute("aria-label", L("رجوع", "Back"));
     head.appendChild(bk); head.appendChild(mk("div", "flex:1;font:800 17px var(--sawa-font,system-ui)", L("لحظة", "Moment"))); ov.appendChild(head);
     var sc = mk("div", "flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 0 calc(env(safe-area-inset-bottom,0px) + 24px)"); ov.appendChild(sc);
