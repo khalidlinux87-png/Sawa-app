@@ -37,7 +37,7 @@ function App() {
         primaryLight: isDark ? base.primaryLight : accent.accentTint,
         // تباين عالٍ: نص أسود/أبيض خالص + حدود أوضح، بدل الدرجات المتوسطة
         ...(highContrast
-            ? { text: isDark ? "#FFFFFF" : "#000000", border: isDark ? "#5A6472" : "#8A93A0", textMuted: isDark ? "#D6DCE2" : "#3A4249" }
+            ? { text: isDark ? "#FFFFFF" : "#000000", border: isDark ? "#5B6B7C" : "#8A93A0", textMuted: isDark ? "#DFE5EC" : "#3D4450" }
             : {}),
     };
     const theme = {

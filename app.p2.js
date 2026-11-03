@@ -217,7 +217,7 @@ class ErrorBoundary extends React.Component {
         return (React.createElement("div", { style: {
                 position: "fixed", inset: 0, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center", padding: 28,
-                backgroundColor: "#F7F8FA", direction: "rtl", fontFamily: "inherit",
+                backgroundColor: "#F5F7FA", direction: "rtl", fontFamily: "inherit",
             } },
             React.createElement("div", { style: {
                     width: 64, height: 64, borderRadius: 32, display: "flex",
@@ -225,7 +225,7 @@ class ErrorBoundary extends React.Component {
                     backgroundColor: "#EF444422",
                 } },
                 React.createElement("span", { style: { fontSize: 30 } }, "\u26A0\uFE0F")),
-            React.createElement("p", { style: { fontWeight: 800, fontSize: 17, color: "#0F172A", marginBottom: 8 } }, t("hsl_khta_ghyr_mtwqa")),
+            React.createElement("p", { style: { fontWeight: 800, fontSize: 17, color: "#111827", marginBottom: 8 } }, t("hsl_khta_ghyr_mtwqa")),
             React.createElement("p", { style: { fontSize: 13, color: "#64748B", textAlign: "center", lineHeight: 1.7, marginBottom: 22, maxWidth: 300 } }, t("byanatk_mhfwza_jrb_alawda")),
             React.createElement("div", { style: { display: "flex", flexDirection: "row-reverse", gap: 10, flexWrap: "wrap", justifyContent: "center" } },
                 React.createElement("button", { onClick: () => {
@@ -237,7 +237,7 @@ class ErrorBoundary extends React.Component {
                         catch (_a) { }
                         window.location.reload();
                     }, style: { padding: "11px 22px", borderRadius: 14, border: "none", backgroundColor: "#EF4444", color: "#fff", fontWeight: 800, fontSize: 13 } }, t("msh_albyanat_wiaada_altshghyl")),
-                React.createElement("button", { onClick: () => this.setState({ error: null }), style: { padding: "11px 22px", borderRadius: 14, border: "none", backgroundColor: "#1E88E5", color: "#fff", fontWeight: 800, fontSize: 13 } }, t("almhawla_mra_akhra")),
+                React.createElement("button", { onClick: () => this.setState({ error: null }), style: { padding: "11px 22px", borderRadius: 14, border: "none", backgroundColor: "#2B81CE", color: "#fff", fontWeight: 800, fontSize: 13 } }, t("almhawla_mra_akhra")),
                 React.createElement("button", { onClick: () => window.location.reload(), style: { padding: "11px 22px", borderRadius: 14, border: "1px solid #CBD5E1", backgroundColor: "transparent", color: "#475569", fontWeight: 700, fontSize: 13 } }, t("iaada_altshghyl"))),
             React.createElement("details", { style: { marginTop: 26, maxWidth: 320, width: "100%" } },
                 React.createElement("summary", { style: { fontSize: 11, color: "#94A3B8", cursor: "pointer", textAlign: "center" } }, t("tfasyl_tqnya")),
@@ -346,9 +346,9 @@ function Badge({ label, variant = "neutral", icon: Icon, size = "md" }) {
     const { isDark } = useTheme();
     const variants = {
         danger: { bg: isDark ? "#4A2420" : "#FBE9E7", fg: isDark ? "#FF8A7A" : "#B42318" },
-        warning: { bg: isDark ? "#4A3714" : "#FCEFD6", fg: isDark ? "#F2B953" : "#B8720A" },
-        success: { bg: isDark ? "#173A26" : "#E3F3EA", fg: isDark ? "#5CD692" : "#1B7A43" },
-        neutral: { bg: isDark ? "#232F2A" : "#F7F8FA", fg: isDark ? "#8FA39C" : "#6B7280" },
+        warning: { bg: isDark ? "#3F2D0C" : "#FFF3E0", fg: isDark ? "#F5B14C" : "#B8720A" },
+        success: { bg: isDark ? "#0F3320" : "#E3F3EA", fg: isDark ? "#5CD692" : "#1B7A43" },
+        neutral: { bg: isDark ? "#232F2A" : "#F5F7FA", fg: isDark ? "#8FA39C" : "#6B7280" },
     };
     const v = variants[variant] || variants.neutral;
     const small = size === "sm";
@@ -1056,8 +1056,8 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
                         ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-0.5 flex-wrap`, style: { color: colors.textMuted } },
                             React.createElement("span", { className: "text-xs", dir: "ltr" }, myProfile.phone),
                             myProfile.phoneVerified
-                                ? React.createElement("span", { className: "text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0", style: { color: "#187854", backgroundColor: "#E8F5EE" } }, myProfile.verifiedBy === "contacts" ? tl("مؤكَّد من معارفك ✓", "Confirmed by contacts ✓") : tl("موثّق ✓", "Verified ✓"))
-                                : React.createElement("button", { onClick: () => { try { SCm.verifySheet(); } catch (e) {} }, className: "text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0", style: { color: "#B7791F", backgroundColor: "#FEF3C7" } }, tl("غير موثّق — وثّقه", "Unverified — verify")))
+                                ? React.createElement("span", { className: "text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0", style: { color: "#187854", backgroundColor: "#E6F5EC" } }, myProfile.verifiedBy === "contacts" ? tl("مؤكَّد من معارفك ✓", "Confirmed by contacts ✓") : tl("موثّق ✓", "Verified ✓"))
+                                : React.createElement("button", { onClick: () => { try { SCm.verifySheet(); } catch (e) {} }, className: "text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0", style: { color: "#B8720A", backgroundColor: "#FEF3C7" } }, tl("غير موثّق — وثّقه", "Unverified — verify")))
                         : React.createElement("button", { onClick: editMe, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, "+ أضف رقم هاتفك"))
                         : meState === "err" ? React.createElement("button", { onClick: () => { try { SCm.refresh(); } catch (e) {} meTick((n) => n + 1); }, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, tl("↻ إعادة المحاولة", "↻ Retry"))
                         : meState === "noauth" ? React.createElement("button", { onClick: () => { try { SCm.startOnboarding(); } catch (e) {} }, className: "text-xs mt-0.5 font-bold", style: { color: colors.primary } }, tl("تسجيل الدخول ←", "Sign in →"))

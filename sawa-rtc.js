@@ -611,7 +611,7 @@
   function earOn() {
     if (earEl || !document.body) return;
     earEl = el("div", "position:fixed;inset:0;z-index:2147483646;background:#000;touch-action:none;display:flex;align-items:flex-end;justify-content:center;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 28px)");
-    earEl.appendChild(el("div", "color:#9aa5b1;font:600 13px var(--sawa-font,system-ui);text-align:center;padding:0 24px", L("وضع الأذن — اضغط مطوّلاً لإظهار الشاشة", "Ear mode — press and hold to show the screen")));
+    earEl.appendChild(el("div", "color:#9aa0ab;font:600 13px var(--sawa-font,system-ui);text-align:center;padding:0 24px", L("وضع الأذن — اضغط مطوّلاً لإظهار الشاشة", "Ear mode — press and hold to show the screen")));
     var holdT = null;
     var down = function (e) { try { e.preventDefault(); } catch (x) {} clearTimeout(holdT); holdT = setTimeout(function () { earOff(); earArm(); }, 700); };
     var up = function () { clearTimeout(holdT); };
@@ -651,7 +651,7 @@
     var b = el("button", "width:54px;height:54px;border-radius:50%;border:0;font-size:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;background:" + bg, icon);
     b.setAttribute("aria-label", label);
     b.onclick = function (ev) { ev.stopPropagation(); onclick(); };
-    var t = el("span", "font:600 12px var(--sawa-font,system-ui);color:#e8f5ee", label);
+    var t = el("span", "font:600 12px var(--sawa-font,system-ui);color:#e6f5ec", label);
     w.appendChild(b); w.appendChild(t); w._b = b; w._t = t;
     return w;
   }
@@ -694,7 +694,7 @@
   }
   function buildUi() {
     if (ui.root) return ui;
-    var r = el("div", "position:fixed;inset:0;z-index:2147483000;background:linear-gradient(160deg,#0f3d2c,#071a12);color:#fff;display:none;flex-direction:column;align-items:stretch;font-family:var(--sawa-font,system-ui),-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;overflow:hidden;user-select:none;-webkit-user-select:none");
+    var r = el("div", "position:fixed;inset:0;z-index:2147483000;background:linear-gradient(160deg,#0f3320,#071a12);color:#fff;display:none;flex-direction:column;align-items:stretch;font-family:var(--sawa-font,system-ui),-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;overflow:hidden;user-select:none;-webkit-user-select:none");
     r.id = "sawa-call";
     var rv = el("video", "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;display:none");
     rv.autoplay = true; rv.playsInline = true; rv.muted = true; rv.setAttribute("playsinline", "");
@@ -710,7 +710,7 @@
     var mid = el("div", "position:relative;z-index:1;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:0 20px;text-align:center");
     var av = el("div", "width:112px;height:112px;border-radius:50%;background:#2e7d5b;display:flex;align-items:center;justify-content:center;font:800 46px var(--sawa-font,system-ui);box-shadow:0 0 0 10px rgba(46,125,91,.25),0 0 0 22px rgba(46,125,91,.12)");
     var nm = el("div", "font:800 24px var(--sawa-font,system-ui);margin-top:14px");
-    var st = el("div", "font:600 15px var(--sawa-font,system-ui);color:#bfe3d0");
+    var st = el("div", "font:600 15px var(--sawa-font,system-ui);color:#d0eddc");
     var sub = el("div", "font:500 11px var(--sawa-font,system-ui);color:#8fb8a4;min-height:14px");
     // C124: المدير يبدّل محرّك الصوت للمكالمات الصوتيّة القادمة بلمس سطر الشبكة (أندرويد فقط)
     sub.addEventListener("click", function () {
@@ -787,14 +787,14 @@
       bar.appendChild(btn("✕", L("رفض", "Decline"), "#d64545", decline));
       return;
     }
-    var mute = btn(c.muted ? "🔇" : "🎤", c.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), c.muted ? "#e8f5ee" : "rgba(255,255,255,.16)", toggleMute);
+    var mute = btn(c.muted ? "🔇" : "🎤", c.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), c.muted ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleMute);
     if (c.muted) mute._b.style.color = "#123";
     bar.appendChild(mute);
     if (c.type === "video" && c.hasCam) {
-      bar.appendChild(btn(c.camOff ? "🚫" : "📷", c.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), c.camOff ? "#e8f5ee" : "rgba(255,255,255,.16)", toggleCam));
+      bar.appendChild(btn(c.camOff ? "🚫" : "📷", c.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), c.camOff ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleCam));
       bar.appendChild(btn("🔄", L("تبديل", "Flip"), "rgba(255,255,255,.16)", switchCam));
     }
-    if (c.routes || (RB())) { var sp = c.out !== "ear"; var rb = btn(sp ? "🔊" : "👂", sp ? L("المكبّر", "Speaker") : L("السمّاعة", "Earpiece"), sp ? "#e8f5ee" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
+    if (c.routes || (RB())) { var sp = c.out !== "ear"; var rb = btn(sp ? "🔊" : "👂", sp ? L("المكبّر", "Speaker") : L("السمّاعة", "Earpiece"), sp ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
     // C111: تحويل المكالمة الصوتيّة إلى فيديو (بموافقة الطرف الآخر)
     if (c.state === "connected" && c.type !== "video") bar.appendChild(btn("📹", c.vreqOut ? L("…بانتظاره", "…waiting") : L("فيديو", "Video"), "rgba(255,255,255,.16)", function () { askVideo(cur); }));
     if (c.state === "connected") bar.appendChild(btn("➕", L("إضافة", "Add"), "rgba(255,255,255,.16)", function () { pickPerson(cur); }));
@@ -2267,7 +2267,7 @@
   // ---------- الواجهة ----------
   function gBuild() {
     if (gui.root) return gui;
-    var r = el("div", "position:fixed;inset:0;z-index:2147483000;background:linear-gradient(160deg,#10324a,#071320);color:#fff;display:none;flex-direction:column;font-family:var(--sawa-font,system-ui),-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;overflow:hidden;user-select:none;-webkit-user-select:none");
+    var r = el("div", "position:fixed;inset:0;z-index:2147483000;background:linear-gradient(160deg,#173049,#111827);color:#fff;display:none;flex-direction:column;font-family:var(--sawa-font,system-ui),-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;overflow:hidden;user-select:none;-webkit-user-select:none");
     r.id = "sawa-gcall";
     var top = el("div", "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 10px");
     var hd = el("div", "min-width:0");
@@ -2280,13 +2280,13 @@
     var reqs = el("div", "display:flex;flex-direction:column;gap:6px;padding:0 12px");
     var grid = el("div", "flex:1;min-height:0;display:grid;gap:8px;padding:8px 12px;align-content:center");
     var center = el("div", "flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:0 20px");
-    var av = el("div", "width:104px;height:104px;border-radius:50%;background:#2d6a9a;display:flex;align-items:center;justify-content:center;font:800 40px var(--sawa-font,system-ui);box-shadow:0 0 0 10px rgba(45,106,154,.25)");
-    var cName = el("div", "font:800 22px var(--sawa-font,system-ui)"), cSt = el("div", "font:600 14px var(--sawa-font,system-ui);color:#bcd6ea"), cWho = el("div", "font:500 12px var(--sawa-font,system-ui);color:#8fb0c8");
+    var av = el("div", "width:104px;height:104px;border-radius:50%;background:#0369a1;display:flex;align-items:center;justify-content:center;font:800 40px var(--sawa-font,system-ui);box-shadow:0 0 0 10px rgba(45,106,154,.25)");
+    var cName = el("div", "font:800 22px var(--sawa-font,system-ui)"), cSt = el("div", "font:600 14px var(--sawa-font,system-ui);color:#bfe0f5"), cWho = el("div", "font:500 12px var(--sawa-font,system-ui);color:#8fb0c8");
     center.appendChild(av); center.appendChild(cName); center.appendChild(cSt); center.appendChild(cWho);
     var bar = el("div", "display:flex;justify-content:space-evenly;align-items:flex-start;padding:14px 8px calc(env(safe-area-inset-bottom,0px) + 22px);background:linear-gradient(transparent,rgba(0,0,0,.5))");
     var audios = el("div", "display:none");
     r.appendChild(top); r.appendChild(reqs); r.appendChild(grid); r.appendChild(center); r.appendChild(bar); r.appendChild(audios);
-    var pill = el("button", "position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:8px;background:#2d6a9a;color:#fff;border:0;border-radius:22px;padding:9px 16px;font:700 13px var(--sawa-font,system-ui);box-shadow:0 4px 18px rgba(0,0,0,.35);direction:rtl;cursor:pointer");
+    var pill = el("button", "position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:8px;background:#0369a1;color:#fff;border:0;border-radius:22px;padding:9px 16px;font:700 13px var(--sawa-font,system-ui);box-shadow:0 4px 18px rgba(0,0,0,.35);direction:rtl;cursor:pointer");
     pill.onclick = function () { gMinimize(false); };
     document.body.appendChild(r); document.body.appendChild(pill);
     gui = { root: r, title: title, sub: sub, minBtn: minBtn, reqs: reqs, grid: grid, center: center, av: av, cName: cName, cSt: cSt, cWho: cWho, bar: bar, audios: audios, pill: pill, tiles: {}, min: false };
@@ -2343,11 +2343,11 @@
       return;
     }
     if (g.local) {
-      var mute = btn(g.muted ? "🔇" : "🎤", g.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), g.muted ? "#e8f5ee" : "rgba(255,255,255,.16)", gToggleMute);
+      var mute = btn(g.muted ? "🔇" : "🎤", g.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), g.muted ? "#e6f5ec" : "rgba(255,255,255,.16)", gToggleMute);
       if (g.muted) mute._b.style.color = "#123";
       bar.appendChild(mute);
       if (g.type === "video" && g.local.getVideoTracks().length) {
-        bar.appendChild(btn(g.camOff ? "🚫" : "📷", g.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), g.camOff ? "#e8f5ee" : "rgba(255,255,255,.16)", gToggleCam));
+        bar.appendChild(btn(g.camOff ? "🚫" : "📷", g.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), g.camOff ? "#e6f5ec" : "rgba(255,255,255,.16)", gToggleCam));
         bar.appendChild(btn("🔄", L("تبديل", "Flip"), "rgba(255,255,255,.16)", gSwitchCam));
       }
     }
@@ -2370,10 +2370,10 @@
   function gTileEl(uid) {
     var t = gui.tiles[uid];
     if (t) return t;
-    var box = el("div", "position:relative;border-radius:16px;overflow:hidden;background:#13283a;min-height:0;display:flex;align-items:center;justify-content:center");
+    var box = el("div", "position:relative;border-radius:16px;overflow:hidden;background:#1e293b;min-height:0;display:flex;align-items:center;justify-content:center");
     var v = el("video", "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none");
     v.autoplay = true; v.playsInline = true; v.muted = true; v.setAttribute("playsinline", "");
-    var av = el("div", "width:64px;height:64px;border-radius:50%;background:#2d6a9a;display:flex;align-items:center;justify-content:center;font:800 26px var(--sawa-font,system-ui)");
+    var av = el("div", "width:64px;height:64px;border-radius:50%;background:#0369a1;display:flex;align-items:center;justify-content:center;font:800 26px var(--sawa-font,system-ui)");
     var lab = el("div", "position:absolute;bottom:6px;right:8px;left:8px;font:700 12px var(--sawa-font,system-ui);text-shadow:0 1px 3px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
     box.appendChild(v); box.appendChild(av); box.appendChild(lab);
     var a = el("audio", ""); a.autoplay = true;
@@ -2427,14 +2427,14 @@
     var list = [];
     try { list = C().contacts().filter(function (c) { return c.uid && c.uid !== me && !inCall[c.uid]; }); } catch (e) {}
     var ov = el("div", "position:fixed;inset:0;z-index:2147483002;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;direction:rtl;font-family:var(--sawa-font,system-ui)");
-    var box = el("div", "background:#1b2633;color:#fff;border-radius:20px;width:min(92vw,380px);max-height:70vh;display:flex;flex-direction:column;overflow:hidden");
+    var box = el("div", "background:#1e293b;color:#fff;border-radius:20px;width:min(92vw,380px);max-height:70vh;display:flex;flex-direction:column;overflow:hidden");
     box.appendChild(el("div", "padding:16px 16px 4px;font:800 15px var(--sawa-font,system-ui);text-align:center", L("إضافة شخص للمكالمة", "Add someone to the call")));
     box.appendChild(el("div", "padding:0 16px 10px;font:500 11px var(--sawa-font,system-ui);color:#9fb3c6;text-align:center", L("يُضاف دون قطع المكالمة", "They'll join without ending the call")));
     var sc = el("div", "flex:1;overflow-y:auto;padding:0 10px");
-    if (!list.length) sc.appendChild(el("div", "padding:20px;text-align:center;color:#8aa0b4;font:600 12px var(--sawa-font,system-ui)", L("لا أحد آخر في جهات اتّصالك", "No other contacts")));
+    if (!list.length) sc.appendChild(el("div", "padding:20px;text-align:center;color:#94a3b8;font:600 12px var(--sawa-font,system-ui)", L("لا أحد آخر في جهات اتّصالك", "No other contacts")));
     list.forEach(function (c) {
       var b = el("button", "width:100%;display:flex;align-items:center;gap:10px;padding:10px 6px;background:transparent;border:0;color:#fff;font:700 13px var(--sawa-font,system-ui);text-align:right;cursor:pointer");
-      var a = el("span", "width:34px;height:34px;border-radius:50%;background:#2d6a9a;display:flex;align-items:center;justify-content:center;font:800 14px var(--sawa-font,system-ui);flex-shrink:0", (c.name || "؟").charAt(0));
+      var a = el("span", "width:34px;height:34px;border-radius:50%;background:#0369a1;display:flex;align-items:center;justify-content:center;font:800 14px var(--sawa-font,system-ui);flex-shrink:0", (c.name || "؟").charAt(0));
       b.appendChild(a); b.appendChild(el("span", "flex:1", c.name || ""));
       if (c.online) b.appendChild(el("span", "width:8px;height:8px;border-radius:50%;background:#16a34a"));
       b.onclick = function () { ov.remove(); if (target === cur) upgrade(cur, c.uid, c.name); else gAdd(c.uid, c.name); };
@@ -3634,7 +3634,7 @@
   }
 
   // ---------- الواجهة ----------
-  var DARK = "#0b1220", CARD = "#151f36", LINE = "#26324a", MUTED = "#94a3b8", PRI = "#2774BA", GRAD = "linear-gradient(135deg,#3b8fd6 0%,#2774BA 45%,#1E3A63 100%)";
+  var DARK = "#111827", CARD = "#111827", LINE = "#1e293b", MUTED = "#94a3b8", PRI = "#2774BA", GRAD = "linear-gradient(135deg,#3b8fd6 0%,#2774BA 45%,#1E3A63 100%)";
   var AVG = [["#60a5fa", "#2563eb"], ["#34d399", "#0d9488"], ["#fbbf24", "#f97316"], ["#c084fc", "#7c3aed"], ["#f472b6", "#db2777"], ["#22d3ee", "#0e7490"]];
   function avGrad(k) { var h = 0, x = String(k || ""); for (var i = 0; i < x.length; i++) h = (h * 31 + x.charCodeAt(i)) >>> 0; var g = AVG[h % AVG.length]; return "linear-gradient(135deg," + g[0] + "," + g[1] + ")"; }
   function rb(icon, label, onclick, opts) {
@@ -3741,7 +3741,7 @@
   }
   function miniBuild() {
     if (mini.el) return mini.el;
-    var w = el("div", "position:fixed;z-index:2147483001;width:min(44vw,240px);aspect-ratio:3/4;border-radius:18px;overflow:hidden;background:#0b1220;box-shadow:0 10px 30px rgba(0,0,0,.45);display:none;touch-action:none;user-select:none;-webkit-user-select:none;direction:rtl;font-family:var(--sawa-font,system-ui);cursor:pointer");
+    var w = el("div", "position:fixed;z-index:2147483001;width:min(44vw,240px);aspect-ratio:3/4;border-radius:18px;overflow:hidden;background:#111827;box-shadow:0 10px 30px rgba(0,0,0,.45);display:none;touch-action:none;user-select:none;-webkit-user-select:none;direction:rtl;font-family:var(--sawa-font,system-ui);cursor:pointer");
     w.id = "sawa-mini"; w.setAttribute("data-no-back", "1");
     var v = el("video", "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;display:none");
     v.autoplay = true; v.muted = true; v.playsInline = true; v.setAttribute("playsinline", "");
@@ -4525,13 +4525,13 @@
     box.appendChild(el("div", "width:42px;height:5px;border-radius:3px;background:#e2e8f0;margin:0 auto 12px"));
     box.appendChild(el("div", "width:76px;height:76px;border-radius:26px;margin:0 auto 6px;background:" + GRAD + ";display:flex;align-items:center;justify-content:center;font-size:34px;box-shadow:0 8px 20px rgba(47,128,200,.35)", "🎙️"));
     var tt = el("div", "font:800 17px var(--sawa-font,system-ui);margin:4px 0 2px", L("غرفة سوا", "Sawa room")); box.appendChild(tt);
-    var sub = el("div", "font:600 12.5px var(--sawa-font,system-ui);color:#8796a5", "…"); box.appendChild(sub);
+    var sub = el("div", "font:600 12.5px var(--sawa-font,system-ui);color:#8a93a0", "…"); box.appendChild(sub);
     var mic = false;
     var mb = el("button", "margin:14px auto 4px;display:block;padding:10px 16px;border-radius:14px;border:0;background:#f1f5f9;font:800 13px var(--sawa-font,system-ui);color:#1A1A2E");
     var paintMic = function () { mb.textContent = mic ? L("🎤 الميكروفون: يعمل عند الدخول", "🎤 Mic: on when joining") : L("🔇 الميكروفون: مكتوم عند الدخول", "🔇 Mic: muted when joining"); };
     mb.onclick = function () { mic = !mic; paintMic(); }; paintMic(); box.appendChild(mb);
     var go = el("button", "margin:10px 0 0;width:100%;padding:14px;border:0;border-radius:16px;background:" + GRAD + ";color:#fff;font:800 15px var(--sawa-font,system-ui);box-shadow:0 8px 20px rgba(47,128,200,.35)", L("انضمام", "Join"));
-    var no = el("button", "margin:8px 0 0;width:100%;padding:12px;border:0;border-radius:16px;background:#f1f5f9;color:#374151;font:800 14px var(--sawa-font,system-ui)", L("ليس الآن", "Not now"));
+    var no = el("button", "margin:8px 0 0;width:100%;padding:12px;border:0;border-radius:16px;background:#f1f5f9;color:#334155;font:800 14px var(--sawa-font,system-ui)", L("ليس الآن", "Not now"));
     go.onclick = function () { close(); roomJoin(code, { mic: mic }); };
     no.onclick = close;
     box.appendChild(go); box.appendChild(no);
@@ -4570,7 +4570,7 @@
     return L("بعد ", "in ") + Math.round(h / 24) + L(" يوم", " days");
   }
   function schedCard(box, go, no, code, m) {
-    var card = el("div", "margin:12px 0 2px;padding:12px;border-radius:16px;background:#EFF6FF;border:1px solid #BFDBFE;text-align:center");
+    var card = el("div", "margin:12px 0 2px;padding:12px;border-radius:16px;background:#F0F7FF;border:1px solid #C5D5F5;text-align:center");
     card.appendChild(el("div", "font:800 15px var(--sawa-font,system-ui);color:#1E3A8A", "📅 " + schedWhen(m.sched)));
     var left = el("div", "font:700 12px var(--sawa-font,system-ui);color:#2563EB;margin-top:3px", schedLeft(m.sched)); card.appendChild(left);
     var st = el("div", "font:700 12px var(--sawa-font,system-ui);color:#6B7280;margin-top:6px", "…"); card.appendChild(st);

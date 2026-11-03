@@ -278,8 +278,8 @@
   // C130: صورة الحساب — اختيار المصدر + محرّر قصّ دائريّ (سحب · تكبير بإصبعين أو بالشريط · تدوير)
   // ==================================================================
   var AV_PRESETS = [["🌙", "#1E3A63", "#2774BA"], ["🌿", "#065f46", "#16a34a"], ["🌸", "#9d174d", "#f472b6"], ["☀️", "#b45309", "#fbbf24"], ["🕊️", "#334155", "#94a3b8"], ["🌊", "#0f766e", "#22d3ee"],
-    ["⭐", "#4c1d95", "#8b5cf6"], ["🌹", "#7f1d1d", "#ef4444"], ["🌴", "#14532d", "#84cc16"], ["☕", "#451a03", "#a16207"], ["📚", "#1e293b", "#3b82f6"], ["⚽", "#064e3b", "#10b981"],
-    ["🐪", "#78350f", "#f59e0b"], ["🦅", "#1c1917", "#78716c"], ["🌾", "#713f12", "#eab308"], ["💙", "#1e3a8a", "#60a5fa"]];
+    ["⭐", "#4a148c", "#8b5cf6"], ["🌹", "#7f1d1d", "#ef4444"], ["🌴", "#14532d", "#84cc16"], ["☕", "#451a03", "#a16207"], ["📚", "#1e293b", "#3b82f6"], ["⚽", "#064e3b", "#10b981"],
+    ["🐪", "#78350f", "#f59e0b"], ["🦅", "#1c1917", "#78716c"], ["🌾", "#7a431e", "#fbbf24"], ["💙", "#1e3a8a", "#60a5fa"]];
   function presetAvatar(x) {
     var c = document.createElement("canvas"); c.width = c.height = 160; var g = c.getContext("2d");
     var gr = g.createLinearGradient(0, 0, 160, 160); gr.addColorStop(0, x[2]); gr.addColorStop(1, x[1]); g.fillStyle = gr; g.fillRect(0, 0, 160, 160);
@@ -306,7 +306,7 @@
       var row = document.createElement("div"); row.style.cssText = "display:grid;grid-template-columns:repeat(" + (NB() && NB().albumsOk ? 4 : 3) + ",1fr);gap:8px";
       var src = function (ic, label, fn) {
         var b = document.createElement("button"); b.type = "button";
-        b.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;color:#1A1A2E;font:700 12.5px var(--sawa-font,system-ui)";
+        b.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;border:1px solid #e2e8f0;border-radius:14px;background:#f5f7fa;color:#1A1A2E;font:700 12.5px var(--sawa-font,system-ui)";
         var i = document.createElement("span"); i.textContent = ic; i.style.cssText = "font-size:24px"; b.appendChild(i); b.appendChild(document.createTextNode(label));
         b.onclick = fn; row.appendChild(b);
       };
@@ -341,7 +341,7 @@
       return new Promise(function (res) {
         var img = r.img, W = img.naturalWidth, H = img.naturalHeight, rot = 0;
         var ov = document.createElement("div"); ov.dir = isAr() ? "rtl" : "ltr";
-        ov.style.cssText = "position:fixed;inset:0;z-index:2147483006;background:#0b1220;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--sawa-font,system-ui);color:#fff;touch-action:none;user-select:none";
+        ov.style.cssText = "position:fixed;inset:0;z-index:2147483006;background:#111827;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--sawa-font,system-ui);color:#fff;touch-action:none;user-select:none";
         var tip = document.createElement("div"); tip.textContent = L("اسحب الصورة لتحريكها · كبّرها بإصبعين أو بالشريط", "Drag to move · pinch or use the slider to zoom");
         tip.style.cssText = "font:600 13px var(--sawa-font,system-ui);color:#cbd5e1;margin-bottom:14px;text-align:center;padding:0 16px";
         var S = Math.min(300, Math.round(Math.min(innerWidth, innerHeight) * 0.78));
@@ -485,7 +485,7 @@
     if (typeof hint === "string" && hint) { var hh = document.createElement("div"); hh.textContent = hint; hh.style.cssText = "font:700 13px var(--sawa-font,system-ui);color:#2e7d5b;text-align:center;margin:2px 0 4px"; box.appendChild(hh); }
     // C25: الصورة — تظهر لجهات اتّصالك في المحادثات والمكالمات
     var pr = document.createElement("div"); pr.style.cssText = "display:flex;align-items:center;gap:12px;margin:8px 0 2px";
-    var pv = document.createElement("div"); pv.style.cssText = "width:64px;height:64px;border-radius:50%;background:#CFE5F7 center/cover no-repeat;display:flex;align-items:center;justify-content:center;font:800 26px var(--sawa-font,system-ui);color:#1d5f9e;flex-shrink:0;overflow:hidden";
+    var pv = document.createElement("div"); pv.style.cssText = "width:64px;height:64px;border-radius:50%;background:#D3E6F5 center/cover no-repeat;display:flex;align-items:center;justify-content:center;font:800 26px var(--sawa-font,system-ui);color:#1d5f9e;flex-shrink:0;overflow:hidden";
     var curPhoto = photoOf(state.uid), newPhoto;
     var paintPv = function () { var d = newPhoto === undefined ? curPhoto : newPhoto; pv.style.backgroundImage = d ? "url(" + d + ")" : "none"; pv.textContent = d ? "" : ((p.name || p.googleName || "؟").charAt(0)); };
     paintPv();
@@ -504,7 +504,7 @@
     var note = document.createElement("div");
     if (p.phone && p.phoneVerified) {
       note.textContent = L("✓ رقمك موثَّق — يستطيع معارفك إيجادك به. تغييره يُلغي التوثيق.", "✓ Your number is verified — people can find you by it. Changing it removes verification.");
-      note.style.cssText = "font:600 12.5px var(--sawa-font,system-ui);color:#187854;background:#e8f5ee;border-radius:10px;padding:8px 10px;margin-top:8px;line-height:1.6";
+      note.style.cssText = "font:600 12.5px var(--sawa-font,system-ui);color:#187854;background:#e6f5ec;border-radius:10px;padding:8px 10px;margin-top:8px;line-height:1.6";
     } else {
       note.textContent = L("غير موثَّق: يظهر لجهات اتّصالك فقط ولا يُبحث عنك به. وثّقه عبر واتساب في ثوانٍ من «حسابي».", "Unverified: shown to your contacts only; nobody can find you by it. Verify it via WhatsApp from «Me».");
       note.style.cssText = "font:500 12px var(--sawa-font,system-ui);color:#8a6d00;background:#fff7e0;border-radius:10px;padding:8px 10px;margin-top:8px;line-height:1.6";
@@ -880,12 +880,12 @@
       var nm = (b && b.name) || (contact ? L("مستخدم سوا", "Sawa user") : L("مجموعة", "Group"));
       var av = avatar(nm, 64); av.style.margin = "4px auto 8px"; body.appendChild(av);
       body.appendChild(mk("div", "font:800 18px var(--sawa-font,system-ui)", nm));
-      if (!contact && b && b.count) body.appendChild(mk("div", "font:600 12.5px var(--sawa-font,system-ui);color:#8796a5;margin-top:2px", L(b.count + " عضو", b.count + " members")));
+      if (!contact && b && b.count) body.appendChild(mk("div", "font:600 12.5px var(--sawa-font,system-ui);color:#8a93a0;margin-top:2px", L(b.count + " عضو", b.count + " members")));
       body.appendChild(note(contact
         ? L("فتحت رابطاً شخصيّاً. إن أضفته صار جهة اتّصال: يرى أنّك متّصل وآخر ظهورك، ويستطيع مراسلتك والاتّصال بك. أضِف من تعرفه فقط.",
             "You opened a personal link. Adding them lets them see when you're online and message or call you. Only add people you know.")
         : L("عند الانضمام يرى أعضاء المجموعة اسمك، ويصلك ما يُكتب فيها. انضمّ إلى المجموعات التي تعرف أصحابها فقط.",
-            "Members will see your name and you'll get the group's messages. Only join groups you trust."), "#5b6b7c", "#f5f8fb"));
+            "Members will see your name and you'll get the group's messages. Only join groups you trust."), "#5b6b7c", "#f5f7fa"));
       var row = mk("div", "display:flex;gap:8px;margin-top:10px");
       var ok = mkBtn(contact ? L("أضِفه", "Add") : L("انضمّ", "Join"), "primary"), no = mkBtn(L("إلغاء", "Cancel"));
       ok.className = "sawa-link-ok";
@@ -2127,7 +2127,7 @@
     };
     if (action) return run(action);
     var s = sheet(name);
-    s.box.appendChild(note((m.fileSize ? Math.max(1, Math.round(m.fileSize / 1024)) + " KB · " : "") + (mime || ""), "#8796a5"));
+    s.box.appendChild(note((m.fileSize ? Math.max(1, Math.round(m.fileSize / 1024)) + " KB · " : "") + (mime || ""), "#8a93a0"));
     // C130: «فتح» على كلّ الأجهزة (كان المتصفّح والآيفون يحفظان فقط) · الآيفون: «حفظ» = ورقة المشاركة ومنها «حفظ في الملفّات»
     var opts = [["open", L("📂 فتح", "📂 Open")]];
     if (IOSB()) opts.push(["share", L("📤 حفظ أو مشاركة", "📤 Save or share")]);
@@ -2143,7 +2143,7 @@
   // C90: القصص (الاستوري) — لجهات اتّصالي · نصّ/صورة/فيديو (≤٣٠ ث) · ٢٤ ساعة · «شاهدها» · الردّ في الخاصّة · الإخفاء عن أشخاص
   //   Firestore: stories/{u} {name, aud[], hide[], items[]} (يكتبه الخادم) · stories/{u}/media/{mid}+c/{i} (يرفعها صاحبها)
   // ==================================================================
-  var ST_BG = [["#2774BA", "#1E3A63"], ["#16a34a", "#065f46"], ["#e11d48", "#7f1d1d"], ["#7c3aed", "#312e81"], ["#f59e0b", "#b45309"], ["#0ea5e9", "#0f766e"], ["#334155", "#0f172a"], ["#db2777", "#6b21a8"]];
+  var ST_BG = [["#2774BA", "#1E3A63"], ["#16a34a", "#065f46"], ["#e11d48", "#7f1d1d"], ["#7c3aed", "#1a237e"], ["#f59e0b", "#b45309"], ["#0ea5e9", "#0f766e"], ["#334155", "#111827"], ["#db2777", "#6a1b9a"]];
   var stState = { mine: null, others: {}, unsub: [] }, stSeen = lsGet("sawa_story_seen", {}), stUrls = {};
   function stItemsLive(items) { var now = Date.now(); return (items || []).filter(function (x) { return x && x.id && (x.exp || 0) > now; }).sort(function (a, b) { return a.ts - b.ts; }); }
   function stEmit() { try { global.dispatchEvent(new CustomEvent("sawa-stories")); } catch (e) {} }
@@ -2305,7 +2305,7 @@
   function moTheme(c) {
     c = c || {};
     return { bg: c.bg || "#F5F7FA", card: c.card || "#fff", text: c.text || "#1A1A2E", muted: c.textMuted || "#6B7280", border: c.border || "#E2E8F0",
-      primary: c.primary || "#2774BA", pl: c.primaryLight || "#E3F0FB", danger: c.danger || "#EF4444", accent: c.accent || "#F59E0B" };
+      primary: c.primary || "#2774BA", pl: c.primaryLight || "#E3F2FD", danger: c.danger || "#EF4444", accent: c.accent || "#F59E0B" };
   }
   function moAv(uid, name, size, T) {
     var ph = uid ? photoOf(uid) : null, a = mk("div", "width:" + size + "px;height:" + size + "px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font:800 " + Math.round(size * 0.42) + "px var(--sawa-font,system-ui);background:" + T.pl + " center/cover no-repeat;color:" + T.primary);
@@ -2515,7 +2515,7 @@
     }
     box.appendChild(layer);
     var pin = mk("div", "position:absolute;left:50%;top:50%;transform:translate(-50%,-100%);font-size:30px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))", "📍"); box.appendChild(pin);
-    box.appendChild(mk("div", "position:absolute;bottom:2px;right:4px;font:500 9px var(--sawa-font,system-ui);color:#374151;background:rgba(255,255,255,.75);padding:0 3px;border-radius:3px", "© OpenStreetMap"));
+    box.appendChild(mk("div", "position:absolute;bottom:2px;right:4px;font:500 9px var(--sawa-font,system-ui);color:#334155;background:rgba(255,255,255,.75);padding:0 3px;border-radius:3px", "© OpenStreetMap"));
     return box;
   }
   function moLocCard(loc, T) {
@@ -2571,8 +2571,8 @@
   function moSettings() {
     var s = sheet(L("إعدادات اللحظات", "Moments settings"));
     var row = function (ic, title, desc, fn) {
-      var r = mk("button", "display:flex;align-items:center;gap:12px;width:100%;padding:12px 4px;border:0;border-top:1px solid #eef1f4;background:transparent;text-align:start;font-family:var(--sawa-font,system-ui);color:#1A1A2E");
-      r.appendChild(mk("div", "width:40px;height:40px;border-radius:12px;background:#eef5fc;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0", ic));
+      var r = mk("button", "display:flex;align-items:center;gap:12px;width:100%;padding:12px 4px;border:0;border-top:1px solid #edeff2;background:transparent;text-align:start;font-family:var(--sawa-font,system-ui);color:#1A1A2E");
+      r.appendChild(mk("div", "width:40px;height:40px;border-radius:12px;background:#f0f7ff;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0", ic));
       var t = mk("div", "flex:1"); t.appendChild(mk("div", "font:800 14.5px var(--sawa-font,system-ui)", title)); t.appendChild(mk("div", "font:500 12px var(--sawa-font,system-ui);color:#6b7280;margin-top:2px", desc)); r.appendChild(t);
       r.onclick = fn; s.box.appendChild(r);
     };
@@ -2595,14 +2595,14 @@
     var s = sheet(L("من يرى هذه اللحظة", "Who can see this"));
     s.box.appendChild(note("👥 " + moAudLabel(p.mode) + " — " + Math.max(0, (p.aud || []).length - 1) + L(" شخصاً", " people")));
     (p.aud || []).filter(function (u) { return u !== state.uid; }).slice(0, 200).forEach(function (u) {
-      var r = mk("div", "display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid #eef1f4");
+      var r = mk("div", "display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid #edeff2");
       r.appendChild(moAv(u, moName(u), 34, moTheme())); r.appendChild(mk("div", "font:700 14px var(--sawa-font,system-ui)", moName(u))); s.box.appendChild(r);
     });
   }
   function moLikers(p) {
     var sum = moRxSum(p), rx = p.rx || {}, s = sheet(sum.map(function (x) { return x[0] + " " + x[1]; }).join("   ") || "❤️ 0");
     (p.likes || []).slice(0, 300).forEach(function (u) {
-      var r = mk("div", "display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid #eef1f4");
+      var r = mk("div", "display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid #edeff2");
       r.appendChild(moAv(u, moName(u), 34, moTheme())); r.appendChild(mk("div", "flex:1;font:700 14px var(--sawa-font,system-ui)", moName(u))); r.appendChild(mk("div", "font-size:20px", rx[u] || "❤️")); s.box.appendChild(r);
     });
   }
@@ -2719,7 +2719,7 @@
       sh.ov.style.zIndex = "2147483006";
       var q = mk("div", "display:grid;grid-template-columns:repeat(10,1fr);gap:0;direction:" + (isAr() ? "rtl" : "ltr") + ";padding:2px 0 8px");
       MO_RX.forEach(function (e) {
-        var b = mk("button", "min-width:0;height:40px;border:0;border-radius:12px;background:" + (my === e ? "#E3F0FB" : "transparent") + ";font-size:22px;padding:0", e);
+        var b = mk("button", "min-width:0;height:40px;border:0;border-radius:12px;background:" + (my === e ? "#E3F2FD" : "transparent") + ";font-size:22px;padding:0", e);
         b.setAttribute("aria-label", moRxName(e)); b.onclick = function () { sh.close(); cReact(c, my === e ? null : e); }; q.appendChild(b);
       });
       sh.box.appendChild(q);
@@ -2823,7 +2823,7 @@
       lst.innerHTML = ""; var v = q.value.trim().toLowerCase();
       if (!people.length) lst.appendChild(note(L("لا جهات اتّصال بعد.", "No contacts yet.")));
       people.filter(function (c) { return !v || String(c.name || "").toLowerCase().indexOf(v) >= 0; }).forEach(function (c) {
-        var r = mk("button", "display:flex;align-items:center;gap:10px;width:100%;padding:8px 2px;border:0;border-top:1px solid #eef1f4;background:transparent;text-align:start;font-family:var(--sawa-font,system-ui);color:#1A1A2E");
+        var r = mk("button", "display:flex;align-items:center;gap:10px;width:100%;padding:8px 2px;border:0;border-top:1px solid #edeff2;background:transparent;text-align:start;font-family:var(--sawa-font,system-ui);color:#1A1A2E");
         r.appendChild(moAv(c.uid, c.name, 36, moTheme())); r.appendChild(mk("div", "flex:1;font:700 14px var(--sawa-font,system-ui)", c.name));
         r.appendChild(mk("div", "font-size:20px", sel[c.uid] ? "☑️" : "⬜"));
         r.onclick = function () { if (sel[c.uid]) delete sel[c.uid]; else sel[c.uid] = 1; paint(); }; lst.appendChild(r);
@@ -2837,8 +2837,8 @@
     var s = sheet(L("من يرى لحظتك؟", "Who can see your moment?")); s.ov.style.zIndex = "2147483005";
     var opt = function (ic, title, desc, val, extra) {
       var on = cur.mode === val.mode && (val.mode !== "chat" || cur.cid === val.cid) && (val.mode !== "custom" || cur.label === val.label);
-      var r = mk("button", "display:flex;align-items:center;gap:12px;width:100%;padding:11px 4px;border:0;border-top:1px solid #eef1f4;background:transparent;text-align:start;font-family:var(--sawa-font,system-ui);color:#1A1A2E");
-      r.appendChild(mk("div", "width:40px;height:40px;border-radius:12px;background:#eef5fc;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0", ic));
+      var r = mk("button", "display:flex;align-items:center;gap:12px;width:100%;padding:11px 4px;border:0;border-top:1px solid #edeff2;background:transparent;text-align:start;font-family:var(--sawa-font,system-ui);color:#1A1A2E");
+      r.appendChild(mk("div", "width:40px;height:40px;border-radius:12px;background:#f0f7ff;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0", ic));
       var t = mk("div", "flex:1;min-width:0"); t.appendChild(mk("div", "font:800 14.5px var(--sawa-font,system-ui)", title)); if (desc) t.appendChild(mk("div", "font:500 12px var(--sawa-font,system-ui);color:#6b7280;margin-top:2px", desc)); r.appendChild(t);
       r.appendChild(mk("div", "font-size:18px;color:#2774BA", on ? "●" : "○"));
       r.onclick = function () { if (extra) extra(); else { s.close(); cb(val); } }; s.box.appendChild(r);
@@ -2880,7 +2880,7 @@
     var st = document.createElement("style"); st.id = "mo-css";
     st.textContent = "@keyframes moPop{from{transform:scale(.3) translateY(10px);opacity:0}to{transform:scale(1);opacity:1}}" +
       "@keyframes moHeart{0%{transform:translate(-50%,-50%) scale(0);opacity:0}15%{transform:translate(-50%,-50%) scale(1.25);opacity:1}30%{transform:translate(-50%,-50%) scale(.95)}45%,75%{transform:translate(-50%,-50%) scale(1);opacity:1}100%{transform:translate(-50%,-50%) scale(1.5);opacity:0}}" +
-      "@keyframes moFlash{0%,40%{background:#FFF3C4}100%{background:transparent}}";
+      "@keyframes moFlash{0%,40%{background:#FEF3C7}100%{background:transparent}}";
     document.head.appendChild(st);
   }
   function moSeen() { var a = 0; try { a = Number(localStorage.getItem(MO_SEEN_KEY) || 0); } catch (e) {} return Math.max(a, (mo.prefs && mo.prefs.seen) || 0); }
@@ -2994,7 +2994,7 @@
     var bar = mk("div", "position:fixed;display:grid;grid-template-columns:repeat(5,58px);gap:0;padding:8px;border-radius:22px;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.22);direction:" + (isAr() ? "rtl" : "ltr") + ";left:" +
       Math.max(8, Math.min(global.innerWidth - 8 - W, r.left + r.width / 2 - W / 2)) + "px;top:" + Math.max(8, top) + "px");
     MO_RX.forEach(function (e, i) {
-      var b = mk("button", "display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:58px;height:62px;border:0;border-radius:16px;background:" + (cur === e ? "#E3F0FB" : "transparent") + ";padding:0;animation:moPop .22s " + (i * 0.025) + "s both;font-family:var(--sawa-font,system-ui)");
+      var b = mk("button", "display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:58px;height:62px;border:0;border-radius:16px;background:" + (cur === e ? "#E3F2FD" : "transparent") + ";padding:0;animation:moPop .22s " + (i * 0.025) + "s both;font-family:var(--sawa-font,system-ui)");
       b.appendChild(mk("span", "font-size:28px;line-height:1", e)); b.appendChild(mk("span", "font:700 10px var(--sawa-font,system-ui);color:#475569;white-space:nowrap", moRxName(e)));
       b.setAttribute("aria-label", moRxName(e));
       b.onclick = function (ev) { ev.stopPropagation(); ov.remove(); cb(cur === e ? null : e); }; bar.appendChild(b);
@@ -3084,7 +3084,7 @@
     if (!mo.notes.length) s.box.appendChild(moEmpty(T, "🔔", L("لا إشعارات بعد", "No notifications yet"), L("حين يتفاعل أحدٌ مع لحظاتك، أو يردّ عليك، أو يشير إليك بـ@، يظهر ذلك هنا.", "Reactions, replies and @mentions show up here.")));
     mo.notes.slice(0, 50).forEach(function (n) {
       var unread = (n.ts || 0) > seen, nm = moName(n.from, n.name), tx = moNoteText(n);
-      var r = mk("button", "display:flex;align-items:flex-start;gap:10px;width:100%;padding:10px 8px;border:0;border-radius:14px;margin-top:2px;background:" + (unread ? "#EEF5FC" : "transparent") + ";text-align:start;font-family:var(--sawa-font,system-ui);color:#1A1A2E");
+      var r = mk("button", "display:flex;align-items:flex-start;gap:10px;width:100%;padding:10px 8px;border:0;border-radius:14px;margin-top:2px;background:" + (unread ? "#F0F7FF" : "transparent") + ";text-align:start;font-family:var(--sawa-font,system-ui);color:#1A1A2E");
       r.setAttribute("data-note", n.k || "");
       r.appendChild(moAv(n.from, nm, 42, T));
       var t = mk("div", "flex:1;min-width:0");
@@ -3477,8 +3477,8 @@
       rows.sort(function (a, b) { return b.ts - a.ts; });
       if (!rows.length) box.appendChild(note(L("لم يشاهدها أحدٌ بعد", "No views yet")));
       rows.forEach(function (v) {
-        var r = mk("div", "display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid #eef2f6");
-        r.appendChild(avatar(stName(v.by), 36)); r.appendChild(mk("div", "flex:1;font:700 14px var(--sawa-font,system-ui)", stName(v.by))); r.appendChild(mk("div", "font:600 12px var(--sawa-font,system-ui);color:#8796a5", stAgo(v.ts)));
+        var r = mk("div", "display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid #f1f5f9");
+        r.appendChild(avatar(stName(v.by), 36)); r.appendChild(mk("div", "flex:1;font:700 14px var(--sawa-font,system-ui)", stName(v.by))); r.appendChild(mk("div", "font:600 12px var(--sawa-font,system-ui);color:#8a93a0", stAgo(v.ts)));
         box.appendChild(r);
       });
     }).catch(function () { box.innerHTML = ""; box.appendChild(note(L("تعذّر التحميل", "Couldn't load"))); });
@@ -3495,7 +3495,7 @@
       list.innerHTML = ""; var v = q.value.trim().toLowerCase();
       state.people.map(function (p) { return { uid: p.uid, name: displayName(p) }; }).sort(function (a, b) { return a.name.localeCompare(b.name, "ar"); })
         .filter(function (p) { return !v || p.name.toLowerCase().indexOf(v) >= 0; }).forEach(function (p) {
-          var r = mk("button", "width:100%;display:flex;align-items:center;gap:10px;padding:9px 2px;border:0;border-bottom:1px solid #eef2f6;background:transparent;text-align:" + (isAr() ? "right" : "left"));
+          var r = mk("button", "width:100%;display:flex;align-items:center;gap:10px;padding:9px 2px;border:0;border-bottom:1px solid #f1f5f9;background:transparent;text-align:" + (isAr() ? "right" : "left"));
           r.appendChild(avatar(p.name, 36)); r.appendChild(mk("span", "flex:1;font:700 14px var(--sawa-font,system-ui);color:#1A1A2E", p.name));
           r.appendChild(mk("span", "font:800 12px var(--sawa-font,system-ui);color:" + (hide[p.uid] ? "#b42318" : "#2e7d5b"), hide[p.uid] ? L("مخفيّة عنه", "hidden") : L("يراها ✓", "sees ✓")));
           r.onclick = function () { if (hide[p.uid]) delete hide[p.uid]; else hide[p.uid] = 1; paint(); };
@@ -3533,7 +3533,7 @@
     files = files.filter(function (f) { return f.size <= MAX_MEDIA - 64; });
     var text = String(data.text || "").trim();
     var s = sheet(L("مشاركة إلى سوا", "Share to Sawa"));
-    var pv = mk("div", "background:#f5f8fb;border-radius:12px;padding:10px;margin:2px 0 8px;font:600 12.5px/1.6 var(--sawa-font,system-ui);color:#1f2d3d;max-height:110px;overflow:auto;white-space:pre-wrap;word-break:break-word");
+    var pv = mk("div", "background:#f5f7fa;border-radius:12px;padding:10px;margin:2px 0 8px;font:600 12.5px/1.6 var(--sawa-font,system-ui);color:#1e293b;max-height:110px;overflow:auto;white-space:pre-wrap;word-break:break-word");
     var lines = [];
     files.forEach(function (f) { lines.push((kindOfMime(f.mime) === "image" ? "🖼️ " : kindOfMime(f.mime) === "video" ? "🎬 " : "📎 ") + f.name + " · " + Math.max(1, Math.round(f.size / 1024)) + " KB"); });
     if (text) lines.push(text);
@@ -3558,7 +3558,7 @@
       list.innerHTML = "";
       var v = q.value.trim().toLowerCase();
       rows.filter(function (r) { return !v || String(r.name || "").toLowerCase().indexOf(v) >= 0; }).slice(0, 200).forEach(function (r) {
-        var b = mk("button", "width:100%;display:flex;align-items:center;gap:10px;padding:9px 4px;border:0;border-bottom:1px solid #eef2f6;background:" + (picked[r.key] ? "#eef6ff" : "transparent") + ";text-align:" + (isAr() ? "right" : "left"));
+        var b = mk("button", "width:100%;display:flex;align-items:center;gap:10px;padding:9px 4px;border:0;border-bottom:1px solid #f1f5f9;background:" + (picked[r.key] ? "#f0f7ff" : "transparent") + ";text-align:" + (isAr() ? "right" : "left"));
         b.appendChild(avatar(r.type === "saved" ? "★" : r.name, 38));
         b.appendChild(mk("span", "flex:1;font:700 14px var(--sawa-font,system-ui);color:#1A1A2E;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", (r.type === "group" || r.type === "family" ? "👥 " : "") + (r.name || "")));
         b.appendChild(mk("span", "font-size:18px", picked[r.key] ? "☑️" : "◻️"));
@@ -3825,13 +3825,13 @@
   function bannerShell() {
     var el = document.createElement("div");
     el.dir = isAr() ? "rtl" : "ltr"; el.id = "sawa-push-card";
-    el.style.cssText = "position:fixed;left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:2147483640;background:#1f2d3a;color:#fff;border-radius:16px;padding:12px 14px;font:600 13px/1.6 var(--sawa-font,system-ui);box-shadow:0 8px 24px rgba(0,0,0,.35);display:flex;gap:10px;align-items:center;max-width:520px;margin:0 auto";
+    el.style.cssText = "position:fixed;left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:2147483640;background:#262b33;color:#fff;border-radius:16px;padding:12px 14px;font:600 13px/1.6 var(--sawa-font,system-ui);box-shadow:0 8px 24px rgba(0,0,0,.35);display:flex;gap:10px;align-items:center;max-width:520px;margin:0 auto";
     return el;
   }
   function btn(text, primary) {
     var b = document.createElement("button"); b.textContent = text;
     b.style.cssText = primary ? "background:#2e7d5b;color:#fff;border:0;border-radius:10px;padding:8px 12px;font:700 13px var(--sawa-font,system-ui);white-space:nowrap"
-                              : "background:transparent;color:#cfd8dc;border:0;padding:8px 6px;font:600 12px var(--sawa-font,system-ui);white-space:nowrap";
+                              : "background:transparent;color:#cbd5e1;border:0;padding:8px 6px;font:600 12px var(--sawa-font,system-ui);white-space:nowrap";
     return b;
   }
   function maybeBanner(st) {
@@ -3855,7 +3855,7 @@
   // C56: ورقة «فحص الإشعارات»: الإذن · الدعم · تسجيل الجهاز · أجهزتي على الخادم · إشعار تجريبيّ حقيقيّ · إعادة التسجيل · إرشادات أندرويد
   function pushCheckSheet() {
     var s = sheet(L("🔔 فحص الإشعارات والمكالمات في الخلفية", "🔔 Notifications & background calls check"));
-    var row = function (k, v, good) { var r = mk("div", "display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f6;font:600 13px var(--sawa-font,system-ui)"); r.appendChild(mk("span", "color:#5b6b7c", k)); r.appendChild(mk("span", "color:" + (good === true ? "#2e7d5b" : good === false ? "#b42318" : "#1A1A2E") + ";text-align:" + (isAr() ? "left" : "right"), v)); return r; };
+    var row = function (k, v, good) { var r = mk("div", "display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #f1f5f9;font:600 13px var(--sawa-font,system-ui)"); r.appendChild(mk("span", "color:#5b6b7c", k)); r.appendChild(mk("span", "color:" + (good === true ? "#2e7d5b" : good === false ? "#b42318" : "#1A1A2E") + ";text-align:" + (isAr() ? "left" : "right"), v)); return r; };
     var st = pushState(), sup = pushSupported(), reg = lsGet("sawa_push", {}), sa = isStandalone();
     var box = s.box;
     var nbp = ""; try { nbp = NB() ? NB().platform() : ""; } catch (e) {}
@@ -3868,15 +3868,15 @@
     var srv = row(L("أجهزتك عند الخادم", "Devices on server"), "…"); box.appendChild(srv);
     // C82: في تطبيق أندرويد — إعدادات الهاتف التي تقرّر وصول المكالمات والتطبيق مغلق، مع زرّ إصلاحٍ لكلٍّ منها
     if (NB() && NB().bgStatus) {
-      var phone = mk("div", "margin:14px 0 4px;padding:12px;border-radius:14px;background:#f6f8fb"); box.appendChild(phone);
+      var phone = mk("div", "margin:14px 0 4px;padding:12px;border-radius:14px;background:#f5f7fa"); box.appendChild(phone);
       var drawPhone = function () {
         var bs = {}; try { bs = JSON.parse(NB().bgStatus()) || {}; } catch (e) {}
         phone.innerHTML = "";
         phone.appendChild(mk("div", "font:800 13.5px var(--sawa-font,system-ui);margin-bottom:6px", L("📱 إعدادات الهاتف (للمكالمات والتطبيق مغلق)", "📱 Phone settings (for calls when closed)")));
         var item = function (label, okv, kind, hint) {
-          var r = mk("div", "display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #e8edf3");
-          var tx = mk("div", "flex:1;font:600 12.5px var(--sawa-font,system-ui);color:#1f2d3d", (okv === null ? "🔧 " : okv ? "✅ " : "⚠️ ") + label);
-          if (hint && !okv) tx.appendChild(mk("div", "font:500 12px var(--sawa-font,system-ui);color:#8796a5;margin-top:2px", hint));
+          var r = mk("div", "display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #e2e5e9");
+          var tx = mk("div", "flex:1;font:600 12.5px var(--sawa-font,system-ui);color:#1e293b", (okv === null ? "🔧 " : okv ? "✅ " : "⚠️ ") + label);
+          if (hint && !okv) tx.appendChild(mk("div", "font:500 12px var(--sawa-font,system-ui);color:#8a93a0;margin-top:2px", hint));
           r.appendChild(tx);
           if (kind) { var b = mkBtn(okv === false ? L("إصلاح", "Fix") : L("فتح", "Open"), okv === false ? "primary" : ""); b.style.cssText += ";width:auto;padding:6px 12px;margin:0;font-size:12px"; b.onclick = function () { try { NB().openSetting(kind); } catch (e) {} }; r.appendChild(b); }
           phone.appendChild(r);
@@ -3893,12 +3893,12 @@
         var lp = bs.lastPush || null;
         phone.appendChild(note(lp && lp.ts
           ? L("📥 آخر إشعار وصل هذا الهاتف: ", "📥 Last push received: ") + timeAgo(lp.ts) + " (" + (lp.t || "?") + (lp.fg ? L(" · والتطبيق مفتوح", " · app open") : L(" · والتطبيق مغلق ✓", " · app closed ✓")) + ")" + (lp.shown === false ? L(" — لكنّ الهاتف منع عرضه ✗", " — but the phone blocked showing it ✗") : "")
-          : L("📥 لم يصل هذا الهاتفَ أيّ إشعار منذ تثبيت هذه النسخة.", "📥 No push has reached this phone since this version was installed."), lp && lp.ts ? "#2e7d5b" : "#b45309", lp && lp.ts ? "#eaf6ef" : "#fff7e6"));
+          : L("📥 لم يصل هذا الهاتفَ أيّ إشعار منذ تثبيت هذه النسخة.", "📥 No push has reached this phone since this version was installed."), lp && lp.ts ? "#2e7d5b" : "#b45309", lp && lp.ts ? "#e6f5ec" : "#fff3e0"));
         var lr = bs.lastRing || null;   // C85: آخر مكالمة واردة — كيف عُرضت
         if (lr && lr.ts) {
           var mtx = { callstyle: L("شاشة مكالمة ✓", "call screen ✓"), plain: L("إشعار رنين (بلا شاشة كاملة)", "ringing notification"), message: L("إشعار عاديّ فقط", "plain notification only"), none: L("لم يُعرض ✗", "not shown ✗") }[lr.mode] || lr.mode;
           var good = lr.mode === "callstyle";
-          phone.appendChild(note(L("📞 آخر مكالمة وصلت الهاتف: ", "📞 Last incoming call: ") + timeAgo(lr.ts) + " — " + mtx + (lr.fsi === false ? L(" · «إشعارات ملء الشاشة» غير مسموحة", " · full-screen not allowed") : "") + (lr.err ? " · " + lr.err : ""), good ? "#2e7d5b" : "#b45309", good ? "#eaf6ef" : "#fff7e6"));
+          phone.appendChild(note(L("📞 آخر مكالمة وصلت الهاتف: ", "📞 Last incoming call: ") + timeAgo(lr.ts) + " — " + mtx + (lr.fsi === false ? L(" · «إشعارات ملء الشاشة» غير مسموحة", " · full-screen not allowed") : "") + (lr.err ? " · " + lr.err : ""), good ? "#2e7d5b" : "#b45309", good ? "#e6f5ec" : "#fff3e0"));
         }
       };
       drawPhone();
@@ -3945,7 +3945,7 @@
       var mine = list.some(function (r) { return r.tail === myTail; });
       out.appendChild(note(mine ? L("📱 هذا الهاتف مسجّلٌ عند الخادم ✓ (…" + myTail.slice(-4) + ")", "📱 This phone is registered on the server ✓")
                               : L("📱 رمز هذا الهاتف ليس بين أجهزتك عند الخادم ✗ — لذلك لا تصله الإشعارات. اضغط «إعادة تسجيل هذا الجهاز».", "📱 This phone's token isn't on the server ✗ — tap Re-register."),
-                          mine ? "#2e7d5b" : "#b42318", mine ? "#eaf6ef" : "#fdecec"));
+                          mine ? "#2e7d5b" : "#b42318", mine ? "#e6f5ec" : "#fdecec"));
     };
     function runTest(label) {
       test.disabled = true; test.textContent = L("جارٍ الإرسال…", "Sending…"); out.innerHTML = "";
@@ -3954,7 +3954,7 @@
         if (!b.devices) { out.appendChild(note(L("لا جهاز مسجّلاً عند الخادم — اضغط «إعادة تسجيل هذا الجهاز».", "No device registered on the server — tap Re-register."), "#b42318", "#fdecec")); return; }
         markMine(b.results);
         (b.results || []).forEach(function (r) {
-          out.appendChild(note((r.ok ? "✓ " : "✗ ") + (myTail && r.tail === myTail ? L("📱 هذا الهاتف · ", "📱 this phone · ") : "") + (r.ua || L("جهاز", "device")) + " · " + timeAgo(r.ts || 0) + (r.ok ? L(" — أرسله الخادم. إن لم يظهر خلال ١٠ ثوانٍ فالمشكلة في إعدادات الهاتف (انظر أدناه).", " — sent by the server. If nothing shows in 10 s, the phone's settings block it (see below).") : r.err === "gone" ? L(" — رمزٌ ميّت (حُذف) — أعد التسجيل.", " — dead token (removed) — re-register.") : " — " + r.err), r.ok ? "#2e7d5b" : "#b42318", r.ok ? "#eaf6ef" : "#fdecec"));
+          out.appendChild(note((r.ok ? "✓ " : "✗ ") + (myTail && r.tail === myTail ? L("📱 هذا الهاتف · ", "📱 this phone · ") : "") + (r.ua || L("جهاز", "device")) + " · " + timeAgo(r.ts || 0) + (r.ok ? L(" — أرسله الخادم. إن لم يظهر خلال ١٠ ثوانٍ فالمشكلة في إعدادات الهاتف (انظر أدناه).", " — sent by the server. If nothing shows in 10 s, the phone's settings block it (see below).") : r.err === "gone" ? L(" — رمزٌ ميّت (حُذف) — أعد التسجيل.", " — dead token (removed) — re-register.") : " — " + r.err), r.ok ? "#2e7d5b" : "#b42318", r.ok ? "#e6f5ec" : "#fdecec"));
         });
       }).catch(function (e) { out.appendChild(note(L("تعذّر الاختبار: ", "Test failed: ") + ((e && e.message) || e), "#b42318", "#fdecec")); })
         .then(function () { test.disabled = false; test.textContent = L("أرسل إشعاراً تجريبيّاً الآن", "Send a test notification now"); });
@@ -4048,7 +4048,7 @@
   function updateSheet() {
     var s = sheet(L("🔄 تحديث التطبيق", "🔄 App update"));
     var box = s.box;
-    var row = function (k, v, good) { var r = mk("div", "display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f6;font:600 13px var(--sawa-font,system-ui)"); r.appendChild(mk("span", "color:#5b6b7c", k)); r.appendChild(mk("span", "color:" + (good === false ? "#b45309" : good ? "#2e7d5b" : "#1f2d3d") + ";text-align:end", v)); return r; };
+    var row = function (k, v, good) { var r = mk("div", "display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #f1f5f9;font:600 13px var(--sawa-font,system-ui)"); r.appendChild(mk("span", "color:#5b6b7c", k)); r.appendChild(mk("span", "color:" + (good === false ? "#b45309" : good ? "#2e7d5b" : "#1e293b") + ";text-align:end", v)); return r; };
     var body = mk("div"); box.appendChild(body);
     var draw = function () {
       body.innerHTML = "";
@@ -4063,7 +4063,7 @@
         : upd.err === "missing" ? L("⚠️ ملفّ sw.js غير موجود على الخادم باسمه الصحيح — تأكّد أنّه مرفوعٌ باسم sw.js تماماً في جذر Sawa-app.", "⚠️ sw.js isn't on the server under that exact name.")
         : upd.err === "net" ? L("⚠️ تعذّر الاتّصال بالخادم — تحقّق من الإنترنت ثمّ أعد الفحص.", "⚠️ Couldn't reach the server.")
         : upd.err ? L("⚠️ تعذّرت قراءة رقم النسخة من الخادم.", "⚠️ Couldn't read the server version.")
-        : upd.local ? L("✓ لديك أحدث نسخة.", "✓ You're up to date.") : upd.checkedAt ? L("نسخة الخادم " + String(upd.server || "").replace("sawa-", "") + " — اضغط «تحديث الآن» لتثبيتها.", "Tap Update now to install.") : L("جارٍ الفحص…", "Checking…"), upd.available ? "#8a5a00" : upd.err ? "#b42318" : "#2e7d5b", upd.available ? "#fff6e5" : upd.err ? "#fdecec" : "#eaf7f0"));
+        : upd.local ? L("✓ لديك أحدث نسخة.", "✓ You're up to date.") : upd.checkedAt ? L("نسخة الخادم " + String(upd.server || "").replace("sawa-", "") + " — اضغط «تحديث الآن» لتثبيتها.", "Tap Update now to install.") : L("جارٍ الفحص…", "Checking…"), upd.available ? "#8a5a00" : upd.err ? "#b42318" : "#2e7d5b", upd.available ? "#fff3e0" : upd.err ? "#fdecec" : "#e6f5ec"));
       // C139: ما سجّله عامل الخدمة عن آخر محاولة تحديث — ملفٌّ مقطوع أو ليس النسخة المطلوبة على الخادم
       var us = upd.swStatus;
       if (us && (us.ok === false || (us.mism && us.mism.length))) {
@@ -4098,7 +4098,7 @@
       upEl = bannerShell(); upEl.style.bottom = ""; upEl.style.top = "calc(10px + env(safe-area-inset-top,0px))"; upEl.style.background = "#2774BA";
       var txt = document.createElement("div"); txt.style.flex = "1"; txt.textContent = L("✨ نسخةٌ جديدة من سوا جاهزة", "✨ A new version of Sawa is ready");
       var yes = btn(L("تحديث", "Update"), true); yes.style.background = "#fff"; yes.style.color = "#2774BA";
-      var no = btn(L("لاحقاً", "Later")); no.style.color = "#e3f0fb";
+      var no = btn(L("لاحقاً", "Later")); no.style.color = "#e3f2fd";
       // C83: إن لم يتبدّل عامل الخدمة بعد (التحديث لم يُنزَّل) فإعادة التحميل لا تكفي ⇒ تحديثٌ قسريّ
       yes.onclick = function () { if (upd.available && navigator.serviceWorker && !reloading) { forceUpdate(); return; } if (inCall() && !global.confirm(L("ستنتهي المكالمة الحاليّة. تحديث الآن؟", "This will end the current call. Update now?"))) return; reload(); };
       no.onclick = function () { if (upd.server) lsSet("sawa_upd_dismissed", upd.server); try { upEl.remove(); } catch (e) {} upEl = null; };
@@ -4220,7 +4220,7 @@
     var ov = mk("div", "position:fixed;inset:0;z-index:2147483002;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;font-family:var(--sawa-font,system-ui)");
     ov.dir = isAr() ? "rtl" : "ltr";
     var box = mk("div", "background:#fff;color:#1A1A2E;border-radius:20px 20px 0 0;width:100%;max-width:480px;max-height:92vh;overflow-y:auto;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 18px);box-sizing:border-box");
-    box.appendChild(mk("div", "width:40px;height:4px;border-radius:2px;background:#dde3ea;margin:0 auto 12px"));
+    box.appendChild(mk("div", "width:40px;height:4px;border-radius:2px;background:#dfe5ec;margin:0 auto 12px"));
     if (title) box.appendChild(mk("div", "font:800 17px var(--sawa-font,system-ui);text-align:center;margin-bottom:6px", title));
     ov.appendChild(box); document.body.appendChild(ov);
     var api = { ov: ov, box: box, close: function () { try { ov.remove(); } catch (e) {} } };
@@ -4230,7 +4230,7 @@
   function note(text, color, bg) { return mk("div", "font:500 12.5px/1.7 var(--sawa-font,system-ui);color:" + (color || "#5b6b7c") + ";" + (bg ? "background:" + bg + ";border-radius:10px;padding:8px 10px;" : "") + "margin:6px 0", text); }
   function avatar(name, size) {
     size = size || 52;
-    return mk("div", "width:" + size + "px;height:" + size + "px;border-radius:50%;background:#e3effa;color:#2774BA;display:flex;align-items:center;justify-content:center;font:800 " + Math.round(size * 0.42) + "px var(--sawa-font,system-ui);flex-shrink:0", (name || "؟").trim().charAt(0) || "؟");
+    return mk("div", "width:" + size + "px;height:" + size + "px;border-radius:50%;background:#e3f2fd;color:#2774BA;display:flex;align-items:center;justify-content:center;font:800 " + Math.round(size * 0.42) + "px var(--sawa-font,system-ui);flex-shrink:0", (name || "؟").trim().charAt(0) || "؟");
   }
   function copyText(t) {
     var done = function () { toast(L("نُسخ ✓", "Copied ✓")); };
@@ -4243,7 +4243,7 @@
     copyText(t);
   }
   function codeBig(c) {
-    var el = mk("div", "font:800 30px/1.3 ui-monospace,Menlo,monospace;letter-spacing:2px;text-align:center;direction:ltr;color:#1A1A2E;background:#f3f7fb;border-radius:16px;padding:14px 8px;margin:8px 0", c ? fmtCode(c) : "… … …");
+    var el = mk("div", "font:800 30px/1.3 ui-monospace,Menlo,monospace;letter-spacing:2px;text-align:center;direction:ltr;color:#1A1A2E;background:#f1f5f9;border-radius:16px;padding:14px 8px;margin:8px 0", c ? fmtCode(c) : "… … …");
     el.className = "sawa-code-big";
     return el;
   }
@@ -4299,13 +4299,13 @@
     list.forEach(function (r) { famReqsSeen[r.groupId + "~" + r.personId] = 1; });
     var s = sheet(L("هل هذا أنت؟", "Is this you?"));
     var oc = s.close; s.close = function () { famSheetOpen = false; oc(); };
-    s.box.appendChild(note(L("قريبٌ لك ربطك بشخصٍ في شجرة عائلته. إن وافقت: تنضمّ إليها مشاهداً، وتظهر القرابات منك، ويراسلك أقاربك ويتّصلون بك منها.", "A relative linked you to someone in their family tree. If you accept you join it as a viewer, relations show from you, and relatives can message or call you from it."), "#5b6b7b"));
+    s.box.appendChild(note(L("قريبٌ لك ربطك بشخصٍ في شجرة عائلته. إن وافقت: تنضمّ إليها مشاهداً، وتظهر القرابات منك، ويراسلك أقاربك ويتّصلون بك منها.", "A relative linked you to someone in their family tree. If you accept you join it as a viewer, relations show from you, and relatives can message or call you from it."), "#5b6b7c"));
     var rest = list.length;
     list.forEach(function (r) {
-      var card = mk("div", "border:1px solid #e6ebf0;border-radius:14px;padding:12px;margin:8px 0");
+      var card = mk("div", "border:1px solid #e2e5e9;border-radius:14px;padding:12px;margin:8px 0");
       card.appendChild(mk("div", "font:800 15px/1.7 var(--sawa-font,system-ui)", (r.byName || L("قريبك", "A relative")) + L(" يقول إنك «", " says you are «") + (r.personName || "") + L("» في شجرة «", "» in the «") + (r.groupName || "") + "»"));
       var acts = mk("div", "display:flex;gap:8px;margin-top:10px");
-      var done = function (msg) { card.innerHTML = ""; card.appendChild(note(msg, "#0F7A55")); if (--rest <= 0) setTimeout(function () { s.close(); }, 1400); };
+      var done = function (msg) { card.innerHTML = ""; card.appendChild(note(msg, "#187854")); if (--rest <= 0) setTimeout(function () { s.close(); }, 1400); };
       var yes = mkBtn(L("نعم، هذا أنا", "Yes, that's me"), "primary"), no = mkBtn(L("لا", "No"), "");
       yes.onclick = function () {
         yes.disabled = no.disabled = true; yes.textContent = "…";
@@ -4329,14 +4329,14 @@
     var list = mk("div", "margin-top:6px"); s.box.appendChild(list);
     list.appendChild(note(L("جارٍ التحميل…", "Loading…")));
     function row(r, incoming) {
-      var card = mk("div", "border:1px solid #e6ebf0;border-radius:14px;padding:12px;margin:8px 0");
+      var card = mk("div", "border:1px solid #e2e5e9;border-radius:14px;padding:12px;margin:8px 0");
       var top = mk("div", "display:flex;gap:10px;align-items:center");
       top.appendChild(avatar(r.name, 42));
       var info = mk("div", "flex:1;min-width:0");
       info.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis", r.name || L("مستخدم سوا", "Sawa user")));
-      info.appendChild(mk("div", "font:500 12px var(--sawa-font,system-ui);color:#8796a5;direction:ltr;text-align:" + (isAr() ? "right" : "left"), (r.code ? fmtCode(r.code) + " · " : "") + timeAgo(r.ts)));
+      info.appendChild(mk("div", "font:500 12px var(--sawa-font,system-ui);color:#8a93a0;direction:ltr;text-align:" + (isAr() ? "right" : "left"), (r.code ? fmtCode(r.code) + " · " : "") + timeAgo(r.ts)));
       top.appendChild(info); card.appendChild(top);
-      if (incoming && r.text) card.appendChild(mk("div", "font:500 14px/1.7 var(--sawa-font,system-ui);background:#f5f8fb;border-radius:10px;padding:8px 10px;margin-top:8px;white-space:pre-wrap;word-break:break-word", r.text));
+      if (incoming && r.text) card.appendChild(mk("div", "font:500 14px/1.7 var(--sawa-font,system-ui);background:#f5f7fa;border-radius:10px;padding:8px 10px;margin-top:8px;white-space:pre-wrap;word-break:break-word", r.text));
       var acts = mk("div", "display:flex;gap:8px;margin-top:10px");
       function act(label, kind, fn) { var b = mkBtn(label, kind); b.style.padding = "9px 8px"; b.style.fontSize = "13px"; b.onclick = function () { b.disabled = true; b.textContent = "…"; fn(); }; acts.appendChild(b); }
       if (incoming) {
@@ -4344,7 +4344,7 @@
         act(L("رفض", "Decline"), "", function () { respond(r.uid, "reject").then(draw); });
         act(L("حظر", "Block"), "danger", function () { respond(r.uid, "block").then(draw); });
       } else {
-        acts.appendChild(mk("div", "flex:2;align-self:center;font:600 12px var(--sawa-font,system-ui);color:#8796a5", L("بانتظار موافقته…", "Waiting for them to accept…")));
+        acts.appendChild(mk("div", "flex:2;align-self:center;font:600 12px var(--sawa-font,system-ui);color:#8a93a0", L("بانتظار موافقته…", "Waiting for them to accept…")));
         act(L("إلغاء الطلب", "Cancel"), "", function () {
           call("code.cancel", { to: r.uid }).then(function () { reqs.outgoing = reqs.outgoing.filter(function (x) { return x.uid !== r.uid; }); draw(); })
             .catch(function (e) { toast(codeErr(e)); draw(); });
@@ -4355,7 +4355,7 @@
     }
     // C44: بطاقة «هل هذا رقم فلان؟»
     function vouchRow(r) {
-      var card = mk("div", "border:1.5px solid #bfe0d2;background:#f3faf6;border-radius:14px;padding:12px;margin:8px 0");
+      var card = mk("div", "border:1.5px solid #cfe9dd;background:#e6f5ec;border-radius:14px;padding:12px;margin:8px 0");
       var top = mk("div", "display:flex;gap:10px;align-items:center");
       top.appendChild(avatar(r.name, 42));
       var info = mk("div", "flex:1;min-width:0");
@@ -4363,7 +4363,7 @@
       info.appendChild(mk("div", "font:700 14px var(--sawa-font,system-ui);color:#187854;direction:ltr;text-align:" + (isAr() ? "right" : "left"), r.phone || ""));
       top.appendChild(info); card.appendChild(top);
       card.appendChild(mk("div", "font:600 13px/1.6 var(--sawa-font,system-ui);margin-top:8px", L("يطلب تأكيد أنّ هذا رقمه. هل هو رقمه الذي تعرفه؟", "Asks you to confirm this is their number. Is it the number you know?")));
-      var st = mk("div", "font:600 12px var(--sawa-font,system-ui);min-height:16px;margin-top:4px;color:#8796a5"); card.appendChild(st);
+      var st = mk("div", "font:600 12px var(--sawa-font,system-ui);min-height:16px;margin-top:4px;color:#8a93a0"); card.appendChild(st);
       var acts = mk("div", "display:flex;gap:8px;margin-top:8px;flex-wrap:wrap");
       function act(label, kind, fn) { var b = mkBtn(label, kind); b.style.padding = "9px 8px"; b.style.fontSize = "13px"; b.style.flex = "1"; b.onclick = function () { b.disabled = true; b.textContent = "…"; fn(b, label); }; acts.appendChild(b); return b; }
       function answer(ok, matched) {
@@ -4451,7 +4451,7 @@
       var d = codeDigits(inp.value).slice(0, 10), f = fmtCode(d);
       if (inp.value !== f) inp.value = f;
       var ok = d.length === 10 && codeValid(d);
-      hint.style.color = d.length === 10 && !ok ? "#b42318" : "#8796a5";
+      hint.style.color = d.length === 10 && !ok ? "#b42318" : "#8a93a0";
       hint.textContent = d.length < 10 ? (d.length ? L("بقي " + (10 - d.length) + " أرقام", (10 - d.length) + " digits left") : "")
         : ok ? "✓" : L("الرمز غير صحيح — تأكّد من الأرقام", "Invalid code — check the digits");
       go.disabled = !ok; go.style.opacity = ok ? "1" : ".5";
@@ -4461,11 +4461,11 @@
     inp.onkeydown = function (e) { if (e.key === "Enter" && !go.disabled) go.onclick(); };
     function card(b) {
       res.innerHTML = "";
-      var c = mk("div", "border:1px solid #e6ebf0;border-radius:16px;padding:14px;text-align:center");
+      var c = mk("div", "border:1px solid #e2e5e9;border-radius:16px;padding:14px;text-align:center");
       if (!b.found) { c.appendChild(note(L("لا يوجد حسابٌ بهذا الرمز. ربّما غيّر صاحبه رمزه أو أخفاه — اطلب منه رمزه الحاليّ.", "No account with this code. It may have been changed or hidden."), "#8a5a00")); res.appendChild(c); return; }
       var a = avatar(b.name, 64); a.style.margin = "0 auto 8px"; c.appendChild(a);
       c.appendChild(mk("div", "font:800 18px var(--sawa-font,system-ui)", b.name || L("مستخدم سوا", "Sawa user")));
-      c.appendChild(mk("div", "font:600 12px var(--sawa-font,system-ui);color:#8796a5;direction:ltr;margin:2px 0 10px", b.code ? fmtCode(b.code) : ""));
+      c.appendChild(mk("div", "font:600 12px var(--sawa-font,system-ui);color:#8a93a0;direction:ltr;margin:2px 0 10px", b.code ? fmtCode(b.code) : ""));
       if (b.self) { c.appendChild(note(L("هذا رمزك أنت 🙂", "That's your own code 🙂"))); res.appendChild(c); return; }
       if (b.contact) {
         c.appendChild(note(L("جهة اتّصالك ✓", "Already a contact ✓") + (nickOf(b.uid) ? " · " + L("محفوظ عندك باسم «", "saved as «") + nickOf(b.uid) + "»" : ""), "#2e7d5b"));
@@ -4490,7 +4490,7 @@
         c.appendChild(acc); res.appendChild(c); return;
       }
       if (b.pending === "out") {
-        c.appendChild(note(L("أرسلتَ له طلباً — بانتظار موافقته.", "Request sent — waiting for them."), "#8796a5"));
+        c.appendChild(note(L("أرسلتَ له طلباً — بانتظار موافقته.", "Request sent — waiting for them."), "#8a93a0"));
         var cn = mkBtn(L("إلغاء الطلب", "Cancel request"));
         cn.onclick = function () { cn.disabled = true; call("code.cancel", { to: b.uid }).then(function () { toast(L("أُلغي الطلب", "Cancelled")); s.close(); }, function (e) { toast(codeErr(e)); cn.disabled = false; }); };
         c.appendChild(cn); res.appendChild(c); return;
@@ -4557,14 +4557,14 @@
         state.waReady = wa;
         body.innerHTML = "";
         body.appendChild(mk("div", "font:600 13px var(--sawa-font,system-ui);color:#5b6b7c;direction:ltr;text-align:center;margin:2px 0 8px", p.phone));
-        if (st.phoneVerified) { state.me = Object.assign({}, state.me || {}, { phoneVerified: true, verifiedBy: st.verifiedBy || "whatsapp" }); publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} body.appendChild(note(L("رقمك موثَّق ✓", "Verified ✓"), "#187854", "#e8f5ee")); return; }
+        if (st.phoneVerified) { state.me = Object.assign({}, state.me || {}, { phoneVerified: true, verifiedBy: st.verifiedBy || "whatsapp" }); publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} body.appendChild(note(L("رقمك موثَّق ✓", "Verified ✓"), "#187854", "#e6f5ec")); return; }
         // ١) عبر المعارف
-        var c1 = mk("div", "border:1px solid #e6ebf0;border-radius:16px;padding:12px;margin:8px 0");
+        var c1 = mk("div", "border:1px solid #e2e5e9;border-radius:16px;padding:12px;margin:8px 0");
         c1.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui)", L("👥 عبر معارفك", "👥 Through people you know")));
         c1.appendChild(note(L("اطلب من اثنين من جهات اتّصالك (بحساب Google أو بريدٍ مؤكَّد) أن يؤكّدا أنّ هذا رقمك. بلا رسائل ولا تكلفة.", "Ask two of your contacts (with a Google or confirmed-email account) to confirm this is your number. No messages, no cost.")));
         var n = st.vouches || 0, need = st.needed || 2;
         var bar = mk("div", "display:flex;align-items:center;gap:8px;margin:6px 0");
-        for (var i = 0; i < need; i++) bar.appendChild(mk("div", "flex:1;height:8px;border-radius:4px;background:" + (i < n ? "#187854" : "#e6ebf0")));
+        for (var i = 0; i < need; i++) bar.appendChild(mk("div", "flex:1;height:8px;border-radius:4px;background:" + (i < n ? "#187854" : "#e2e5e9")));
         bar.appendChild(mk("div", "font:800 12px var(--sawa-font,system-ui);color:#5b6b7c;white-space:nowrap", n + " / " + need));
         c1.appendChild(bar);
         if (st.vouchers && st.vouchers.length) c1.appendChild(note(L("أكّد: ", "Confirmed by: ") + st.vouchers.filter(Boolean).join("، "), "#187854"));
@@ -4572,7 +4572,7 @@
         ask.onclick = function () { pickVouchers(function () { home(); }); };
         body.appendChild(c1);
         // ٢) عبر واتساب
-        var c2 = mk("div", "border:1px solid #e6ebf0;border-radius:16px;padding:12px;margin:8px 0");
+        var c2 = mk("div", "border:1px solid #e2e5e9;border-radius:16px;padding:12px;margin:8px 0");
         c2.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui)", L("💬 عبر واتساب", "💬 Via WhatsApp")));
         if (wa) { c2.appendChild(note(L("ترسل رمزاً قصيراً إلى رقم سوا على واتساب فيُوثَّق رقمك فوراً.", "Send a short code to Sawa's WhatsApp and your number is verified instantly."))); var g2 = mkBtn(L("ابدأ — افتح واتساب", "Start — open WhatsApp")); g2.onclick = intro; c2.appendChild(g2); }
         else c2.appendChild(note(L("قيد التجهيز — سيُفعَّل قريباً.", "Coming soon."), "#8a6d00", "#fff7e0"));
@@ -4587,7 +4587,7 @@
       s2.box.appendChild(note(L("اختر حتى ٥ أشخاص يعرفون رقمك. يصلهم طلبٌ بسيط: «هل هذا رقم فلان؟».", "Pick up to 5 people who know your number. They get a simple question: “Is this their number?”.")));
       var chosen = {}, list = mk("div", "max-height:50vh;overflow-y:auto;margin:6px 0");
       ppl.slice(0, 200).forEach(function (x) {
-        var row = mk("button", "width:100%;display:flex;align-items:center;gap:10px;padding:8px 6px;border:0;border-bottom:1px solid #eef2f6;background:transparent;text-align:start;font:600 14px var(--sawa-font,system-ui);color:#1A1A2E");
+        var row = mk("button", "width:100%;display:flex;align-items:center;gap:10px;padding:8px 6px;border:0;border-bottom:1px solid #f1f5f9;background:transparent;text-align:start;font:600 14px var(--sawa-font,system-ui);color:#1A1A2E");
         var cb = mk("span", "width:22px;height:22px;border-radius:7px;border:2px solid #cbd5e1;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:none");
         row.appendChild(cb); row.appendChild(avatar(x.name, 34)); row.appendChild(mk("span", "flex:1", x.name || L("مستخدم سوا", "Sawa user")));
         row.onclick = function () { if (chosen[x.uid]) delete chosen[x.uid]; else { if (Object.keys(chosen).length >= 5) { toast(L("خمسة كحدٍّ أقصى", "Five at most")); return; } chosen[x.uid] = 1; } cb.textContent = chosen[x.uid] ? "✓" : ""; cb.style.background = chosen[x.uid] ? "#187854" : "transparent"; cb.style.color = "#fff"; cb.style.borderColor = chosen[x.uid] ? "#187854" : "#cbd5e1"; snd.disabled = !Object.keys(chosen).length; };
@@ -4624,7 +4624,7 @@
       var codeEl = mk("div", "font:800 26px ui-monospace,Menlo,monospace;letter-spacing:3px;text-align:center;direction:ltr;background:#f1f5f9;border-radius:14px;padding:12px;margin:8px 0", "SAWA-" + r.code);
       body.appendChild(codeEl);
       var open = mkBtn(L("📲 افتح واتساب وأرسل الرمز", "📲 Open WhatsApp and send the code"), "primary"); body.appendChild(open);
-      var st = note(L("بانتظار رسالتك…", "Waiting for your message…"), "#8796a5"); st.style.textAlign = "center"; body.appendChild(st);
+      var st = note(L("بانتظار رسالتك…", "Waiting for your message…"), "#8a93a0"); st.style.textAlign = "center"; body.appendChild(st);
       var cp = mkBtn(L("نسخ الرمز (إن لم يفتح واتساب)", "Copy the code (if WhatsApp didn't open)")); body.appendChild(cp);
       cp.onclick = function () { copyText("SAWA-" + r.code); toast(L("نُسخ — أرسله إلى واتساب سوا", "Copied — send it to Sawa's WhatsApp")); };
       open.onclick = function () { try { global.open(r.link, "_blank"); } catch (e) { global.location.href = r.link; } };
@@ -4665,7 +4665,7 @@
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
     var s = sheet(L("📱 جهات اتّصال الهاتف", "📱 Phone contacts"));
     s.box.appendChild(note(L("أرسل لأصدقائك رسالة نصّيّة فيها رمزك في سوا ورابط التطبيق. جهاتك تُقرأ على هذا الهاتف فقط — لا تُرفع إلى سوا ولا تُحفظ.",
-      "Text your friends your Sawa code and link. Contacts are read on this phone only — never uploaded or stored."), "#5b6b7c", "#f5f8fb"));
+      "Text your friends your Sawa code and link. Contacts are read on this phone only — never uploaded or stored."), "#5b6b7c", "#f5f7fa"));
     var code = null, body = function () { return smsText(code || myCode() || ""); };
     var top = mk("div", "display:flex;gap:8px;margin:8px 0");
     var shr = mkBtn(L("واتساب وغيره", "WhatsApp & more"), "primary"), man = mkBtn(L("رقمٌ آخر", "Another number"));
@@ -4681,11 +4681,11 @@
       var list = all.filter(function (c) { return !qq || (c.n || "").toLowerCase().indexOf(qq) >= 0 || (qd && c.p.replace(/\D/g, "").indexOf(qd) >= 0); });
       if (!list.length) { area.appendChild(note(qq ? L("لا نتائج", "No results") : L("لا أرقام في جهات هاتفك", "No numbers in your contacts"))); return; }
       list.slice(0, 300).forEach(function (c) {
-        var r = mk("div", "display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid #eef2f6");
+        var r = mk("div", "display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid #f1f5f9");
         r.appendChild(avatar(c.n || "#", 38));
         var tx = mk("div", "flex:1;min-width:0");
         tx.appendChild(mk("div", "font:800 14px var(--sawa-font,system-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis", c.n || c.p));
-        tx.appendChild(mk("div", "font:600 12px var(--sawa-font,system-ui);color:#8796a5;direction:ltr;text-align:" + (isAr() ? "right" : "left"), c.p));
+        tx.appendChild(mk("div", "font:600 12px var(--sawa-font,system-ui);color:#8a93a0;direction:ltr;text-align:" + (isAr() ? "right" : "left"), c.p));
         r.appendChild(tx);
         var b = mkBtn(L("رسالة نصّيّة", "Text"), "primary"); b.style.cssText += ";width:auto;padding:8px 12px;font-size:12.5px";
         b.onclick = function () { openSms(c.p, body()); };
@@ -4706,7 +4706,7 @@
           if (r.ok) return showList(r.list || []);
           area.innerHTML = "";
           area.appendChild(note(r.never ? L("إذن جهات الاتّصال مرفوض. افتحه من «معلومات التطبيق» ← «الأذونات» ← «جهات الاتّصال».", "Contacts permission is blocked — allow it in App info → Permissions.")
-                                        : L("لم يُسمح بقراءة جهات الهاتف. يمكنك «واتساب وغيره» أو «رقمٌ آخر».", "Contacts not allowed. Use «WhatsApp & more» or «Another number»."), "#b45309", "#fff7e6"));
+                                        : L("لم يُسمح بقراءة جهات الهاتف. يمكنك «واتساب وغيره» أو «رقمٌ آخر».", "Contacts not allowed. Use «WhatsApp & more» or «Another number»."), "#b45309", "#fff3e0"));
           var again = mkBtn(r.never ? L("فتح إعدادات التطبيق", "Open app settings") : L("السماح بقراءة جهات الهاتف", "Allow contacts"), "primary");
           again.onclick = function () { if (r.never) { try { NB().openSetting("app"); } catch (e) {} } else load(); };
           area.appendChild(again);
@@ -4740,7 +4740,7 @@
     row2.appendChild(inS); row2.appendChild(sms); s.box.appendChild(row2);
     var qrBtn = mkBtn(L("عرض رمز QR", "Show QR"), "ghost"); s.box.appendChild(qrBtn);
     var qr = mk("div", "display:none;justify-content:center;margin:8px 0"); var qrIn = mk("div", "background:#fff;padding:8px;border-radius:12px"); qr.appendChild(qrIn); s.box.appendChild(qr);
-    var sep = mk("div", "height:1px;background:#eef1f4;margin:12px 0"); s.box.appendChild(sep);
+    var sep = mk("div", "height:1px;background:#edeff2;margin:12px 0"); s.box.appendChild(sep);
     var tg = mk("label", "display:flex;align-items:center;gap:10px;font:700 14px var(--sawa-font,system-ui);padding:6px 2px;cursor:pointer");
     var cb = mk("input"); cb.type = "checkbox"; cb.style.cssText = "width:20px;height:20px";
     tg.appendChild(cb); tg.appendChild(mk("span", "flex:1", L("يجدني الآخرون برمزي", "People can find me by my code"))); s.box.appendChild(tg);
@@ -4802,7 +4802,7 @@
   // يبني نموذج البريد داخل حاوية؛ onDone يُستدعى بعد النجاح
   function emailForm(host, onDone) {
     var mode = "create";
-    var tabs = mk("div", "display:flex;background:#eef2f6;border-radius:12px;padding:3px;margin:6px 0 10px");
+    var tabs = mk("div", "display:flex;background:#f1f5f9;border-radius:12px;padding:3px;margin:6px 0 10px");
     function tab(m, t) { var b = mk("button", "flex:1;border:0;border-radius:10px;padding:9px;font:800 13px var(--sawa-font,system-ui);cursor:pointer", t); b.onclick = function () { mode = m; paint(); }; tabs.appendChild(b); return b; }
     var tCreate = tab("create", L("حساب جديد", "New account")), tSign = tab("signin", L("لديّ حساب", "I have an account"));
     host.appendChild(tabs);
@@ -4850,7 +4850,7 @@
     if (a && !a.anon && a.uid) { toast(L("حسابك مربوطٌ سلفاً", "Already linked") + (a.email ? " — " + a.email : "")); return false; }
     var s = sheet(L("اربط حسابك", "Link your account"));
     s.box.appendChild(note(L("حسابك الآن «ضيف» على هذا الهاتف فقط. اربطه بـGoogle أو بالبريد لتدخل به من أيّ جهاز ولا تضيع محادثاتك ورمزك إن غيّرت هاتفك.",
-      "Your account is a guest on this phone only. Link it to Google or email to sign in from any device and keep your chats and code."), "#9a6700", "#fdf3d8"));
+      "Your account is a guest on this phone only. Link it to Google or email to sign in from any device and keep your chats and code."), "#9a6700", "#fff7e0"));
     var gh = mk("div", "display:flex;justify-content:center;min-height:44px;margin:12px 0 8px");
     var g = mkBtn(L("المتابعة بحساب Google", "Continue with Google"), "primary");
     if (IOSB() && IOSB().hasApple) { var ab = appleBtn(false); ab.style.marginTop = "12px"; var ac = ab.onclick; ab.onclick = function () { s.close(); ac(); }; s.box.appendChild(ab); }
@@ -4886,7 +4886,7 @@
     if (opts.z) s.ov.style.zIndex = String(opts.z);
     var pick = null, list = mk("div", "margin:6px 0");
     reasons.forEach(function (r) {
-      var row = mk("label", "display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid #eef1f4;font:600 14px var(--sawa-font,system-ui);cursor:pointer");
+      var row = mk("label", "display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid #edeff2;font:600 14px var(--sawa-font,system-ui);cursor:pointer");
       var rb = mk("input"); rb.type = "radio"; rb.name = "sawa-rep"; rb.style.cssText = "width:18px;height:18px";
       rb.onchange = function () { pick = r[0]; go.disabled = false; go.style.opacity = "1"; };
       row.appendChild(rb); row.appendChild(mk("span", "", r[1])); list.appendChild(row);
@@ -4936,7 +4936,7 @@
           if (!r || !r.admin) { out.appendChild(note(L("للمدير فقط.", "Admins only."), "#b42318")); return; }
           if (!r.key) { out.appendChild(note(L("⚠️ سرّ APNS_P8 غير موجود في الـWorker.", "⚠️ APNS_P8 secret is missing in the Worker."), "#b42318", "#fdecec")); return; }
           if (!(r.devices || []).length) { out.appendChild(note(L("لا جهاز آيفون مسجّلٌ برمز VoIP لحسابك بعد — افتح سوا على الآيفون مرّةً بعد التحديث.", "No iPhone with a VoIP token yet."), "#b45309")); return; }
-          r.devices.forEach(function (d) { out.appendChild(note((d.result === "ok" ? "✓ " : "✗ ") + d.env + " — " + d.result, d.result === "ok" ? "#2e7d5b" : "#b42318", d.result === "ok" ? "#eaf7f0" : "#fdecec")); });
+          r.devices.forEach(function (d) { out.appendChild(note((d.result === "ok" ? "✓ " : "✗ ") + d.env + " — " + d.result, d.result === "ok" ? "#2e7d5b" : "#b42318", d.result === "ok" ? "#e6f5ec" : "#fdecec")); });
         }, function (e) { go.disabled = false; go.textContent = L("أعد الاختبار", "Test again"); out.appendChild(note(codeErr(e), "#b42318")); });
       }, 5000);
     };
@@ -4953,7 +4953,7 @@
         : (it.type === "group" || it.type === "family") ? "👥 " + L("مجموعة", "Group") : "👤 " + L("محادثة أو شخص", "Chat or person");
       c.appendChild(mk("div", "font:800 13.5px var(--sawa-font,system-ui)", kind + " · " + (RS[it.reason] || it.reason || "")));
       c.appendChild(mk("div", "font:600 12px var(--sawa-font,system-ui);color:#6b7280;margin-top:2px", it.by ? L("المُبلِّغ: ", "By: ") + (it.byName || moName(it.by)) + " · " + L("عن: ", "About: ") + (it.target ? moName(it.target) : "—") + " · " + timeAgo(it.ts) : timeAgo(it.ts)));
-      if (it.note) c.appendChild(mk("div", "font:500 13px/1.6 var(--sawa-font,system-ui);margin-top:6px;background:#fff7ed;border-radius:10px;padding:6px 8px", "📝 " + it.note));
+      if (it.note) c.appendChild(mk("div", "font:500 13px/1.6 var(--sawa-font,system-ui);margin-top:6px;background:#fff3e0;border-radius:10px;padding:6px 8px", "📝 " + it.note));
       var smp = (it.sample || []).slice(-8);
       if (smp.length) {
         var sb = mk("div", "margin-top:6px;background:#f1f5f9;border-radius:10px;padding:6px 8px;max-height:160px;overflow:auto");
@@ -5003,7 +5003,7 @@
     function paintRoles() {
       roleRow.innerHTML = "";
       ["viewer", "moderator", "admin"].forEach(function (k) {
-        var b = mk("button", "border:1px solid " + (pick === k ? "#2774BA" : "#dfe5ec") + ";border-radius:999px;padding:7px 12px;font:800 12.5px var(--sawa-font,system-ui);background:" + (pick === k ? "#eaf3fc" : "#fff") + ";color:" + (pick === k ? "#1d5f9a" : "#334155"), RL[k]);
+        var b = mk("button", "border:1px solid " + (pick === k ? "#2774BA" : "#dfe5ec") + ";border-radius:999px;padding:7px 12px;font:800 12.5px var(--sawa-font,system-ui);background:" + (pick === k ? "#e8f1fa" : "#fff") + ";color:" + (pick === k ? "#1d5f9e" : "#334155"), RL[k]);
         b.onclick = function () { pick = k; paintRoles(); }; roleRow.appendChild(b);
       });
       desc.textContent = RD[pick];
@@ -5021,7 +5021,7 @@
       list.appendChild(mk("div", "font:800 13.5px var(--sawa-font,system-ui);margin-bottom:4px", L("الأعضاء", "Members") + " (" + ms.length + ")"));
       if (!ms.length) list.appendChild(mk("div", "font:600 12.5px var(--sawa-font,system-ui);color:#6b7280", L("لا أحد بعد.", "No one yet.")));
       ms.forEach(function (m) {
-        var row = mk("div", "display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px solid #eef2f6");
+        var row = mk("div", "display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px solid #f1f5f9");
         row.appendChild(mk("div", "flex:1;min-width:0;font:700 13px var(--sawa-font,system-ui);direction:ltr;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", m.email));
         var sel = mk("select", "border:1px solid #dfe5ec;border-radius:10px;padding:6px;font:700 12px var(--sawa-font,system-ui);background:#fff");
         ["viewer", "moderator", "admin"].forEach(function (k) { var o = mk("option", "", RL[k]); o.value = k; if (m.role === k) o.selected = true; sel.appendChild(o); });
@@ -5034,7 +5034,7 @@
       var lg = r.log || [];
       if (lg.length) {
         logBox.appendChild(mk("div", "font:800 13.5px var(--sawa-font,system-ui);margin-bottom:4px", L("السجلّ", "Activity")));
-        lg.forEach(function (x) { logBox.appendChild(mk("div", "font:600 12px/1.6 var(--sawa-font,system-ui);color:#475569;padding:4px 0;border-bottom:1px dashed #eef2f6;word-break:break-word",
+        lg.forEach(function (x) { logBox.appendChild(mk("div", "font:600 12px/1.6 var(--sawa-font,system-ui);color:#475569;padding:4px 0;border-bottom:1px dashed #f1f5f9;word-break:break-word",
           timeAgo(x.ts) + " · " + (x.email || "—") + " · " + (OPS[x.op] || x.op) + (x.d ? " — " + x.d : ""))); });
       }
     }
@@ -5067,7 +5067,7 @@
   function signOutSheet() {
     var a = authNow() || {}, me = state.me || {};
     var s = sheet(L("تسجيل الخروج", "Sign out"));
-    s.box.appendChild(note((me.name || L("حسابك", "Your account")) + (a.email ? " · " + a.email : "") + (myCode() ? " · " + codeIso(myCode()) : ""), "#1A1A2E", "#f3f7fb"));
+    s.box.appendChild(note((me.name || L("حسابك", "Your account")) + (a.email ? " · " + a.email : "") + (myCode() ? " · " + codeIso(myCode()) : ""), "#1A1A2E", "#f1f5f9"));
     if (a.anon || !a.uid) {
       s.box.appendChild(note(L("حسابك «ضيف» غير مربوط بـGoogle أو بالبريد — إن خرجت فلن تستطيع العودة إليه أبداً، وتضيع محادثاتك ورمزك.",
         "Your guest account isn't linked to Google or email — signing out loses it forever."), "#b42318", "#fdecec"));
@@ -5093,9 +5093,9 @@
       return true;
     }
     s.box.appendChild(note(L("تخرج من هذا الجهاز فقط: تتوقّف إشعاراته، وتُمسح منه المحادثات المخزّنة والإعدادات. حسابك ورسائلك باقية، وتعود إليها بالدخول من جديد.",
-      "Signs out this device only: notifications stop and local data is cleared. Your account and messages stay."), "#5b6b7c", "#f5f8fb"));
+      "Signs out this device only: notifications stop and local data is cleared. Your account and messages stay."), "#5b6b7c", "#f5f7fa"));
     s.box.appendChild(note(L("شجرة العائلة المحفوظة على هذا الجهاز وحده تُمسح أيضاً — إن لم ترفعها إلى السحابة فصدّرها أوّلاً من «حسابي».",
-      "A family tree kept only on this device is cleared too — export or upload it first."), "#9a6700", "#fdf3d8"));
+      "A family tree kept only on this device is cleared too — export or upload it first."), "#9a6700", "#fff7e0"));
     if (Object.keys(chats).some(function (k) { return e2eOn(chats[k]); })) s.box.appendChild(note(L("🔒 مفاتيح محادثاتك السرّيّة تُمسح من هذا الجهاز — لن تُقرأ رسائلها السابقة بعد الخروج.",
       "🔒 Your secret-chat keys are erased from this device — their earlier messages can't be read after signing out."), "#b42318", "#fdecec"));
     var ok = mkBtn(L("تسجيل الخروج", "Sign out"), "danger"); ok.style.marginTop = "6px";
@@ -5112,8 +5112,8 @@
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
     var s = sheet(L("حذف الحساب نهائيّاً", "Delete account permanently"));
     var a = authNow(), me = state.me || {};
-    s.box.appendChild(note((me.name || L("حسابك", "Your account")) + (a && a.email ? " · " + a.email : "") + (myCode() ? " · " + codeIso(myCode()) : ""), "#1A1A2E", "#f3f7fb"));
-    var ul = mk("ul", "font:500 13.5px/1.9 var(--sawa-font,system-ui);color:#3b4652;padding-inline-start:20px;margin:8px 0");
+    s.box.appendChild(note((me.name || L("حسابك", "Your account")) + (a && a.email ? " · " + a.email : "") + (myCode() ? " · " + codeIso(myCode()) : ""), "#1A1A2E", "#f1f5f9"));
+    var ul = mk("ul", "font:500 13.5px/1.9 var(--sawa-font,system-ui);color:#3d4450;padding-inline-start:20px;margin:8px 0");
     [L("يُحذف: اسمك ورقمك ورمزك في سوا، وجهات اتّصالك وطلبات التواصل، ورسائلك المحفوظة، وإعداداتك، وأجهزتك المسجّلة للإشعارات.", "Deleted: your name, number and code, contacts and requests, saved messages, settings and notification devices."),
      L("تخرج من كلّ المحادثات والمجموعات. رسائلك عند الآخرين تبقى عندهم باسم «حساب محذوف».", "You leave all chats and groups. Messages others received stay with them under «Deleted account»."),
      L("العائلات التي تملكها: تنتقل ملكيّتها لأقدم محرّرٍ فيها، وتُحذف كاملةً إن كنت وحدك فيها (خلال دقائق).", "Families you own pass to their senior editor, or are fully deleted if you're the only member (within minutes)."),
@@ -5188,9 +5188,9 @@
   };
   var ONB_G = '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
   var ONB_CSS = [
-    "#sawa-onb{position:fixed;inset:0;z-index:2147483000;color:#fff;display:flex;flex-direction:column;font-family:var(--sawa-font,system-ui),-apple-system,'Segoe UI',Tahoma,sans-serif;overflow-y:auto;overflow-x:hidden;background:#0f3561;-webkit-tap-highlight-color:transparent}",
+    "#sawa-onb{position:fixed;inset:0;z-index:2147483000;color:#fff;display:flex;flex-direction:column;font-family:var(--sawa-font,system-ui),-apple-system,'Segoe UI',Tahoma,sans-serif;overflow-y:auto;overflow-x:hidden;background:#0f3460;-webkit-tap-highlight-color:transparent}",
     "#sawa-onb *{box-sizing:border-box}",
-    "#sawa-onb .ob-bg{position:fixed;inset:0;pointer-events:none;overflow:hidden;background:radial-gradient(130% 75% at 50% -12%,#4aa3ea 0%,#2a78c0 32%,#185392 62%,#0d3260 100%)}",
+    "#sawa-onb .ob-bg{position:fixed;inset:0;pointer-events:none;overflow:hidden;background:radial-gradient(130% 75% at 50% -12%,#5aa9e6 0%,#2774ba 32%,#2F5C8F 62%,#0f3460 100%)}",
     "#sawa-onb .ob-blob{position:absolute;border-radius:50%;filter:blur(46px);opacity:.5;animation:ob-float 16s ease-in-out infinite}",
     "#sawa-onb .ob-b1{width:300px;height:300px;background:#6cc0ff;top:-90px;inset-inline-start:-110px}",
     "#sawa-onb .ob-b2{width:280px;height:280px;background:#6d72ff;bottom:6%;inset-inline-end:-130px;opacity:.38;animation-delay:-5s}",
@@ -5247,14 +5247,14 @@
     "#sawa-onb .ob-card-h span{width:52px;height:52px;border-radius:18px;display:grid;place-items:center;background:linear-gradient(145deg,#3d93dc,#1d5f9e);color:#fff;box-shadow:0 10px 20px -8px rgba(29,95,158,.7)}",
     "#sawa-onb .ob-card-h svg{width:26px;height:26px}",
     "#sawa-onb .ob-card-h b{font:800 19px var(--sawa-font,system-ui)}",
-    "#sawa-onb .ob-card-h small{font:500 13px/1.6 var(--sawa-font,system-ui);color:#5b6b7b}",
+    "#sawa-onb .ob-card-h small{font:500 13px/1.6 var(--sawa-font,system-ui);color:#5b6b7c}",
     "#sawa-onb .ob-card input:focus{border-color:#2774BA!important;box-shadow:0 0 0 4px rgba(47,128,200,.15)}",
     "#sawa-onb .ob-av{width:104px;height:104px;border-radius:50%;display:grid;place-items:center;font:800 38px var(--sawa-font,system-ui);background:linear-gradient(145deg,#6cc0ff,#2774BA 55%,#1d5f9e);border:3px solid rgba(255,255,255,.85);box-shadow:0 0 0 8px rgba(255,255,255,.08),0 24px 44px -14px rgba(3,20,45,.7);transition:transform .25s}",
     "#sawa-onb .ob-av svg{width:48px;height:48px}",
     "#sawa-onb .ob-av.pop{transform:scale(1.06)}",
     "#sawa-onb .ob-input{width:100%;margin-top:24px;border:2px solid transparent;border-radius:18px;padding:16px;font:700 19px var(--sawa-font,system-ui);text-align:center;outline:none;color:#1A1A2E;background:#fff;caret-color:#2774BA;box-shadow:0 14px 30px -14px rgba(3,20,45,.6);transition:border-color .2s,box-shadow .2s}",
     "#sawa-onb .ob-input:focus{border-color:#9fd2ff;box-shadow:0 0 0 5px rgba(255,255,255,.18),0 14px 30px -14px rgba(3,20,45,.6)}",
-    "#sawa-onb .ob-input::placeholder{color:#9aa7b4;font-weight:600}",
+    "#sawa-onb .ob-input::placeholder{color:#9aa0ab;font-weight:600}",
     "#sawa-onb .ob-err{font:700 13px var(--sawa-font,system-ui);color:#ffd2d2;min-height:20px;margin-top:10px}",
     "#sawa-onb .ob-code{width:100%;margin:24px 0 16px;background:#fff;color:#14508c;border-radius:24px;padding:16px 12px 18px;box-shadow:0 26px 50px -18px rgba(3,20,45,.7)}",
     "#sawa-onb .ob-code small{display:block;font:800 12.5px var(--sawa-font,system-ui);letter-spacing:.6px;color:#6b8db0;margin-bottom:6px}",
@@ -5266,7 +5266,7 @@
     "#sawa-onb .ob-notif img{width:38px;height:38px;border-radius:11px;flex:none}",
     "#sawa-onb .ob-notif b{display:flex;justify-content:space-between;font:800 13px var(--sawa-font,system-ui)}",
     "#sawa-onb .ob-notif b em{font:500 12.5px var(--sawa-font,system-ui);color:#7b8794;font-style:normal}",
-    "#sawa-onb .ob-notif span{display:block;font:500 13px/1.5 var(--sawa-font,system-ui);color:#3c4a57;margin-top:2px}",
+    "#sawa-onb .ob-notif span{display:block;font:500 13px/1.5 var(--sawa-font,system-ui);color:#3d4450;margin-top:2px}",
     "#sawa-onb .ob-opt{width:100%;display:flex;align-items:center;gap:12px;padding:14px;border-radius:18px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.24);color:#fff;text-align:start;cursor:pointer;transition:transform .15s,background .2s;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}",
     "#sawa-onb .ob-opt:active{transform:scale(.98);background:rgba(255,255,255,.18)}",
     "#sawa-onb .ob-opt .ob-fi{width:42px;height:42px;border-radius:14px;background:rgba(255,255,255,.18)}",
@@ -5279,15 +5279,15 @@
     "#sawa-onb .ob-steps,.sawa-inst .ob-steps{display:flex;flex-direction:column;gap:10px;width:100%;max-width:360px;margin:20px auto 0;text-align:start}",
     "#sawa-onb .ob-step{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);animation:ob-in .5s both}",
     "#sawa-onb .ob-step:nth-child(2){animation-delay:.08s}#sawa-onb .ob-step:nth-child(3){animation-delay:.16s}",
-    "#sawa-onb .ob-step .ob-num,.sawa-inst .ob-num{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:800 13px var(--sawa-font,system-ui);background:#fff;color:#1d5fa0}",
+    "#sawa-onb .ob-step .ob-num,.sawa-inst .ob-num{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:800 13px var(--sawa-font,system-ui);background:#fff;color:#1d5f9e}",
     "#sawa-onb .ob-step .ob-fi{flex:none;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:rgba(255,255,255,.16)}",
     "#sawa-onb .ob-step .ob-fi svg,.sawa-inst .ob-step .ob-fi svg{width:20px;height:20px}",
     "#sawa-onb .ob-step span:last-child{font:600 13.5px/1.5 var(--sawa-font,system-ui)}",
     "#sawa-onb .ob-home{display:flex;align-items:center;gap:14px;margin-top:22px;padding:12px 16px;border-radius:22px;background:rgba(255,255,255,.94);color:#1A1A2E;box-shadow:0 20px 40px -16px rgba(3,20,45,.7);animation:ob-drop .7s cubic-bezier(.2,.9,.25,1.2) .3s both}",
     "#sawa-onb .ob-home img{width:52px;height:52px;border-radius:14px;flex:none;box-shadow:0 4px 10px rgba(0,0,0,.18)}",
-    "#sawa-onb .ob-home b{display:block;font:800 14px var(--sawa-font,system-ui)}#sawa-onb .ob-home small{display:block;font:500 12px var(--sawa-font,system-ui);color:#5b6775;margin-top:2px}",
+    "#sawa-onb .ob-home b{display:block;font:800 14px var(--sawa-font,system-ui)}#sawa-onb .ob-home small{display:block;font:500 12px var(--sawa-font,system-ui);color:#5b6b7c;margin-top:2px}",
     ".sawa-inst .ob-step{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:16px;background:#f1f5f9;color:#1e293b;font:600 13.5px/1.5 var(--sawa-font,system-ui)}",
-    ".sawa-inst .ob-step .ob-fi{flex:none;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:#dbeafe;color:#1d5fa0}",
+    ".sawa-inst .ob-step .ob-fi{flex:none;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:#d3e6f5;color:#1d5f9e}",
     // C189: بطل صفحة الترحيب — نقطتان تلتقيان (انظر onbGo "welcome")
     "#sawa-onb .ob-hero{position:relative;width:224px;height:224px;display:grid;place-items:center;margin-bottom:4px}",
     "#sawa-onb .ob-hero svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}",
@@ -5523,7 +5523,7 @@
         if (!state.uid) {
           lsSet("sawa_pending_name", nm); lsSet("sawa_name_asked", Date.now());
           state.me = Object.assign({}, state.me || {}, { name: nm }); publish();
-          err.style.color = "#cfe3ff"; err.textContent = L("سيُحفظ اسمك حين يكتمل الاتّصال بالخادم", "Your name will be saved once connected");
+          err.style.color = "#c5d5f5"; err.textContent = L("سيُحفظ اسمك حين يكتمل الاتّصال بالخادم", "Your name will be saved once connected");
           setTimeout(function () { onbGo("code"); }, 600);
           return;
         }
@@ -5652,7 +5652,7 @@
     var body = mk("div"), foot = mk("div", "display:flex;flex-direction:column;gap:8px;margin-top:16px");
     var close = function () { try { ov.remove(); } catch (e) {} };
     installBody(body, foot, close, false);
-    try { body.querySelector(".ob-h").style.cssText = "font:800 18px var(--sawa-font,system-ui);color:#0f172a"; body.querySelector(".ob-p").style.cssText = "font:500 13.5px/1.7 var(--sawa-font,system-ui);color:#475569;margin-top:6px"; } catch (e) {}
+    try { body.querySelector(".ob-h").style.cssText = "font:800 18px var(--sawa-font,system-ui);color:#111827"; body.querySelector(".ob-p").style.cssText = "font:500 13.5px/1.7 var(--sawa-font,system-ui);color:#475569;margin-top:6px"; } catch (e) {}
     foot.querySelectorAll("button").forEach(function (bt, k) { bt.style.cssText = "border:0;border-radius:14px;padding:13px;font:800 14px var(--sawa-font,system-ui);display:flex;align-items:center;justify-content:center;gap:8px;" + (k === 0 && foot.children.length > 1 ? "background:#2774BA;color:#fff" : "background:#f1f5f9;color:#1e293b"); });
     ov.onclick = function (e) { if (e.target === ov) close(); };
     box.appendChild(body); box.appendChild(foot); ov.appendChild(box); document.body.appendChild(ov);
@@ -6187,7 +6187,7 @@
     var ppl = (state.people || []).filter(function (p) { return p && p.uid && p.uid !== state.uid; });
     if (!ppl.length) { s.box.appendChild(note(L("أضف جهات اتّصال أوّلاً من «جهات الاتّصال».", "Add contacts first."))); return; }
     s.box.appendChild(mk("div", "font:800 13px var(--sawa-font,system-ui);margin:10px 2px 4px", L("اختر شخصاً لمحادثة، أو عدّة أشخاص لمجموعة", "Pick one person for a chat, or several for a group")));
-    var list = mk("div", "max-height:36vh;overflow-y:auto;margin:4px 0;border:1px solid #eef1f4;border-radius:12px"), picked = {};
+    var list = mk("div", "max-height:36vh;overflow-y:auto;margin:4px 0;border:1px solid #edeff2;border-radius:12px"), picked = {};
     var nameIn = mk("input", "width:100%;box-sizing:border-box;border:1.5px solid #dfe5ec;border-radius:12px;padding:11px;font:600 14px var(--sawa-font,system-ui);margin:8px 0 2px;color:#1A1A2E;background:#fff;display:none");
     nameIn.placeholder = L("اسم المجموعة السرّيّة", "Secret group name"); nameIn.maxLength = 80;
     var go = mkBtn("", "primary"); go.style.marginTop = "8px";
@@ -6198,7 +6198,7 @@
       go.textContent = n > 1 ? L("إنشاء مجموعة سرّيّة (" + n + ")", "Create secret group (" + n + ")") : L("بدء محادثة سرّيّة", "Start secret chat");
     }
     ppl.forEach(function (p) {
-      var row = mk("label", "display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #f1f4f7;font:600 14px var(--sawa-font,system-ui);cursor:pointer");
+      var row = mk("label", "display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #f1f5f9;font:600 14px var(--sawa-font,system-ui);cursor:pointer");
       var cb = mk("input"); cb.type = "checkbox"; cb.style.cssText = "width:18px;height:18px";
       cb.onchange = function () { if (cb.checked) picked[p.uid] = 1; else delete picked[p.uid]; paint(); };
       row.appendChild(cb); row.appendChild(mk("span", "", displayName(p))); list.appendChild(row);
@@ -6246,7 +6246,7 @@
       if (!os.length) { body.appendChild(note(L("لم يفعّلها أحدٌ غيرك بعد.", "Nobody else has turned it on yet."))); return; }
       return Promise.all(os.map(function (u) { var k = keys[devs[u]].k; return Promise.all([e2e.safety(me.pub, k), e2e.devIdOf(k)]).then(function (x) { return { u: u, g: x[0], bad: x[1] !== devs[u] }; }); })).then(function (rows) {
         rows.forEach(function (r) {
-          var card = mk("div", "border:1px solid #e6ebf0;border-radius:14px;padding:10px 12px;margin:8px 0");
+          var card = mk("div", "border:1px solid #e2e5e9;border-radius:14px;padding:10px 12px;margin:8px 0");
           card.appendChild(mk("div", "font:800 13.5px var(--sawa-font,system-ui);margin-bottom:8px", L("أنت و", "You and ") + personName(r.u, c)));
           if (r.bad) { card.appendChild(note(L("⚠️ مفتاح هذا الجهاز لا يطابق معرّفه — لا تثق بهذه المحادثة.", "⚠️ This device's key doesn't match its id — don't trust this chat."), "#b42318", "#fdecec")); body.appendChild(card); return; }
           var grid = mk("div", "display:grid;grid-template-columns:repeat(4,1fr);gap:6px 8px;direction:ltr;font:700 15px ui-monospace,SFMono-Regular,Menlo,monospace;color:#14508c;text-align:center;letter-spacing:1px");

@@ -204,7 +204,7 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
             // C226: «محفظة سوا» و«إرسال إكسبريس» بنمط بطاقات «استكشف» نفسه (تدرّج · أيقونةٌ بيضاء في مربّعٍ شفّاف · عنوانٌ كبير)
             //        مع شارة «تجريبيّ · للمشرف والمدير» بدل الإطار المتقطّع
             intlAdm && onOpenWallet && discoverSvcCard({ onPress: onOpenWallet, Icon: Wallet, grad: "linear-gradient(135deg,#059669,#0F766E)", shadow: "rgba(5,150,105,0.28)", title: tl("محفظة سوا", "Sawa Wallet"), sub: tl("الرصيد والتحويل والعملات والبطاقات", "Balance, transfers, currencies and cards") }),
-            intlAdm && onOpenErsal && discoverSvcCard({ onPress: onOpenErsal, Icon: Truck, grad: "linear-gradient(135deg,#EA580C,#B45309)", shadow: "rgba(234,88,12,0.28)", title: tl("إرسال إكسبريس", "Ersal Express"), sub: tl("شحنٌ وتوصيلٌ بين المدن", "Intercity shipping and delivery") }),
+            intlAdm && onOpenErsal && discoverSvcCard({ onPress: onOpenErsal, Icon: Truck, grad: "linear-gradient(135deg,#E65100,#B45309)", shadow: "rgba(234,88,12,0.28)", title: tl("إرسال إكسبريس", "Ersal Express"), sub: tl("شحنٌ وتوصيلٌ بين المدن", "Intercity shipping and delivery") }),
             SHOW_SOON_SERVICES && React.createElement("div", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("alkhdmat")),
             SHOW_SOON_SERVICES && React.createElement("div", { className: "grid grid-cols-2 gap-3" },
                 React.createElement("button", { onClick: soon, "aria-disabled": true, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { position: "relative", opacity: 0.55, backgroundColor: colors.card, borderColor: colors.border, minHeight: 138, justifyContent: "center" } },
@@ -216,13 +216,13 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
                 React.createElement("button", { onClick: soon, "aria-disabled": true, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { position: "relative", opacity: 0.55, backgroundColor: colors.card, borderColor: colors.border, minHeight: 138, justifyContent: "center" } },
                     soonBadge(),
                     React.createElement("div", { className: "w-14 h-14 rounded-xl flex items-center justify-center", style: { backgroundColor: "#F3E5F5" } },
-                        React.createElement(Image, { size: 26, color: "#7B1FA2" })),
+                        React.createElement(Image, { size: 26, color: "#6A1B9A" })),
                     React.createElement("div", { className: "text-xs font-extrabold", style: { color: colors.text } }, t("lhzat_alasdqa")),
                     React.createElement("div", { className: "text-[10px] leading-snug", style: { color: colors.textMuted } }, t("shark_swra_aw_khatra")))),
                 SHOW_SOON_SERVICES && React.createElement("div", { className: "grid grid-cols-2 gap-3 mt-3" },
                     React.createElement("button", { onClick: soon, "aria-disabled": true, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { position: "relative", opacity: 0.55, backgroundColor: colors.card, borderColor: colors.border } },
                     soonBadge(),
-                        React.createElement("div", { className: "w-14 h-14 rounded-xl flex items-center justify-center", style: { backgroundColor: "#E0F2F1" } },
+                        React.createElement("div", { className: "w-14 h-14 rounded-xl flex items-center justify-center", style: { backgroundColor: "#E6F5EC" } },
                             React.createElement(Truck, { size: 26, color: "#00695C" })),
                         React.createElement("div", { className: "text-xs font-extrabold", style: { color: colors.text } }, t("irsal_iksbrys")),
                         React.createElement("div", { className: "text-[10px] leading-snug", style: { color: colors.textMuted } }, t("dsc_irsal_wsf"))),
@@ -1415,7 +1415,7 @@ function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons,
                             React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 flex-wrap` },
                                 React.createElement("span", { className: "font-extrabold text-[14.5px]", style: { color: colors.text } }, p.local_name),
                                 // C106: مربوطٌ بحساب سوا
-                                p.acctUid && React.createElement("span", { title: tl("في سوا", "On Sawa"), className: "text-[10px] font-extrabold rounded-full px-1.5 py-0.5", style: { backgroundColor: "#E3F4EC", color: "#0F7A55" } }, p.acctMe ? tl("أنت", "You") : tl("سوا ✓", "Sawa ✓")),
+                                p.acctUid && React.createElement("span", { title: tl("في سوا", "On Sawa"), className: "text-[10px] font-extrabold rounded-full px-1.5 py-0.5", style: { backgroundColor: "#E3F3EA", color: "#187854" } }, p.acctMe ? tl("أنت", "You") : tl("سوا ✓", "Sawa ✓")),
                                 p.alive && p.proximity && !hasNoProximityPerson(p) && React.createElement(FamChip, { tone: isContactOverdue(p) ? "danger" : "muted", label: t("kl_n_ywm", { n: proximityContactDays[p.proximity] || 30 }) })),
                             React.createElement("div", { className: "text-[12px] mt-0.5", style: { color: colors.textMuted } },
                                 personKinLabel(p),
@@ -2191,7 +2191,7 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
                 const odd = names.filter((nm) => sel.gender === "male" ? looksFemaleName(nm) : sel.gender === "female" ? looksMaleName(nm) : false);
                 if (!odd.length) return null;
                 const other = REL_OPTIONS.find((r) => r.key === sel.key && r.gender !== sel.gender);
-                return React.createElement("p", { className: `text-[11px] font-bold ${textStart()} mb-3 rounded-lg px-2.5 py-2`, style: { color: "#92400E", backgroundColor: "#FEF3C7" } },
+                return React.createElement("p", { className: `text-[11px] font-bold ${textStart()} mb-3 rounded-lg px-2.5 py-2`, style: { color: "#8F420F", backgroundColor: "#FEF3C7" } },
                     tl("⚠️ «" + odd.join("، ") + "» " + (odd.length > 1 ? "تبدو أسماءً" : "يبدو اسماً") + (sel.gender === "male" ? " لأنثى" : " لذكر") + " — هذه الخانة لـ«" + t(sel.labelKey) + "» فقط" + (other ? "، واختر «" + t(other.labelKey) + "» لإضافتها." : "."),
                        "⚠️ “" + odd.join(", ") + "” look" + (odd.length > 1 ? "" : "s") + (sel.gender === "male" ? " female" : " male") + " — this is for “" + t(sel.labelKey) + "” only" + (other ? "; choose “" + t(other.labelKey) + "” for them." : ".")));
             })(),

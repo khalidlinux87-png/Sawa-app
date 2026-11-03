@@ -390,13 +390,13 @@ function TaqaPurchaseScreen({ company, walletBalance, colors, onBack, onBuy }) {
                     t("tq_j_ltr_sp")))))),
             React.createElement("div", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("tq_almblgh")),
             React.createElement("div", { className: "grid grid-cols-3 gap-2 mb-3" },
-                AMOUNTS.map((a) => (React.createElement("button", { key: a, onClick: () => { setSelectedAmt(a); setShowCustom(false); }, className: "rounded-xl py-2.5 border-2 text-center", style: { borderColor: (!showCustom && selectedAmt === a) ? "#EF4444" : colors.border, backgroundColor: (!showCustom && selectedAmt === a) ? "#FFF0F1" : colors.card } },
+                AMOUNTS.map((a) => (React.createElement("button", { key: a, onClick: () => { setSelectedAmt(a); setShowCustom(false); }, className: "rounded-xl py-2.5 border-2 text-center", style: { borderColor: (!showCustom && selectedAmt === a) ? "#EF4444" : colors.border, backgroundColor: (!showCustom && selectedAmt === a) ? "#FDECEC" : colors.card } },
                     React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, a.toLocaleString(loc())),
                     React.createElement("div", { className: "text-[10px]", style: { color: colors.textMuted } },
                         "~",
                         Math.round(a / price),
                         t("tq_ltr"))))),
-                React.createElement("button", { onClick: () => { setShowCustom(true); setSelectedAmt(0); }, className: "rounded-xl py-2.5 border-2 text-center", style: { borderColor: showCustom ? "#EF4444" : colors.border, backgroundColor: showCustom ? "#FFF0F1" : colors.card } },
+                React.createElement("button", { onClick: () => { setShowCustom(true); setSelectedAmt(0); }, className: "rounded-xl py-2.5 border-2 text-center", style: { borderColor: showCustom ? "#EF4444" : colors.border, backgroundColor: showCustom ? "#FDECEC" : colors.card } },
                     React.createElement("div", { className: "text-xs font-bold", style: { color: colors.text } }, t("tq_mblgh_akhr")),
                     React.createElement("div", { className: "text-[10px]", style: { color: colors.textMuted } }, t("tq_ydwy")))),
             showCustom && (React.createElement("div", { className: `flex ${isRTL() ? "flex-row" : "flex-row-reverse"} items-center gap-2 rounded-xl border p-3 mb-3`, style: { backgroundColor: colors.card, borderColor: colors.border } },
@@ -517,7 +517,7 @@ function TaqaTokenScreen({ token, colors, onBack, onHistory }) {
                             t("tq_salh_72"),
                             token.expiresLabel)),
                     React.createElement("div", { className: "rounded-full px-2 py-0.5 text-[9px] font-bold", style: { backgroundColor: "#E8F5E9", color: "#1B7A43" } }, t("tq_nsht"))),
-                React.createElement("div", { className: "rounded-xl py-3 mb-3 text-center", style: { backgroundColor: "#F6F8FF" } },
+                React.createElement("div", { className: "rounded-xl py-3 mb-3 text-center", style: { backgroundColor: "#F0F4FF" } },
                     React.createElement("div", { className: "text-[10px] mb-1", style: { color: colors.textMuted } }, t("tq_rmz_alwqwd")),
                     React.createElement("div", { className: "font-black text-2xl tracking-widest", style: { color: "#1A1A2E", fontFamily: "monospace" } }, token.token),
                     React.createElement("button", { onClick: handleCopy, className: "mt-1 text-[10px] font-bold", style: { color: colors.primary } }, copied ? t("tq_tm_alnskh") : t("tq_anskh"))),
@@ -623,7 +623,7 @@ function TaqaHistoryScreen({ colors, onBack, onSelect }) {
                         t("tq_alhd"),
                         spendLimit.toLocaleString(loc()),
                         t("tq_j_sfx")),
-                    React.createElement("span", { className: "text-[9px] font-bold", style: { color: pct >= 80 ? "#FF6B6B" : "rgba(255,255,255,0.8)" } },
+                    React.createElement("span", { className: "text-[9px] font-bold", style: { color: pct >= 80 ? "#F87171" : "rgba(255,255,255,0.8)" } },
                         pct,
                         "%")),
                 React.createElement("div", { className: "h-1.5 rounded-full mb-3", style: { backgroundColor: "rgba(255,255,255,0.15)" } },
@@ -754,7 +754,7 @@ function TaqaScreen({ balance, colors, onBack }) {
         return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
             React.createElement(TopBar, { title: t("akhtr_shrka_alwqwd"), onBack: () => setSubView("home") }),
             React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
-                React.createElement("div", { className: `flex ${isRTL() ? "flex-row" : "flex-row-reverse"} items-center gap-2 rounded-xl p-3 mb-4 border-r-4`, style: { backgroundColor: "#FFF8F0", borderRightColor: "#F59E0B" } },
+                React.createElement("div", { className: `flex ${isRTL() ? "flex-row" : "flex-row-reverse"} items-center gap-2 rounded-xl p-3 mb-4 border-r-4`, style: { backgroundColor: "#FDEEE4", borderRightColor: "#F59E0B" } },
                     React.createElement(Droplet, { size: 14, color: "#E65100" }),
                     React.createElement("p", { className: "text-xs leading-relaxed", style: { color: "#E65100" } },
                         t("tq_alasar"),
@@ -1300,7 +1300,7 @@ function JamiyaDetailScreen({ jamiya, currentUserId, onPay, onBack }) {
                         t("w_dwra_mktmla")))),
             currentRound >= 0 && !didIPay && (React.createElement("div", { className: "px-4 mb-2" },
                 React.createElement("div", { className: `flex ${rowStart()} items-center gap-3 rounded-xl p-3 border`, style: { backgroundColor: colors.card, borderColor: iMyTurnNow ? colors.success : colors.accent } },
-                    React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0", style: { backgroundColor: iMyTurnNow ? "#E3F3EA" : "#FCEFD6" } }, iMyTurnNow ? React.createElement(Crown, { size: 16, color: colors.success }) : React.createElement(AlertTriangle, { size: 16, color: colors.accent })),
+                    React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0", style: { backgroundColor: iMyTurnNow ? "#E3F3EA" : "#FFF3E0" } }, iMyTurnNow ? React.createElement(Crown, { size: 16, color: colors.success }) : React.createElement(AlertTriangle, { size: 16, color: colors.accent })),
                     React.createElement("div", { className: "flex-1" },
                         React.createElement("div", { className: "text-xs font-extrabold", style: { color: colors.text } }, iMyTurnNow ? t("w_dwrk_fy_astlam") : `موعد دفع حصتك — ${jamiya.amountPerMember.toLocaleString(loc())} ج.س`),
                         React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, iMyTurnNow ? `ستستلم ${totalPerRound.toLocaleString(loc())} ج.س بعد دفع الجميع` : t("w_adfa_alan_ldman"))),
@@ -1995,7 +1995,7 @@ function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, 
     if (canIntl) WALLET_SERVICES.splice(1, 0,
         { id: "fx", label: tl("حسابات العملات", "Currency accounts"), desc: tl("دولار · ريال · درهم · يورو", "USD · SAR · AED · EUR"), Icon: Banknote, bgColor: "#E8F5E9", iconColor: "#1B7A43", onPress: () => { if (fxAccounts.length) { setSelFx(fxAccounts[0].cur); setView("fxAcct"); } else setView("fxAdd"); } },
         { id: "fxconv", label: tl("تحويل العملات", "Convert currency"), desc: tl("بين الجنيه والعملات", "Between SDG and currencies"), Icon: RotateCcw, bgColor: "#E3F2FD", iconColor: "#1565C0", onPress: () => setView("fxConvert") },
-        { id: "vcards", label: tl("البطاقات الافتراضيّة", "Virtual cards"), desc: tl("للشراء عبر الإنترنت", "For online purchases"), Icon: CreditCard, bgColor: "#EDE7F6", iconColor: "#5E35B1", onPress: () => setView("cards") });
+        { id: "vcards", label: tl("البطاقات الافتراضيّة", "Virtual cards"), desc: tl("للشراء عبر الإنترنت", "For online purchases"), Icon: CreditCard, bgColor: "#F1E9F7", iconColor: "#5E35B1", onPress: () => setView("cards") });
     const [selectedBank, setSelectedBank] = useState(WALLET_BANKS[0]);
     const [transferTo, setTransferTo] = useState("");
     const [transferPhone, setTransferPhone] = useState("");
@@ -2201,7 +2201,7 @@ ${txn.note}
         return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
             React.createElement(TopBar, { title: t("fatwra_alkhrba"), onBack: () => setView("home") }),
             React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
-                React.createElement("div", { className: "rounded-2xl p-4 mb-4 flex items-center gap-3", style: { background: "linear-gradient(135deg, #B8720A, #F5A623)" } },
+                React.createElement("div", { className: "rounded-2xl p-4 mb-4 flex items-center gap-3", style: { background: "linear-gradient(135deg, #B8720A, #F59E0B)" } },
                     React.createElement(Zap, { size: 28, color: "#fff" }),
                     React.createElement("div", null,
                         React.createElement("div", { className: "text-sm font-extrabold text-white" }, t("hyya_alkhrba_alswdanya")),
@@ -2243,7 +2243,7 @@ ${txn.note}
     }
     if (view === "mobileTopup") {
         const operators = [
-            { id: "mtn", label: "MTN", color: "#F5A623" },
+            { id: "mtn", label: "MTN", color: "#F59E0B" },
             { id: "zain", label: "Zain", color: "#EF4444" },
             { id: "sudani", label: "Sudani", color: colors.primary },
         ];
@@ -2279,7 +2279,7 @@ ${txn.note}
         navTab === "home" && (React.createElement(React.Fragment, null,
             React.createElement(TopBar, { title: t("almhfza"), onBack: onBack }),
             React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
-                React.createElement("div", { className: "rounded-2xl p-5 mb-4 relative overflow-hidden", style: { background: `linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)` } },
+                React.createElement("div", { className: "rounded-2xl p-5 mb-4 relative overflow-hidden", style: { background: `linear-gradient(135deg, #1a1a2e 0%, #132743 50%, #0f3460 100%)` } },
                     React.createElement("div", { style: { position: "absolute", insetInlineEnd: -14, top: -18, opacity: 0.06, lineHeight: 0, pointerEvents: "none" } }, React.createElement(Wallet, { size: 104, color: "#fff" })),   // C221: كان 💰 (كيس دولار) خلف أزرار محفظةٍ بالجنيه
                     walletFrozen && (React.createElement("div", { className: "absolute inset-0 flex flex-col items-center justify-center rounded-2xl", style: { backgroundColor: "rgba(0,0,0,0.65)", zIndex: 2 } },
                         React.createElement(Snowflake, { size: 28, color: "#fff" }),

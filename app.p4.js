@@ -424,7 +424,7 @@ function FamPhoneSuggestCard({ groupId, persons, onOpenPerson }) {
             .then((b) => setState((x) => ({ ...x, [s.personId]: b && b.found === false ? tl("لم يعد مطابقاً", "No longer matches") : "sent" })))
             .catch((e) => setState((x) => ({ ...x, [s.personId]: famLinkErr((e && e.message) || e) })));
     };
-    return React.createElement(FamCard, { style: { border: "1px solid #0F7A5533" } },
+    return React.createElement(FamCard, { style: { border: "1px solid #18785433" } },
         React.createElement("div", { className: `text-[14px] font-extrabold ${textStart()}`, style: { color: colors.text } }, "📱 " + tl("أقارب في سوا بأرقامهم", "Relatives on Sawa by phone")),
         React.createElement("p", { className: `text-[11.5px] mt-1 mb-2 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, tl("أرقامهم المحفوظة في الشجرة لحساباتٍ موثَّقة في سوا. اضغط «ربط» فيصل كلَّ واحدٍ «هل هذا أنت؟» — لا يُربط إلّا بموافقته.", "Their saved numbers match verified Sawa accounts. Tap Link — each gets “Is this you?” and is linked only if they accept.")),
         list.map((sg, i) => {
@@ -437,7 +437,7 @@ function FamPhoneSuggestCard({ groupId, persons, onOpenPerson }) {
                         React.createElement("span", { className: "block text-[13.5px] font-bold truncate", style: { color: colors.text } }, sg.personName),
                         React.createElement("span", { className: "block text-[11px] truncate", style: { color: colors.textMuted } }, tl("في سوا: ", "On Sawa: ") + (sg.name || "—")),
                         st && st !== "busy" && st !== "sent" && React.createElement("span", { role: "alert", className: "block text-[11px] font-bold", style: { color: colors.danger } }, "⚠️ " + st))),
-                React.createElement("button", { disabled: st === "busy", onClick: () => go(sg), className: "px-3.5 py-2 rounded-xl text-[12px] font-extrabold shrink-0", style: done ? { backgroundColor: colors.bg, color: colors.textMuted } : { backgroundColor: "#0F7A55", color: "#fff" } },
+                React.createElement("button", { disabled: st === "busy", onClick: () => go(sg), className: "px-3.5 py-2 rounded-xl text-[12px] font-extrabold shrink-0", style: done ? { backgroundColor: colors.bg, color: colors.textMuted } : { backgroundColor: "#187854", color: "#fff" } },
                     st === "busy" ? "…" : done ? tl("✓ أُرسل · إعادة", "✓ Sent · resend") : tl("ربط", "Link")));
         }));
 }
@@ -543,7 +543,7 @@ function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, se
                     // C109: العضو بجوار شخصه في الشجرة
                     cloud && (() => {
                         const lp = m.personId && (persons || []).find((x) => x.id === m.personId);
-                        if (lp) return React.createElement("button", { onClick: () => onOpenPerson && onOpenPerson(lp), className: `block max-w-full truncate text-[11.5px] font-bold mt-0.5 ${textStart()}`, style: { color: "#0F7A55", background: "none", border: 0, padding: 0 } }, "🌳 " + lp.local_name);
+                        if (lp) return React.createElement("button", { onClick: () => onOpenPerson && onOpenPerson(lp), className: `block max-w-full truncate text-[11.5px] font-bold mt-0.5 ${textStart()}`, style: { color: "#187854", background: "none", border: 0, padding: 0 } }, "🌳 " + lp.local_name);
                         if (canEdit && !m.me && m.userId !== "u-1") return React.createElement("button", { onClick: () => setPickFor(m), className: `block text-[11.5px] font-bold mt-0.5 ${textStart()}`, style: { color: colors.primary, background: "none", border: 0, padding: 0 } }, "＋ " + tl("من هو في الشجرة؟", "Who is this in the tree?"));
                         return m.me ? React.createElement("span", { className: "block text-[11px] mt-0.5", style: { color: colors.textMuted } }, tl("حدّد نفسك من صفحتك في الشجرة («هذا أنا»)", "Mark yourself from your page in the tree")) : null;
                     })()),
@@ -1835,7 +1835,7 @@ function PhoneContactsPane({ colors, onPick }) {
     return React.createElement(React.Fragment, null,
         React.createElement("div", { className: "overflow-y-auto px-3 pb-2", style: { minHeight: 120 } },
             st === "loading" && React.createElement("p", { className: "text-xs text-center py-6", style: { color: colors.textMuted } }, tl("جارٍ قراءة جهات الهاتف…", "Reading contacts…")),
-            (st === "denied" || st === "never") && React.createElement("p", { className: "text-xs text-center py-3 px-2 rounded-xl mb-2", style: { color: "#b45309", backgroundColor: "#fff7e6" } }, st === "never" ? tl("إذن جهات الاتّصال مرفوض — افتحه من «معلومات التطبيق» ← «الأذونات».", "Contacts permission is blocked — allow it in App info → Permissions.") : tl("لم يُسمح بقراءة جهات الهاتف — يمكنك كتابة الرقم يدويّاً بالأسفل.", "Contacts not allowed — type the number below.")),
+            (st === "denied" || st === "never") && React.createElement("p", { className: "text-xs text-center py-3 px-2 rounded-xl mb-2", style: { color: "#b45309", backgroundColor: "#fff3e0" } }, st === "never" ? tl("إذن جهات الاتّصال مرفوض — افتحه من «معلومات التطبيق» ← «الأذونات».", "Contacts permission is blocked — allow it in App info → Permissions.") : tl("لم يُسمح بقراءة جهات الهاتف — يمكنك كتابة الرقم يدويّاً بالأسفل.", "Contacts not allowed — type the number below.")),
             (kind === "picker" || kind === "native") && st !== "loading" && React.createElement("button", { onClick: run, className: "w-full rounded-2xl py-3 mb-3 text-sm font-extrabold", style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, "📱 " + tl("اختر من جهات الهاتف", "Pick from phone contacts")),
             st === "list" && React.createElement("div", { className: "flex flex-row items-center gap-2 px-3 py-2 rounded-xl mb-1", style: inp },
                 React.createElement(Search, { size: 14, color: colors.textMuted }),
@@ -2409,7 +2409,8 @@ const TAXI_DRIVER_REPLIES = [
 ];
 // صورة المرسل في المجموعات — تمييز المتحدّثين بالاسم وحده متعب
 // حين يكونون عشرة. اللون مشتق من الاسم فيثبت لكل شخص عبر الجلسات.
-const SENDER_COLORS = ["#2774BA", "#8B5CF6", "#059669", "#B45309", "#EF4444", "#0891B2", "#7C3AED", "#B45309"];
+// C194: لوحةٌ مقصودة التمايز (لون اسم كلّ مرسل في المجموعة) — لا تُوحَّد. C187 جعل D97706 = B45309 خطأً فأُعيد.
+const SENDER_COLORS = ["#2774BA", "#8B5CF6", "#059669", "#D97706", "#EF4444", "#0891B2", "#7C3AED", "#B45309"];
 function senderColor(name) {
     // جمع رموز الحروف وحده يعطي تصادماً كثيراً بالعربية (الحروف متقاربة)،
     // فنُدخل موضع الحرف في الحساب ليتوزّع اللون أفضل

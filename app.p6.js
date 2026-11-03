@@ -364,7 +364,7 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
                 const unanswered = c.type === "missed" || (!c.duration && c.cloud);
                 const arrowColor = c.type === "missed" ? "#EF4444" : unanswered ? "#B45309" : "#16A34A";
                 // C61: الصفّ كلّه ينقر (كان الهاتف الصغير و⋮ فقط) ⇒ قائمة الخيارات: صوت · فيديو · حذف
-                return (React.createElement("div", { key: c.id, role: "button", tabIndex: 0, onClick: () => setCallMenu(c), onKeyDown: (e) => { if (e.key === "Enter") setCallMenu(c); }, className: "flex flex-row items-center px-4 py-2.5 border-b cursor-pointer", style: { borderColor: "#EFEFEF" } },
+                return (React.createElement("div", { key: c.id, role: "button", tabIndex: 0, onClick: () => setCallMenu(c), onKeyDown: (e) => { if (e.key === "Enter") setCallMenu(c); }, className: "flex flex-row items-center px-4 py-2.5 border-b cursor-pointer", style: { borderColor: "#EDEFF2" } },
                     (() => { const ph = c.peerUid && window.SawaChat && window.SawaChat.photoOf ? window.SawaChat.photoOf(c.peerUid) : null;
                         return React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${me("3")} shrink-0`, style: { backgroundColor: colors.primaryLight, backgroundImage: ph ? `url(${ph})` : "none", backgroundSize: "cover", backgroundPosition: "center" } },
                             ph ? null : c.room || c.cid ? React.createElement(Users, { size: 19, color: colors.primaryInk }) : React.createElement(User, { size: 19, color: colors.primaryInk })); })(),
@@ -1097,9 +1097,9 @@ const ERSAL_PAYMENT_TIMINGS = [{ key: "pickup", labelKey: "er_and_alastlam" }, {
 // 3 ثيمات ألوان خاصة بإرسال نفسه (تُطبَّق على تطبيقاته الثلاثة معًا حسب
 // المستند — هنا ضمن تطبيق العميل فقط) — منفصلة تمامًا عن ثيمات سوا الأربعة
 const ERSAL_THEMES = {
-    default: { label: t("er_alaftrady"), primary: "#1E5FBF", primaryDark: "#153F80", primaryLight: "#D6E4FA", accent: "#D98E04", bg: "#F5F7FA" },
-    desert: { label: t("er_alshra"), primary: "#B5652E", primaryDark: "#7A431E", primaryLight: "#F2DCC9", accent: "#C99A4A", bg: "#FBF7F2" },
-    nile: { label: t("er_alnyl"), primary: "#0E8A82", primaryDark: "#0A5F59", primaryLight: "#CFEDEA", accent: "#C9A227", bg: "#F3FAF9" },
+    default: { label: t("er_alaftrady"), primary: "#1565C0", primaryDark: "#153F80", primaryLight: "#D6E4FA", accent: "#D98E04", bg: "#F5F7FA" },
+    desert: { label: t("er_alshra"), primary: "#B5652E", primaryDark: "#7A431E", primaryLight: "#FBDECB", accent: "#C99A4A", bg: "#FFFFFF" },
+    nile: { label: t("er_alnyl"), primary: "#0D9488", primaryDark: "#0A5F59", primaryLight: "#CFE9DD", accent: "#C9A227", bg: "#F5F7FA" },
 };
 // رسوم تخزين يومية عند فشل التسليم (بعد 5 أيام عمل سماح) — ميزة لم تُذكر
 // بالتوثيق الرئيسي إطلاقاً، وُثِّقت بالملحق التفصيلي فقط
@@ -1771,7 +1771,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                                 const daysRemaining = Math.max(0, ERSAL_RETURN_DEADLINE_DAYS - daysSinceFail);
                                 const isReturned = daysSinceFail >= ERSAL_RETURN_DEADLINE_DAYS && s.pendingChoice !== "pickup_confirmed";
                                 if (isReturned) {
-                                    return (React.createElement("div", { className: `rounded-xl p-3 mb-2 flex ${rowStart()} items-center gap-2`, style: { backgroundColor: isDark ? "#2A2A2A" : "#EFEFEF" } },
+                                    return (React.createElement("div", { className: `rounded-xl p-3 mb-2 flex ${rowStart()} items-center gap-2`, style: { backgroundColor: isDark ? "#2A2A2A" : "#EDEFF2" } },
                                         React.createElement(RotateCcw, { size: 16, color: colors.textMuted }),
                                         React.createElement("span", { className: "text-xs font-bold", style: { color: colors.textMuted } },
                                             t("er_mrtjaa"),

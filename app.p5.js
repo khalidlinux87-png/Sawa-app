@@ -58,8 +58,8 @@ function CallOverlay({ contactName, callType, onEnd, requireApproval = false, av
     }
     const bgByStatus = {
         waitingApproval: `linear-gradient(160deg, #241a32, #0E1116 65%)`,
-        ringing: `linear-gradient(160deg, #1a2332, #0E1116 65%)`,
-        connected: `linear-gradient(160deg, #14171c, #0E1116 70%)`,
+        ringing: `linear-gradient(160deg, #1e293b, #0E1116 65%)`,
+        connected: `linear-gradient(160deg, #171b21, #0E1116 70%)`,
         ending: `linear-gradient(160deg, #2a1418, #0E1116 70%)`,
     };
     return (React.createElement("div", { className: "absolute inset-0 z-50 flex flex-col items-center justify-between py-10", style: { background: bgByStatus[status], transition: "background 0.4s ease" } },
@@ -96,7 +96,7 @@ function CallOverlay({ contactName, callType, onEnd, requireApproval = false, av
                 React.createElement(UserPlus, { size: 20, color: "#fff" })))),
         showAddPeople && (React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setShowAddPeople(false), style: { position: "fixed", inset: 0, zIndex: 50, backgroundColor: "rgba(0,0,0,0.6)" } }),
-            React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", left: 16, right: 16, top: "18%", bottom: "18%", zIndex: 51, backgroundColor: "#1B2028", borderRadius: 20, border: "1px solid #2C333D", display: "flex", flexDirection: "column" } },
+            React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", left: 16, right: 16, top: "18%", bottom: "18%", zIndex: 51, backgroundColor: "#171B21", borderRadius: 20, border: "1px solid #262B33", display: "flex", flexDirection: "column" } },
                 React.createElement("div", { className: "px-4 pt-4 pb-2 shrink-0" },
                     React.createElement("p", { className: "text-white font-extrabold text-sm text-center" }, t("idafa_shkhs_llmkalma")),
                     React.createElement("p", { className: "text-[11px] text-center mt-1", style: { color: "#8A93A0" } }, t("sydaf_llmkalma_alhalya_dwn"))),
@@ -108,8 +108,8 @@ function CallOverlay({ contactName, callType, onEnd, requireApproval = false, av
                             React.createElement(User, { size: 17, color: colors.primaryInk })),
                         React.createElement("span", { className: `flex-1 ${textStart()} text-xs font-bold text-white truncate` }, n),
                         React.createElement(UserPlus, { size: 15, color: "#8A93A0" })))),
-                    availableContacts.filter((n) => n !== contactName && !extras.some((e) => e.name === n)).length === 0 && (React.createElement("p", { className: "text-xs text-center mt-6", style: { color: "#5A6472" } }, t("kl_jhat_atsalk_balmkalma")))),
-                React.createElement("div", { className: "p-4 shrink-0", style: { borderTop: "1px solid #2C333D" } },
+                    availableContacts.filter((n) => n !== contactName && !extras.some((e) => e.name === n)).length === 0 && (React.createElement("p", { className: "text-xs text-center mt-6", style: { color: "#5B6B7C" } }, t("kl_jhat_atsalk_balmkalma")))),
+                React.createElement("div", { className: "p-4 shrink-0", style: { borderTop: "1px solid #262B33" } },
                     React.createElement("button", { onClick: () => setShowAddPeople(false), className: "w-full py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: "#262B33", color: "#e2e8f0" } }, t("ilgha"))))))));
 }
 function GroupCallOverlay({ groupName, members, callType, onEnd }) {
@@ -408,11 +408,11 @@ function ForwardPickerScreen({ conversations, groups, contacts, currentConversat
 // C101: ورقة أفعال الرسالة المضغوطة (الخاصّة والمجموعات): معاينة سطرٍ واحد · تفاعلات سريعة · شبكة أزرار من ٤ أعمدة
 // C103: بطاقة التذكير اليوميّ (daily.json)
 const DAILY_KIND_STYLE = {
-    "آية": { c: "#0F7A55", bg: "#E3F4EC", open: "﴿", close: "﴾", icon: "📖" },
-    "حديث": { c: "#1E5FA8", bg: "#E4EEF9", open: "«", close: "»", icon: "🕌" },
-    "أثر": { c: "#7A4F12", bg: "#F6ECDD", open: "«", close: "»", icon: "📜" },
-    "حكمة": { c: "#6B3FA0", bg: "#EFE7F8", open: "", close: "", icon: "💡" },
-    "شعر": { c: "#A3324F", bg: "#F8E6EB", open: "", close: "", icon: "🪶" },
+    "آية": { c: "#187854", bg: "#E3F3EA", open: "﴿", close: "﴾", icon: "📖" },
+    "حديث": { c: "#1D5F9E", bg: "#E8F1FA", open: "«", close: "»", icon: "🕌" },
+    "أثر": { c: "#7A4F12", bg: "#FFF3E0", open: "«", close: "»", icon: "📜" },
+    "حكمة": { c: "#6B3FA0", bg: "#F1E9F7", open: "", close: "", icon: "💡" },
+    "شعر": { c: "#A3324F", bg: "#FFEBEE", open: "", close: "", icon: "🪶" },
 };
 function DailyReminderCard({ card, onClose, onFamily }) {
     const { colors, isDark } = useTheme();
@@ -512,12 +512,12 @@ function FamLinkSheet({ person, onClose }) {
             React.createElement("button", { onClick: onClose, className: "mt-4 px-6 py-2.5 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary } }, tl("تمّ", "Done")))
         : React.createElement("div", { className: "pt-1" },
             React.createElement("p", { className: `text-[11.5px] mb-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, tl("لا يُربط أحدٌ بلا موافقته: يصله طلب «هل هذا أنت؟» فإن وافق يُربط ويستطيع أقاربه مراسلته والاتّصال به من الشجرة.", "No one is linked without consent: they get an “Is this you?” request.")),
-            phoneHit && React.createElement("div", { className: "rounded-2xl p-3 mb-4", style: { backgroundColor: "#E3F4EC", border: "1px solid #0F7A5533" } },
-                React.createElement("p", { className: `text-[12.5px] font-extrabold mb-1 ${textStart()}`, style: { color: "#0F7A55" } }, "📱 " + tl("رقمه في الشجرة لحسابٍ موثَّق في سوا", "His number in the tree matches a verified Sawa account")),
+            phoneHit && React.createElement("div", { className: "rounded-2xl p-3 mb-4", style: { backgroundColor: "#E3F3EA", border: "1px solid #18785433" } },
+                React.createElement("p", { className: `text-[12.5px] font-extrabold mb-1 ${textStart()}`, style: { color: "#187854" } }, "📱 " + tl("رقمه في الشجرة لحسابٍ موثَّق في سوا", "His number in the tree matches a verified Sawa account")),
                 React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
                     React.createElement(FamAvatar, { name: phoneHit.name || person.local_name, size: 34 }),
                     React.createElement("span", { className: `flex-1 min-w-0 truncate text-[13.5px] font-bold ${textStart()}`, style: { color: colors.text } }, phoneHit.name || person.local_name, phoneHit.pending ? React.createElement("span", { className: "block text-[10.5px] font-normal", style: { color: colors.textMuted } }, tl("أُرسل له طلبٌ سابقاً", "Already requested")) : null),
-                    React.createElement("button", { disabled: busy, onClick: () => send({ byPhone: true }, phoneHit.name, "phone"), className: "px-4 py-2 rounded-xl text-[12.5px] font-extrabold text-white shrink-0", style: { backgroundColor: "#0F7A55", opacity: busy ? 0.6 : 1 } }, pending === "phone" ? tl("…جارٍ", "…") : phoneHit.pending ? tl("أعد الإرسال", "Resend") : tl("ربط", "Link")))),
+                    React.createElement("button", { disabled: busy, onClick: () => send({ byPhone: true }, phoneHit.name, "phone"), className: "px-4 py-2 rounded-xl text-[12.5px] font-extrabold text-white shrink-0", style: { backgroundColor: "#187854", opacity: busy ? 0.6 : 1 } }, pending === "phone" ? tl("…جارٍ", "…") : phoneHit.pending ? tl("أعد الإرسال", "Resend") : tl("ربط", "Link")))),
             // ١) برمز سوا
             React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, tl("رمز سوا (١٠ أرقام)", "Sawa code (10 digits)")),
             React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-4` },
@@ -705,7 +705,7 @@ function fmtNodes(seg, keyBase) {
 }
 function renderRichText(text, opts) {
     const o = opts || {}; const t = String(text == null ? "" : text);
-    const linkColor = o.mine ? "#E3F2FF" : (o.colors ? o.colors.primary : "#2774BA");
+    const linkColor = o.mine ? "#E3F2FD" : (o.colors ? o.colors.primary : "#2774BA");
     const nodes = []; let k = 0;
     const pushPlain0 = (seg) => {
         if (!seg) return;
@@ -1611,9 +1611,9 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                     React.createElement(it.icon, { size: 17, color: colors.textMuted }),
                     React.createElement("span", { className: `flex-1 ${textStart()} text-[14px] font-bold` }, it.label))))),
         // C91: يظهر برمزه فقط ⇒ «أضف اسمه» (تسمية تظهر لك وحدك)
-        conversation.unnamed && window.SawaChat && window.SawaChat.renameContact && React.createElement("button", { onClick: () => window.SawaChat.renameContact(conversation.peerUid), className: "w-full flex flex-row items-center gap-2 px-4 py-2.5 border-b", style: { backgroundColor: "#FFF7E6", borderColor: "#F5D9A8" } },
+        conversation.unnamed && window.SawaChat && window.SawaChat.renameContact && React.createElement("button", { onClick: () => window.SawaChat.renameContact(conversation.peerUid), className: "w-full flex flex-row items-center gap-2 px-4 py-2.5 border-b", style: { backgroundColor: "#FFF3E0", borderColor: "#F5D9A8" } },
             React.createElement(Edit3, { size: 16, color: "#B45309" }),
-            React.createElement("span", { className: "flex-1 text-[13px] font-bold", style: { color: "#92400E", textAlign: isRTL() ? "right" : "left" } }, tl("يظهر برمزه فقط — اضغط لإضافة اسمه عندك", "Shown by code only — tap to add a name")),
+            React.createElement("span", { className: "flex-1 text-[13px] font-bold", style: { color: "#8F420F", textAlign: isRTL() ? "right" : "left" } }, tl("يظهر برمزه فقط — اضغط لإضافة اسمه عندك", "Shown by code only — tap to add a name")),
             React.createElement("span", { className: "text-[12px] font-extrabold px-2.5 py-1 rounded-full", style: { backgroundColor: "#B45309", color: "#fff" } }, tl("أضف اسماً", "Add name"))),
         showSearch && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 py-2 border-b`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: searchQuery, onChange: (e) => { setSearchQuery(e.target.value); setSearchMatchIndex(0); }, placeholder: t("bhth_balmhadtha"), className: "flex-1 rounded-full px-3 py-1.5 text-xs border", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg, minWidth: 0 }, autoFocus: true }),
@@ -1715,7 +1715,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                                 renderRichText(m.text, { mine, colors }),
                                 m.edited && React.createElement("span", { className: "text-[10px] opacity-70" }, t("ch_madla")),
                                 (!m.type || m.type === "text") && urlsIn(m.text).length ? React.createElement(LinkCard, { text: m.text, mine }) : null)),
-                                (["image", "video", "file"].includes(m.type) && m.extra && m.extra.cap && !m.viewOnce && !m.deleted) ? React.createElement("p", { className: "text-sm rounded-xl px-3 py-2 mt-1 whitespace-pre-wrap break-words", style: { backgroundColor: mine ? myBubbleColor : colors.card, color: mine ? "#fff" : colors.text, direction: textDir(m.extra.cap), maxWidth: 320 } }, m.extra.cap) : null, React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 justify-end`, style: { marginTop: 2, marginBottom: -2 } }, mine && m.status && (React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : m.status === "pending" ? t("c2_pending") : m.status === "failed" ? t("c2_failed") : t("ch_tm_alirsal") }, m.status === "pending" ? (m.uploadPct != null ? React.createElement("span", { className: "text-[10px] font-bold", style: { color: onTint ? "rgba(255,255,255,0.9)" : colors.textMuted } }, "⏫ " + m.uploadPct + "%") : React.createElement(Clock, { size: 11, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted })) : m.status === "failed" ? React.createElement("button", { onClick: (e) => { e.stopPropagation(); if (window.SawaChat && window.SawaChat.failedSheet) window.SawaChat.failedSheet(m.id); }, className: "inline-flex items-center gap-1", style: { color: colors.danger, fontSize: 10, fontWeight: 700 } }, React.createElement(AlertCircle, { size: 12, color: colors.danger }), tl("لم تُرسل · اضغط", "Not sent · tap")) : m.status === "sent" ? React.createElement(Check, { size: 12, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted }) : React.createElement(CheckCheck, { size: 12, color: m.status === "read" ? (onTint ? "#BFE3FF" : colors.primary) : (onTint ? "rgba(255,255,255,0.85)" : colors.textMuted) }))), React.createElement("span", { className: "text-[10px]", style: { color: onTint ? "rgba(255,255,255,0.75)" : colors.textMuted } }, m.time || (m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" }) : "")))),
+                                (["image", "video", "file"].includes(m.type) && m.extra && m.extra.cap && !m.viewOnce && !m.deleted) ? React.createElement("p", { className: "text-sm rounded-xl px-3 py-2 mt-1 whitespace-pre-wrap break-words", style: { backgroundColor: mine ? myBubbleColor : colors.card, color: mine ? "#fff" : colors.text, direction: textDir(m.extra.cap), maxWidth: 320 } }, m.extra.cap) : null, React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 justify-end`, style: { marginTop: 2, marginBottom: -2 } }, mine && m.status && (React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : m.status === "pending" ? t("c2_pending") : m.status === "failed" ? t("c2_failed") : t("ch_tm_alirsal") }, m.status === "pending" ? (m.uploadPct != null ? React.createElement("span", { className: "text-[10px] font-bold", style: { color: onTint ? "rgba(255,255,255,0.9)" : colors.textMuted } }, "⏫ " + m.uploadPct + "%") : React.createElement(Clock, { size: 11, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted })) : m.status === "failed" ? React.createElement("button", { onClick: (e) => { e.stopPropagation(); if (window.SawaChat && window.SawaChat.failedSheet) window.SawaChat.failedSheet(m.id); }, className: "inline-flex items-center gap-1", style: { color: colors.danger, fontSize: 10, fontWeight: 700 } }, React.createElement(AlertCircle, { size: 12, color: colors.danger }), tl("لم تُرسل · اضغط", "Not sent · tap")) : m.status === "sent" ? React.createElement(Check, { size: 12, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted }) : React.createElement(CheckCheck, { size: 12, color: m.status === "read" ? (onTint ? "#BFE0F5" : colors.primary) : (onTint ? "rgba(255,255,255,0.85)" : colors.textMuted) }))), React.createElement("span", { className: "text-[10px]", style: { color: onTint ? "rgba(255,255,255,0.75)" : colors.textMuted } }, m.time || (m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" }) : "")))),
                         m.reaction && React.createElement(ReactionChip, { m, colors, nameOf: () => conversation.name, onSet: (e) => onReact(m.id, e) }))));
                 }),
                 // C147: «يكتب…» في جهة الطرف الآخر (حيث تظهر رسائله) في اللغتين — كانت items-end فتنقلب في الإنجليزيّة
@@ -1990,7 +1990,7 @@ function taskListPages(list, o) {
     font(46, 800); wrap(list.title || tl("قائمة مهامّ", "Task list"), W - 2 * M).forEach((l) => { text(l, X(M), y + 30); y += 60; });
     font(22, 400); text((o.groupName ? o.groupName + " · " : "") + tl("صُدِّرت في ", "Exported ") + dt(Date.now()), X(M), y + 10, "#6B7280"); y += 50;
     // الملخّص + شريط الإنجاز
-    g.fillStyle = "#F3F6FA"; g.fillRect(M, y, W - 2 * M, 112);
+    g.fillStyle = "#F1F5F9"; g.fillRect(M, y, W - 2 * M, 112);
     font(26, 800); text(tl("المنجَز " + N(doneN) + " من " + N(tasks.length) + "  —  الإنجاز " + N(pct) + "٪", "Done " + doneN + " of " + tasks.length + " · " + pct + "%"), X(M + 28), y + 46);
     g.fillStyle = "#E2E8F0"; g.fillRect(M + 28, y + 70, W - 2 * M - 56, 16);
     g.fillStyle = "#16A34A"; const bw = (W - 2 * M - 56) * pct / 100; g.fillRect(rtl ? W - M - 28 - bw : M + 28, y + 70, bw, 16);
@@ -2528,7 +2528,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                 React.createElement(Phone, { size: 17, color: colors.textMuted })),
             React.createElement("button", { "aria-label": t("bhth"), onClick: () => setShowSearch(!showSearch) },
                 React.createElement(Search, { size: 17, color: colors.textMuted }))),
-        liveGroupCall && !liveGroupCall.inCall && (React.createElement("button", { onClick: () => window.SawaRTC.groupCall(group.id, liveGroupCall.type, liveGroupCall.vc ? { vc: true } : undefined), className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2`, style: { backgroundColor: "#E6F4EC", borderBottom: `1px solid ${colors.border}` } },
+        liveGroupCall && !liveGroupCall.inCall && (React.createElement("button", { onClick: () => window.SawaRTC.groupCall(group.id, liveGroupCall.type, liveGroupCall.vc ? { vc: true } : undefined), className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2`, style: { backgroundColor: "#E6F5EC", borderBottom: `1px solid ${colors.border}` } },
             liveGroupCall.vc ? React.createElement(Radio, { size: 15, color: "#1B7A43" }) : liveGroupCall.type === "video" ? React.createElement(Video, { size: 15, color: "#1B7A43" }) : React.createElement(Phone, { size: 15, color: "#1B7A43" }),
             React.createElement("span", { className: `flex-1 ${textStart()} text-xs font-bold`, style: { color: "#1B7A43" } }, (liveGroupCall.vc ? tl("دردشة صوتيّة جارية", "Voice chat live") : liveGroupCall.type === "video" ? tl("مكالمة فيديو جارية", "Video call in progress") : tl("مكالمة صوتيّة جارية", "Voice call in progress")) + (liveGroupCall.n ? " · " + tl(liveGroupCall.n + " فيها", liveGroupCall.n + " in") : "")),
             React.createElement("span", { className: "text-[11px] font-extrabold text-white rounded-full px-3 py-1", style: { backgroundColor: "#21A366" } }, tl("انضمام", "Join")))),
