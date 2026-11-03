@@ -120,7 +120,7 @@ function TaxiScreen({ ride, tripsHistory, scheduledRides, onRequestRide, onSched
                 scheduledRides.length > 0 && (React.createElement("button", { onClick: () => setShowScheduled(true), className: "relative" },
                     React.createElement(Clock, { size: 18, color: "#fff" }),
                     React.createElement("span", { className: "absolute -top-1.5 -left-1.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-bold text-white", style: { backgroundColor: colors.danger } }, scheduledRides.length))),
-                React.createElement("button", { onClick: () => setShowHistory(true) },
+                React.createElement("button", { "aria-label": tl("السجلّ", "History"), onClick: () => setShowHistory(true) },
                     React.createElement(FileClock, { size: 18, color: "#fff" })))) }),
         showHistory && React.createElement(TaxiHistoryScreen, { history: tripsHistory, onBack: () => setShowHistory(false) }),
         showScheduled && (React.createElement(ScheduledRidesScreen, { scheduledRides: scheduledRides, onCancel: onCancelScheduledRide, onTrigger: (id) => { onTriggerScheduledRide(id); setShowScheduled(false); }, onBack: () => setShowScheduled(false) })),

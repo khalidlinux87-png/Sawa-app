@@ -2500,7 +2500,7 @@ function RideChatScreen({ driverName, onSendToDriver, messages, onClose }) {
                         React.createElement("div", { className: "text-[10px] mt-1 underline", style: { color: mine ? "#ffffffcc" : colors.primary } }, t("fth_fy_khrayt_jwjl")))) : (React.createElement("span", { className: "text-sm", style: { color: mine ? "#fff" : colors.text } }, m.text)))));
             })),
         React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-2 border-t`, style: { borderColor: colors.border, backgroundColor: colors.card } },
-            React.createElement("button", { onClick: handleShareLocation, className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: colors.bg } },
+            React.createElement("button", { "aria-label": tl("مشاركة الموقع", "Share location"), onClick: handleShareLocation, className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: colors.bg } },
                 React.createElement(MapPin, { size: 15, color: colors.textMuted })),
             React.createElement(ChatComposerInput, { value: text, onChange: setText, placeholder: t("aktb_rsala_llsayq"), onEnter: handleSend }),
             React.createElement("button", { "aria-label": t("irsal"), onClick: handleSend, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary } },

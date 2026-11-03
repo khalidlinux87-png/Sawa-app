@@ -28,7 +28,7 @@ function DialPadScreen({ onCall, onBack }) {
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-4 w-full max-w-xs justify-center` },
                 React.createElement("button", { "aria-label": t("atsal"), onClick: () => ready && onCall(number), disabled: !ready, className: "w-16 h-16 rounded-full flex items-center justify-center", style: { backgroundColor: colors.success, opacity: ready ? 1 : 0.4 } },
                     React.createElement(Phone, { size: 22, color: "#fff" })),
-                number.length > 0 && (React.createElement("button", { onClick: () => setNumber((prev) => prev.slice(0, -1)), className: "w-12 h-12 rounded-full flex items-center justify-center" },
+                number.length > 0 && (React.createElement("button", { "aria-label": tl("مسح آخر رقم", "Delete last digit"), onClick: () => setNumber((prev) => prev.slice(0, -1)), className: "w-12 h-12 rounded-full flex items-center justify-center" },
                     React.createElement(Delete, { size: 18, color: colors.textMuted })))))));
 }
 function ScheduleCallScreen({ defaultCallType, onSave, onBack, groups = [] }) {
@@ -226,9 +226,9 @@ function SpeedDialScreen({ speedDialContacts, onUpdate, onCall, onBack }) {
             speedDialContacts.length === 0 && React.createElement(EmptyState, { icon: Star, label: t("ma_fyh_arqam_mfdla") }),
             speedDialContacts.map((name, i) => (React.createElement(Card, { key: name, className: `flex ${rowStart()} items-center` },
                 React.createElement("div", { className: `flex flex-col ${ms("1")}` },
-                    React.createElement("button", { onClick: () => move(name, -1), disabled: i === 0 },
+                    React.createElement("button", { "aria-label": tl("نقل إلى الأعلى", "Move up"), onClick: () => move(name, -1), disabled: i === 0 },
                         React.createElement(ChevronUp, { size: 13, color: i === 0 ? colors.border : colors.textMuted })),
-                    React.createElement("button", { onClick: () => move(name, 1), disabled: i === speedDialContacts.length - 1 },
+                    React.createElement("button", { "aria-label": tl("نقل إلى الأسفل", "Move down"), onClick: () => move(name, 1), disabled: i === speedDialContacts.length - 1 },
                         React.createElement(ChevronDown, { size: 13, color: i === speedDialContacts.length - 1 ? colors.border : colors.textMuted }))),
                 React.createElement("div", { className: `w-9 h-9 rounded-full flex items-center justify-center ${ms("2")}`, style: { backgroundColor: colors.primaryLight } },
                     React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.primaryDark } }, name.charAt(0))),

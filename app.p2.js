@@ -396,7 +396,7 @@ function PinKeypad({ onDigit, onBackspace, onBiometric, showBiometric }) {
             return (React.createElement("button", { key: k, onClick: onBiometric, disabled: !showBiometric, className: "w-16 h-16 rounded-full flex items-center justify-center m-2" }, showBiometric && React.createElement(Fingerprint, { size: 24, color: colors.primary })));
         }
         if (k === "back") {
-            return (React.createElement("button", { key: k, onClick: onBackspace, className: "w-16 h-16 rounded-full flex items-center justify-center m-2" },
+            return (React.createElement("button", { "aria-label": tl("مسح آخر رقم", "Delete last digit"), key: k, onClick: onBackspace, className: "w-16 h-16 rounded-full flex items-center justify-center m-2" },
                 React.createElement(Delete, { size: 20, color: colors.text })));
         }
         return (React.createElement("button", { key: k, onClick: () => onDigit(k), className: "w-16 h-16 rounded-full flex items-center justify-center m-2 text-2xl font-semibold", style: { color: colors.text } }, k));
