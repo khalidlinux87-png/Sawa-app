@@ -15,7 +15,7 @@
 (function (global) {
   "use strict";
   var VERSION = "c131";
-  var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000;
+  var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000, ANSWERING_MS = 40000;
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
 
@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c229";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c230";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -810,7 +810,10 @@
       case "incoming": return c.type === "video" ? L("مكالمة فيديو واردة", "Incoming video call") : L("مكالمة صوتيّة واردة", "Incoming voice call");
       case "connecting": return L("جارٍ الربط…", "Connecting…");
       case "reconnecting": return L("ضعف الشبكة — إعادة الاتّصال…", "Weak network — reconnecting…");
-      case "connected": return fmt(Math.floor((Date.now() - c.connectedAt) / 1000));
+      case "connected":
+        if (c.held) return L("معلّقة — مكالمةٌ أخرى على هاتفك", "On hold — another call on your phone");   // C229
+        if (c.peerHeld) return L("معلّقة — لديه مكالمةٌ أخرى", "On hold — they're on another call");
+        return fmt(Math.floor((Date.now() - c.connectedAt) / 1000));
       case "ended": return c.endText || L("انتهت المكالمة", "Call ended");
     }
     return "";
@@ -820,7 +823,7 @@
     setAv(ui.av, c.name, c.peer);
     ui.nm.textContent = c.name || ""; ui.topName.textContent = c.name || "";
     ui.rv.style.display = "none"; ui.lv.style.display = "none"; ui.sub.textContent = "";
-    ui.rv.srcObject = null; ui.ra.srcObject = null; ui.lv.srcObject = null;
+    ui.rv.srcObject = null; ui.ra.srcObject = null; ui.lv.srcObject = null; ui.ra.muted = false;   // C229: لا يبقى «التعليق» من مكالمةٍ سابقة
     minimize(false); paint(c); guardArm();
   }
   function hide() { if (!ui.root) return; ui.root.style.display = "none"; ui.pill.style.display = "none"; ui.min = false; guardDisarm(); setTimeout(miniSync, 0);
@@ -873,10 +876,33 @@
   }
   function attachRemote(c) {
     if (!ui.root || !c.remote) return;
-    ui.ra.srcObject = c.remote; try { ui.ra.play().catch(function () {}); } catch (e) {}
-    c.remoteVideo = c.remote.getVideoTracks().some(function (t) { return t.readyState === "live"; });
-    if (c.remoteVideo) { ui.rv.srcObject = c.remote; try { ui.rv.play().catch(function () {}); } catch (e) {} }
+    if (ui.ra.srcObject !== c.remote) ui.ra.srcObject = c.remote;
+    try { ui.ra.play().catch(function () {}); } catch (e) {}
+    // C229: الصورة تظهر حين تصل إطاراتها فعلاً (المسار غير «مكتوم») — كان المسار «حيّاً» قبل أيّ إطار فتُخفى صورة الحساب وتبقى شاشةٌ سوداء.
+    //       وللفيديو بثٌّ خاصّ به: WebKit (الآيفون) لا يعرض مساراً أُضيف إلى بثٍّ معروضٍ أصلاً فتبقى الصورة سوداء.
+    var vts = c.remote.getVideoTracks().filter(function (t) { return t.readyState === "live"; });
+    c.remoteVideo = vts.some(function (t) { return !t.muted; });
+    if (vts.length) {
+      var shown = ui.rv.srcObject && ui.rv.srcObject.getVideoTracks ? ui.rv.srcObject.getVideoTracks()[0] : null;
+      if (shown !== vts[0]) { try { ui.rv.srcObject = new global.MediaStream([vts[0]]); } catch (e) { ui.rv.srcObject = c.remote; } }
+      try { ui.rv.play().catch(function () {}); } catch (e) {}
+    }
     paintStatus(c);
+  }
+  // C229: VP8 أوّلاً في الفيديو — الآيفون يقدّم H264 أوّلاً، ومرمِّز H264 العتاديّ في هواتف أندرويد كثيرة (Huawei/Honor/MediaTek)
+  //       يُرسل إطاراتٍ سوداء أو تالفة إلى الآيفون. VP8 برمجيّ على الطرفين ومدعومٌ في Safari منذ iOS 12.2. H264 يبقى احتياطاً.
+  function preferVp8(pc) {
+    try {
+      if (!pc || pc.native || !pc.getTransceivers || !global.RTCRtpReceiver || !global.RTCRtpReceiver.getCapabilities) return;
+      var caps = global.RTCRtpReceiver.getCapabilities("video"); if (!caps || !caps.codecs) return;
+      var vp8 = caps.codecs.filter(function (k) { return /\/vp8$/i.test(k.mimeType); });
+      if (!vp8.length) return;
+      var order = vp8.concat(caps.codecs.filter(function (k) { return !/\/vp8$/i.test(k.mimeType); }));
+      pc.getTransceivers().forEach(function (tr) {
+        var k = (tr.receiver && tr.receiver.track && tr.receiver.track.kind) || (tr.sender && tr.sender.track && tr.sender.track.kind);
+        if (k === "video" && tr.setCodecPreferences && !tr.stopped) try { tr.setCodecPreferences(order); } catch (e) { LOG.warn("vp8", { err: e && e.message }); }
+      });
+    } catch (e) {}
   }
 
   // ============================================================
@@ -914,6 +940,7 @@
       if (!c.remote) c.remote = s || new global.MediaStream();
       if (!s || s !== c.remote) try { c.remote.addTrack(e.track); } catch (x) {}
       e.track.onunmute = function () { attachRemote(c); };
+      e.track.onmute = function () { attachRemote(c); };   // C229
       e.track.onended = function () { attachRemote(c); };
       attachRemote(c);
     };
@@ -1151,6 +1178,7 @@
       attachLocal(c); paint(c);
       if (c.role !== "caller") return;   // المستقبِل يضع كاميرته في ردّه على العرض الجديد
       if (vt) c.pc.addTrack(vt, ownStream(vt) || c.local); else c.pc.addTransceiver("video", { direction: "recvonly" });
+      preferVp8(c.pc);   // C229
       var n = ++c.reN;
       return c.pc.createOffer().then(function (o) { return c.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); })
         .then(function (o) { return c.ref.update({ reoffer: { type: o.type, sdp: o.sdp, n: n, v: 1 } }); });
@@ -1234,7 +1262,7 @@
       if (c.done) { stopStream(r[0]); return; }
       c.local = r[0]; earlyRoute(c); attachLocal(c); paint(c);
       var plan = pairPlan(c, r[2]); c.relayRec = plan ? plan.rec : null;
-      c.pc = makePc(c, plan ? plan.ice : r[1]); addTracks(c);
+      c.pc = makePc(c, plan ? plan.ice : r[1]); addTracks(c); preferVp8(c.pc);   // C229
       return c.pc.createOffer().then(function (o) { return c.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); }).then(function (o) {
         if (c.done) return;
         c.ref = d.ref("calls/" + c.id);
@@ -1271,6 +1299,12 @@
     if (videoBits(c, v) || c.done) return;
     if (v.up && !c.upSeen) { c.upSeen = true; c.silent = true; finish(c, "upgraded", { remote: true }); groupJoinDirect(v.up, c.type, null, c.upgrading ? "starter" : "joiner"); return; }
     if (v.rung && !c.rung) { c.rung = true; if (c.state === "calling") { setState(c, "ringing"); playTone("back"); } }
+    // C229: ردّ من شاشة النظام والتطبيق ما زال يُفتح (الآيفون من القفل: ١٠–٢٠ ث) — كانت مهلة الرنين تُنهيها «لم يُجب» قبل وصول الردّ
+    if (v.answering && !c.accepted && !c.answeringSeen) {
+      c.answeringSeen = true; clearTimeout(c.timers.ring); stopTone(); setState(c, "connecting");
+      c.timers.ring = setTimeout(function () { if (!c.accepted) finish(c, "noanswer"); }, ANSWERING_MS);
+    }
+    holdBits(c, v);
     if (v.acc && !c.accepted) {
       c.accepted = true; c.accAt = c.accAt || Date.now(); clearTimeout(c.timers.ring); stopTone();
       setState(c, "connecting");
@@ -1314,7 +1348,8 @@
     var ref = d.ref("calls/" + id), inbox = d.ref("inbox/" + me + "/" + id);
     ref.once("value").then(function (snap) {
       var v = snap.val();
-      if (!v || v.to !== me || v.state !== "ringing" || v.acc || (v.ts && now() - v.ts > STALE_MS)) { inbox.remove().catch(function () {}); return; }
+      var late = v && v.ts && now() - v.ts > STALE_MS && !v.answering && !wantAnswer[id];   // C229: رُدّ عليها من شاشة النظام ⇒ ليست قديمة ما دام المتّصل ينتظر
+      if (!v || v.to !== me || v.state !== "ringing" || v.acc || late) { inbox.remove().catch(function () {}); return; }
       // المحظور: لا رنين ولا سجلّ — ويبقى عنده «يرنّ» حتّى ينتهي الوقت (لا نكشف الحظر)
       try { if (C().isBlocked && C().isBlocked(v.from)) { inbox.remove().catch(function () {}); return; } } catch (e) {}
       var name = nameOf(v.from) || v.fromName || "";
@@ -1344,6 +1379,7 @@
     if (c.done) return;
     if (!v) { finish(c, c.connectedAt ? "remote" : "missed", { remote: true }); return; }
     if (videoBits(c, v) || c.done) return;
+    holdBits(c, v);   // C229
     if (v.acc && v.acc !== devId) { c.silent = true; finish(c, "elsewhere", { remote: true }); return; }   // ردّ جهازٌ آخر لي
     if (v.up && !c.upSeen && c.connectedAt) { c.upSeen = true; c.silent = true; finish(c, "upgraded", { remote: true }); groupJoinDirect(v.up, c.type, null, c.upgrading ? "starter" : "joiner"); return; }
     if (v.reoffer && v.reoffer.n > c.reSeen && c.pc && c.remoteSet) {
@@ -1360,7 +1396,7 @@
             if (tx) { try { tx.direction = "sendrecv"; } catch (e) {} return tx.sender.replaceTrack(vt); }
           }
         })
-        .then(function () { return c.pc.createAnswer(); })
+        .then(function () { preferVp8(c.pc); return c.pc.createAnswer(); })   // C229
         .then(function (a) { return c.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); })
         .then(function (a) { return c.ref.update({ reanswer: { type: a.type, sdp: a.sdp, n: n } }); });
       }).catch(function (e) { LOG.warn("reoffer", { err: e && e.message }); });
@@ -1441,7 +1477,7 @@
       c.pc = makePc(c, res[1], pre ? pre.pc : npre ? new NativePC(res[1], npre.nid) : null);
       if (!c.icOn) { c.icOn = true; listen(c, c.ref.child("ic_caller"), "child_added", function (s) { addRemoteIce(c, s.val()); }); }
       return (pre ? Promise.resolve() : c.pc.setRemoteDescription(c.offer)).then(function () {   // ⚡ المُجهَّز: الوصف يُضبط الآن
-        flushIceIn(c); addTracks(c);
+        flushIceIn(c); addTracks(c); preferVp8(c.pc);   // C229
         return c.pc.createAnswer();
       }).then(function (a) { return c.pc.setLocalDescription(tuneSdp(a)).then(function () { return a; }); });
     });
@@ -1474,8 +1510,53 @@
   // ---------- أثناء المكالمة ----------
   function toggleMute() {
     var c = cur; if (!c || !c.local) return;
-    c.muted = !c.muted; c.local.getAudioTracks().forEach(function (t) { t.enabled = !c.muted; }); paint(c);
+    c.muted = !c.muted; c.local.getAudioTracks().forEach(function (t) { t.enabled = !c.muted && !c.held; }); paint(c);
   }
+  // ---------- C229: مكالمةٌ أخرى (واتساب/الهاتف) أخذت الصوت ⇒ تعليقٌ لا إنهاء ----------
+  // التطبيق الأصليّ يبلغ: أندرويد بفقد «تركيز الصوت»، والآيفون بمقاطعة جلسة الصوت. كانت مكالمة سوا تتنازع الصوت مع الأخرى
+  // (أندرويد يعيد «وضع الاتّصال» كلّ ١٫٥ ث) أو تبقى صامتةً بعد انتهائها (الآيفون لا يعيد تشغيل الصوت).
+  function holdBits(c, v) {
+    var ph = !!v["hold_" + (c.role === "caller" ? "callee" : "caller")];
+    if (ph !== !!c.peerHeld) { c.peerHeld = ph; paintStatus(c); }
+  }
+  function setHold(on) {
+    on = !!on;
+    var c = cur;
+    if (c && !c.done && c.state !== "incoming" && c.state !== "ended" && !!c.held !== on) {
+      c.held = on;
+      try { if (c.local) c.local.getAudioTracks().forEach(function (t) { t.enabled = !on && !c.muted; }); } catch (e) {}
+      try { if (ui.ra) ui.ra.muted = on; } catch (e) {}
+      if (c.ref && c.live) { var u = {}; u["hold_" + c.role] = on ? TS() : null; c.ref.update(u).catch(function () {}); }
+      LOG.info("hold", { id: c.id, on: on });
+      if (!on) setTimeout(function () { if (cur === c && !c.held) resumeMedia(c); }, 1200);   // مهلةٌ ليعيد المتصفّح الالتقاط بنفسه إن استطاع
+      paintStatus(c);
+    }
+    var g = gc || rm;   // الجماعيّة والغرف: الميكروفون فقط
+    if (g && g.local && !g.done && !!g.held !== on) {
+      g.held = on;
+      var micOn = g === rm ? !!g.mic : !g.muted;   // الغرف: mic = مفتوح · الجماعيّة: muted = مكتوم
+      try { g.local.getAudioTracks().forEach(function (t) { t.enabled = !on && micOn; }); } catch (e) {}
+    }
+  }
+  // WebKit (الآيفون) قد يُنهي التقاط الميكروفون/الكاميرا أثناء المكالمة الأخرى ⇒ نلتقطهما من جديد ونستبدل المسار بلا إعادة تفاوض
+  function resumeMedia(c) {
+    if (!c || c.done || !c.local || c.local.native || !c.pc || !c.pc.getSenders) return;
+    var dead = c.local.getTracks().filter(function (t) { return t.readyState === "ended" || (t.muted && !(t.kind === "video" && c.camOff)); });   // منتهٍ أو بقي «مكتوماً» من النظام
+    if (!dead.length) return;
+    var wantVideo = dead.some(function (t) { return t.kind === "video"; });
+    getMedia(wantVideo ? "video" : "audio", c.facing).then(function (st) {
+      if (c.done) { stopStream(st); return; }
+      st.getTracks().forEach(function (nt) {
+        var old = dead.filter(function (t) { return t.kind === nt.kind; })[0];
+        if (!old) { try { nt.stop(); } catch (e) {} return; }
+        c.pc.getSenders().forEach(function (s) { if (s.track === old) s.replaceTrack(nt).catch(function (e) { LOG.warn("resume.replace", { err: e && e.message }); }); });
+        try { c.local.removeTrack(old); c.local.addTrack(nt); old.stop(); } catch (e) {}
+        nt.enabled = nt.kind === "audio" ? !c.muted && !c.held : !c.camOff;
+      });
+      attachLocal(c); paint(c);
+    }).catch(function (e) { LOG.warn("resume.media", { err: e && (e.name || e.message) }); });
+  }
+  global.__sawaAudioHold = function (on) { try { setHold(on); } catch (e) { LOG.warn("hold", { err: e && e.message }); } };
   function toggleCam() {
     var c = cur; if (!c || !c.local) return;
     c.camOff = !c.camOff; c.local.getVideoTracks().forEach(function (t) { t.enabled = !c.camOff; });
@@ -1881,7 +1962,7 @@
     if (!c || c.done) return;
     if (c.role === "callee") nativeCallDone(c.id);   // C72
     if (c.role === "callee") ckEnd(c.id, c.connectedAt ? "ended" : reason === "declinedByMe" ? "declined" : "remote");   // C151
-    opts = opts || {}; c.done = true; clearCallNotifications(); earOff(); bgAudio(false); vPromptClose(c);
+    opts = opts || {}; c.done = true; c.held = false; clearCallNotifications(); earOff(); bgAudio(false); vPromptClose(c);
     dropPre(c);   // C218
     clearTimers(c); stopTone(); wakeOff();
     c.offs.forEach(function (f) { f(); }); c.offs = [];
@@ -2250,7 +2331,7 @@
   }
 
   // ---------- أثناء المكالمة ----------
-  function gToggleMute() { var g = gc; if (!g || !g.local) return; g.muted = !g.muted; g.local.getAudioTracks().forEach(function (t) { t.enabled = !g.muted; }); gPaint(g); }
+  function gToggleMute() { var g = gc; if (!g || !g.local) return; g.muted = !g.muted; g.local.getAudioTracks().forEach(function (t) { t.enabled = !g.muted && !g.held; }); gPaint(g); }
   function gToggleCam() { var g = gc; if (!g || !g.local) return; g.camOff = !g.camOff; g.local.getVideoTracks().forEach(function (t) { t.enabled = !g.camOff; }); gLocalTile(g); gPaint(g); }
   function gSwitchCam() {
     var g = gc; if (!g || !g.local || g.switching) return;
@@ -3392,7 +3473,7 @@
 
   // ---------- أفعالي ----------
   function rMember(r, patch) { if (!r.live) return; rRef(r, "members/" + myUid()).update(patch).catch(function (e) { LOG.warn("rmember", { err: e && e.message }); }); }
-  function rToggleMic(r) { r = r || rm; if (!r || !r.local) return; r.mic = !r.mic; r.local.getAudioTracks().forEach(function (t) { t.enabled = r.mic; }); if (r.mic) r.askUnmute = false; rMember(r, { mic: r.mic }); rTile(r, "__me"); rPaint(r); }
+  function rToggleMic(r) { r = r || rm; if (!r || !r.local) return; r.mic = !r.mic; r.local.getAudioTracks().forEach(function (t) { t.enabled = r.mic && !r.held; }); if (r.mic) r.askUnmute = false; rMember(r, { mic: r.mic }); rTile(r, "__me"); rPaint(r); }
   // ---------- C115: مشاركة الشاشة في الغرفة ----------
   // خطوتان حتّى لا تُضغط خطأً: «المزيد ← مشاركة الشاشة» ثمّ نافذة تأكيد تشرح أنّ الشاشة كلّها ستظهر. أثناء المشاركة شريطٌ أحمر ثابت «إيقاف».
   // الشاشة تحلّ محلّ الكاميرا في الإرسال نفسه (شبكة مباشرة أو SFU) فلا تفاوض جديد. members/{me}.scr ⇒ الآخرون يعرضونها كاملةً (contain).
