@@ -23,13 +23,32 @@ function DialPadScreen({ onCall, onBack }) {
             React.createElement("div", { className: "w-full text-center pt-4" },
                 React.createElement("span", { className: "text-2xl font-extrabold tracking-widest", style: { color: colors.text }, dir: "ltr" }, shown || "—"),
                 React.createElement("div", { className: "text-xs mt-2", style: { color: colors.textMuted } }, tl("أدخل رمز سوا الخاصّ بالشخص (10 أرقام) — تجده عنده في «جهات الاتّصال ← رمزي»", "Enter the person's 10-digit Sawa code (Contacts → My code)"))),
-            React.createElement("div", { className: "grid grid-cols-3 gap-4 w-full max-w-xs" }, keys.map((k, i) => k === "" ? React.createElement("div", { key: "e" + i }) : (React.createElement("button", { key: k, onClick: () => setNumber((prev) => (prev + k).slice(0, 10)), className: "w-16 h-16 rounded-full flex items-center justify-center mx-auto", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
+            React.createElement("div", { dir: "ltr", className: "grid grid-cols-3 gap-4 w-full max-w-xs" }, keys.map(   /* C198: لوحة الأرقام بترتيبها المعتاد (١ يساراً) في كلّ اللغات — كانت تنقلب في العربيّة */(k, i) => k === "" ? React.createElement("div", { key: "e" + i }) : (React.createElement("button", { key: k, onClick: () => setNumber((prev) => (prev + k).slice(0, 10)), className: "w-16 h-16 rounded-full flex items-center justify-center mx-auto", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                 React.createElement("span", { className: "text-xl font-bold", style: { color: colors.text } }, k))))),
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-4 w-full max-w-xs justify-center` },
-                React.createElement("button", { "aria-label": t("atsal"), onClick: () => ready && onCall(number), disabled: !ready, className: "w-16 h-16 rounded-full flex items-center justify-center", style: { backgroundColor: colors.success, opacity: ready ? 1 : 0.4 } },
+                React.createElement("button", { "aria-label": t("atsal"), onClick: () => ready && onCall(number), disabled: !ready, className: "w-16 h-16 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary, opacity: ready ? 1 : 0.4 } },
                     React.createElement(Phone, { size: 22, color: "#fff" })),
                 number.length > 0 && (React.createElement("button", { "aria-label": tl("مسح آخر رقم", "Delete last digit"), onClick: () => setNumber((prev) => prev.slice(0, -1)), className: "w-12 h-12 rounded-full flex items-center justify-center" },
                     React.createElement(Delete, { size: 18, color: colors.textMuted })))))));
+}
+// C198: حقل تاريخ/وقت بالعربيّة — الحقل الأصليّ يعرض «mm/dd/yyyy» و«--:-- --» بلغة المتصفّح. النصّ الظاهر عربيّ،
+//   والحقل الأصليّ شفّافٌ فوقه فيفتح منتقي الهاتف نفسه بالنقر (و‎showPicker‎ على الحاسوب)، ويبقى قابلاً للوصول بلوحة المفاتيح وقارئ الشاشة.
+function pickFmt(type, v) {
+    if (!v) return "";
+    const ar = isRTL();
+    try {
+        if (type === "date") return new Date(v + "T00:00").toLocaleDateString(ar ? "ar-u-nu-latn" : "en", { weekday: "long", day: "numeric", month: "long" });
+        const [h, m] = v.split(":").map(Number); return ar ? `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "ص" : "م"}` : `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+    } catch (e) { return v; }
+}
+function PickField({ type, value, onChange, min, label, placeholder, colors, className = "" }) {
+    const Icon = type === "date" ? Calendar : Clock;
+    return React.createElement("div", { className: `relative ${className}` },
+        React.createElement("div", { className: `w-full flex ${rowStart()} items-center gap-2 border rounded-xl px-3 py-2.5 text-sm`, style: { borderColor: colors.border, backgroundColor: colors.card, color: value ? colors.text : colors.textMuted }, "aria-hidden": true },
+            React.createElement(Icon, { size: 15, color: colors.textMuted }),
+            React.createElement("span", { className: `flex-1 ${textStart()}` }, value ? pickFmt(type, value) : placeholder)),
+        React.createElement("input", { type, value, min, "aria-label": label, onChange: (e) => onChange(e.target.value), onClick: (e) => { try { e.target.showPicker && e.target.showPicker(); } catch (x) { } },
+            style: { position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer" } }));
 }
 function ScheduleCallScreen({ defaultCallType, onSave, onBack, groups = [] }) {
     var _a;
@@ -73,12 +92,12 @@ function ScheduleCallScreen({ defaultCallType, onSave, onBack, groups = [] }) {
             React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, t("alwsf_akhtyary")),
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: description, onChange: (e) => setDescription(e.target.value), placeholder: t("mthal_mtabaa_mshrwa_alaayla"), className: "w-full border rounded-xl px-3 py-2.5 text-sm mb-4", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
             React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, t("altarykh")),
-            React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", type: "date", value: date, min: minDate, onChange: (e) => setDate(e.target.value), className: "w-full border rounded-xl px-3 py-2.5 text-sm mb-4", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
+            React.createElement(PickField, { type: "date", value: date, min: minDate, onChange: setDate, label: t("altarykh"), placeholder: tl("اختر التاريخ", "Choose a date"), colors, className: "mb-4" }),
             React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, t("alwqt")),
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-4` },
-                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", type: "time", value: startTime, onChange: (e) => handleStartTimeChange(e.target.value), className: "flex-1 border rounded-xl px-3 py-2.5 text-sm", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
+                React.createElement(PickField, { type: "time", value: startTime, onChange: handleStartTimeChange, label: tl("وقت البدء", "Start time"), placeholder: tl("البدء", "Start"), colors, className: "flex-1" }),
                 React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } }, t("ila")),
-                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", type: "time", value: endTime, onChange: (e) => setEndTime(e.target.value), className: "flex-1 border rounded-xl px-3 py-2.5 text-sm", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } })),
+                React.createElement(PickField, { type: "time", value: endTime, onChange: setEndTime, label: tl("وقت الانتهاء", "End time"), placeholder: tl("الانتهاء", "End"), colors, className: "flex-1" })),
             React.createElement("label", { className: "text-xs font-bold mb-2 block", style: { color: colors.text } }, t("nwa_almkalma")),
             React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-4` },
                 React.createElement("button", { onClick: () => setCallType("audio"), className: `flex-1 rounded-xl border-2 py-2.5 flex ${rowStart()} items-center justify-center gap-1.5`, style: { borderColor: callType === "audio" ? colors.primary : colors.border } },
@@ -100,7 +119,7 @@ function ScheduleCallScreen({ defaultCallType, onSave, onBack, groups = [] }) {
                 React.createElement("option", { value: 15 }, t("qbl_15_dqyqa")),
                 React.createElement("option", { value: 30 }, t("qbl_30_dqyqa")),
                 React.createElement("option", { value: 60 }, t("qbl_saaa"))),
-            !canSave && (date || startTime) && (React.createElement("p", { className: "text-[11px] text-center mb-2", style: { color: colors.danger } }, t("akml_altarykh_wwqty_albdaya"))),
+            !canSave && (date || startTime) && (React.createElement("p", { className: "text-[11px] text-center mb-2", style: { color: colors.danger } }, !contactName ? tl("اختر مع من المكالمة لتفعيل الحفظ", "Choose who the call is with to save") : t("akml_altarykh_wwqty_albdaya"))),   // C198: يذكر الناقص فعلاً — كان يطلب التاريخ والوقت وهما مكتملان
             React.createElement(Button, { label: t("hfz_almwad"), disabled: !canSave, onPress: () => onSave({
                     id: `sched-call-${Date.now()}`,
                     contactName: shownName, description, date, startTime, endTime, callType, requireApproval, reminderMinutes,
@@ -248,7 +267,19 @@ function callTimeLabel(ts) {
     const diff = Math.round((day(n) - day(d)) / 86400000);
     if (diff === 0) return (ar ? "اليوم " : "Today ") + hm;
     if (diff === 1) return (ar ? "أمس " : "Yesterday ") + hm;
-    return `${d.getDate()}/${d.getMonth() + 1} ${hm}`;
+    // C198: «١ نوفمبر» بدل «1/11» (غامض: يوم/شهر أم شهر/يوم)
+    try { return d.toLocaleDateString(ar ? "ar-u-nu-latn" : "en", { day: "numeric", month: "long" }) + " " + hm; } catch (e) { return `${d.getDate()}/${d.getMonth() + 1} ${hm}`; }
+}
+// C198: المدّة «12 د 5 ث» بدل «12:05» (كانت تُقرأ ساعةً بجانب الوقت)
+function fmtCallDur(v) {
+    const p = String(v || "").split(":").map((x) => parseInt(x, 10));
+    if (!p.length || p.some((x) => isNaN(x))) return String(v || "");
+    const [h, m, sec] = p.length === 3 ? p : [0, p[0], p[1] || 0];
+    const ar = isRTL(), out = [];
+    if (h) out.push(h + (ar ? " س" : "h"));
+    if (m) out.push(m + (ar ? " د" : "m"));
+    if (sec && !h) out.push(sec + (ar ? " ث" : "s"));
+    return out.length ? out.join(" ") : (ar ? "0 ث" : "0s");
 }
 // C6: السجلّ حقيقيّ (SawaRTC يضيف مكالماتك) — بلا أمثلةٍ وهميّة
 const initialCallLog = [];
@@ -305,7 +336,8 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
         return (React.createElement(ScheduledCallsScreen, { scheduledCalls: scheduledCalls, onDelete: onDeleteScheduledCall, onJoinNow: (entry) => { setSubScreen(null); if (entry.cloud && window.SawaRTC && window.SawaRTC.schedStart(entry)) return; setActiveCall({ name: entry.contactName, callType: entry.callType }); }, onNewSchedule: () => setSubScreen("schedule"), onBack: () => setSubScreen(null) }));
     }
     const missedCount = callLog.filter((c) => c.type === "missed").length;
-    return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 overflow-y-auto relative", style: { backgroundColor: colors.card } },
+    // C198: خلفيّة التطبيق مثل باقي التبويبات (كانت البطاقة)، والأزرار الأربعة بلون المظهر الفاتح، والفواصل من ألوانه — كانت رماديّة ثابتة فتسطع في الداكن
+    return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 overflow-y-auto relative", style: { backgroundColor: colors.bg } },
         React.createElement("div", { style: { display: "flex", flexDirection: isRTL() ? "row" : "row-reverse", direction: "ltr", alignItems: "center", padding: "1rem 1rem 0 1rem" } },
             React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: isRTL() ? "row" : "row-reverse", justifyContent: "flex-start", alignItems: "center", gap: 8 } },
                 React.createElement("button", { "aria-label": t("khyarat"), onClick: () => setShowMenu(!showMenu), className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: colors.bg } },
@@ -318,14 +350,19 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
         showMenu && (React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setShowMenu(false), style: { position: "fixed", inset: 0, zIndex: 15 } }),
             React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", top: "4.5rem", [isRTL() ? "left" : "right"]: "1rem", zIndex: 20, backgroundColor: colors.card, borderRadius: 10, boxShadow: "0 4px 20px rgba(0,0,0,0.18)", overflow: "hidden", minWidth: 200 } },
-                React.createElement("button", { onClick: () => { setShowClearConfirm(true); setShowMenu(false); }, className: `w-full ${textStart()} px-4 py-3.5 border-b`, style: { borderColor: colors.border } },
-                    React.createElement("span", { className: "text-sm", style: { color: colors.text } }, t("msh_sjl_almkalmat"))),
-                React.createElement("button", { onClick: () => { setSubScreen("scheduledList"); setShowMenu(false); }, className: `w-full ${textStart()} px-4 py-3.5 border-b`, style: { borderColor: colors.border } },
+                // C198: أيقونات مثل باقي القوائم، و«مسح السجلّ» (خطر) أخيراً بالأحمر — كان أوّلها
+                React.createElement("button", { onClick: () => { setSubScreen("scheduledList"); setShowMenu(false); }, className: `w-full flex ${rowStart()} items-center gap-3 px-4 py-3.5 border-b`, style: { borderColor: colors.border } },
+                    React.createElement(Calendar, { size: 16, color: colors.textMuted, "aria-hidden": true }),
                     React.createElement("span", { className: "text-sm", style: { color: colors.text } }, t("mkalmat_mjdwla"))),
-                onOpenScheduledRooms && React.createElement("button", { onClick: () => { setShowMenu(false); onOpenScheduledRooms(); }, className: `w-full ${textStart()} px-4 py-3.5 border-b`, style: { borderColor: colors.border } },
+                onOpenScheduledRooms && React.createElement("button", { onClick: () => { setShowMenu(false); onOpenScheduledRooms(); }, className: `w-full flex ${rowStart()} items-center gap-3 px-4 py-3.5 border-b`, style: { borderColor: colors.border } },
+                    React.createElement(Users, { size: 16, color: colors.textMuted, "aria-hidden": true }),
                     React.createElement("span", { className: "text-sm", style: { color: colors.text } }, tl("الغرف المجدولة", "Scheduled rooms"))),
-                React.createElement("button", { onClick: () => { setSubScreen("settings"); setShowMenu(false); }, className: `w-full ${textStart()} px-4 py-3.5` },
-                    React.createElement("span", { className: "text-sm", style: { color: colors.text } }, t("aliadadat")))))),
+                React.createElement("button", { onClick: () => { setSubScreen("settings"); setShowMenu(false); }, className: `w-full flex ${rowStart()} items-center gap-3 px-4 py-3.5 border-b`, style: { borderColor: colors.border } },
+                    React.createElement(SettingsIcon, { size: 16, color: colors.textMuted, "aria-hidden": true }),
+                    React.createElement("span", { className: "text-sm", style: { color: colors.text } }, t("aliadadat"))),
+                React.createElement("button", { onClick: () => { setShowClearConfirm(true); setShowMenu(false); }, className: `w-full flex ${rowStart()} items-center gap-3 px-4 py-3.5` },
+                    React.createElement(Trash2, { size: 16, color: colors.danger, "aria-hidden": true }),
+                    React.createElement("span", { className: "text-sm font-bold", style: { color: colors.danger } }, t("msh_sjl_almkalmat")))))),
         showClearConfirm && (React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setShowClearConfirm(false), style: { position: "fixed", inset: 0, zIndex: 25, backgroundColor: "rgba(0,0,0,0.4)" } }),
             React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", top: "40%", left: "1.5rem", right: "1.5rem", zIndex: 26, backgroundColor: colors.card, borderRadius: 16, padding: 16 } },
@@ -339,20 +376,20 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
             React.createElement("button", { "aria-label": t("ilgha"), onClick: () => setCallQ(null) }, React.createElement(X, { size: 15, color: colors.textMuted }))),
         React.createElement("div", { className: "grid grid-cols-4 gap-2 px-4 pt-5" },
             React.createElement("button", { onClick: () => setSubScreen("newCall"), className: "flex flex-col items-center gap-1.5" },
-                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#F1F5F9" } },
-                    React.createElement(Phone, { size: 20, color: "#475569" })),
+                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primaryLight } },
+                    React.createElement(Phone, { size: 20, color: colors.primary, "aria-hidden": true })),
                 React.createElement("span", { className: "text-[11px]", style: { color: colors.text } }, t("mkalma"))),
             React.createElement("button", { onClick: () => setSubScreen("schedule"), className: "flex flex-col items-center gap-1.5" },
-                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#F1F5F9" } },
-                    React.createElement(Calendar, { size: 20, color: "#475569" })),
+                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primaryLight } },
+                    React.createElement(Calendar, { size: 20, color: colors.primary, "aria-hidden": true })),
                 React.createElement("span", { className: "text-[11px]", style: { color: colors.text } }, t("jdwla"))),
             React.createElement("button", { onClick: () => setSubScreen("dialPad"), className: "flex flex-col items-center gap-1.5" },
-                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#F1F5F9" } },
-                    React.createElement(Grid3x3, { size: 20, color: "#475569" })),
-                React.createElement("span", { className: "text-[11px]", style: { color: colors.text } }, t("lwha_alarqam"))),
+                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primaryLight } },
+                    React.createElement(Grid3x3, { size: 20, color: colors.primary, "aria-hidden": true })),
+                React.createElement("span", { className: "text-[11px]", style: { color: colors.text } }, tl("اتّصل برمز", "Call by code"))),   // C198: كانت «لوحة الأرقام» وتفتح «اتّصل برمز سوا» (ليست أرقام هواتف)
             React.createElement("button", { onClick: () => setSubScreen("speedDial"), className: "flex flex-col items-center gap-1.5" },
-                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: "#F1F5F9" } },
-                    React.createElement(Heart, { size: 20, color: "#475569" })),
+                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primaryLight } },
+                    React.createElement(Star, { size: 20, color: colors.primary, "aria-hidden": true })),
                 React.createElement("span", { className: "text-[11px]", style: { color: colors.text } }, t("almfdla_2")))),
         React.createElement("div", { className: "px-4 pt-5 pb-1" },
             React.createElement("span", { className: "text-[15px] font-bold", style: { color: colors.text } }, t("alhdytha"))),
@@ -364,7 +401,7 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
                 const unanswered = c.type === "missed" || (!c.duration && c.cloud);
                 const arrowColor = c.type === "missed" ? "#EF4444" : unanswered ? "#B45309" : "#16A34A";
                 // C61: الصفّ كلّه ينقر (كان الهاتف الصغير و⋮ فقط) ⇒ قائمة الخيارات: صوت · فيديو · حذف
-                return (React.createElement("div", { key: c.id, role: "button", tabIndex: 0, onClick: () => setCallMenu(c), onKeyDown: (e) => { if (e.key === "Enter") setCallMenu(c); }, className: "flex flex-row items-center px-4 py-2.5 border-b cursor-pointer", style: { borderColor: "#EDEFF2" } },
+                return (React.createElement("div", { key: c.id, role: "button", tabIndex: 0, onClick: () => setCallMenu(c), onKeyDown: (e) => { if (e.key === "Enter") setCallMenu(c); }, className: "flex flex-row items-center px-4 py-2.5 border-b cursor-pointer", style: { borderColor: colors.border } },
                     (() => { const ph = c.peerUid && window.SawaChat && window.SawaChat.photoOf ? window.SawaChat.photoOf(c.peerUid) : null;
                         return React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${me("3")} shrink-0`, style: { backgroundColor: colors.primaryLight, backgroundImage: ph ? `url(${ph})` : "none", backgroundSize: "cover", backgroundPosition: "center" } },
                             ph ? null : c.room || c.cid ? React.createElement(Users, { size: 19, color: colors.primaryInk }) : React.createElement(User, { size: 19, color: colors.primaryInk })); })(),
@@ -378,11 +415,9 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
                             React.createElement("span", { className: "text-xs", style: { color: c.type === "missed" ? "#EF4444" : colors.textMuted } },
                                 c.label ? `${c.label} · ` : "",
                                 (c.cloud && c.timestamp ? callTimeLabel(c.timestamp) : c.time),
-                                c.duration ? ` · ${c.duration}` : "",
+                                c.duration ? ` · ${fmtCallDur(c.duration)}` : "",
                                 (c.participants && c.participants.length > 0) ? ` · ${tl("مع", "with")} ${c.participants.join(tl("، ", ", "))}` : ""))),
-                    React.createElement("button", { "aria-label": c.callType === "video" ? tl("مكالمة فيديو", "Video call") : tl("مكالمة صوتية", "Voice call"), onClick: (e) => { e.stopPropagation(); setActiveCall({ name: c.name, peerUid: c.peerUid, cid: c.cid, room: c.room, callType: c.callType || "audio" }); }, className: "w-9 h-9 flex items-center justify-center shrink-0" }, c.callType === "video" ? React.createElement(Video, { size: 19, color: colors.primary }) : React.createElement(Phone, { size: 19, color: colors.primary })),
-                    React.createElement("button", { "aria-label": t("khyarat"), onClick: (e) => { e.stopPropagation(); setCallMenu(c); }, className: "w-7 h-7 flex items-center justify-center shrink-0" },
-                        React.createElement(MoreVertical, { size: 16, color: colors.textMuted }))));
+                    React.createElement("button", { "aria-label": c.callType === "video" ? tl("مكالمة فيديو", "Video call") : tl("مكالمة صوتية", "Voice call"), onClick: (e) => { e.stopPropagation(); setActiveCall({ name: c.name, peerUid: c.peerUid, cid: c.cid, room: c.room, callType: c.callType || "audio" }); }, className: "w-9 h-9 flex items-center justify-center shrink-0" }, c.callType === "video" ? React.createElement(Video, { size: 19, color: colors.primary }) : React.createElement(Phone, { size: 19, color: colors.primary }))));   // C198: حُذف ⋮ — الضغط على الصفّ يفتح الخيارات نفسها
             })),
         callMenu && (React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setCallMenu(null), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.35)" } }),
@@ -396,7 +431,7 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
                 ].map((it) => (React.createElement("button", { key: it.label, onClick: () => { it.act(); setCallMenu(null); }, className: "w-full flex flex-row items-center gap-3 px-5 py-3.5 border-t", style: { borderColor: colors.border } },
                     React.createElement(it.icon, { size: 17, color: it.danger ? colors.danger : colors.textMuted }),
                     React.createElement("span", { className: `flex-1 ${textStart()} text-sm font-bold`, style: { color: it.danger ? colors.danger : colors.text } }, it.label))))))),
-        React.createElement("button", { onClick: () => setSubScreen("newCall"), className: "flex items-center justify-center", "aria-label": t("mkalma_jdyda"), style: { position: "absolute", bottom: "1rem", [isRTL() ? "left" : "right"]: "1rem", width: 56, height: 56, borderRadius: 28, backgroundColor: "#25D366", boxShadow: "0 4px 12px rgba(0,0,0,0.25)" } },
+        React.createElement("button", { onClick: () => setSubScreen("newCall"), className: "flex items-center justify-center", "aria-label": t("mkalma_jdyda"), style: { position: "absolute", bottom: "1rem", [isRTL() ? "left" : "right"]: "1rem", width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, boxShadow: "0 4px 12px rgba(0,0,0,0.25)" }   /* C198: كان أخضر واتساب #25D366 (الأيقونة البيضاء ٢:١) */ },
             React.createElement(PhoneCall, { size: 22, color: "#fff" }))));
 }
 // ============================================================================
