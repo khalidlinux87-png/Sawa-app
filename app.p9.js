@@ -32,6 +32,8 @@ function App() {
         ...base,
         primary: isDark ? (accent.accentOnDark || accent.accent) : accent.accent,   // C192
         primaryDark: accent.accentDark,
+        // C193: نصٌّ على الخلفيّة الملوّنة الفاتحة (primaryLight). في الفاتح = primaryDark كما كان؛ في الداكن الخلفيّة داكنة فيصير فاتحاً — كان الحرف في صور المحادثات لا يُرى.
+        primaryInk: isDark ? accent.accentTint : accent.accentDark,
         primaryLight: isDark ? base.primaryLight : accent.accentTint,
         // تباين عالٍ: نص أسود/أبيض خالص + حدود أوضح، بدل الدرجات المتوسطة
         ...(highContrast

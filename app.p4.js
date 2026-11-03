@@ -257,7 +257,7 @@ function FamilySuggestionsScreen({ groupId, persons, relations, events, dismisse
                 React.createElement("p", { className: "text-[11px] mb-3", style: { color: colors.textMuted } }, t("mrtba_mn_alaqrb_ilyk")),
                 visibleGaps.map((g) => (React.createElement(FamCard, { key: g.id },
                     React.createElement("div", { className: `flex ${rowStart()} items-start gap-2 mb-2` },
-                        React.createElement("span", { className: "text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 mt-0.5", style: { backgroundColor: colors.primaryLight, color: colors.primaryDark } }, [t("fs_ant"), t("fs_alwaldan"), t("fs_alajdad"), t("fs_slf_awl"), t("fs_slf_thany")][genDepth(g.personId)] || t("fs_slf_bayd")),
+                        React.createElement("span", { className: "text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 mt-0.5", style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, [t("fs_ant"), t("fs_alwaldan"), t("fs_alajdad"), t("fs_slf_awl"), t("fs_slf_thany")][genDepth(g.personId)] || t("fs_slf_bayd")),
                         React.createElement("div", { className: `flex-1 text-sm font-bold ${textStart()}`, style: { color: colors.text } }, g.question)),
                     g.kind === "parent" ? (React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                         React.createElement(FamButton, { label: t("adf_alan"), onPress: () => { onOpenAddWithPreset && onOpenAddWithPreset(g.personId, "parent", g.parentGender); onDismiss(g.id); }, style: { flex: 1 } }),
@@ -1157,7 +1157,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                                         React.createElement("span", { className: "text-sm", style: { color: kinship === k ? colors.primary : colors.text, fontWeight: kinship === k ? 700 : 400 } }, kinshipLabel(k)),
                                         ((k === SELF_KINSHIP && selfTaken)
                                             ? React.createElement("span", { className: "text-[9px] px-1.5 py-0.5 rounded-full font-bold", style: { backgroundColor: colors.bg, color: colors.textMuted } }, t("pf_nfsy_makhwdh"))
-                                            : (!hasNoProximity(k) && React.createElement("span", { className: "text-[9px] px-1.5 py-0.5 rounded-full font-bold", style: { backgroundColor: colors.primaryLight, color: colors.primaryDark } }, proximityForKinship(k))))),
+                                            : (!hasNoProximity(k) && React.createElement("span", { className: "text-[9px] px-1.5 py-0.5 rounded-full font-bold", style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, proximityForKinship(k))))),
                                     kinship === k && React.createElement(Check, { size: 16, color: colors.primary }))))));
                         }),
                         kinshipSearch.trim() && KINSHIP_SECTIONS.every((s2) => s2.items.filter((k) => k.includes(kinshipSearch.trim()) || kinshipLabel(k).toLowerCase().includes(kinshipSearch.trim().toLowerCase())).length === 0) && (React.createElement("p", { className: "text-xs text-center py-6", style: { color: colors.textMuted } }, t("la_twjd_sla_bhdha"))))))),
@@ -1313,7 +1313,7 @@ function FamilyPersonPicker({ persons, relations = [], value, onChange, maxHeigh
                 const active = value === p.id;
                 return (React.createElement("button", { key: p.id, onClick: () => onChange(p.id), className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2.5 border-b ${textStart()}`, style: { borderColor: colors.border, backgroundColor: active ? colors.primaryLight : "transparent" } },
                     React.createElement("div", { className: "flex-1 min-w-0" },
-                        React.createElement("div", { className: "text-sm font-bold truncate", style: { color: active ? colors.primaryDark : colors.text } }, p.local_name),
+                        React.createElement("div", { className: "text-sm font-bold truncate", style: { color: active ? colors.primaryInk : colors.text } }, p.local_name),
                         React.createElement("div", { className: "text-[10px] truncate", style: { color: colors.textMuted } }, sub)),
                     active && React.createElement(Check, { size: 15, color: colors.primary })));
             }))));
@@ -1438,7 +1438,7 @@ function LockedChatsScreen({ conversations, lockedConversationIds, correctPin, o
                 return (React.createElement("button", { key: c.id, onClick: () => onOpenChat(c), className: `w-full ${textStart()}` },
                     React.createElement(Card, { className: `flex ${rowStart()} items-center` },
                         React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${ms("3")}`, style: { backgroundColor: colors.primaryLight } },
-                            React.createElement("span", { className: "text-base font-extrabold", style: { color: colors.primaryDark } }, (_a = c.name) === null || _a === void 0 ? void 0 : _a.charAt(0))),
+                            React.createElement("span", { className: "text-base font-extrabold", style: { color: colors.primaryInk } }, (_a = c.name) === null || _a === void 0 ? void 0 : _a.charAt(0))),
                         React.createElement("div", { className: "flex-1" },
                             React.createElement("div", { className: "font-bold text-sm", style: { color: colors.text } }, c.name),
                             React.createElement("div", { className: "text-xs mt-0.5", style: { color: colors.textMuted } }, c.lastMessage || tl("لا رسائل بعد", "No messages yet"))))));
@@ -1741,7 +1741,7 @@ const StoriesRow = React.memo(function StoriesRow({ momentsPosts, onOpenMoments,
         React.createElement("div", { className: "relative rounded-full flex items-center justify-center", style: { width: 62, height: 62, background: ring(hasItems, allSeen), padding: hasItems ? 3 : 0 } },
             React.createElement("div", { className: "w-full h-full rounded-full flex items-center justify-center", style: { backgroundColor: colors.card, padding: hasItems ? 2 : 0 } },
                 React.createElement("div", { className: "w-full h-full rounded-full flex items-center justify-center overflow-hidden", style: { backgroundColor: colors.primaryLight, backgroundImage: photo ? `url(${photo})` : "none", backgroundSize: "cover", backgroundPosition: "center" } },
-                    !photo && React.createElement("span", { className: "text-xl font-extrabold", style: { color: colors.primaryDark } }, String(name || "؟").trim().charAt(0) || "؟"))),
+                    !photo && React.createElement("span", { className: "text-xl font-extrabold", style: { color: colors.primaryInk } }, String(name || "؟").trim().charAt(0) || "؟"))),
             isMe && !hasItems && React.createElement("div", { className: "absolute rounded-full flex items-center justify-center", style: { bottom: 0, [isRTL() ? "left" : "right"]: 0, width: 22, height: 22, backgroundColor: colors.primary, border: `2px solid ${colors.card}` } },
                 React.createElement(Plus, { size: 13, color: "#fff", strokeWidth: 3 }))),
         React.createElement("span", { className: "text-[12px] font-bold truncate", style: { color: hasItems && !allSeen ? colors.text : colors.textMuted, maxWidth: 68 } }, name));
@@ -1765,7 +1765,7 @@ function ArchivedChatsScreen({ conversations, archivedIds, mutedIds, onOpenChat,
             list.map((c) => (React.createElement(Card, { key: c.id, className: `flex ${rowStart()} items-center mb-1.5` },
                 React.createElement("button", { onClick: () => onOpenChat(c), className: `flex-1 flex ${rowStart()} items-center ${textStart()}`, style: { minWidth: 0 } },
                     React.createElement("div", { className: `w-11 h-11 rounded-full flex items-center justify-center ${me("3")} shrink-0`, style: { backgroundColor: colors.primaryLight } },
-                        React.createElement(User, { size: 20, color: colors.primaryDark })),
+                        React.createElement(User, { size: 20, color: colors.primaryInk })),
                     React.createElement("div", { className: "flex-1", style: { minWidth: 0 } },
                         React.createElement("div", { style: { display: "flex", flexDirection: isRTL() ? "row" : "row-reverse", direction: "ltr", alignItems: "center", justifyContent: "space-between" } },
                             React.createElement("span", { className: "text-[10px] shrink-0", style: { color: colors.textMuted } }, formatChatTime(c.updatedAt)),
@@ -1798,7 +1798,7 @@ function ContactCardBubble({ m, mine }) {
     }
     return React.createElement("div", { style: { minWidth: 210, maxWidth: 260 } },
         React.createElement("div", { className: `flex ${rowStart()} items-center gap-2.5 pb-2`, style: { borderBottom: `1px solid ${mine ? "#ffffff33" : colors.border}` } },
-            React.createElement("div", { className: "w-11 h-11 rounded-full flex items-center justify-center shrink-0 text-base font-extrabold", style: { backgroundColor: mine ? "rgba(255,255,255,0.22)" : colors.primaryLight, color: mine ? "#fff" : colors.primaryDark } }, (k.n || "؟").charAt(0)),
+            React.createElement("div", { className: "w-11 h-11 rounded-full flex items-center justify-center shrink-0 text-base font-extrabold", style: { backgroundColor: mine ? "rgba(255,255,255,0.22)" : colors.primaryLight, color: mine ? "#fff" : colors.primaryInk } }, (k.n || "؟").charAt(0)),
             React.createElement("div", { className: textStart(), style: { minWidth: 0, flex: 1 } },
                 React.createElement("div", { className: "text-sm font-extrabold truncate", style: { color: fg } }, k.n || tl("جهة اتّصال", "Contact")),
                 (k.uid || k.code) ? React.createElement("div", { className: "text-[10.5px] font-bold", style: { color: mut } }, "✓ " + tl("على سوا", "On Sawa") + (fc ? " · " : ""), fc ? React.createElement("span", { dir: "ltr", style: { unicodeBidi: "isolate" } }, fc) : null)
@@ -1836,7 +1836,7 @@ function PhoneContactsPane({ colors, onPick }) {
         React.createElement("div", { className: "overflow-y-auto px-3 pb-2", style: { minHeight: 120 } },
             st === "loading" && React.createElement("p", { className: "text-xs text-center py-6", style: { color: colors.textMuted } }, tl("جارٍ قراءة جهات الهاتف…", "Reading contacts…")),
             (st === "denied" || st === "never") && React.createElement("p", { className: "text-xs text-center py-3 px-2 rounded-xl mb-2", style: { color: "#b45309", backgroundColor: "#fff7e6" } }, st === "never" ? tl("إذن جهات الاتّصال مرفوض — افتحه من «معلومات التطبيق» ← «الأذونات».", "Contacts permission is blocked — allow it in App info → Permissions.") : tl("لم يُسمح بقراءة جهات الهاتف — يمكنك كتابة الرقم يدويّاً بالأسفل.", "Contacts not allowed — type the number below.")),
-            (kind === "picker" || kind === "native") && st !== "loading" && React.createElement("button", { onClick: run, className: "w-full rounded-2xl py-3 mb-3 text-sm font-extrabold", style: { backgroundColor: colors.primaryLight, color: colors.primaryDark } }, "📱 " + tl("اختر من جهات الهاتف", "Pick from phone contacts")),
+            (kind === "picker" || kind === "native") && st !== "loading" && React.createElement("button", { onClick: run, className: "w-full rounded-2xl py-3 mb-3 text-sm font-extrabold", style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, "📱 " + tl("اختر من جهات الهاتف", "Pick from phone contacts")),
             st === "list" && React.createElement("div", { className: "flex flex-row items-center gap-2 px-3 py-2 rounded-xl mb-1", style: inp },
                 React.createElement(Search, { size: 14, color: colors.textMuted }),
                 React.createElement("input", { value: q, onChange: (e) => setQ(e.target.value), placeholder: tl("ابحث بالاسم أو الرقم", "Search name or number") + " (" + list.length + ")", className: "flex-1 bg-transparent text-sm outline-none", style: { color: colors.text, minWidth: 0 } })),
@@ -1844,7 +1844,7 @@ function PhoneContactsPane({ colors, onPick }) {
             shown.slice(0, 200).map((c, i) => { const id = (c.n || "") + "|" + c.tels[0], on = picked.includes(id);
                 return React.createElement("button", { key: id + i, onClick: () => setPicked((p) => on ? p.filter((x) => x !== id) : p.length >= 10 ? p : [...p, id]), className: "w-full flex flex-row items-center gap-3 px-2 py-2 rounded-xl", style: { backgroundColor: on ? colors.primaryLight : "transparent" } },
                     React.createElement("span", { className: "w-6 h-6 rounded-full flex items-center justify-center shrink-0 border-2", style: { borderColor: on ? colors.primary : colors.border, backgroundColor: on ? colors.primary : "transparent" } }, on && React.createElement(Check, { size: 14, color: "#fff", strokeWidth: 3 })),
-                    React.createElement("span", { className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-extrabold", style: { backgroundColor: colors.primaryLight, color: colors.primaryDark } }, (c.n || "#").charAt(0)),
+                    React.createElement("span", { className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-extrabold", style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, (c.n || "#").charAt(0)),
                     React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
                         React.createElement("div", { className: "text-sm font-bold truncate", style: { color: colors.text } }, c.n || c.tels[0]),
                         React.createElement("div", { className: "text-[11px] truncate", dir: "ltr", style: { color: colors.textMuted, textAlign: isRTL() ? "right" : "left" } }, c.tels.slice(0, 2).join(" · ") + (c.tels.length > 2 ? " +" + (c.tels.length - 2) : "")))); }),
@@ -1898,7 +1898,7 @@ function ShareContactPicker({ colors, onPick }) {
             list.length === 0 && React.createElement("p", { className: "text-xs text-center py-6", style: { color: colors.textMuted } }, all.length ? tl("لا نتائج", "No results") : tl("لا جهات اتّصال في سوا بعد", "No Sawa contacts yet")),
             list.map((c) => React.createElement("button", { key: c.uid, onClick: () => setPicked((p) => p.includes(c.uid) ? p.filter((x) => x !== c.uid) : [...p, c.uid]), className: "w-full flex flex-row items-center gap-3 px-2 py-2.5 rounded-xl", style: { backgroundColor: picked.includes(c.uid) ? colors.primaryLight : "transparent" } },
                 React.createElement("span", { className: "w-6 h-6 rounded-full flex items-center justify-center shrink-0 border-2", style: { borderColor: picked.includes(c.uid) ? colors.primary : colors.border, backgroundColor: picked.includes(c.uid) ? colors.primary : "transparent" } }, picked.includes(c.uid) && React.createElement(Check, { size: 14, color: "#fff", strokeWidth: 3 })),
-                React.createElement(Pic, { photo: c.photo || null, letter: (c.name || "؟").charAt(0), size: 38, bg: colors.primaryLight, color: colors.primaryDark }),
+                React.createElement(Pic, { photo: c.photo || null, letter: (c.name || "؟").charAt(0), size: 38, bg: colors.primaryLight, color: colors.primaryInk }),
                 React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
                     React.createElement("div", { className: "text-sm font-bold truncate", style: { color: colors.text } }, c.name),
                     c.code && React.createElement("div", { className: "text-[11px] truncate", dir: "ltr", style: { color: colors.textMuted, textAlign: isRTL() ? "right" : "left" } }, String(c.code).replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3")))))),
@@ -2199,7 +2199,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                                (صورة ← نص ← عدّاد ← سهم) فلا يحتاج عكساً */
                             className: `w-full flex flex-row items-center gap-3 ${textStart()}` },
                         React.createElement("div", { className: "w-12 h-12 rounded-full flex items-center justify-center shrink-0", onClick: (e) => { if (g.photo) { e.stopPropagation(); e.preventDefault(); setPreviewPhoto(g.photo); } }, style: { backgroundColor: colors.primaryLight, backgroundImage: g.photo ? `url(${g.photo})` : "none", backgroundSize: "cover", backgroundPosition: "center", cursor: g.photo ? "zoom-in" : "default" } },   // C187: صورة المجموعة تُفتح كاملةً
-                            g.photo ? null : React.createElement(Users2, { size: 21, color: colors.primaryDark })),
+                            g.photo ? null : React.createElement(Users2, { size: 21, color: colors.primaryInk })),
                         React.createElement("div", { className: "flex-1", style: { minWidth: 0 } },
                             React.createElement("div", { style: { display: "flex", flexDirection: isRTL() ? "row" : "row-reverse", direction: "ltr", alignItems: "center", justifyContent: "space-between" } },
                                 React.createElement("span", { className: "text-[10px] shrink-0", style: { color: colors.textMuted } }, formatChatTime(g.updatedAt)),
@@ -2241,7 +2241,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                                         outlineOffset: 1,
                                         backgroundImage: !c.isSavedMessages && c.photo ? `url(${c.photo})` : "none", backgroundSize: "cover", backgroundPosition: "center",
                                     } },
-                                    c.isSavedMessages ? React.createElement(Bookmark, { size: 19, color: "#fff", fill: "#fff" }) : c.photo ? null : React.createElement("span", { className: "text-lg font-extrabold", style: { color: colors.primaryDark } }, String(c.name || "؟").trim().charAt(0) || "؟"),
+                                    c.isSavedMessages ? React.createElement(Bookmark, { size: 19, color: "#fff", fill: "#fff" }) : c.photo ? null : React.createElement("span", { className: "text-lg font-extrabold", style: { color: colors.primaryInk } }, String(c.name || "؟").trim().charAt(0) || "؟"),
                                     !c.isSavedMessages && onlineContacts.includes(c.name) && (React.createElement("span", { className: "absolute bottom-0 left-0 w-3 h-3 rounded-full border-2", style: { backgroundColor: "#16A34A", borderColor: colors.card } })),
                                     overdue && (React.createElement("span", { className: "absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px]", style: { backgroundColor: "#ef4444", color: "#fff", border: `2px solid ${colors.card}` } }, "!")),
                                     matchedPerson && !overdue && (React.createElement("span", { className: "absolute -top-1 -right-1 text-[10px]" }, "\uD83E\uDD0D"))));
@@ -2633,7 +2633,7 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                 // C155: صورة الطرف الآخر (كانت أيقونةً ثابتة) — اضغطها لعرضها كبيرة
                 (() => { const ph = conversation.photo || (conversation.peerUid && window.SawaChat && window.SawaChat.photoOf ? window.SawaChat.photoOf(conversation.peerUid) : null);
                     return React.createElement("button", { "aria-label": tl("الصورة", "Photo"), onClick: () => ph && setViewPhoto(ph), className: "mb-2", style: { cursor: ph ? "pointer" : "default" } },
-                        React.createElement(Pic, { photo: ph, letter: conversation.isSavedMessages ? null : ((conversation.name || "?").trim().charAt(0) || "?"), size: 96, bg: colors.primaryLight, color: colors.primaryDark }, !ph && conversation.isSavedMessages ? React.createElement(Bookmark, { size: 36, color: colors.primaryDark }) : null)); })(),
+                        React.createElement(Pic, { photo: ph, letter: conversation.isSavedMessages ? null : ((conversation.name || "?").trim().charAt(0) || "?"), size: 96, bg: colors.primaryLight, color: colors.primaryInk }, !ph && conversation.isSavedMessages ? React.createElement(Bookmark, { size: 36, color: colors.primaryInk }) : null)); })(),
                 viewPhoto && React.createElement(PhotoViewer, { photo: viewPhoto, onClose: () => setViewPhoto(null) }),
                 React.createElement("span", { className: "text-lg font-extrabold", style: { color: colors.text } }, conversation.name),
                 React.createElement("span", { className: "text-[11px] mt-1", style: { color: colors.textMuted } }, t("mhadtha_mshfra_mn_trf"))),

@@ -65,7 +65,7 @@ function CallOverlay({ contactName, callType, onEnd, requireApproval = false, av
     return (React.createElement("div", { className: "absolute inset-0 z-50 flex flex-col items-center justify-between py-10", style: { background: bgByStatus[status], transition: "background 0.4s ease" } },
         React.createElement("div", { className: "flex flex-col items-center" },
             React.createElement("div", { className: "w-24 h-24 rounded-full flex items-center justify-center mb-4", style: { backgroundColor: colors.primaryLight } },
-                React.createElement(User, { size: 40, color: colors.primaryDark })),
+                React.createElement(User, { size: 40, color: colors.primaryInk })),
             React.createElement("h2", { className: "text-lg font-extrabold text-white" }, isGroupCall ? tl("مكالمة جماعية", "Group call") : contactName),
             React.createElement("p", { className: "text-sm mt-1", style: { color: "#8A93A0" } }, isGroupCall
                 ? (extras.length + 1) + tl(" مشاركين · ", " participants · ") + (callType === "video" ? tl("فيديو", "Video") : tl("صوتية", "Voice"))
@@ -105,7 +105,7 @@ function CallOverlay({ contactName, callType, onEnd, requireApproval = false, av
                         .filter((n) => n !== contactName && !extras.some((e) => e.name === n))
                         .map((n) => (React.createElement("button", { key: n, onClick: () => { addPerson(n); setShowAddPeople(false); }, className: `w-full flex ${rowStart()} items-center gap-3 px-2 py-2.5 rounded-xl mb-1` },
                         React.createElement("div", { className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primaryLight } },
-                            React.createElement(User, { size: 17, color: colors.primaryDark })),
+                            React.createElement(User, { size: 17, color: colors.primaryInk })),
                         React.createElement("span", { className: `flex-1 ${textStart()} text-xs font-bold text-white truncate` }, n),
                         React.createElement(UserPlus, { size: 15, color: "#8A93A0" })))),
                     availableContacts.filter((n) => n !== contactName && !extras.some((e) => e.name === n)).length === 0 && (React.createElement("p", { className: "text-xs text-center mt-6", style: { color: "#5A6472" } }, t("kl_jhat_atsalk_balmkalma")))),
@@ -1405,7 +1405,7 @@ function PinnedBar({ ids, messages, win, colors }) {
         React.createElement(Pin, { size: 12, color: colors.primary, fill: colors.primary, className: "shrink-0" }),
         React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
             n > 1 && React.createElement("div", { className: "text-[9.5px] font-extrabold", style: { color: colors.primary } }, tl("رسالة مثبّتة " + (cur + 1).toLocaleString(loc()) + " من " + n.toLocaleString(loc()), "Pinned " + (cur + 1) + " of " + n)),
-            React.createElement("div", { className: "text-[11px] font-bold truncate", style: { color: colors.primaryDark } }, pinLabel(m))));
+            React.createElement("div", { className: "text-[11px] font-bold truncate", style: { color: colors.primaryInk } }, pinLabel(m))));
 }
 function jumpToMessage(id, win, toast) {
     if (!id) return;
@@ -1817,7 +1817,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
             React.createElement(ChatComposerInput, { onPasteFiles: (fs) => { const el = mediaInputRef.current; if (!el || typeof DataTransfer === "undefined") return; try { const dt = new DataTransfer(); fs.slice(0, 10).forEach((f) => dt.items.add(f)); el.files = dt.files; el.dispatchEvent(new Event("change", { bubbles: true })); } catch (x) { } }, value: text, onChange: setText, placeholder: t("aktb_rsala"), disabled: recorder.isRecording, onEnter: handleSend }),
             text.trim() ? (React.createElement("button", { "aria-label": t("irsal"), onClick: handleSend, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary } },
                 React.createElement(Send, { size: 16, color: "#fff", style: { transform: "scaleX(-1)" } }))) : recorder.isRecording ? (React.createElement("button", { "aria-label": tl("إرسال التسجيل", "Send recording"), onClick: recorder.stop, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.danger } },
-                React.createElement(Square, { size: 14, color: "#fff", fill: "#fff" }))) : (React.createElement("button", { "aria-label": t("ch_tsjyl_swtya"), onClick: recorder.start, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.accent }, title: tl("اضغط للتسجيل · اضغط مرّةً أخرى للإرسال", "Tap to record · tap again to send") },
+                React.createElement(Square, { size: 14, color: "#fff", fill: "#fff" }))) : (React.createElement("button", { "aria-label": t("ch_tsjyl_swtya"), onClick: recorder.start, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary }, title: tl("اضغط للتسجيل · اضغط مرّةً أخرى للإرسال", "Tap to record · tap again to send") },
                 React.createElement(Mic, { size: 16, color: "#fff" }))))),
         sharingContact && React.createElement(ContactShareSheet, { colors, cid: conversation.id, cloud: conversation.cloud !== false && !!(window.SawaChat && window.SawaChat.isCloud ? window.SawaChat.isCloud(conversation.id) : true), onSendText: (tx) => onSend(tx, null), onClose: () => setSharingContact(false) }),
         msgMenu && (() => {
@@ -2515,7 +2515,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                 React.createElement(isRTL() ? ChevronRight : ChevronLeft, { size: 20, color: colors.text })),
             // C155: صورة المجموعة في رأسها (كالمحادثة الفرديّة) — تفتح المعلومات
             React.createElement("button", { "aria-label": t("gi_malwmat"), onClick: () => setShowGroupInfo(true), className: "shrink-0" },
-                React.createElement(Pic, { photo: group.photo || null, letter: null, size: 38, bg: colors.primaryLight, color: colors.primaryDark }, group.photo ? null : React.createElement(Users2, { size: 18, color: colors.primaryDark }))),
+                React.createElement(Pic, { photo: group.photo || null, letter: null, size: 38, bg: colors.primaryLight, color: colors.primaryInk }, group.photo ? null : React.createElement(Users2, { size: 18, color: colors.primaryInk }))),
             React.createElement("div", { onClick: () => setShowGroupInfo(true), className: `flex-1 ${textStart()} ${me("2")}`, style: { minWidth: 0, cursor: "pointer" } },
                 React.createElement("div", { className: "font-bold text-sm truncate", style: { color: colors.text } }, group.name),
                 React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowMembers(!showMembers); }, className: "text-[11px]", style: { color: colors.textMuted } },
@@ -2808,12 +2808,12 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                     React.createElement(Radio, { size: 12, color: "#fff" })),
                 React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
                     React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
-                        React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.primaryDark } }, t("gc_mhadtha_swtya")),
+                        React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.primaryInk } }, t("gc_mhadtha_swtya")),
                         React.createElement("span", { className: "text-[10px] font-extrabold tabular-nums px-1.5 py-0.5 rounded-full", style: { backgroundColor: colors.primary + "22", color: colors.primary } },
                             vcMins,
                             ":",
                             vcSecs)),
-                    React.createElement("span", { className: "text-[10px] truncate block", style: { color: colors.primaryDark } },
+                    React.createElement("span", { className: "text-[10px] truncate block", style: { color: colors.primaryInk } },
                         voiceChatJoined ? t("gc_ant") : "",
                         voiceChatParticipants.length > 0 ? (voiceChatJoined ? t("fasl_qayma") : "") + voiceChatParticipants.map((p) => p.name).join(t("fasl_qayma")) : "",
                         (voiceChatParticipants.length + (voiceChatJoined ? 1 : 0)) === 0 ? t("gc_la_ahd") : "")),
@@ -2927,7 +2927,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
             React.createElement(ChatComposerInput, { onPasteFiles: (fs) => { const el = mediaInputRef.current; if (!el || typeof DataTransfer === "undefined") return; try { const dt = new DataTransfer(); fs.slice(0, 10).forEach((f) => dt.items.add(f)); el.files = dt.files; el.dispatchEvent(new Event("change", { bubbles: true })); } catch (x) { } }, value: text, onChange: handleTextChange, placeholder: t("aktb_rsala_lishara_adw"), disabled: recorder.isRecording, onEnter: handleSend }),
             text.trim() ? (React.createElement("button", { "aria-label": t("irsal"), onClick: handleSend, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary } },
                 React.createElement(Send, { size: 16, color: "#fff", style: { transform: "scaleX(-1)" } }))) : recorder.isRecording ? (React.createElement("button", { "aria-label": tl("إرسال التسجيل", "Send recording"), onClick: recorder.stop, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.danger } },
-                React.createElement(Square, { size: 14, color: "#fff", fill: "#fff" }))) : (React.createElement("button", { "aria-label": t("gc_tsjyl"), onClick: recorder.start, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.accent } },
+                React.createElement(Square, { size: 14, color: "#fff", fill: "#fff" }))) : (React.createElement("button", { "aria-label": t("gc_tsjyl"), onClick: recorder.start, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary } },
                 React.createElement(Mic, { size: 16, color: "#fff" })))),
         React.createElement(RecordingBar, { isRecording: recorder.isRecording, seconds: recorder.seconds, micError: recorder.micError, onCancel: recorder.cancel, maxSeconds: recorder.maxSeconds }),
         viewingImage && (() => { const bItems = mediaBatchOf(mediaItems, viewingImage); return React.createElement(MediaLightbox, { items: bItems, startIndex: Math.max(0, bItems.findIndex((it) => it.url === viewingImage)), onClose: () => setViewingImage(null), onForward: (it) => { setViewingImage(null); setForwardingText({ id: it.id, text: it.name, cid: group.id }); }, onReply: (it) => { setViewingImage(null); const mm = messages.find((x) => x.id === it.id) || {}; setGReply({ id: it.id, text: it.type === "video" ? tl("🎥 فيديو", "🎥 Video") : tl("📷 صورة", "📷 Photo"), senderId: mm.senderId || null, senderName: mm.senderName || "" }); } }); })(),
@@ -3325,7 +3325,7 @@ function CallSettingsScreen({ settings, onUpdate, onClearLog, onOpenSpeedDial, o
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
         React.createElement(TopBar, { title: t("iadadat_almkalmat"), onBack: onBack }),
         React.createElement("div", { className: "flex-1 overflow-y-auto", style: { backgroundColor: colors.bg } }, categories.map((cat) => (React.createElement("button", { "aria-label": t("altaly"), key: cat.key, onClick: () => (cat.external ? onOpenSpeedDial() : setSubSection(cat.key)), className: `w-full flex ${rowStart()} items-center gap-3 px-4 py-3.5 border-b`, style: { borderColor: colors.border, backgroundColor: colors.bg } },
-            React.createElement("div", { className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primaryLight } }, React.createElement(cat.icon, { size: 16, color: colors.primaryDark })),
+            React.createElement("div", { className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primaryLight } }, React.createElement(cat.icon, { size: 16, color: colors.primaryInk })),
             React.createElement("div", { className: `flex-1 ${textStart()}` },
                 React.createElement("span", { className: "text-sm font-bold block", style: { color: colors.text } }, cat.label),
                 cat.desc && React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } }, cat.desc)),

@@ -49,7 +49,7 @@ function TaxiHistoryScreen({ history, onBack }) {
                 const vehicle = TAXI_VEHICLE_TYPES.find((v) => v.key === trip.vehicleKey);
                 return (React.createElement(Card, { key: trip.id, className: `flex ${rowStart()} items-center` },
                     React.createElement("div", { className: `w-10 h-10 rounded-full flex items-center justify-center ${ms("3")}`, style: { backgroundColor: colors.primaryLight } },
-                        React.createElement(Car, { size: 18, color: colors.primaryDark })),
+                        React.createElement(Car, { size: 18, color: colors.primaryInk })),
                     React.createElement("div", { className: "flex-1" },
                         React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, trip.destination),
                         React.createElement("div", { className: "text-xs mt-0.5", style: { color: colors.textMuted } }, (_a = trip.driver) === null || _a === void 0 ? void 0 :
@@ -228,8 +228,8 @@ function TaxiScreen({ ride, tripsHistory, scheduledRides, onRequestRide, onSched
                     }, className: "mt-1" }))))) : showRideChat ? (React.createElement(RideChatScreen, { driverName: ((_a = ride.driver) === null || _a === void 0 ? void 0 : _a.name) || t("tx_alsayq"), messages: rideMessages, onSendToDriver: sendToDriver, onClose: () => setShowRideChat(false) })) : (React.createElement("div", { className: "flex-1 overflow-y-auto flex flex-col items-center" },
             React.createElement(AnimatedTrackingMap, { progress: ride.stageIdx <= 1 ? ride.stageIdx : (ride.stageIdx - 1) / (TAXI_STAGE_KEYS.length - 2), icon: Car, pickup: pickup, destination: destPoint, driverApproaching: ride.stageIdx <= 1 }),
             React.createElement("div", { className: `w-full rounded-full px-4 py-2 mt-3 flex ${rowStart()} items-center justify-center gap-2`, style: { backgroundColor: colors.primaryLight } },
-                React.createElement(Car, { size: 15, color: colors.primaryDark }),
-                React.createElement("span", { className: "text-sm font-extrabold", style: { color: colors.primaryDark } }, t(TAXI_STAGE_KEYS[ride.stageIdx]))),
+                React.createElement(Car, { size: 15, color: colors.primaryInk }),
+                React.createElement("span", { className: "text-sm font-extrabold", style: { color: colors.primaryInk } }, t(TAXI_STAGE_KEYS[ride.stageIdx]))),
             ride.stageIdx < 2 && (React.createElement("div", { className: `w-full rounded-2xl border-2 mt-3 p-3 flex ${rowStart()} items-center justify-between`, style: { borderColor: colors.accent, backgroundColor: colors.accent + "11" } },
                 React.createElement("div", { className: `${textStart()}` },
                     React.createElement("div", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, t("rmz_althqq_adhkrh_llsayq")),
