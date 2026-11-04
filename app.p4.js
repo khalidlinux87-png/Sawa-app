@@ -241,15 +241,16 @@ function FamilySuggestionsScreen({ groupId, persons, relations, events, dismisse
                     React.createElement(Phone, { size: 14, color: colors.primary }),
                     React.createElement("h3", { className: "text-sm font-extrabold", style: { color: colors.text } }, t("fs_awan_altwasl"))),
                 visible.length === 0 && React.createElement("p", { className: `text-[11px] mb-3 ${textStart()}`, style: { color: colors.textMuted } }, t("fs_la_mtakhr")))),
-            visible.map((s) => (React.createElement(FamCard, { key: s.id, className: `flex ${rowStart()} items-center` },
-                React.createElement("div", { className: `flex-1 ${textStart()}` },
+            // C202: زرّان بنصّ («تمّ» · «تجاهل») بدل ✓ و✕ بلا أسماء، و«اتّصل» حين يُعرف رقم القريب
+            visible.map((s) => { const pid = (String(s.id).match(/^sugg-(?:bday-|contact-)?(.+)$/) || [])[1], sp = pid && persons.find((x) => x.id === pid), tel = sp && sp.alive !== false && ((sp.contacts && sp.contacts.phone) || sp.phone);
+                return React.createElement(FamCard, { key: s.id },
+                React.createElement("div", { className: textStart() },
                     React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, s.title),
                     React.createElement("div", { className: "text-xs mt-1", style: { color: colors.textMuted } }, s.reason)),
-                React.createElement("div", { className: "flex flex-row gap-1.5" },
-                    React.createElement("button", { "aria-label": t("takyd"), onClick: () => onExecute(s.id), className: "w-7 h-7 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary } },
-                        React.createElement(Check, { size: 14, color: "#fff" })),
-                    React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => onDismiss(s.id), className: "w-7 h-7 rounded-full flex items-center justify-center border", style: { borderColor: colors.border } },
-                        React.createElement(X, { size: 14, color: colors.textMuted })))))),
+                React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mt-3` },
+                    tel && React.createElement("a", { href: "tel:" + String(tel).replace(/[^\d+]/g, ""), onClick: () => onExecute(s.id), className: `flex ${rowStart()} items-center gap-1 rounded-full px-3.5 py-1.5 text-[12px] font-bold`, style: { backgroundColor: colors.primary, color: "#fff" } }, React.createElement(Phone, { size: 13, color: "#fff" }), tl("اتّصل", "Call")),
+                    React.createElement("button", { onClick: () => onExecute(s.id), className: `flex ${rowStart()} items-center gap-1 rounded-full px-3.5 py-1.5 text-[12px] font-bold`, style: tel ? { color: colors.primary, border: `1px solid ${colors.primary}` } : { backgroundColor: colors.primary, color: "#fff" } }, React.createElement(Check, { size: 13 }), tl("تمّ", "Done")),
+                    React.createElement("button", { onClick: () => onDismiss(s.id), className: "px-2 py-1.5 text-[12px] font-bold", style: { color: colors.textMuted } }, tl("تجاهل", "Ignore")))); }),
             visibleGaps.length > 0 && (React.createElement(React.Fragment, null,
                 React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-2 mb-2` },
                     React.createElement(HelpCircle, { size: 14, color: colors.accent }),
@@ -537,7 +538,7 @@ function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, se
                 cloud && React.createElement("div", { className: `text-[13px] font-extrabold mb-2 px-0.5 ${textStart()}`, style: { color: colors.text } }, t("mb_alaada", { n: list.length })),
                 cloud && canManage && list.length > 1 && React.createElement("p", { className: `text-[10.5px] mb-2 px-0.5 ${textStart()}`, style: { color: colors.textMuted } }, t("mb_tap_role")),
                 list.map((m) => React.createElement(React.Fragment, { key: m.userId }, React.createElement(FamCard, { className: `flex ${rowStart()} items-center gap-3` },
-                React.createElement(FamAvatar, { name: (m.me || m.userId === "u-1" ? (m.name && !m.anon && m.name !== "أنت" ? m.name : (myAccountName() || "؟")) : m.name) || "؟", size: 42 }),
+                React.createElement(FamAvatar, { name: (m.me || m.userId === "u-1" ? (m.name && !m.anon && m.name !== "أنت" ? m.name : (myAccountName() || tl("أنت", "You"))) : m.name) || "؟", size: 42 }),   // C202: «أ» بدل «؟» حين لا اسم للحساب
                 React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
                     React.createElement("span", { className: "block truncate text-[14px]", style: { color: colors.text, fontWeight: m.me ? 800 : 600 } }, (m.userId === "u-1" || m.me) ? t("ant") + (m.me && m.name && !m.anon ? " · " + m.name : "") : m.name),
                     // C109: العضو بجوار شخصه في الشجرة
@@ -919,7 +920,8 @@ function FamilyChainAddSheet({ existingPersons, relations = [], onSave, onClose 
                                 } }, t("shkhs_akhr")))));
                 }),
                 React.createElement("p", { className: `text-[10px] ${textStart()} mt-1`, style: { color: colors.textMuted } }, t("hw_nfsh_yrbt_alslsla")))),
-            React.createElement(FamButton, { label: undecided.length > 0
+            React.createElement(FamButton, { label: chainNames.length === 0 ? tl("اكتب الأسماء أوّلاً", "Type the names first")   // C202: كان «إضافة 0 قريب…»
+                    : undecided.length > 0
                     ? t("hdd_asma_mkrra_awla", { length: undecided.length })
                     : t("fc_add_link", { count: totalCount - matchCandidates.filter((m) => matchDecisions[m.low] === "same").length }), disabled: chainNames.length === 0 || undecided.length > 0, onPress: () => onSave(chainNames, {
                     brothers: brotherNames, sisters: sisterNames,
@@ -958,7 +960,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
     parent: "الوالد", child: "الابن", sibling: "الأخ",
         spouse: "الزوجة", ex_spouse: "الزوجة السابقة",
     };
-    const [kinship, setKinship] = useState((person === null || person === void 0 ? void 0 : person.kinship) /* ⛔ تهيئة حالة من مُعرِّف مخزَّن */ || presetKinship || (presetRelationType && KINSHIP_FOR_PRESET[presetRelationType]) || KINSHIP_OPTIONS[0]);
+    const [kinship, setKinship] = useState((person === null || person === void 0 ? void 0 : person.kinship) /* ⛔ تهيئة حالة من مُعرِّف مخزَّن */ || presetKinship || (presetRelationType && KINSHIP_FOR_PRESET[presetRelationType]) || ((existingPersons || []).some(isSelfPerson) ? "" : KINSHIP_OPTIONS[0]));   // C202: «نفسي» افتراضٌ في عائلةٍ فارغة فقط — وإلّا فارغة («اختر صلة القرابة») بدل تحذير «نفسي مكرّر» قبل أيّ إدخال
     const [showKinshipPicker, setShowKinshipPicker] = useState(false);
     const [kinshipSearch, setKinshipSearch] = useState("");
     const [openKinshipSection, setOpenKinshipSection] = useState(null);
@@ -1013,7 +1015,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
         reader.readAsDataURL(file);
     }
     function handleSave() {
-        if (!localName.trim())
+        if (!localName.trim() || !kinship)
             return;
         onSave({
             // نمرّرها فقط حين ظهر الحقل فعلاً — وإلا حُذفت أمومة لم تُعرَض قطّ
@@ -1115,7 +1117,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                     React.createElement("p", { className: "text-[10px] mt-1", style: { color: colors.textMuted } }, t("lw_kan_shkhsa_akhr"))))),
             React.createElement("label", { className: `text-[11.5px] font-bold mb-1.5 block ${textStart()}`, style: { color: colors.textMuted } }, t("sla_alqraba")),
             React.createElement("button", { onClick: () => setShowKinshipPicker(true), className: `w-full flex ${rowStart()} items-center justify-between rounded-2xl px-3.5 py-3 mb-4`, style: { backgroundColor: colors.bg } },
-                React.createElement("span", { className: "text-sm font-extrabold", style: { color: colors.primary } }, kinshipLabel(kinship)),
+                React.createElement("span", { className: "text-sm font-extrabold", style: { color: kinship ? colors.primary : colors.textMuted } }, kinship ? kinshipLabel(kinship) : t("akhtr_sla_alqraba")),
                 React.createElement(ChevronLeft, { size: 15, color: colors.textMuted, style: { transform: "rotate(-90deg)" } })),
             showKinshipPicker && (React.createElement(React.Fragment, null,
                 React.createElement("div", { onClick: () => setShowKinshipPicker(false), style: { position: "fixed", inset: 0, zIndex: 30, backgroundColor: "rgba(0,0,0,0.4)" } }),
@@ -1168,12 +1170,12 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                 React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.primary } }, gender === "female" ? t("pf_antha") : t("pf_dhkr")),
                 React.createElement("span", { className: `text-[10px] flex-1 ${textEnd()}`, style: { color: colors.textMuted } },
                     t("pf_mstntj"),
-                    kinshipLabel(kinship),
+                    kinship ? kinshipLabel(kinship) : t("akhtr_sla_alqraba"),
                     "\u00BB"))) : (React.createElement(React.Fragment, null,
                 React.createElement("label", { className: `text-[11.5px] font-bold mb-1.5 block ${textStart()}`, style: { color: colors.textMuted } }, t("aljns_2")),
                 React.createElement("div", { className: "mb-4" },
                     React.createElement(FamSeg, { value: gender, onChange: setGender, options: [{ k: "male", l: t("dhkr") }, { k: "female", l: t("antha") }] })))),
-            hasNoProximity(kinship) ? (React.createElement("div", { className: `mb-4 px-3.5 py-2.5 rounded-2xl ${textStart()}`, style: { backgroundColor: colors.primary + "0a" } },
+            !kinship ? null : hasNoProximity(kinship) ? (React.createElement("div", { className: `mb-4 px-3.5 py-2.5 rounded-2xl ${textStart()}`, style: { backgroundColor: colors.primary + "0a" } },
                 React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, t(kinship === SELF_KINSHIP ? "pf_nfsy_la_qrb" : "pf_sabq_la_qrb")))) : (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-4 px-3.5 py-2.5 rounded-2xl`, style: { backgroundColor: colors.primary + "0a" } },
                 React.createElement("span", { className: "text-xs font-bold", style: { color: colors.textMuted } }, t("drja_alqrb")),
                 React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.primary } },
@@ -1261,7 +1263,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                         // التمييز إلى «الاسم (الصلة)» — أصدقُ من اختلاق نسبٍ لا نملكه
                         relations: [], value: crossLinkPersonId, onChange: setCrossLinkPersonId, maxHeight: 200 })) : (React.createElement("p", { className: "text-[11px]", style: { color: colors.textMuted } }, t("la_ywjd_ashkhas_bhdhh"))),
                     React.createElement("p", { className: "text-[10px] mt-1", style: { color: colors.primary } }, t("rqm_alhatf_wtarykh_almylad")))))),
-            React.createElement(FamButton, { label: isEdit ? t("pf_hfz") : t("pf_idafa_alqryb"), onPress: handleSave, disabled: !localName.trim() }),
+            React.createElement(FamButton, { label: isEdit ? t("pf_hfz") : t("pf_idafa_alqryb"), onPress: handleSave, disabled: !localName.trim() || !kinship }),
             isEdit && onDelete && (React.createElement("div", { className: "mt-4" }, !confirmDelete ? React.createElement(FamButton, { variant: "danger", icon: Trash2, label: t("hdhf_hdha_alqryb"), onPress: () => setConfirmDelete(true) }) : (React.createElement("div", { className: "rounded-2xl p-3.5", style: { backgroundColor: colors.danger + "0f", border: `1px solid ${colors.danger}33` } },
                 React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.danger } }, t("takyd_alhdhf_ma_ynrja")),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },

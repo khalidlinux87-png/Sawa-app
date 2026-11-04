@@ -325,7 +325,7 @@ function FamilyGroupsScreen({ groups, groupPersons, currentGroupId, onSetCurrent
                         React.createElement("div", { className: "flex-1 min-w-0" },
                             React.createElement("div", { className: "text-[14px] font-extrabold truncate", style: { color: colors.text } }, p.local_name),
                             React.createElement("div", { className: "text-[11.5px] mt-0.5 truncate", style: { color: colors.textMuted } }, personKinLabel(p), " · ", contactAgoLabel(p.lastContactDate))),
-                        React.createElement(FamChip, { tone: "warn", icon: Phone, label: tl("اتّصل", "Call") })))),
+                        React.createElement(FamChip, { tone: "info", icon: Phone, label: tl("اتّصل", "Call") })))),
                 overdueAll.length > 4 && React.createElement("p", { className: `text-[11px] px-1 ${textStart()}`, style: { color: colors.textMuted } }, tl("و" + n(overdueAll.length - 4) + " آخرون — افتح العائلة ثمّ «متأخّر»", "+" + n(overdueAll.length - 4) + " more — open the family, then “Overdue”")))),
         React.createElement(FamFab, { label: groups.length === 0 ? tl("عائلة جديدة", "New family") : null, ariaLabel: tl("عائلة جديدة", "New family"), onPress: () => setShowCreate(true) }),
         showCreate && React.createElement(FamSheet, { title: tl("عائلة جديدة", "New family"), subtitle: tl("اسمٌ تعرفها به: آل فلان، عائلة الزوجة…", "A name you know it by"), onClose: () => { setShowCreate(false); setName(""); }, maxHeight: "60%",
@@ -1087,6 +1087,8 @@ function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons,
     const [showAddForm, setShowAddForm] = useState(false);
     const [showChainAdd, setShowChainAdd] = useState(false);
     const [showMerge, setShowMerge] = useState(false);
+    const [cardMenu, setCardMenu] = useState(null);   // C202: قائمة ⋯ في بطاقة الشخص
+    const [showStatusRow, setShowStatusRow] = useState(initialFilterStatus !== "all");   // C202: صفّ الحالة والترتيب خلف «تصفية»
     const [showTools, setShowTools] = useState(false);
     const [bulkFor, setBulkFor] = useState(null); // شخص لإضافة عدة أقارب له
     const [searchQuery, setSearchQuery] = useState("");
@@ -1299,9 +1301,11 @@ function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons,
                             { k: "B", l: t("aqarb_alwaldyn") },
                             { k: "C", l: t("abad") },
                         ] })),
+                React.createElement("button", { "aria-expanded": showStatusRow || filterStatus !== "all", onClick: () => setShowStatusRow((v) => !v), className: `shrink-0 mb-1 flex ${rowStart()} items-center gap-1 rounded-full px-3 py-1.5 text-[11.5px] font-bold`, style: { backgroundColor: (showStatusRow || filterStatus !== "all") ? colors.primary : colors.card, color: (showStatusRow || filterStatus !== "all") ? "#fff" : colors.primary, boxShadow: famShadow(isDark), marginInlineEnd: 6 } },
+                    React.createElement(SlidersHorizontal, { size: 12 }), tl("تصفية", "Filter")),
                 React.createElement("button", { "aria-label": t("kyf_thsb_mda_altdhkyr"), onClick: () => setShowProximityHelp(function (v) { return !v; }), className: "w-7 h-7 rounded-full flex items-center justify-center shrink-0 mb-1", style: { backgroundColor: showProximityHelp ? colors.primary : colors.card, boxShadow: famShadow(isDark) } },
                     React.createElement("span", { className: "text-[12px] font-extrabold", style: { color: showProximityHelp ? "#fff" : colors.textMuted } }, t("fg_swal")))),
-            React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mt-1.5 mb-2 -mx-1 px-1` },
+            (showStatusRow || filterStatus !== "all") && React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mt-1.5 mb-2 -mx-1 px-1` },
                 React.createElement("div", { className: "flex-1 min-w-0" },
                     React.createElement(FamTabs, { value: filterStatus, onChange: (k) => setFilterStatus(filterStatus === k ? "all" : k), options: [
                             { k: "overdue", l: t("fg_takhr"), n: persons.filter(isContactOverdue).length || undefined },
@@ -1334,17 +1338,17 @@ function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons,
                     (isRTL() ? arCountFix : (x) => x)(unlinkedCount + t("fg_bla_alaqa"))),
                 React.createElement(ChevronLeft, { size: 13, color: colors.accent, style: { transform: isRTL() ? "none" : "scaleX(-1)" } }))),
             !selectionMode && sortedPersons.length > 0 && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-2.5 px-0.5` },
-                React.createElement("p", { className: `text-[11px] font-bold flex-1 ${textStart()}`, style: { color: colors.textMuted } }, (filterProximity !== "all" || filterStatus !== "all" || searchQuery.trim())
+                React.createElement("p", { className: `text-[11px] font-bold flex-1 min-w-0 whitespace-nowrap ${textStart()}`, style: { color: colors.textMuted } }, (filterProximity !== "all" || filterStatus !== "all" || searchQuery.trim())
                     ? t("mn_length_length", { shown: filteredPersons.length, total: persons.length })
                     : t("qryb_length", { length: persons.length })),
-                canEdit && React.createElement("button", { "aria-label": t("idafa_sryaa_nsb"), title: t("idafa_sryaa_nsb"), onClick: () => setShowChainAdd(true), className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: colors.card, boxShadow: famShadow(isDark) } },
-                    React.createElement(GitBranch, { size: 14, color: colors.primary })),
-                React.createElement("button", { "aria-label": t("tsdyr"), title: t("tsdyr"), onClick: () => onExportSelected === null || onExportSelected === void 0 ? void 0 : onExportSelected(sortedPersons), className: "w-8 h-8 rounded-full flex items-center justify-center", style: { backgroundColor: colors.card, boxShadow: famShadow(isDark) } },
-                    React.createElement(Download, { size: 14, color: colors.primary })),
+                canEdit && React.createElement("button", { "aria-label": t("idafa_sryaa_nsb"), title: t("idafa_sryaa_nsb"), onClick: () => setShowChainAdd(true), className: `h-8 flex ${rowStart()} items-center gap-1 text-[11px] font-bold px-3 rounded-full`, style: { backgroundColor: colors.card, color: colors.primary, boxShadow: famShadow(isDark) } },
+                    React.createElement(GitBranch, { size: 13, color: colors.primary }), tl("بالنسب", "By lineage")),   // C202: أسماءٌ ظاهرة بدل أيقوناتٍ وحدها
+                React.createElement("button", { "aria-label": t("tsdyr"), title: t("tsdyr"), onClick: () => onExportSelected === null || onExportSelected === void 0 ? void 0 : onExportSelected(sortedPersons), className: `h-8 flex ${rowStart()} items-center gap-1 text-[11px] font-bold px-3 rounded-full`, style: { backgroundColor: colors.card, color: colors.primary, boxShadow: famShadow(isDark) } },
+                    React.createElement(Download, { size: 13, color: colors.primary }), t("tsdyr")),
                 // ⛔ الصيانة للمحرِّر وحده: كان زرّا الإصلاح يظهران لمن دوره «مشاهدة فقط»
                 // فيعدّل الشجرة وهو لا يملك التعديل.
-                canEdit && (persons.length >= 2 || treeFixCount > 0) && (React.createElement("button", { "aria-label": t("fg_adwat_alshjra"), title: t("fg_adwat_alshjra"), onClick: () => setShowTools(true), className: "w-8 h-8 rounded-full flex items-center justify-center relative", style: { backgroundColor: colors.card, boxShadow: famShadow(isDark) } },
-                    React.createElement(SettingsIcon, { size: 14, color: colors.primary }),
+                canEdit && (persons.length >= 2 || treeFixCount > 0) && (React.createElement("button", { "aria-label": t("fg_adwat_alshjra"), title: t("fg_adwat_alshjra"), onClick: () => setShowTools(true), className: `h-8 flex ${rowStart()} items-center gap-1 text-[11px] font-bold px-3 rounded-full relative`, style: { color: colors.primary, backgroundColor: colors.card, boxShadow: famShadow(isDark) } },
+                    React.createElement(SettingsIcon, { size: 13, color: colors.primary }), tl("أدوات", "Tools"),
                     treeFixCount > 0 && (React.createElement("span", { className: "absolute -top-1 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-extrabold text-white", style: { insetInlineEnd: -4, backgroundColor: colors.accent } }, treeFixCount.toLocaleString(loc()))))),
                 React.createElement("button", { onClick: () => setSelectedIds(sortedPersons.length ? [sortedPersons[0].id] : []), className: `h-8 flex ${rowStart()} items-center gap-1 text-[11px] font-bold px-3 rounded-full`, style: { backgroundColor: colors.card, color: colors.primary, boxShadow: famShadow(isDark) } },
                     React.createElement(CheckCheck, { size: 13, color: colors.primary }),
@@ -1409,20 +1413,22 @@ function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons,
                                 React.createElement("span", { className: "font-extrabold text-[14.5px]", style: { color: colors.text } }, p.local_name),
                                 // C106: مربوطٌ بحساب سوا
                                 p.acctUid && React.createElement("span", { title: tl("في سوا", "On Sawa"), className: "text-[10px] font-extrabold rounded-full px-1.5 py-0.5", style: { backgroundColor: "#E3F3EA", color: "#187854" } }, p.acctMe ? tl("أنت", "You") : tl("سوا ✓", "Sawa ✓")),
-                                p.alive && p.proximity && !hasNoProximityPerson(p) && React.createElement(FamChip, { tone: isContactOverdue(p) ? "danger" : "muted", label: t("kl_n_ywm", { n: proximityContactDays[p.proximity] || 30 }) })),
+                                p.alive && p.proximity && !hasNoProximityPerson(p) && React.createElement(FamChip, { tone: "muted", /* C202: عادةٌ ثابتة — الأحمر لسطر «آخر تواصل» وحده */ label: t("kl_n_ywm", { n: proximityContactDays[p.proximity] || 30 }) })),
                             React.createElement("div", { className: "text-[12px] mt-0.5", style: { color: colors.textMuted } },
                                 personKinLabel(p),
                                 personKinAlso(p).length ? " · " + personKinAlso(p).join(" · ") : "",
                                 !p.alive ? t("fg_mtwfa") : ""),
                             p.status_detail && p.alive && React.createElement("div", { className: "mt-1.5" },
                                 React.createElement(FamChip, { tone: "warn", icon: AlertCircle, label: statusLabels[p.status_detail] })))),
-                    // C162: موقعه في الشجرة (لفهم القرابة)
-                    onShowInTree && React.createElement("button", { "aria-label": tl("موقعه في الشجرة", "Show in tree"), onClick: () => onShowInTree(p.id), className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "12", marginInlineEnd: 4 } },
-                        React.createElement(GitBranch, { size: 16, color: colors.primary })),
-                    canEdit && React.createElement("button", { "aria-label": t("idafa_aqarb"), onClick: () => setBulkFor(p), className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "12" } },
-                        React.createElement(UserPlus, { size: 16, color: colors.primary })),
-                    React.createElement("button", { "aria-label": t("almfdla"), onClick: () => onToggleFav(p.id), className: `w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${ms("1")}`, style: { backgroundColor: fav ? colors.accent + "18" : "transparent" } },
-                        React.createElement(Star, { size: 18, color: fav ? colors.accent : colors.textMuted, fill: fav ? colors.accent : "none" })),
+                    // C202: ⋯ واحدة بدل ثلاث أيقوناتٍ صغيرة (موقعه في الشجرة · إضافة أقارب · المفضّلة)؛ المفضّل نجمةٌ صغيرة بجانب الأزرار
+                    fav && React.createElement("span", { title: t("almfdla"), className: "shrink-0 flex items-center", style: { marginInlineEnd: 4 } }, React.createElement(Star, { size: 15, color: colors.accent, fill: colors.accent })),
+                    React.createElement("button", { "aria-label": tl("خيارات", "Options"), "aria-expanded": cardMenu === p.id, onClick: (e) => { e.stopPropagation(); setCardMenu(cardMenu === p.id ? null : p.id); }, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: cardMenu === p.id ? colors.primary + "18" : "transparent" } },
+                        React.createElement(MoreHorizontal, { size: 18, color: colors.textMuted })),
+                    cardMenu === p.id && React.createElement("div", { className: "basis-full flex flex-col mt-2 rounded-xl overflow-hidden border", style: { borderColor: colors.border } },
+                        [{ icon: Star, label: fav ? tl("إزالة من المفضّلة", "Remove from favorites") : tl("إضافة إلى المفضّلة", "Add to favorites"), on: () => onToggleFav(p.id) },
+                            canEdit && { icon: UserPlus, label: t("idafa_aqarb"), on: () => setBulkFor(p) },
+                            onShowInTree && { icon: GitBranch, label: tl("موقعه في الشجرة", "Show in tree"), on: () => onShowInTree(p.id) }].filter(Boolean).map((it, i, arr) => React.createElement("button", { key: i, onClick: (e) => { e.stopPropagation(); setCardMenu(null); it.on(); }, className: `flex ${rowStart()} items-center gap-3 px-3 py-2.5 text-sm font-bold ${textStart()}`, style: { color: colors.text, backgroundColor: colors.bg, borderBottom: i < arr.length - 1 ? `1px solid ${colors.border}` : "none" } },
+                            React.createElement(it.icon, { size: 16, color: colors.primary }), it.label))),
                     // سطرٌ مستقلّ بعرض البطاقة: «آخر تواصل» (أحمر إن حان الوقت) + «✓ تواصلت» بضغطةٍ واحدة
                     // (يسجّل تاريخ اليوم ويتزامن بين أجهزتك). مستقلّ حتّى لا يضيّق الاسم وصلة القرابة.
                     showContact && React.createElement("div", { className: `basis-full flex ${rowStart()} items-center justify-between mt-3 pt-2.5`, style: { borderTop: `1px solid ${colors.border}` } },
@@ -1511,17 +1517,17 @@ function FamilyPersonDetailScreen({ onChangeParent, person, persons = [], relati
                         person.alive && person.proximity && !hasNoProximityPerson(person) && React.createElement(FamChip, { tone: overdueP ? "danger" : "ok", icon: Clock, label: contactAgoLabel(person.lastContactDate) }),
                         person.status_detail && person.alive && React.createElement(FamChip, { tone: "warn", icon: AlertCircle, label: statusLabels[person.status_detail] })),
                     React.createElement("div", { className: `flex ${rowStart()} items-start justify-center gap-5 mt-4` },
-                        React.createElement(FamAction, { icon: Phone, label: tl("اتّصال", "Call"), bg: "#16A34A", href: phoneStr && person.alive ? "tel:" + phoneStr.replace(/[^\d+]/g, "") : undefined, onPress: phoneStr && person.alive ? () => { try { onMarkContact(person.id); } catch (e) { } } : undefined }),
-                        React.createElement(FamAction, { icon: Star, label: fav ? t("fp_mfdl") : tl("مفضّلة", "Favorite"), bg: fav ? colors.accent : "#94A3B8", onPress: () => onToggleFav(person.id) }),
-                        canEdit && React.createElement(FamAction, { icon: Edit2, label: t("tadyl"), bg: "#F59E0B", onPress: () => setShowEditForm(true) }),
+                        React.createElement(FamAction, { icon: Phone, label: tl("اتّصال", "Call"), bg: colors.primary, href: phoneStr && person.alive ? "tel:" + phoneStr.replace(/[^\d+]/g, "") : undefined, onPress: phoneStr && person.alive ? () => { try { onMarkContact(person.id); } catch (e) { } } : undefined }),
+                        React.createElement(FamAction, { icon: Star, label: fav ? t("fp_mfdl") : tl("مفضّلة", "Favorite"), outline: !fav, onPress: () => onToggleFav(person.id) }),
+                        canEdit && React.createElement(FamAction, { icon: Edit2, label: t("tadyl"), bg: colors.primary, onPress: () => setShowEditForm(true) }),
                         React.createElement(FamAction, { icon: Share2, label: shareCopied ? t("fp_tm_alnskh") : t("fp_msharka"), bg: colors.primary, onPress: share })))),
             // C106: قريبٌ ربط حسابه في سوا ⇒ رسالة واتّصال وفيديو داخل سوا مباشرةً
             person.acctUid && !person.acctMe && person.alive !== false && React.createElement(FamCard, { style: { padding: 14 } },
                 React.createElement("p", { className: `text-[12px] font-extrabold mb-3 ${textStart()}`, style: { color: colors.text } }, tl("تواصل عبر سوا", "Reach on Sawa")),
                 React.createElement("div", { className: `flex ${rowStart()} items-start justify-center gap-6` },
                     React.createElement(FamAction, { icon: MessageCircle, label: tl("رسالة", "Message"), bg: colors.primary, onPress: () => { try { onMarkContact && onMarkContact(person.id); } catch (e) { } window.__sawaFamContact && window.__sawaFamContact(person.acctUid, person.local_name, "msg"); } }),
-                    React.createElement(FamAction, { icon: Phone, label: tl("اتّصال سوا", "Sawa call"), bg: "#16A34A", onPress: () => { try { onMarkContact && onMarkContact(person.id); } catch (e) { } window.__sawaFamContact && window.__sawaFamContact(person.acctUid, person.local_name, "audio"); } }),
-                    React.createElement(FamAction, { icon: Video, label: tl("فيديو", "Video"), bg: "#7C3AED", onPress: () => { try { onMarkContact && onMarkContact(person.id); } catch (e) { } window.__sawaFamContact && window.__sawaFamContact(person.acctUid, person.local_name, "video"); } }))),
+                    React.createElement(FamAction, { icon: Phone, label: tl("اتّصال سوا", "Sawa call"), bg: colors.primary, onPress: () => { try { onMarkContact && onMarkContact(person.id); } catch (e) { } window.__sawaFamContact && window.__sawaFamContact(person.acctUid, person.local_name, "audio"); } }),
+                    React.createElement(FamAction, { icon: Video, label: tl("فيديو", "Video"), bg: colors.primary, onPress: () => { try { onMarkContact && onMarkContact(person.id); } catch (e) { } window.__sawaFamContact && window.__sawaFamContact(person.acctUid, person.local_name, "video"); } }))),
             // C107: المحرّر يربط هذا القريب بحسابه (رمز · جهات الاتّصال · دعوة)
             !person.acctUid && person.alive !== false && canEdit && person._gid && window.SawaSync && window.SawaSync.isCloud && window.SawaSync.isCloud(person._gid) && React.createElement(FamCard, { style: { paddingTop: 2, paddingBottom: 2 } },
                 React.createElement(FamRow, { icon: LinkIcon, last: true, title: tl("ربط بحساب سوا", "Link to a Sawa account"), sub: tl("برمزه أو من جهات اتّصالك، أو دعوة إن لم يكن في سوا — ثمّ رسالة واتّصال من هنا", "By code, from contacts, or invite — then message & call from here"), onPress: () => setLinkOpen(true) })),
