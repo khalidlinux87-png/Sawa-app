@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c232";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c233";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -873,6 +873,7 @@
     // C111: تحويل المكالمة الصوتيّة إلى فيديو (بموافقة الطرف الآخر)
     if (c.state === "connected" && c.type !== "video") bar.appendChild(btn("📹", c.vreqOut ? L("…بانتظاره", "…waiting") : L("فيديو", "Video"), "rgba(255,255,255,.16)", function () { askVideo(cur); }));
     if (c.state === "connected") bar.appendChild(btn("➕", L("إضافة", "Add"), "rgba(255,255,255,.16)", function () { pickPerson(cur); }));
+    if (c.held) bar.appendChild(btn("▶", L("استئناف", "Resume"), "#21a366", resumeHold));   // C234
     bar.appendChild(btn("📞", L("إنهاء", "End"), "#d64545", function () { hangup(); }));
     bar.lastChild._b.style.transform = "rotate(135deg)";
   }
@@ -1533,17 +1534,18 @@
   function setHold(on) {
     on = !!on;
     var c = cur;
-    if (c && !c.done && c.state !== "incoming" && c.state !== "ended" && !!c.held !== on) {
+    // C234: لا تعليق قبل أن تتّصل المكالمة — «مقاطعات» الجلسة عند الردّ (CallKit/النظام) كانت تكتم المكالمة من أوّلها فتبدو معطّلة
+    if (c && !c.done && (c.connectedAt || !on) && c.state !== "incoming" && c.state !== "ended" && !!c.held !== on) {
       c.held = on;
       try { if (c.local) c.local.getAudioTracks().forEach(function (t) { t.enabled = !on && !c.muted; }); } catch (e) {}
       try { if (ui.ra) ui.ra.muted = on; } catch (e) {}
       if (c.ref && c.live) { var u = {}; u["hold_" + c.role] = on ? TS() : null; c.ref.update(u).catch(function () {}); }
       LOG.info("hold", { id: c.id, on: on });
       if (!on) setTimeout(function () { if (cur === c && !c.held) resumeMedia(c); }, 1200);   // مهلةٌ ليعيد المتصفّح الالتقاط بنفسه إن استطاع
-      paintStatus(c);
+      paint(c);
     }
     var g = gc || rm;   // الجماعيّة والغرف: الميكروفون فقط
-    if (g && g.local && !g.done && !!g.held !== on) {
+    if (g && g.local && !g.done && (g.live || g.joinedAt || !on) && !!g.held !== on) {
       g.held = on;
       var micOn = g === rm ? !!g.mic : !g.muted;   // الغرف: mic = مفتوح · الجماعيّة: muted = مكتوم
       try { g.local.getAudioTracks().forEach(function (t) { t.enabled = !on && micOn; }); } catch (e) {}
@@ -1567,6 +1569,8 @@
       attachLocal(c); paint(c);
     }).catch(function (e) { LOG.warn("resume.media", { err: e && (e.name || e.message) }); });
   }
+  // C234: «استئناف» يدويّ — المستخدم أنهى المكالمة الأخرى (والنظام لم يبلغ بانتهاء المقاطعة)
+  function resumeHold() { try { if (IOSB()) IOSB().call("audioResume", {}).catch(function () {}); } catch (e) {} setHold(false); }
   global.__sawaAudioHold = function (on) { try { setHold(on); } catch (e) { LOG.warn("hold", { err: e && e.message }); } };
   function toggleCam() {
     var c = cur; if (!c || !c.local) return;
@@ -2180,7 +2184,7 @@
       if (g.done) return;
       g.live = true;
       try { g.ref.child("members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
-      g.joinedAt = Date.now(); g.state = "live"; wakeOn(); gPaint(g); bgAudio(true, g.title || L("مكالمة جماعيّة", "Group call"), function () { groupLeave(); }); if (IOSB()) iosRoute.setSpeaker(true, true);   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
+      g.joinedAt = Date.now(); g.state = "live"; wakeOn(); gPaint(g); bgAudio(true, g.title || L("مكالمة جماعيّة", "Group call"), function () { groupLeave(); }); nativeSpk(true, true);   // C234: أندرويد أيضاً — كان صوت الغرف والجماعيّة يُفرض على سمّاعة الأذن (خافتاً جدّاً)   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
       if (!g.tick) g.tick = setInterval(function () { gPaintHead(g); }, 1000);
       if (g.role === "starter" && !g.vc) playTone("back");   // نغمة «يرنّ» حتّى ينضمّ أوّل شخص (لا رنين في الدردشة الصوتيّة)
       var first = true;
@@ -2915,7 +2919,7 @@
       if (r.done) return;
       r.live = true; r.joinedAt = Date.now();
       try { rRef(r, "members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
-      r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }); if (IOSB()) iosRoute.setSpeaker(true, true);   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
+      r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }); nativeSpk(true, true);   // C234: أندرويد أيضاً — كان صوت الغرف والجماعيّة يُفرض على سمّاعة الأذن (خافتاً جدّاً)   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
       LOG.info("room.live", { ms: Date.now() - (r.t0 || Date.now()) });
       // C66: المضيف ينشر جلسته في meta (مقروءة قبل العضويّة) ⇒ الوافد يعرض عليه فور دخوله بلا انتظار أوّل لقطةٍ من قائمة الأعضاء (رحلةٌ كاملة أقلّ حتى يُسمع الصوت)
       if (amHost(r)) rRef(r, "meta/hsess").set(r.sess).catch(function () {});

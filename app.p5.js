@@ -998,7 +998,10 @@ function useVoiceRecorder({ onComplete, transcribe }) {
         window.__sawaActiveAudio = null;
         try { document.querySelectorAll("audio").forEach(function (a) { if (!a.paused && !a.srcObject) a.pause(); }); } catch (e) { }
         discardRef.current = false;
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+        // C234: الرسالة الصوتيّة ليست مكالمة — «مُلغي الصدى» (الافتراضيّ) يحوّل الميكروفون في أندرويد إلى وضع المكالمات
+        //       فيُسجَّل الصوت مكتوماً ضيّقاً. بلا مُلغي صدى، مع إزالة الضوضاء وضبط المستوى، قناةٌ واحدة · ويُرجع للإعداد القديم إن رفضه الجهاز
+        const VOICE_NOTE_AUDIO = { echoCancellation: false, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
+        navigator.mediaDevices.getUserMedia({ audio: VOICE_NOTE_AUDIO }).catch(function () { return navigator.mediaDevices.getUserMedia({ audio: true }); }).then(function (stream) {
             streamRef.current = stream;
             // iOS Safari لا يدعم audio/webm — يفشل التسجيل صامتاً بدونه
             const mimeType = pickMimeType();
