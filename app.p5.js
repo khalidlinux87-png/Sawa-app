@@ -1446,7 +1446,7 @@ function taskListText(m) {
     const doneN = tasks.filter(isDone).length;
     const line = (t) => {
         const who = t.assigneeName ? " — " + t.assigneeName : "";
-        const due = t.dueAt ? " · " + taskDueLabel(t.dueAt) : "";
+        const due = t.dueAt ? " · " + taskDueDay(t.dueAt) : "";
         const pc = !isDone(t) && eff(t) > 0 ? " · " + eff(t) + "%" : "";
         return String(t.text || "") + who + due + pc;
     };
@@ -1907,9 +1907,23 @@ function ToolSheet({ title, onClose, children }) {
             React.createElement("div", { className: "px-4 pt-3 pb-4 overflow-y-auto", style: { flex: 1, minHeight: 0 } }, children))));
 }
 // C173: بطاقة قائمة المهامّ — تقدّم · إسنادٌ مرن («لأيّ عضو» ← «أنا عليها») · طيّ المنجَز · «+ مهمّة» سريعة · من أنجزها ومتى
-const TASK_LATE_MS = 24 * 3600000;   // الموعد يومٌ كامل: تتأخّر بعد نهايته
-function taskIsLate(task, now) { return task.status !== "done" && task.dueAt && now > task.dueAt + TASK_LATE_MS; }
+// C233: الموعد «يومٌ» يُحفظ منتصفَ ليل UTC (حقل التاريخ) — يُقرأ ويُقارن يوماً لا لحظة. كان يُعرض بالتوقيت المحلّيّ فيظهر
+//       قبل يومه بيومٍ غربَ غرينتش، و«متأخّرة» تبدأ عند نهاية يوم UTC لا نهاية يومك أنت.
+function taskDay(ts) { try { return new Date(ts).toISOString().slice(0, 10); } catch (e) { return ""; } }
+function taskLocalDay(ts) { const d = new Date(ts); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+function taskIsLate(task, now) { return task.status !== "done" && !!task.dueAt && taskLocalDay(now) > taskDay(task.dueAt); }
+// وقتٌ حقيقيّ (الإنجاز) ⇒ بالتوقيت المحلّيّ
 function taskDueLabel(d) { try { return new Date(d).toLocaleDateString(loc(), { day: "numeric", month: "short" }); } catch (e) { return ""; } }
+// يوم الموعد ⇒ «اليوم» · «غداً» · «أمس» أو التاريخ (بلا انزياح المنطقة الزمنيّة)
+function taskDueDay(d) {
+    try {
+        const day = taskDay(d), now = Date.now(), today = taskLocalDay(now);
+        if (day === today) return tl("اليوم", "today");
+        if (day === taskLocalDay(now + 86400000)) return tl("غداً", "tomorrow");
+        if (day === taskLocalDay(now - 86400000)) return tl("أمس", "yesterday");
+        return new Date(d).toLocaleDateString(loc(), { day: "numeric", month: "short", timeZone: "UTC" });
+    } catch (e) { return ""; }
+}
 function TaskAssignSheet({ task, members, myUserId, boss, onPick, onClose }) {
     const { colors } = useTheme();
     const mine = task.assigneeId === myUserId;
@@ -2060,6 +2074,7 @@ function TaskListCard({ m, myUserId, isAdmin, members, onToggle, onPatch, onAdd,
     const pct = tasks.length ? Math.round(tasks.reduce((s, x) => s + effP(x), 0) / tasks.length) : 0;
     const canAdd = onAdd && (!m.secret || boss);
     const canToggle = (task) => task.assigneeId === myUserId || !task.assigneeId || boss;
+    const canNote = (task) => !m.secret && (task.assigneeId === myUserId || boss);   // C233: كالخادم (v119)
     const box = (task) => {
         const on = task.status === "done", can = canToggle(task);
         return React.createElement("button", { "aria-label": on ? tl("إلغاء الإنجاز", "Mark not done") : tl("تمّ", "Done"), disabled: !can, onClick: () => can && onToggle(task.id), className: "shrink-0 flex items-center justify-center", style: { width: 26, height: 26, opacity: can ? 1 : 0.45 } },
@@ -2090,15 +2105,17 @@ function TaskListCard({ m, myUserId, isAdmin, members, onToggle, onPatch, onAdd,
                 React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
                     React.createElement("p", { className: "text-[12px] leading-snug", style: { color: on ? colors.textMuted : colors.text, textDecoration: on ? "line-through" : "none", wordBreak: "break-word" } }, task.text),
                     (on && task.doneByName) ? React.createElement("p", { className: "text-[9.5px]", style: { color: colors.success } }, tl("✓ أنجزها ", "✓ Done by ") + task.doneByName + (task.doneAt ? " · " + taskDueLabel(task.doneAt) : ""))
-                        : task.dueAt ? React.createElement("p", { className: `text-[9.5px] flex ${rowStart()} items-center gap-1`, style: { color: late ? colors.danger : colors.textMuted } }, late && React.createElement(AlertTriangle, { size: 9, color: colors.danger }), (late ? tl("متأخّرة · ", "Late · ") : tl("الموعد ", "Due ")) + taskDueLabel(task.dueAt)) : null),
+                        : task.dueAt ? React.createElement("p", { className: `text-[9.5px] flex ${rowStart()} items-center gap-1`, style: { color: late ? colors.danger : colors.textMuted } }, late && React.createElement(AlertTriangle, { size: 9, color: colors.danger }), (late ? tl("متأخّرة · ", "Late · ") : tl("الموعد ", "Due ")) + taskDueDay(task.dueAt)) : null),
                 who(task)),
             progRow(task),
-            task.note ? React.createElement("p", { className: `text-[10px] mt-0.5 ${me("8")} ${textStart()}`, style: { color: colors.textMuted } }, "📝 " + task.note)
-                : noteFor === task.id ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-1 ${me("8")}` },
+            // C233: الملاحظة تُعدَّل وتُمسح (كانت تُكتب مرّةً ولا تتغيّر) — للمسؤول عن المهمّة ومنشئ القائمة/المشرف
+            noteFor === task.id ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-1 ${me("8")}` },
                     React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: noteDraft, onChange: (e) => setNoteDraft(e.target.value), placeholder: t("mlahza_qsyra"), autoFocus: true, className: "flex-1 border rounded px-2 py-1 text-[10px]", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
-                    React.createElement("button", { "aria-label": t("takyd"), onClick: () => { if (noteDraft.trim()) onAddNote(task.id, noteDraft.trim()); setNoteFor(null); setNoteDraft(""); } }, React.createElement(Check, { size: 13, color: colors.success })),
+                    React.createElement("button", { "aria-label": t("takyd"), onClick: () => { const v = noteDraft.trim(); if (v !== (task.note || "")) onAddNote(task.id, v); setNoteFor(null); setNoteDraft(""); } }, React.createElement(Check, { size: 13, color: colors.success })),
                     React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => { setNoteFor(null); setNoteDraft(""); } }, React.createElement(X, { size: 13, color: colors.textMuted })))
-                : (!m.secret && !on && task.assigneeId === myUserId) ? React.createElement("button", { onClick: () => { setNoteFor(task.id); setNoteDraft(""); }, className: `text-[9px] ${me("8")}`, style: { color: colors.primary } }, t("idafa_mlahza")) : null);
+                : task.note ? (canNote(task) ? React.createElement("button", { "aria-label": tl("تعديل الملاحظة", "Edit note"), onClick: () => { setNoteFor(task.id); setNoteDraft(task.note); }, className: `block text-[10px] mt-0.5 ${me("8")} ${textStart()}`, style: { color: colors.textMuted } }, "📝 " + task.note + " ✎")
+                    : React.createElement("p", { className: `text-[10px] mt-0.5 ${me("8")} ${textStart()}`, style: { color: colors.textMuted } }, "📝 " + task.note))
+                : (canNote(task) && !on) ? React.createElement("button", { onClick: () => { setNoteFor(task.id); setNoteDraft(""); }, className: `text-[9px] ${me("8")}`, style: { color: colors.primary } }, t("idafa_mlahza")) : null);
     };
     const submitAdd = () => { const v = draft.trim(); if (!v) { setAdding(false); return; } onAdd(v); setDraft(""); };
     return React.createElement("div", { "data-message-id": m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
@@ -2169,7 +2186,7 @@ function MyTasksSheet({ openChat, onClose }) {
                 React.createElement("button", { onClick: () => go(r), className: `flex-1 min-w-0 ${textStart()}` },
                     React.createElement("p", { className: "text-[13px] font-bold leading-snug", style: { color: colors.text, wordBreak: "break-word" } }, r.tk.text),
                     React.createElement("p", { className: "text-[10.5px] truncate", style: { color: late ? colors.danger : colors.textMuted } },
-                        (r.l.secret ? "🔒 " : "") + (r.l.chat || tl("مجموعة", "Group")) + " · " + (r.l.title || "") + (tab === "others" ? " · " + (r.tk.assigneeName || tl("لأيّ عضو", "Anyone")) : "") + (r.tk.dueAt ? (late ? tl(" · متأخّرة ", " · late ") : " · ") + taskDueLabel(r.tk.dueAt) : ""))),
+                        (r.l.secret ? "🔒 " : "") + (r.l.chat || tl("مجموعة", "Group")) + " · " + (r.l.title || "") + (tab === "others" ? " · " + (r.tk.assigneeName || tl("لأيّ عضو", "Anyone")) : "") + (r.tk.dueAt ? (late ? tl(" · متأخّرة ", " · late ") : " · ") + taskDueDay(r.tk.dueAt) : ""))),
                 React.createElement(ChevronLeft, { size: 15, color: colors.textMuted, style: { transform: isRTL() ? "none" : "scaleX(-1)" } }));
         })) : null;
     const late = rows.filter((r) => taskIsLate(r.tk, now)), dated = rows.filter((r) => !taskIsLate(r.tk, now) && r.tk.dueAt), none = rows.filter((r) => !r.tk.dueAt);
@@ -2280,7 +2297,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
     const [billSplitType, setBillSplitType] = useState("equal"); // equal | shares | custom
     const [billCustomValues, setBillCustomValues] = useState({}); // memberId -> حصص أو مبلغ حسب النوع
     const billCustomSum = Object.values(billCustomValues).reduce((s, v) => s + (Number(v) || 0), 0);
-    const canCreateBillSplit = !!billDescription.trim() && !!billTotal &&
+    const canCreateBillSplit = !!billDescription.trim() && Number(billTotal) > 0 &&   // C232: «0» كان يمرّ (نصٌّ غير فارغ)
         (billSplitType === "equal"
             ? billParticipants.length > 0
             : billSplitType === "shares"
@@ -2288,16 +2305,24 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                 : billCustomSum === Number(billTotal) && billCustomSum > 0);
     function handleCreateBillSplit() {
         let participantAmounts = {};
+        // C232: الحصص تجمع الإجماليّ تماماً — كان كلٌّ يُقرَّب وحده: ١٠٠÷٣ = ٣٣×٣ = ٩٩ (لا تكتمل الفاتورة أبداً)، ٢٠٠÷٣ = ٦٧×٣ = ٢٠١.
+        //       الباقي يُوزَّع وحدةً وحدة على أكبر الكسور (طريقة أكبر الباقي).
+        const splitExact = (total, weights) => {
+            const ids = Object.keys(weights), W = ids.reduce((s, id) => s + weights[id], 0), out = {};
+            if (!(W > 0) || !(total > 0)) return out;
+            const raw = ids.map((id) => ({ id, v: (weights[id] / W) * total }));
+            raw.forEach((r) => { out[r.id] = Math.floor(r.v); });
+            let left = total - raw.reduce((s, r) => s + out[r.id], 0);
+            raw.slice().sort((a, b) => (b.v - Math.floor(b.v)) - (a.v - Math.floor(a.v))).forEach((r) => { if (left > 0) { out[r.id] += 1; left -= 1; } });
+            return out;
+        };
         if (billSplitType === "equal") {
-            const share = Math.round(Number(billTotal) / billParticipants.length);
-            billParticipants.forEach((id) => { participantAmounts[id] = share; });
+            const w = {}; billParticipants.forEach((id) => { w[id] = 1; });
+            participantAmounts = splitExact(Math.round(Number(billTotal)), w);
         }
         else if (billSplitType === "shares") {
-            const totalShares = Object.values(billCustomValues).reduce((s, v) => s + (Number(v) || 0), 0);
-            Object.entries(billCustomValues).forEach(([id, shares]) => {
-                if (Number(shares) > 0)
-                    participantAmounts[id] = Math.round((Number(shares) / totalShares) * Number(billTotal));
-            });
+            const w = {}; Object.entries(billCustomValues).forEach(([id, shares]) => { if (Number(shares) > 0) w[id] = Number(shares); });
+            participantAmounts = splitExact(Math.round(Number(billTotal)), w);
         }
         else {
             Object.entries(billCustomValues).forEach(([id, amount]) => {
@@ -2569,8 +2594,8 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
             }
 
             if (m.type === "billSplit") {
-                const paidAmount = m.participants.filter((p) => p.paid).reduce((s, p) => s + p.share, 0);
-                const pct = Math.round((paidAmount / m.totalAmount) * 100);
+                const paidAmount = m.participants.filter((p) => p.paid).reduce((s, p) => s + (Number(p.share) || 0), 0);
+                const pct = m.totalAmount > 0 ? Math.min(100, Math.round((paidAmount / m.totalAmount) * 100)) : 0;   // C232: إجماليّ ٠ ⇒ NaN%
                 const myShare = m.participants.find((p) => p.userId === myUserId);
                 return (React.createElement("div", { key: m.id, "data-message-id": m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
                     React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-1` },
@@ -2598,13 +2623,15 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                                 p.share.toLocaleString(loc()),
                                 t("w_sdg_sp")),
                             p.paid ? React.createElement(CheckCircle2, { size: 13, color: colors.success }) : React.createElement("span", { className: "text-[9px]", style: { color: colors.danger } }, t("lm_ydfa")))))),
-                    myShare && !myShare.paid && (React.createElement(Button, { label: t("gc_thdyd_hsty", { v: myShare.share.toLocaleString(loc()) }), onPress: () => onPayBillSplit(m.id), className: "mt-2" }))));
+                    myShare && !myShare.paid && (React.createElement(Button, { label: t("gc_thdyd_hsty", { v: myShare.share.toLocaleString(loc()) }), onPress: () => onPayBillSplit(m.id), className: "mt-2" })),
+                    // C232: تراجعٌ عن «دفعتُ» بالخطأ
+                    myShare && myShare.paid && (React.createElement("button", { onClick: () => onPayBillSplit(m.id, true), className: "mt-2 text-[10px] font-bold underline", style: { color: colors.textMuted } }, tl("لم أدفع بعد؟ تراجع", "Not paid yet? Undo")))));
             }
             if (m.type === "fundraiser") {
-                const pct = Math.min(100, Math.round((m.raised / m.goal) * 100));
+                const pct = m.goal > 0 ? Math.min(100, Math.round((m.raised / m.goal) * 100)) : 0;   // C232: هدف ٠ ⇒ قسمةٌ على صفر
                 const daysLeft = m.deadline ? Math.ceil((m.deadline - Date.now()) / 86400000) : null;
                 const isUrgent = daysLeft !== null && daysLeft <= 3 && daysLeft >= 0;
-                const isGoalReached = m.raised >= m.goal;
+                const isGoalReached = m.goal > 0 && m.raised >= m.goal;   // C232: كان هدف ٠ «مكتملاً» فوراً ويُعطَّل زرّ التبرّع
                 const isEnded = isGoalReached || (daysLeft !== null && daysLeft < 0);
                 return (React.createElement("div", { key: m.id, "data-message-id": m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: isUrgent ? colors.danger : colors.border, backgroundColor: colors.card } },
                     React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-1` },
@@ -2774,7 +2801,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: fundCause, onChange: (e) => setFundCause(e.target.value), placeholder: t("alsbb_mthal_msaada_asra"), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             React.createElement(NumericAmountInput, { value: fundGoal, onChange: setFundGoal, placeholder: t("alhdf_j_s"), className: `w-full border rounded-xl px-3 py-2 text-xs mb-2 ${textStart()}`, style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             React.createElement("input", { dir: "ltr", type: "date", value: fundDeadline, onChange: (e) => setFundDeadline(e.target.value), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
-            React.createElement("button", { onClick: () => { onCreateFundraiser(fundCause.trim(), Number(fundGoal), fundDeadline || null); setShowFundraiserForm(false); setFundCause(""); setFundGoal(""); setFundDeadline(""); }, disabled: !fundCause.trim() || !fundGoal, className: "w-full mt-2 py-3 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary, opacity: (!fundCause.trim() || !fundGoal) ? 0.5 : 1 } }, t("bd_jma_altbraat")))),
+            React.createElement("button", { onClick: () => { onCreateFundraiser(fundCause.trim(), Number(fundGoal), fundDeadline || null); setShowFundraiserForm(false); setFundCause(""); setFundGoal(""); setFundDeadline(""); }, disabled: !fundCause.trim() || !(Number(fundGoal) > 0), className: "w-full mt-2 py-3 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary, opacity: (!fundCause.trim() || !(Number(fundGoal) > 0)) ? 0.5 : 1 } }, t("bd_jma_altbraat")))),
         showTaskForm && (React.createElement(ToolSheet, { title: editingTasksId ? tl("تعديل قائمة المهامّ", "Edit task list") : t("qayma_mham"), onClose: () => { setShowTaskForm(false); setEditingTasksId(null); } },
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: taskListTitle, onChange: (e) => setTaskListTitle(e.target.value), placeholder: t("anwan_alqayma_mthal_thdyr"), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             taskDrafts.map((td, i) => {

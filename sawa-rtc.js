@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c231";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c232";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -1366,7 +1366,7 @@
       var name = nameOf(v.from) || v.fromName || "";
       if (busy()) {   // مشغول بمكالمة أخرى
         ref.update({ state: "busy" }).catch(function () {}); inbox.remove().catch(function () {});
-        addLog({ id: "call-" + id, name: name, peerUid: v.from, callType: v.type === "video" ? "video" : "audio", type: "missed", time: L("الآن", "Now"), duration: null, timestamp: Date.now(), participants: null, cloud: true });
+        addLog({ id: "call-" + id, name: name, peerUid: v.from, callType: v.type === "video" ? "video" : "audio", type: "missed", label: L("فائتة — كنتَ في مكالمة", "Missed — you were on a call"), time: L("الآن", "Now"), duration: null, timestamp: Date.now(), participants: null, cloud: true });
         return;
       }
       var c = cur = newCall({ id: id, role: "callee", peer: v.from, name: name, type: v.type === "video" ? "video" : "audio", state: "incoming", ref: ref, inbox: inbox, offer: v.offer });
@@ -2096,7 +2096,7 @@
       var title = n.title || "", from = v.from || n.by;
       if (busy()) {
         inbox.remove().catch(function () {});
-        addLog({ id: "gcall-" + gid, name: title || nameOf(from) || L("مكالمة جماعيّة", "Group call"), callType: n.type, type: "missed", time: L("الآن", "Now"), duration: null, timestamp: Date.now(), participants: null, cloud: true, cid: n.cid || null });
+        addLog({ id: "gcall-" + gid, name: title || nameOf(from) || L("مكالمة جماعيّة", "Group call"), callType: n.type, type: "missed", label: L("فائتة — كنتَ في مكالمة", "Missed — you were on a call"), time: L("الآن", "Now"), duration: null, timestamp: Date.now(), participants: null, cloud: true, cid: n.cid || null });
         return;
       }
       var g = gc = gcNew({ gid: gid, type: n.type === "video" ? "video" : "audio", title: title, cid: n.cid || null, by: n.by, approval: !!n.approval,
@@ -2430,9 +2430,12 @@
       var secs = g.joinedAt && g.live ? Math.max(1, Math.round((Date.now() - g.joinedAt) / 1000)) : 0;
       var names = Object.keys(g.met).map(function (u) { return g.met[u]; });
       var type = g.role === "starter" ? "outgoing" : (g.live ? "incoming" : (g.declined ? "incoming" : "missed"));
+      // C232: نتيجة المكالمة الجماعيّة بكلمةٍ كالثنائيّة (C61) — كانت بلا وصف
+      var glabel = g.live ? (g.role === "starter" ? L("صادرة", "Outgoing") : L("واردة", "Incoming"))
+        : g.role === "starter" ? L("لم ينضمّ أحد", "No one joined") : g.declined ? L("رفضتَها", "Declined") : L("فائتة", "Missed");
       if (!(g.role === "starter" && !g.live && reason === "error"))
         addLog({ id: "gcall-" + g.gid + "-" + g.sess, name: g.title || names.join("، ") || g.fromName || L("مكالمة جماعيّة", "Group call"), callType: g.type,
-                 type: type, time: L("الآن", "Now"), duration: secs ? fmt(secs) : null, timestamp: Date.now(), participants: names.length ? names : null, cloud: true, cid: g.cid || null, gid: g.gid });
+                 type: type, label: glabel, time: L("الآن", "Now"), duration: secs ? fmt(secs) : null, timestamp: Date.now(), participants: names.length ? names : null, cloud: true, cid: g.cid || null, gid: g.gid });
     }
     if (gc === g) gc = null;
     if (g.gid && (g.live || g.role !== "incoming")) telSend({ id: g.gid, k: "group-" + g.type, mode: "mesh", role: g.role, ok: !!g.joinedAt, n: Object.keys(g.met || {}).length + 1,
