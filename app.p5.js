@@ -1446,7 +1446,7 @@ function taskListText(m) {
     const doneN = tasks.filter(isDone).length;
     const line = (t) => {
         const who = t.assigneeName ? " — " + t.assigneeName : "";
-        const due = t.dueAt ? " · " + taskDueLabel(t.dueAt) : "";
+        const due = t.dueAt ? " · " + taskDueDay(t.dueAt) : "";
         const pc = !isDone(t) && eff(t) > 0 ? " · " + eff(t) + "%" : "";
         return String(t.text || "") + who + due + pc;
     };
@@ -1907,9 +1907,23 @@ function ToolSheet({ title, onClose, children }) {
             React.createElement("div", { className: "px-4 pt-3 pb-4 overflow-y-auto", style: { flex: 1, minHeight: 0 } }, children))));
 }
 // C173: بطاقة قائمة المهامّ — تقدّم · إسنادٌ مرن («لأيّ عضو» ← «أنا عليها») · طيّ المنجَز · «+ مهمّة» سريعة · من أنجزها ومتى
-const TASK_LATE_MS = 24 * 3600000;   // الموعد يومٌ كامل: تتأخّر بعد نهايته
-function taskIsLate(task, now) { return task.status !== "done" && task.dueAt && now > task.dueAt + TASK_LATE_MS; }
+// C233: الموعد «يومٌ» يُحفظ منتصفَ ليل UTC (حقل التاريخ) — يُقرأ ويُقارن يوماً لا لحظة. كان يُعرض بالتوقيت المحلّيّ فيظهر
+//       قبل يومه بيومٍ غربَ غرينتش، و«متأخّرة» تبدأ عند نهاية يوم UTC لا نهاية يومك أنت.
+function taskDay(ts) { try { return new Date(ts).toISOString().slice(0, 10); } catch (e) { return ""; } }
+function taskLocalDay(ts) { const d = new Date(ts); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+function taskIsLate(task, now) { return task.status !== "done" && !!task.dueAt && taskLocalDay(now) > taskDay(task.dueAt); }
+// وقتٌ حقيقيّ (الإنجاز) ⇒ بالتوقيت المحلّيّ
 function taskDueLabel(d) { try { return new Date(d).toLocaleDateString(loc(), { day: "numeric", month: "short" }); } catch (e) { return ""; } }
+// يوم الموعد ⇒ «اليوم» · «غداً» · «أمس» أو التاريخ (بلا انزياح المنطقة الزمنيّة)
+function taskDueDay(d) {
+    try {
+        const day = taskDay(d), now = Date.now(), today = taskLocalDay(now);
+        if (day === today) return tl("اليوم", "today");
+        if (day === taskLocalDay(now + 86400000)) return tl("غداً", "tomorrow");
+        if (day === taskLocalDay(now - 86400000)) return tl("أمس", "yesterday");
+        return new Date(d).toLocaleDateString(loc(), { day: "numeric", month: "short", timeZone: "UTC" });
+    } catch (e) { return ""; }
+}
 function TaskAssignSheet({ task, members, myUserId, boss, onPick, onClose }) {
     const { colors } = useTheme();
     const mine = task.assigneeId === myUserId;
@@ -2060,6 +2074,7 @@ function TaskListCard({ m, myUserId, isAdmin, members, onToggle, onPatch, onAdd,
     const pct = tasks.length ? Math.round(tasks.reduce((s, x) => s + effP(x), 0) / tasks.length) : 0;
     const canAdd = onAdd && (!m.secret || boss);
     const canToggle = (task) => task.assigneeId === myUserId || !task.assigneeId || boss;
+    const canNote = (task) => !m.secret && (task.assigneeId === myUserId || boss);   // C233: كالخادم (v119)
     const box = (task) => {
         const on = task.status === "done", can = canToggle(task);
         return React.createElement("button", { "aria-label": on ? tl("إلغاء الإنجاز", "Mark not done") : tl("تمّ", "Done"), disabled: !can, onClick: () => can && onToggle(task.id), className: "shrink-0 flex items-center justify-center", style: { width: 26, height: 26, opacity: can ? 1 : 0.45 } },
@@ -2090,15 +2105,17 @@ function TaskListCard({ m, myUserId, isAdmin, members, onToggle, onPatch, onAdd,
                 React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
                     React.createElement("p", { className: "text-[12px] leading-snug", style: { color: on ? colors.textMuted : colors.text, textDecoration: on ? "line-through" : "none", wordBreak: "break-word" } }, task.text),
                     (on && task.doneByName) ? React.createElement("p", { className: "text-[9.5px]", style: { color: colors.success } }, tl("✓ أنجزها ", "✓ Done by ") + task.doneByName + (task.doneAt ? " · " + taskDueLabel(task.doneAt) : ""))
-                        : task.dueAt ? React.createElement("p", { className: `text-[9.5px] flex ${rowStart()} items-center gap-1`, style: { color: late ? colors.danger : colors.textMuted } }, late && React.createElement(AlertTriangle, { size: 9, color: colors.danger }), (late ? tl("متأخّرة · ", "Late · ") : tl("الموعد ", "Due ")) + taskDueLabel(task.dueAt)) : null),
+                        : task.dueAt ? React.createElement("p", { className: `text-[9.5px] flex ${rowStart()} items-center gap-1`, style: { color: late ? colors.danger : colors.textMuted } }, late && React.createElement(AlertTriangle, { size: 9, color: colors.danger }), (late ? tl("متأخّرة · ", "Late · ") : tl("الموعد ", "Due ")) + taskDueDay(task.dueAt)) : null),
                 who(task)),
             progRow(task),
-            task.note ? React.createElement("p", { className: `text-[10px] mt-0.5 ${me("8")} ${textStart()}`, style: { color: colors.textMuted } }, "📝 " + task.note)
-                : noteFor === task.id ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-1 ${me("8")}` },
+            // C233: الملاحظة تُعدَّل وتُمسح (كانت تُكتب مرّةً ولا تتغيّر) — للمسؤول عن المهمّة ومنشئ القائمة/المشرف
+            noteFor === task.id ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-1 ${me("8")}` },
                     React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: noteDraft, onChange: (e) => setNoteDraft(e.target.value), placeholder: t("mlahza_qsyra"), autoFocus: true, className: "flex-1 border rounded px-2 py-1 text-[10px]", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
-                    React.createElement("button", { "aria-label": t("takyd"), onClick: () => { if (noteDraft.trim()) onAddNote(task.id, noteDraft.trim()); setNoteFor(null); setNoteDraft(""); } }, React.createElement(Check, { size: 13, color: colors.success })),
+                    React.createElement("button", { "aria-label": t("takyd"), onClick: () => { const v = noteDraft.trim(); if (v !== (task.note || "")) onAddNote(task.id, v); setNoteFor(null); setNoteDraft(""); } }, React.createElement(Check, { size: 13, color: colors.success })),
                     React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => { setNoteFor(null); setNoteDraft(""); } }, React.createElement(X, { size: 13, color: colors.textMuted })))
-                : (!m.secret && !on && task.assigneeId === myUserId) ? React.createElement("button", { onClick: () => { setNoteFor(task.id); setNoteDraft(""); }, className: `text-[9px] ${me("8")}`, style: { color: colors.primary } }, t("idafa_mlahza")) : null);
+                : task.note ? (canNote(task) ? React.createElement("button", { "aria-label": tl("تعديل الملاحظة", "Edit note"), onClick: () => { setNoteFor(task.id); setNoteDraft(task.note); }, className: `block text-[10px] mt-0.5 ${me("8")} ${textStart()}`, style: { color: colors.textMuted } }, "📝 " + task.note + " ✎")
+                    : React.createElement("p", { className: `text-[10px] mt-0.5 ${me("8")} ${textStart()}`, style: { color: colors.textMuted } }, "📝 " + task.note))
+                : (canNote(task) && !on) ? React.createElement("button", { onClick: () => { setNoteFor(task.id); setNoteDraft(""); }, className: `text-[9px] ${me("8")}`, style: { color: colors.primary } }, t("idafa_mlahza")) : null);
     };
     const submitAdd = () => { const v = draft.trim(); if (!v) { setAdding(false); return; } onAdd(v); setDraft(""); };
     return React.createElement("div", { "data-message-id": m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
@@ -2169,7 +2186,7 @@ function MyTasksSheet({ openChat, onClose }) {
                 React.createElement("button", { onClick: () => go(r), className: `flex-1 min-w-0 ${textStart()}` },
                     React.createElement("p", { className: "text-[13px] font-bold leading-snug", style: { color: colors.text, wordBreak: "break-word" } }, r.tk.text),
                     React.createElement("p", { className: "text-[10.5px] truncate", style: { color: late ? colors.danger : colors.textMuted } },
-                        (r.l.secret ? "🔒 " : "") + (r.l.chat || tl("مجموعة", "Group")) + " · " + (r.l.title || "") + (tab === "others" ? " · " + (r.tk.assigneeName || tl("لأيّ عضو", "Anyone")) : "") + (r.tk.dueAt ? (late ? tl(" · متأخّرة ", " · late ") : " · ") + taskDueLabel(r.tk.dueAt) : ""))),
+                        (r.l.secret ? "🔒 " : "") + (r.l.chat || tl("مجموعة", "Group")) + " · " + (r.l.title || "") + (tab === "others" ? " · " + (r.tk.assigneeName || tl("لأيّ عضو", "Anyone")) : "") + (r.tk.dueAt ? (late ? tl(" · متأخّرة ", " · late ") : " · ") + taskDueDay(r.tk.dueAt) : ""))),
                 React.createElement(ChevronLeft, { size: 15, color: colors.textMuted, style: { transform: isRTL() ? "none" : "scaleX(-1)" } }));
         })) : null;
     const late = rows.filter((r) => taskIsLate(r.tk, now)), dated = rows.filter((r) => !taskIsLate(r.tk, now) && r.tk.dueAt), none = rows.filter((r) => !r.tk.dueAt);
