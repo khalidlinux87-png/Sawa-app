@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c230";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c231";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -516,18 +516,29 @@
       .then(function (x) { c.routing = false; return x; });
   }
   // C92: التطبيق الأصليّ يوجّه الصوت بنفسه (وضع الاتّصال) — يعمل ولو لم يكشف WebView مدخلَي «المكبّر/السمّاعة»
-  function nativeSpk(on) { try { if (RB()) RB().setSpeaker(!!on); var n = NB(); if (n && n.audioRoute) setTimeout(function () { try { routeDiag(n.audioRoute()); } catch (e) {} }, 700); } catch (e) {} }
+  // C230: auto = اختيار التطبيق (بداية مكالمة فيديو/جماعيّة) ⇒ لا يغلب سمّاعة رأس موصولة. زرّ المستخدم وحده يحوّل إلى المكبّر.
+  function nativeSpk(on, auto) { try { var b = RB(), n = NB(); if (b) { if (auto && n && n.setSpeakerAuto) n.setSpeakerAuto(!!on); else if (b === iosRoute) iosRoute.setSpeaker(!!on, !!auto); else b.setSpeaker(!!on); } if (n && n.audioRoute) setTimeout(function () { try { routeDiag(n.audioRoute()); } catch (e) {} }, 700); } catch (e) {} }
   // C177: المدير يرى المسار الفعليّ بعد كلّ تحويل (Receiver/Speaker · earpiece/speaker) — لتشخيص «الصوت من المكبّر رغم السمّاعة»
   function routeDiag(r) { try { if (r && isAdm()) { toast("🔈 " + r); if (cur) cur.osRoute = String(r).slice(0, 40); } } catch (e) {} }
-  function nativeRoute(c, which) {
-    c.out = which; nativeSpk(which === "spk");
+  function nativeRoute(c, which, auto) {
+    c.out = which; nativeSpk(which === "spk", auto);
     if (which === "ear") { wakeOff(); earArm(); } else { wakeOn(); earOff(); }
     paint(c);
   }
+  // C230: التطبيق الأصليّ يبلغ ما يخرج منه الصوت فعلاً (headset · spk · ear) ومتى وُصلت سمّاعة/فُصلت ⇒ الزرّ يطابق الواقع
+  //       (كان يقول «السمّاعة» والصوت في سمّاعة الرأس، ولا يتغيّر حين يُوصل البلوتوث أثناء المكالمة)
+  function audioOut(kind, hs) {
+    var c = cur; if (!c || c.done || !RB()) return;
+    var out = kind === "spk" ? "spk" : "ear", was = c.out + "|" + !!c.hs;
+    c.hs = !!hs || kind === "headset"; c.out = out;
+    if (out === "spk") { earOff(); } else if (c.hs) { earOff(); } else earArm();
+    if (was !== c.out + "|" + c.hs) paint(c);
+  }
+  global.__sawaAudioOut = function (kind, hs) { try { audioOut(String(kind || ""), !!hs); } catch (e) {} };
   // C196: التوجيه من بداية المكالمة (لا عند الاتّصال فقط) — WebView يختار المكبّر افتراضيّاً حين يفتح الميكروفون، فكانت نغمة «يرنّ»
   //       وأوّل الكلام يخرجان من المكبّر. الصوتيّة ⇒ سمّاعة الأذن · الفيديو ⇒ المكبّر. اختيار المستخدم قبل الاتّصال يبقى.
-  function earlyRoute(c) { if (!c || c.done || !RB() || c.out) return; nativeRoute(c, c.type === "video" ? "spk" : "ear"); }
-  function toggleRoute() { var c = cur; if (!c) return; var w = c.out === "ear" ? "spk" : "ear"; if (c.routes) setRoute(c, w); else if (RB()) nativeRoute(c, w); }
+  function earlyRoute(c) { if (!c || c.done || !RB() || c.out) return; nativeRoute(c, c.type === "video" ? "spk" : "ear", true); }
+  function toggleRoute() { var c = cur; if (!c) return; var w = c.out === "ear" ? "spk" : "ear"; c.userRoute = true; if (c.routes) setRoute(c, w); else if (RB()) nativeRoute(c, w); }
   function stopStream(s) { try { s && s.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} }
   function mediaError(e) {
     var n = e && e.name;
@@ -611,7 +622,7 @@
   // C127: تطبيق iOS — توجيه الصوت (السمّاعة/المكبّر) وحسّاس القرب ومنع القفل عبر جسر SawaIOS
   function IOSB() { try { return global.SawaIOS || null; } catch (e) { return null; } }
   var iosRoute = {
-    setSpeaker: function (on) { try { IOSB().call("setSpeaker", { on: !!on }).then(function (r) { routeDiag(r && r.route); }); } catch (e) {} },
+    setSpeaker: function (on, auto) { try { IOSB().call("setSpeaker", { on: !!on, auto: !!auto }).then(function (r) { routeDiag(r && r.route); if (r && r.kind) audioOut(r.kind, r.hs); }); } catch (e) {} },   // C230: kind/hs من بناء iOS الجديد
     setProximity: function (on) { try { IOSB().call("setProximity", { on: !!on }); } catch (e) {} return true; },
     setInCall: function (on) { try { IOSB().call("setInCall", { on: !!on }); } catch (e) {} }
   };
@@ -687,7 +698,7 @@
   function earArm() {
     clearTimeout(earT);
     if (RB()) {
-      if (cur && cur.out === "ear" && !cur.done && cur.state === "connected") { try { earNative = !!RB().setProximity(true) || true; } catch (e) {} }
+      if (cur && cur.out === "ear" && !cur.hs && !cur.done && cur.state === "connected") { try { earNative = !!RB().setProximity(true) || true; } catch (e) {} }   // C230: لا حسّاس قربٍ مع سمّاعة الرأس
       return;
     }
     earT = setTimeout(function () { if (cur && cur.out === "ear" && !cur.done && cur.state === "connected") earOn(); }, 5000);
@@ -858,7 +869,7 @@
       bar.appendChild(btn(c.camOff ? "🚫" : "📷", c.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), c.camOff ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleCam));
       bar.appendChild(btn("🔄", L("تبديل", "Flip"), "rgba(255,255,255,.16)", switchCam));
     }
-    if (c.routes || (RB())) { var sp = c.out !== "ear"; var rb = btn(sp ? "🔊" : "👂", sp ? L("المكبّر", "Speaker") : L("السمّاعة", "Earpiece"), sp ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
+    if (c.routes || (RB())) { var sp = c.out !== "ear"; var rb = btn(sp ? "🔊" : c.hs ? "🎧" : "👂", sp ? L("المكبّر", "Speaker") : c.hs ? L("سمّاعة الرأس", "Headset") : L("السمّاعة", "Earpiece"), sp ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
     // C111: تحويل المكالمة الصوتيّة إلى فيديو (بموافقة الطرف الآخر)
     if (c.state === "connected" && c.type !== "video") bar.appendChild(btn("📹", c.vreqOut ? L("…بانتظاره", "…waiting") : L("فيديو", "Video"), "rgba(255,255,255,.16)", function () { askVideo(cur); }));
     if (c.state === "connected") bar.appendChild(btn("➕", L("إضافة", "Add"), "rgba(255,255,255,.16)", function () { pickPerson(cur); }));
@@ -1130,8 +1141,8 @@
     if (s === "connected") {
       clearTimeout(c.timers.conn); clearTimeout(c.timers.lost); delete c.timers.lost;
       if (!c.connectedAt) { c.connectedAt = Date.now(); engMark(c); softDrop(c); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); }); if (c.out === "ear" && RB()) setTimeout(earArm, 0);
-        if (RB()) { nativeRoute(c, c.out || (c.type === "video" ? "spk" : "ear"));   // C92 · C196: يبقى اختيار المستخدم
-          setTimeout(function () { if (cur === c && !c.done && RB()) nativeSpk(c.out === "spk"); }, 1500); }   // C196: WebView يعيد المكبّر حين يبدأ صوت الطرف الآخر
+        if (RB()) { nativeRoute(c, c.out || (c.type === "video" ? "spk" : "ear"), !c.userRoute);   // C92 · C196: يبقى اختيار المستخدم · C230: والتلقائيّ لا يغلب سمّاعة الرأس
+          setTimeout(function () { if (cur === c && !c.done && RB()) nativeSpk(c.out === "spk", !c.userRoute); }, 1500); }   // C196: WebView يعيد المكبّر حين يبدأ صوت الطرف الآخر
         if (!c.native && !RB()) audioRoutes().then(function (rt) {   // C177: مع التطبيق الأصليّ التوجيه له وحده — تبديل الميكروفون كان يُرجع الوضع «عاديّاً» في بعض أندرويد   // C15: المكالمة الصوتيّة تبدأ على سمّاعة الأذن كالهاتف، والفيديو على المكبّر
           if (!rt || c.done || cur !== c) return;
           c.routes = rt; c.out = "spk";
@@ -1183,7 +1194,7 @@
       return c.pc.createOffer().then(function (o) { return c.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); })
         .then(function (o) { return c.ref.update({ reoffer: { type: o.type, sdp: o.sdp, n: n, v: 1 } }); });
     }).then(function () { capVideo(c); }).catch(function (e) { LOG.warn("vin.offer", { err: e && e.message }); });
-    if (RB()) nativeRoute(c, "spk"); else if (c.routes) setRoute(c, "spk", true);
+    if (RB()) nativeRoute(c, "spk", true); else if (c.routes) setRoute(c, "spk", true);   // C230: تلقائيّ
     wakeOn(); earOff(); paint(c);
     toast(L("صارت مكالمة فيديو 📹", "Switched to video 📹"));
   }
@@ -2169,7 +2180,7 @@
       if (g.done) return;
       g.live = true;
       try { g.ref.child("members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
-      g.joinedAt = Date.now(); g.state = "live"; wakeOn(); gPaint(g); bgAudio(true, g.title || L("مكالمة جماعيّة", "Group call"), function () { groupLeave(); }); if (IOSB()) iosRoute.setSpeaker(true);   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
+      g.joinedAt = Date.now(); g.state = "live"; wakeOn(); gPaint(g); bgAudio(true, g.title || L("مكالمة جماعيّة", "Group call"), function () { groupLeave(); }); if (IOSB()) iosRoute.setSpeaker(true, true);   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
       if (!g.tick) g.tick = setInterval(function () { gPaintHead(g); }, 1000);
       if (g.role === "starter" && !g.vc) playTone("back");   // نغمة «يرنّ» حتّى ينضمّ أوّل شخص (لا رنين في الدردشة الصوتيّة)
       var first = true;
@@ -2901,7 +2912,7 @@
       if (r.done) return;
       r.live = true; r.joinedAt = Date.now();
       try { rRef(r, "members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
-      r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }); if (IOSB()) iosRoute.setSpeaker(true);   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
+      r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }); if (IOSB()) iosRoute.setSpeaker(true, true);   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
       LOG.info("room.live", { ms: Date.now() - (r.t0 || Date.now()) });
       // C66: المضيف ينشر جلسته في meta (مقروءة قبل العضويّة) ⇒ الوافد يعرض عليه فور دخوله بلا انتظار أوّل لقطةٍ من قائمة الأعضاء (رحلةٌ كاملة أقلّ حتى يُسمع الصوت)
       if (amHost(r)) rRef(r, "meta/hsess").set(r.sess).catch(function () {});
