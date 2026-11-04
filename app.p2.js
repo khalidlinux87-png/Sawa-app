@@ -687,13 +687,14 @@ function FamSheet({ title, subtitle, onClose, children, footer, maxHeight = "92%
             footer && React.createElement("div", { className: "px-5 pt-2 pb-3 shrink-0", style: { borderTop: `1px solid ${colors.border}` } }, footer))));
 }
 // زرّ إجراء دائريّ ملوّن مع تسمية (اتّصال/رسالة/تعديل…)
-function FamAction({ icon: Icon, label, onPress, bg, href }) {
+// C202: outline = دائرةٌ محدّدة بلون المظهر (مثل «سرّيّة» في ملفّ جهة الاتّصال) — الدوائر كانت أخضر/رماديّ/برتقاليّ/بنفسجيّ
+function FamAction({ icon: Icon, label, onPress, bg, href, outline }) {
     const { colors } = useTheme();
     const Tag = href ? "a" : "button";
     const on = !!(onPress || href);
     // C74: الزرّ يشمل الدائرة واسمها — كان النقر على الكلمة («تعديل»، «مفضّلة») لا يفعل شيئاً
     return React.createElement(Tag, { "aria-label": label, href: href, onClick: onPress, disabled: !on, className: "flex flex-col items-center gap-1.5 active:scale-95 transition-transform", style: { opacity: on ? 1 : 0.4, background: "none", border: 0, padding: 0, textDecoration: "none" } },
-        React.createElement("span", { className: "rounded-full flex items-center justify-center", style: { width: 50, height: 50, backgroundColor: bg || colors.primary, boxShadow: `0 6px 14px ${(bg || colors.primary)}55` } }, React.createElement(Icon, { size: 21, color: "#fff" })),
+        React.createElement("span", { className: "rounded-full flex items-center justify-center", style: { width: 50, height: 50, backgroundColor: outline ? "transparent" : (bg || colors.primary), border: outline ? `2px solid ${colors.primary}` : "none", boxShadow: outline ? "none" : `0 6px 14px ${(bg || colors.primary)}55` } }, React.createElement(Icon, { size: 21, color: outline ? colors.primary : "#fff" })),
         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, label));
 }
 // صفّ قائمة داخل بطاقة: أيقونة + عنوان + وصف + سهم
