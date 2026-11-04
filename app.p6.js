@@ -274,7 +274,9 @@ function callTimeLabel(ts) {
 function fmtCallDur(v) {
     const p = String(v || "").split(":").map((x) => parseInt(x, 10));
     if (!p.length || p.some((x) => isNaN(x))) return String(v || "");
-    const [h, m, sec] = p.length === 3 ? p : [0, p[0], p[1] || 0];
+    // C232: «م:ث» قد تتجاوز ٦٠ دقيقة (75:03) ⇒ تُحوَّل إلى ساعات (كانت «75 د 3 ث»)
+    const tot = p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + (p[1] || 0);
+    const h = Math.floor(tot / 3600), m = Math.floor((tot % 3600) / 60), sec = tot % 60;
     const ar = isRTL(), out = [];
     if (h) out.push(h + (ar ? " س" : "h"));
     if (m) out.push(m + (ar ? " د" : "m"));
@@ -398,7 +400,7 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
             callLog.length === 0 && React.createElement(EmptyState, { icon: Phone, label: t("la_twjd_mkalmat_bad") }),
             callQ && callLog.length > 0 && !callLog.some((c) => callMatch(c, callQ)) && React.createElement("p", { className: "text-sm text-center py-8", style: { color: colors.textMuted } }, tl("لا توجد مكالمات مطابقة", "No matching calls")),
             callLog.filter((c) => !callQ || callMatch(c, callQ)).map((c) => {
-                const Icon = callTypeIcons[c.type];
+                const Icon = callTypeIcons[c.type] || Phone;   // C232: نوعٌ غير معروف (سجلّ قديم محفوظ) كان يُسقط الشاشة كلّها
                 const unanswered = c.type === "missed" || (!c.duration && c.cloud);
                 const arrowColor = c.type === "missed" ? "#EF4444" : unanswered ? "#B45309" : "#16A34A";
                 // C61: الصفّ كلّه ينقر (كان الهاتف الصغير و⋮ فقط) ⇒ قائمة الخيارات: صوت · فيديو · حذف

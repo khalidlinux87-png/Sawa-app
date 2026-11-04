@@ -2280,7 +2280,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
     const [billSplitType, setBillSplitType] = useState("equal"); // equal | shares | custom
     const [billCustomValues, setBillCustomValues] = useState({}); // memberId -> حصص أو مبلغ حسب النوع
     const billCustomSum = Object.values(billCustomValues).reduce((s, v) => s + (Number(v) || 0), 0);
-    const canCreateBillSplit = !!billDescription.trim() && !!billTotal &&
+    const canCreateBillSplit = !!billDescription.trim() && Number(billTotal) > 0 &&   // C232: «0» كان يمرّ (نصٌّ غير فارغ)
         (billSplitType === "equal"
             ? billParticipants.length > 0
             : billSplitType === "shares"
@@ -2288,16 +2288,24 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                 : billCustomSum === Number(billTotal) && billCustomSum > 0);
     function handleCreateBillSplit() {
         let participantAmounts = {};
+        // C232: الحصص تجمع الإجماليّ تماماً — كان كلٌّ يُقرَّب وحده: ١٠٠÷٣ = ٣٣×٣ = ٩٩ (لا تكتمل الفاتورة أبداً)، ٢٠٠÷٣ = ٦٧×٣ = ٢٠١.
+        //       الباقي يُوزَّع وحدةً وحدة على أكبر الكسور (طريقة أكبر الباقي).
+        const splitExact = (total, weights) => {
+            const ids = Object.keys(weights), W = ids.reduce((s, id) => s + weights[id], 0), out = {};
+            if (!(W > 0) || !(total > 0)) return out;
+            const raw = ids.map((id) => ({ id, v: (weights[id] / W) * total }));
+            raw.forEach((r) => { out[r.id] = Math.floor(r.v); });
+            let left = total - raw.reduce((s, r) => s + out[r.id], 0);
+            raw.slice().sort((a, b) => (b.v - Math.floor(b.v)) - (a.v - Math.floor(a.v))).forEach((r) => { if (left > 0) { out[r.id] += 1; left -= 1; } });
+            return out;
+        };
         if (billSplitType === "equal") {
-            const share = Math.round(Number(billTotal) / billParticipants.length);
-            billParticipants.forEach((id) => { participantAmounts[id] = share; });
+            const w = {}; billParticipants.forEach((id) => { w[id] = 1; });
+            participantAmounts = splitExact(Math.round(Number(billTotal)), w);
         }
         else if (billSplitType === "shares") {
-            const totalShares = Object.values(billCustomValues).reduce((s, v) => s + (Number(v) || 0), 0);
-            Object.entries(billCustomValues).forEach(([id, shares]) => {
-                if (Number(shares) > 0)
-                    participantAmounts[id] = Math.round((Number(shares) / totalShares) * Number(billTotal));
-            });
+            const w = {}; Object.entries(billCustomValues).forEach(([id, shares]) => { if (Number(shares) > 0) w[id] = Number(shares); });
+            participantAmounts = splitExact(Math.round(Number(billTotal)), w);
         }
         else {
             Object.entries(billCustomValues).forEach(([id, amount]) => {
@@ -2569,8 +2577,8 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
             }
 
             if (m.type === "billSplit") {
-                const paidAmount = m.participants.filter((p) => p.paid).reduce((s, p) => s + p.share, 0);
-                const pct = Math.round((paidAmount / m.totalAmount) * 100);
+                const paidAmount = m.participants.filter((p) => p.paid).reduce((s, p) => s + (Number(p.share) || 0), 0);
+                const pct = m.totalAmount > 0 ? Math.min(100, Math.round((paidAmount / m.totalAmount) * 100)) : 0;   // C232: إجماليّ ٠ ⇒ NaN%
                 const myShare = m.participants.find((p) => p.userId === myUserId);
                 return (React.createElement("div", { key: m.id, "data-message-id": m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
                     React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-1` },
@@ -2598,13 +2606,15 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                                 p.share.toLocaleString(loc()),
                                 t("w_sdg_sp")),
                             p.paid ? React.createElement(CheckCircle2, { size: 13, color: colors.success }) : React.createElement("span", { className: "text-[9px]", style: { color: colors.danger } }, t("lm_ydfa")))))),
-                    myShare && !myShare.paid && (React.createElement(Button, { label: t("gc_thdyd_hsty", { v: myShare.share.toLocaleString(loc()) }), onPress: () => onPayBillSplit(m.id), className: "mt-2" }))));
+                    myShare && !myShare.paid && (React.createElement(Button, { label: t("gc_thdyd_hsty", { v: myShare.share.toLocaleString(loc()) }), onPress: () => onPayBillSplit(m.id), className: "mt-2" })),
+                    // C232: تراجعٌ عن «دفعتُ» بالخطأ
+                    myShare && myShare.paid && (React.createElement("button", { onClick: () => onPayBillSplit(m.id, true), className: "mt-2 text-[10px] font-bold underline", style: { color: colors.textMuted } }, tl("لم أدفع بعد؟ تراجع", "Not paid yet? Undo")))));
             }
             if (m.type === "fundraiser") {
-                const pct = Math.min(100, Math.round((m.raised / m.goal) * 100));
+                const pct = m.goal > 0 ? Math.min(100, Math.round((m.raised / m.goal) * 100)) : 0;   // C232: هدف ٠ ⇒ قسمةٌ على صفر
                 const daysLeft = m.deadline ? Math.ceil((m.deadline - Date.now()) / 86400000) : null;
                 const isUrgent = daysLeft !== null && daysLeft <= 3 && daysLeft >= 0;
-                const isGoalReached = m.raised >= m.goal;
+                const isGoalReached = m.goal > 0 && m.raised >= m.goal;   // C232: كان هدف ٠ «مكتملاً» فوراً ويُعطَّل زرّ التبرّع
                 const isEnded = isGoalReached || (daysLeft !== null && daysLeft < 0);
                 return (React.createElement("div", { key: m.id, "data-message-id": m.id, className: "mb-3 rounded-xl border p-3", style: { borderColor: isUrgent ? colors.danger : colors.border, backgroundColor: colors.card } },
                     React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-1` },
@@ -2774,7 +2784,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: fundCause, onChange: (e) => setFundCause(e.target.value), placeholder: t("alsbb_mthal_msaada_asra"), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             React.createElement(NumericAmountInput, { value: fundGoal, onChange: setFundGoal, placeholder: t("alhdf_j_s"), className: `w-full border rounded-xl px-3 py-2 text-xs mb-2 ${textStart()}`, style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             React.createElement("input", { dir: "ltr", type: "date", value: fundDeadline, onChange: (e) => setFundDeadline(e.target.value), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
-            React.createElement("button", { onClick: () => { onCreateFundraiser(fundCause.trim(), Number(fundGoal), fundDeadline || null); setShowFundraiserForm(false); setFundCause(""); setFundGoal(""); setFundDeadline(""); }, disabled: !fundCause.trim() || !fundGoal, className: "w-full mt-2 py-3 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary, opacity: (!fundCause.trim() || !fundGoal) ? 0.5 : 1 } }, t("bd_jma_altbraat")))),
+            React.createElement("button", { onClick: () => { onCreateFundraiser(fundCause.trim(), Number(fundGoal), fundDeadline || null); setShowFundraiserForm(false); setFundCause(""); setFundGoal(""); setFundDeadline(""); }, disabled: !fundCause.trim() || !(Number(fundGoal) > 0), className: "w-full mt-2 py-3 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.primary, opacity: (!fundCause.trim() || !(Number(fundGoal) > 0)) ? 0.5 : 1 } }, t("bd_jma_altbraat")))),
         showTaskForm && (React.createElement(ToolSheet, { title: editingTasksId ? tl("تعديل قائمة المهامّ", "Edit task list") : t("qayma_mham"), onClose: () => { setShowTaskForm(false); setEditingTasksId(null); } },
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: taskListTitle, onChange: (e) => setTaskListTitle(e.target.value), placeholder: t("anwan_alqayma_mthal_thdyr"), className: "w-full border rounded-xl px-3 py-2 text-xs mb-2", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             taskDrafts.map((td, i) => {

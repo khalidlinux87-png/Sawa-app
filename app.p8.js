@@ -1545,8 +1545,12 @@ function AppInner() {
         const msg = { id: `gbill-${Date.now()}`, type: "billSplit", description, totalAmount, participants, splitType: splitType || "equal", createdAt: Date.now() };
         setGroupMessages((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), msg] }));
     }
-    function payGroupBillSplit(groupId, billId) {
-        if (cloudChat(groupId)) { cloudChat(groupId).billPaid(groupId, billId); showToast("✓", "success"); return; }
+    function payGroupBillSplit(groupId, billId, undo) {
+        if (cloudChat(groupId)) { cloudChat(groupId).billPaid(groupId, billId, null, !!undo); showToast(undo ? tl("أُلغي تحديد الدفع", "Marked as unpaid") : "✓", "success"); return; }   // C232
+        if (undo) {
+            setGroupMessages((prev) => ({ ...prev, [groupId]: (prev[groupId] || []).map((m) => m.id === billId ? { ...m, participants: m.participants.map((p) => (p.userId === myUserId ? { ...p, paid: false, paidAt: null } : p)) } : m) }));
+            return;
+        }
         const msg = (groupMessages[groupId] || []).find((m) => m.id === billId);
         const myShare = msg === null || msg === void 0 ? void 0 : msg.participants.find((p) => p.userId === myUserId);
         if (!myShare || myShare.paid)
@@ -1555,7 +1559,7 @@ function AppInner() {
             ...prev,
             [groupId]: (prev[groupId] || []).map((m) => m.id === billId ? { ...m, participants: m.participants.map((p) => (p.userId === myUserId ? { ...p, paid: true, paidAt: Date.now() } : p)) } : m),
         }));
-        showToast(`تم تحديد حصتك (${myShare.share.toLocaleString(loc())} ج.س) كمدفوعة ✓`, "success");
+        showToast(tl(`تم تحديد حصتك (${myShare.share.toLocaleString(loc())} ج.س) كمدفوعة ✓`, `Your share (${myShare.share.toLocaleString(loc())} SDG) is marked as paid ✓`), "success");
     }
     function createGroupFundraiser(groupId, cause, goal, deadline) {
         if (cloudChat(groupId)) { cloudChat(groupId).sendFund(groupId, cause, goal, deadline ? new Date(`${deadline}T23:59:59`).getTime() : null); return; }
@@ -1581,7 +1585,7 @@ function AppInner() {
             // على السحابة: يُسجَّل تعهّدك للجميع (المحفظة محاكاة — يُخصم منها محلّياً فقط إن اخترتها)
             cloudChat(groupId).contribute(groupId, fundraiserId, amount);
             setPendingContributionTarget(null);
-            showToast(`سجّلت تعهّداً بـ${amount.toLocaleString(loc())} ج.س ✓`, "success");
+            showToast(tl(`سجّلت تعهّداً بـ${amount.toLocaleString(loc())} ج.س ✓`, `Pledged ${amount.toLocaleString(loc())} SDG ✓`), "success");
             return;
         }
         let goalReached = false;
@@ -1598,10 +1602,10 @@ function AppInner() {
         }));
         setPendingContributionTarget(null);
         if (goalReached) {
-            showToast(`🎉 اكتمل الهدف! سجّلت تعهّداً بـ${amount.toLocaleString(loc())} ج.س ✓`, "success");
+            showToast(tl(`🎉 اكتمل الهدف! سجّلت تعهّداً بـ${amount.toLocaleString(loc())} ج.س ✓`, `🎉 Goal reached! Pledged ${amount.toLocaleString(loc())} SDG ✓`), "success");
         }
         else {
-            showToast(`سجّلت تعهّداً بـ${amount.toLocaleString(loc())} ج.س ✓`, "success");
+            showToast(tl(`سجّلت تعهّداً بـ${amount.toLocaleString(loc())} ج.س ✓`, `Pledged ${amount.toLocaleString(loc())} SDG ✓`), "success");
         }
     }
     function createGroupTaskList(groupId, title, taskDrafts) {
@@ -4032,7 +4036,7 @@ function AppInner() {
                             onDeleteMessage: cloudChat(liveGroup.id) ? (messageId, scope) => { scope === "all" ? cloudChat(liveGroup.id).deleteForAll(liveGroup.id, messageId) : cloudChat(liveGroup.id).deleteForMe(liveGroup.id, messageId); showToast(scope === "all" ? t("ai_hdhft_lljmya") : t("ai_hdhft_andk"), "success"); } : null,
                             contacts: cloudChat(liveGroup.id) ? people : null,
                             onInviteLink: cloudChat(liveGroup.id) ? (gid) => cloudChat(gid).shareGroupInvite(gid) : null,
-                            onUpdateGroup: cloudChat(liveGroup.id) ? (gid, patch) => cloudChat(gid).updateGroup(gid, patch) : null, onSendFile: (name, size, fileUrl, type, file) => sendGroupFile(liveGroup.id, name, size, fileUrl, type, file), onSendVoice: (url, duration, transcript, blob, secs) => sendGroupVoice(liveGroup.id, url, duration, transcript, blob, secs), onEditMessage: (messageId, newText) => editGroupMessage(liveGroup.id, messageId, newText), onCreatePoll: (q, opts, deadlineMinutes, anonymous) => createGroupPoll(liveGroup.id, q, opts, deadlineMinutes, anonymous), onEditPoll: (pollId, q, opts) => editGroupPoll(liveGroup.id, pollId, q, opts), onVotePoll: (pollId, optIdx) => voteGroupPoll(liveGroup.id, pollId, optIdx), onCreateBillSplit: (desc, total, participantAmounts, splitType) => createGroupBillSplit(liveGroup.id, desc, total, participantAmounts, splitType), onPayBillSplit: (billId) => payGroupBillSplit(liveGroup.id, billId), onCreateFundraiser: (cause, goal, deadline) => createGroupFundraiser(liveGroup.id, cause, goal, deadline), onContributeFundraiser: (fundraiserId) => contributeGroupFundraiser(liveGroup.id, fundraiserId), onCreateTaskList: (title, drafts) => createGroupTaskList(liveGroup.id, title, drafts), onEditTaskList: (listId, title, drafts) => editGroupTaskList(liveGroup.id, listId, title, drafts), onToggleTaskStatus: (listId, taskId) => toggleGroupTaskStatus(liveGroup.id, listId, taskId), onTaskPatch: (listId, taskId, patch) => patchGroupTask(liveGroup.id, listId, taskId, patch), onAddTask: (listId, text) => addGroupTask(liveGroup.id, listId, text), onAddTaskNote: (listId, taskId, note) => addGroupTaskNote(liveGroup.id, listId, taskId, note), onForward: (text, destinationIds) => forwardMessageToTargets(text, destinationIds), allConversations: conversations, allGroups: groups, onRenameGroup: renameGroup, onAddGroupMembers: addGroupMembers, onRemoveGroupMember: removeGroupMember, onToggleGroupAdmin: toggleGroupAdmin, onLeaveGroup: leaveGroup, onBack: () => setChatsStack([]) }));
+                            onUpdateGroup: cloudChat(liveGroup.id) ? (gid, patch) => cloudChat(gid).updateGroup(gid, patch) : null, onSendFile: (name, size, fileUrl, type, file) => sendGroupFile(liveGroup.id, name, size, fileUrl, type, file), onSendVoice: (url, duration, transcript, blob, secs) => sendGroupVoice(liveGroup.id, url, duration, transcript, blob, secs), onEditMessage: (messageId, newText) => editGroupMessage(liveGroup.id, messageId, newText), onCreatePoll: (q, opts, deadlineMinutes, anonymous) => createGroupPoll(liveGroup.id, q, opts, deadlineMinutes, anonymous), onEditPoll: (pollId, q, opts) => editGroupPoll(liveGroup.id, pollId, q, opts), onVotePoll: (pollId, optIdx) => voteGroupPoll(liveGroup.id, pollId, optIdx), onCreateBillSplit: (desc, total, participantAmounts, splitType) => createGroupBillSplit(liveGroup.id, desc, total, participantAmounts, splitType), onPayBillSplit: (billId, undo) => payGroupBillSplit(liveGroup.id, billId, undo), onCreateFundraiser: (cause, goal, deadline) => createGroupFundraiser(liveGroup.id, cause, goal, deadline), onContributeFundraiser: (fundraiserId) => contributeGroupFundraiser(liveGroup.id, fundraiserId), onCreateTaskList: (title, drafts) => createGroupTaskList(liveGroup.id, title, drafts), onEditTaskList: (listId, title, drafts) => editGroupTaskList(liveGroup.id, listId, title, drafts), onToggleTaskStatus: (listId, taskId) => toggleGroupTaskStatus(liveGroup.id, listId, taskId), onTaskPatch: (listId, taskId, patch) => patchGroupTask(liveGroup.id, listId, taskId, patch), onAddTask: (listId, text) => addGroupTask(liveGroup.id, listId, text), onAddTaskNote: (listId, taskId, note) => addGroupTaskNote(liveGroup.id, listId, taskId, note), onForward: (text, destinationIds) => forwardMessageToTargets(text, destinationIds), allConversations: conversations, allGroups: groups, onRenameGroup: renameGroup, onAddGroupMembers: addGroupMembers, onRemoveGroupMember: removeGroupMember, onToggleGroupAdmin: toggleGroupAdmin, onLeaveGroup: leaveGroup, onBack: () => setChatsStack([]) }));
                     }
                     if (chatsTop.type === "newGroup") {
                         return React.createElement(NewGroupScreen, { onCreate: createGroup, onClose: () => setChatsStack([]), contacts: (function () {
