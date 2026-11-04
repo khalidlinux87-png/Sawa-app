@@ -1557,9 +1557,10 @@
     var parts = Object.keys(participantAmounts || {}).map(function (aid) { var u = realId(aid); return { uid: u, name: personName(u, c), share: Number(participantAmounts[aid]) || 0 }; });
     return send(cid, null, { type: "bill", extra: { description: String(description), totalAmount: Number(totalAmount) || 0, participants: parts, splitType: splitType || "equal" } });
   }
-  function billPaid(cid, id, uid) {
+  function billPaid(cid, id, uid, undo) {
     var who = realId(uid || "u-1");
-    toolCall("chat.billPaid", cid, id, { uid: who }, function (m) { m.paid = Object.assign({}, m.paid); m.paid[who] = Date.now(); return m; });
+    // C232: undo ⇒ «لم أدفع» (الخادم يدعم paid:false منذ البداية، والواجهة لم تكن تتيحه فبقي الخطأ دائماً)
+    toolCall("chat.billPaid", cid, id, undo ? { uid: who, paid: false } : { uid: who }, function (m) { m.paid = Object.assign({}, m.paid); if (undo) delete m.paid[who]; else m.paid[who] = Date.now(); return m; });
   }
   function sendFund(cid, cause, goal, deadline) { return send(cid, null, { type: "fund", extra: { cause: String(cause), goal: Number(goal) || 0, deadline: deadline || null } }); }
   function contribute(cid, id, amount) {
@@ -1599,7 +1600,7 @@
     if (!findMsg(cid, id) && dayHint) { call("chat.task", Object.assign({ cid: cid, day: dayHint, id: id, taskId: taskId }, p)).catch(fail); return; }   // C173: من «مهامّي» (المحادثة غير محمّلة)
     toolCall("chat.task", cid, id, Object.assign({ taskId: taskId }, p), function (m) {
       m.tstate = Object.assign({}, m.tstate); var s = Object.assign({}, m.tstate[taskId]);
-      if (p.status) { s.status = p.status; if (p.status === "done") { s.doneBy = state.uid; s.doneAt = Date.now(); var t0 = ((m.extra && m.extra.tasks) || []).filter(function (x) { return x.id === taskId; })[0]; if (t0 && !taskEffId(t0, s) && p.owner === undefined) s.owner = state.uid; } else { delete s.doneBy; delete s.doneAt; } }
+      if (p.status) { s.status = p.status; if (p.status === "done") { s.doneBy = state.uid; s.doneAt = Date.now(); var t0 = ((m.extra && m.extra.tasks) || []).filter(function (x) { return x.id === taskId; })[0]; if (t0 && !taskEffId(t0, s) && p.owner === undefined) s.owner = state.uid; } else { delete s.doneBy; delete s.doneAt; if (s.pct === 100 && p.pct === undefined) delete s.pct; } }
       if (p.note != null) s.note = p.note;
       if (p.pct !== undefined) { s.pct = p.pct; if (p.pct === 100 && s.status !== "done") { s.status = "done"; s.doneBy = state.uid; s.doneAt = Date.now(); } else if (p.pct < 100 && s.status === "done" && p.status === undefined) { s.status = "pending"; delete s.doneBy; delete s.doneAt; } }   // C188/C190
       if (p.owner !== undefined) s.owner = p.owner;
