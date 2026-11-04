@@ -58,6 +58,8 @@ function membersCountLabel(nStr) { const x = nStr + t("fg_frd_fasl"); return isR
 // يدوياً؛ "أخرى" و"ابن العم/الخال" بلا استدلال واضح فنتركها بلا افتراض
 const KINSHIP_GENDER_DEFAULTS = {
     "الوالد": "male", "الوالدة": "female",
+    // C203: الأصهار
+    "والد الزوجة": "male", "والدة الزوجة": "female", "أخ الزوجة": "male", "أخت الزوجة": "female", "جد الزوجة": "male", "جدة الزوجة": "female", "عم الزوجة": "male", "عمة الزوجة": "female", "خال الزوجة": "male", "خالة الزوجة": "female", "جد الزوجة لأمها": "male", "جدة الزوجة لأمها": "female", "والد الزوج": "male", "والدة الزوج": "female", "أخ الزوج": "male", "أخت الزوج": "female", "جد الزوج": "male", "جدة الزوج": "female", "عم الزوج": "male", "عمة الزوج": "female", "خال الزوج": "male", "خالة الزوج": "female", "جد الزوج لأمه": "male", "جدة الزوج لأمه": "female",
     "الأخ": "male", "الأخت": "female",
     "الابن": "male", "البنت": "female",
     "العم": "male", "العمة": "female", "الخال": "male", "الخالة": "female",
@@ -690,7 +692,11 @@ function kinCompute(persons, relations, meId) {
                 const ps = kinBloodPaths(G, ancS, T);
                 if (!ps.length) return;
                 const p = ps[0];
-                L.push({ base: kinOf(kinBloodName(G, p.up, p.down, p.pM, p.pT), fem(S) ? "الزوجة" : "الزوج"), prox: KIN_PROX_DOWN[kinProx(p.up, p.down)], section: "other", marriage: true });
+                // C203: «الجد لأم» + «الزوجة» كان «الجد لأم الزوجة» (يُقرأ: جدّ أمّ الزوجة) ⇒ «جد الزوجة لأمها»
+                const owner = fem(S) ? "الزوجة" : "الزوج", raw = kinBloodName(G, p.up, p.down, p.pM, p.pT);
+                const viaMom = / لأم$/.test(raw);
+                const lab = viaMom ? kinOf(raw.replace(/ لأم$/, ""), owner) + (fem(S) ? " لأمها" : " لأمه") : kinOf(raw, owner);
+                L.push({ base: lab, prox: KIN_PROX_DOWN[kinProx(p.up, p.down)], section: "ashar", marriage: true });
             });
         }
         // C162: أقارب زوجِ قريبي بالدم — والد زوجة الأخ · أخو زوج الأخت · ابن زوجة العمّ (من غيره)… الأقرب أوّلاً
@@ -709,7 +715,7 @@ function kinCompute(persons, relations, meId) {
                     best = { score, base: kinOf(kinBloodName(G, p.up, p.down, p.pM, p.pT), (fem(S) ? "زوجة " : "زوج ") + xb.base) };
                 });
             });
-            if (best) L.push({ base: best.base, prox: "C", section: "other", marriage: true });
+            if (best) L.push({ base: best.base, prox: "C", section: "ashar", marriage: true });   // C203: أصهار الأقارب
         }
         if (!L.length) return;
         const seen = {}, uniq = L.filter((x) => (seen[x.base] ? false : (seen[x.base] = true)));
@@ -721,7 +727,7 @@ function kinCompute(persons, relations, meId) {
         const Y = (G.spouses[T] || []).find((y) => out[y] && y !== meId && !/^(زوجة|زوج) /.test(out[y].kinship));
         if (!Y) return;
         const nm = (fem(T) ? "زوجة " : "زوج ") + out[Y].kinship;
-        out[T] = { kinship: nm, label: nm, proximity: "C", section: "other", also: [] };
+        out[T] = { kinship: nm, label: nm, proximity: "C", section: "ashar", also: [] };   // C203
     });
     return out;
 }
@@ -1166,7 +1172,9 @@ function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons,
         const q = searchQuery.trim().toLowerCase();
         if (q && !(p.local_name.toLowerCase().includes(q) || ((_a = p.kinship) === null || _a === void 0 ? void 0 : _a.toLowerCase().includes(q)) || kinshipLabel(p.kinship || "").toLowerCase().includes(q) /* ⛔ المُعرِّف والتسمية معاً */))
             return false;
-        if (filterProximity !== "all" && p.proximity !== filterProximity)
+        // C203: «الأصهار» تبويبٌ بالجهة لا بالدرجة — أهل الزوج/الزوجة وأزواج الأقارب
+        if (filterProximity === "ashar") { if (!famIsInLaw(p)) return false; }
+        else if (filterProximity !== "all" && p.proximity !== filterProximity)
             return false;
         if (filterStatus === "overdue" && !isContactOverdue(p))
             return false;
@@ -1300,7 +1308,7 @@ function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons,
                             { k: "A", l: t("abna_alam_walkhal") },
                             { k: "B", l: t("aqarb_alwaldyn") },
                             { k: "C", l: t("abad") },
-                        ] })),
+                        ].concat(persons.some(famIsInLaw) ? [{ k: "ashar", l: tl("الأصهار", "In-laws") }] : []) })),
                 React.createElement("button", { "aria-expanded": showStatusRow || filterStatus !== "all", onClick: () => setShowStatusRow((v) => !v), className: `shrink-0 mb-1 flex ${rowStart()} items-center gap-1 rounded-full px-3 py-1.5 text-[11.5px] font-bold`, style: { backgroundColor: (showStatusRow || filterStatus !== "all") ? colors.primary : colors.card, color: (showStatusRow || filterStatus !== "all") ? "#fff" : colors.primary, boxShadow: famShadow(isDark), marginInlineEnd: 6 } },
                     React.createElement(SlidersHorizontal, { size: 12 }), tl("تصفية", "Filter")),
                 React.createElement("button", { "aria-label": t("kyf_thsb_mda_altdhkyr"), onClick: () => setShowProximityHelp(function (v) { return !v; }), className: "w-7 h-7 rounded-full flex items-center justify-center shrink-0 mb-1", style: { backgroundColor: showProximityHelp ? colors.primary : colors.card, boxShadow: famShadow(isDark) } },
@@ -1755,6 +1763,7 @@ function FamilyRelationsManagerSheet({ persons, relations, onDeleteRelation, onE
     // الاستنتاج التلقائي صحيح منطقياً (من كان أخي فوالدي والده)، لكنه
     // يعني أن خطأ إدخال واحد يتضاعف صامتاً. هنا نُظهر ما يستحق المراجعة
     // بدل أن يبقى مدفوناً بين مئات العلاقات السليمة.
+    const famMarriageViol = marriageViolations(persons, relations);   // C203
     function suspicionOf(r) {
         const src = personOf(r.source);
         const tgt = personOf(r.target);
@@ -1791,6 +1800,13 @@ function FamilyRelationsManagerSheet({ persons, relations, onDeleteRelation, onE
         if (r.type === "spouse" || r.type === "ex_spouse") {
             if (src.gender && tgt.gender && src.gender === tgt.gender)
                 return t("rs_zwjan_nfs_aljns");
+            // C203: بيانات قديمة سبقت القواعد — امرأةٌ بزوجين حاليّين، أو رجلٌ بأكثر من أربع: تُعرض للمراجعة
+            if (r.type === "spouse") {
+                const v = famMarriageViol.find((x) => x.code !== "same_sex" && x.ids.indexOf(r.source) >= 0 && x.ids.indexOf(r.target) >= 0);
+                if (v) return v.msg + tl(" — اجعل أحدهما «زواجاً سابقاً» (💔) أو احذفه", " — mark one as former (💔) or delete it");
+            }
+            if (!src.gender || !tgt.gender)
+                return tl("جنس أحد الزوجين غير محدَّد", "One spouse has no gender set");
             if (r.inferred === "parents-spouse")
                 return t("rs_zwaj_mstntj");
         }
@@ -1868,6 +1884,308 @@ function FamilyRelationsManagerSheet({ persons, relations, onDeleteRelation, onE
                             React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, t("ilgha"))))) : (React.createElement("button", { "aria-label": t("hdhf"), onClick: () => setConfirmingId(r.id), className: "shrink-0 mt-0.5" },
                         React.createElement(Trash2, { size: 16, color: colors.danger }))))))),
             React.createElement("p", { className: "text-[10px] text-center mt-3", style: { color: colors.textMuted } }, t("hdhf_alaqa_mstntja_qd")))));
+}
+// ============================================================
+// C203: قواعد الشجرة — مصدرٌ واحد تمرّ به كلّ مسارات الكتابة
+// ------------------------------------------------------------
+// كانت قواعد الزواج في الواجهة وحدها (زرّ «زوج» يُخفى للرجل، وحدّ ١/٤ في
+// «إضافة أقارب» فقط)، بينما «ربط بشخص موجود» و«ربط علاقة جديدة» والإضافة
+// المفردة والاستنتاج التلقائيّ عند فتح الشجرة والدمج وتغيير الجنس — كلّها
+// تكتب زواجاً بلا فحص. فصار ممكناً: زوجان من جنسٍ واحد، وامرأةٌ بزوجين حاليّين.
+// كلّ ما هنا دوالّ نقيّة (بلا React ولا حالة) تُختبر وحدها، والخادم (worker-3.js
+// ‎marriageRule‎) يطبّق القواعد نفسها فلا يتجاوزها عميلٌ قديم.
+// ============================================================
+const FAM_MAX_WIVES = 4;
+const famFirst = (p) => String((p && p.local_name) || "").trim().split(/\s+/)[0] || tl("هذا الشخص", "this person");
+function famIsMarriage(r) { return !!r && (r.type === "spouse" || r.type === "ex_spouse"); }
+function famPairOf(r, a, b) { return (r.source === a && r.target === b) || (r.source === b && r.target === a); }
+// زوجاتُ/أزواجُ الشخص الحاليّون (الزواج القائم فقط — السابق توثيقٌ تاريخيّ بلا حدّ)
+function famCurrentSpouses(relations, id) {
+    const out = [];
+    (relations || []).forEach((r) => { if (r.type === "spouse" && (r.source === id || r.target === id)) out.push(r.source === id ? r.target : r.source); });
+    return [...new Set(out)];
+}
+// المحارم بالنسب: الأصل والفرع، والإخوة، وإخوة الأصول (العمّ/الخال وما علا) وفروع الإخوة. زواجٌ بينهم يضع
+// الشخص ووالده في صفٍّ واحد من الشجرة — وهو ما تمنعه قاعدة فصل الأجيال أيضاً.
+function famIsDirectKin(relations, a, b) {
+    const parents = {}, children = {};
+    (relations || []).forEach((r) => {
+        if (r.type !== "parent") return;
+        (parents[r.target] || (parents[r.target] = [])).push(r.source);
+        (children[r.source] || (children[r.source] = [])).push(r.target);
+    });
+    const reach = (start, map) => { const seen = new Set(), q = [start]; while (q.length) { const x = q.pop(); (map[x] || []).forEach((y) => { if (!seen.has(y)) { seen.add(y); q.push(y); } }); } return seen; };
+    const ancA = reach(a, parents), ancB = reach(b, parents);
+    if (ancA.has(b) || ancB.has(a)) return true;                                  // أصلٌ وفرع
+    if ((relations || []).some((r) => r.type === "sibling" && famPairOf(r, a, b))) return true;
+    // والدُ أحدهما من أصول الآخر ⇒ إخوة، أو عمّ/خال وابن أخيه/أخته (وما علا وما نزل). أبناء العمّ لا يدخلون.
+    return (parents[b] || []).some((x) => ancA.has(x)) || (parents[a] || []).some((x) => ancB.has(x));
+}
+// هل يجوز تسجيل زواجٍ (قائم أو سابق) بين a وb؟ ⇒ null أو { code, msg }
+// persons/relations لهذه العائلة فقط. opts.ignoreRelId: علاقةٌ تُستبدل (تغيير نوعها مثلاً) فلا تُحسب.
+function marriageCheck(persons, relations, aId, bId, type, opts) {
+    if (type !== "spouse" && type !== "ex_spouse") return null;
+    const byId = {};
+    (persons || []).forEach((p) => { byId[p.id] = p; });
+    const A = byId[aId], B = byId[bId];
+    if (!A || !B) return null;
+    if (aId === bId) return { code: "self", msg: tl("لا يُربط الشخص بنفسه", "A person can't be linked to themselves") };
+    // ١) الجنس شرطٌ للزواج: بدونه لا نعرف من الزوج ومن الزوجة، فتختلّ الأنساب والقرابات
+    const missing = [A, B].find((p) => p.gender !== "male" && p.gender !== "female");
+    if (missing) return { code: "gender_unknown", msg: tl("حدّد جنس «" + famFirst(missing) + "» أوّلاً (من «تعديل») — لا يُسجَّل زواجٌ قبل معرفة جنس الطرفين.", "Set " + famFirst(missing) + "'s gender first (Edit) — a marriage needs both genders.") };
+    // ٢) لا زواج بين جنسٍ واحد
+    if (A.gender === B.gender) return { code: "same_sex", msg: tl("لا يُسجَّل زواجٌ بين «" + famFirst(A) + "» و«" + famFirst(B) + "» — الطرفان من جنسٍ واحد.", "Can't record a marriage between " + famFirst(A) + " and " + famFirst(B) + " — same gender.") };
+    const ignore = opts && opts.ignoreRelId;
+    const rels = (relations || []).filter((r) => r.id == null || r.id !== ignore);
+    // ٣) لا زواج بين أصلٍ وفرعه أو بين إخوة
+    if (famIsDirectKin(rels, aId, bId)) return { code: "mahram", msg: tl("«" + famFirst(A) + "» و«" + famFirst(B) + "» أصلٌ وفرع أو إخوة — لا يُسجَّل بينهما زواج.", famFirst(A) + " and " + famFirst(B) + " are direct kin — no marriage can be recorded.") };
+    if (type === "spouse") {
+        const husband = A.gender === "male" ? A : B, wife = A.gender === "male" ? B : A;
+        // ٤) للمرأة زوجٌ حاليّ واحد
+        const hs = famCurrentSpouses(rels, wife.id).filter((x) => x !== husband.id);
+        if (hs.length) {
+            const h = byId[hs[0]];
+            return { code: "polyandry", msg: tl("«" + famFirst(wife) + "» متزوّجةٌ حاليّاً من «" + famFirst(h) + "» — لا يُسجَّل لها زوجٌ ثانٍ. إن انتهى ذلك الزواج فاجعله «زواجاً سابقاً» أوّلاً، أو سجّل هذا زواجاً سابقاً.", famFirst(wife) + " is currently married to " + famFirst(h) + " — she can't have a second husband. End that marriage first, or record this one as former.") };
+        }
+        // ٥) للرجل أربع زوجاتٍ حاليّات على الأكثر
+        const ws = famCurrentSpouses(rels, husband.id).filter((x) => x !== wife.id);
+        if (ws.length >= FAM_MAX_WIVES) return { code: "max_wives", msg: tl("لـ«" + famFirst(husband) + "» أربع زوجاتٍ حاليّات — سجّل هذه «زوجةً سابقة» أو أنهِ زواجاً قائماً أوّلاً.", famFirst(husband) + " already has four current wives — record her as a former wife, or end a marriage first.") };
+    }
+    return null;
+}
+// كلّ مخالفات الزواج في العائلة (للمراجعة ولحراسة الدمج وتغيير الجنس): [{ ids:[…], code, msg }]
+function marriageViolations(persons, relations) {
+    const byId = {};
+    (persons || []).forEach((p) => { byId[p.id] = p; });
+    const out = [];
+    (relations || []).forEach((r) => {
+        if (!famIsMarriage(r)) return;
+        const A = byId[r.source], B = byId[r.target];
+        if (!A || !B) return;
+        if (A.gender && B.gender && A.gender === B.gender) out.push({ ids: [A.id, B.id], relId: r.id, code: "same_sex", msg: tl("زواجٌ بين جنسٍ واحد", "Same-gender marriage") });
+    });
+    (persons || []).forEach((p) => {
+        const cur = famCurrentSpouses(relations, p.id).filter((x) => byId[x]);
+        if (p.gender === "female" && cur.length > 1) out.push({ ids: [p.id, ...cur], code: "polyandry", msg: tl("لـ«" + famFirst(p) + "» أكثر من زوجٍ حاليّ", famFirst(p) + " has more than one current husband") });
+        if (p.gender === "male" && cur.length > FAM_MAX_WIVES) out.push({ ids: [p.id, ...cur], code: "max_wives", msg: tl("لـ«" + famFirst(p) + "» أكثر من أربع زوجاتٍ حاليّات", famFirst(p) + " has more than four current wives") });
+    });
+    return out;
+}
+// الزواج المستنتَج من أبوّةٍ مشتركة (والدا الطفل): كان يُسجَّل «قائماً» دائماً، فامرأةٌ لها
+// أبناءٌ من زواجٍ قديمٍ لم يُسجَّل، ومتزوّجةٌ اليوم من غيره، تصير بزوجين حاليّين تلقائيّاً.
+// الآن: قائمٌ إن جاز، وإلّا «سابق» (الأبناء يشهدون بزواجٍ كان)، ولا شيء إن امتنع أصلاً (جنسٌ واحد/مجهول).
+function inferredMarriageType(persons, relations, a, b) {
+    if (!marriageCheck(persons, relations, a, b, "spouse")) return "spouse";
+    const why = marriageCheck(persons, relations, a, b, "ex_spouse");
+    return why ? null : "ex_spouse";
+}
+// ── الاسم بجيلين (C203) ─────────────────────────────────────
+// عدد الأجيال في الاسم المكتوب: «محمد» = 1 · «محمد أحمد» أو «محمد بن أحمد» = 2.
+// الأسماء المركّبة اسمٌ واحد: «عبد الله» · «أبو بكر» · «نور الدين» · «عطا الله».
+const FAM_NAME_SEP = /^(بن|بنت|ابن|ابنة|bin|bint|ibn)$/i;
+const FAM_NAME_PREFIX = /^(عبد|ابو|أبو|أبي|ابي|ام|أم|abd|abu|abdul|umm)$/i;
+const FAM_NAME_SUFFIX = /^(الله|الدين|الرحمن|الرحيم|الهدى|allah|eldin|el-din|aldin|al-din)$/i;
+function nameGenerations(name) {
+    const words = String(name || "").replace(/[،,.]/g, " ").trim().split(/\s+/).filter(Boolean).filter((w) => !FAM_NAME_SEP.test(w));
+    const parts = [];
+    for (let i = 0; i < words.length; i++) {
+        const w = words[i];
+        if (FAM_NAME_SUFFIX.test(w) && parts.length) { parts[parts.length - 1] += " " + w; continue; }
+        if (FAM_NAME_PREFIX.test(w) && i + 1 < words.length) { parts.push(w + " " + words[++i]); continue; }
+        parts.push(w);
+    }
+    return parts.length;
+}
+// يكفي الاسم الأوّل حين يكون الأب معروفاً من الشجرة (ابنٌ لرجلٍ مسجَّل، أو أخٌ لمن له أب):
+// النسب يُعرض تلقائيّاً «محمد بن أحمد». وإلّا فالاسم نفسه يحمل جيلين.
+function nameDepthOK(name, fatherKnown) { return !!fatherKnown || nameGenerations(name) >= 2; }
+// هل سيكون للقريب الجديد أبٌ معروف من صلته بصاحب البطاقة؟ relKey: child | sibling | parent | spouse | ex_spouse
+function fatherKnownFor(persons, relations, anchor, relKey, opts) {
+    if (!anchor) return false;
+    const byId = {};
+    (persons || []).forEach((p) => { byId[p.id] = p; });
+    const fatherOf = (id) => (relations || []).some((r) => r.type === "parent" && r.target === id && byId[r.source] && byId[r.source].gender === "male");
+    if (relKey === "child") {
+        if (anchor.gender === "male") return true;
+        const co = opts && opts.coParent;
+        if (co && co !== "none") return !!(byId[co] && byId[co].gender === "male");
+        return famCurrentSpouses(relations, anchor.id).some((x) => byId[x] && byId[x].gender === "male");
+    }
+    if (relKey === "sibling") return (opts && opts.half === "mother") ? false : fatherOf(anchor.id);
+    return false;   // الوالدان والأزواج: أبوهم غير مسجَّل بعد ⇒ يُكتب في الاسم
+}
+// ── فصل الأجيال (C203) ─────────────────────────────────────
+// جيلٌ لكلّ شخص: الأبوّة ±1، والأخوّة 0 داخل «كتلة الدم»، ثمّ تُحاذى الكتل بالزواج.
+// زواجٌ يربط شخصين من جيلين مختلفين في الكتلة نفسها (رجلٌ تزوّج بنت ابن عمّه) يُعلَّم
+// «عابراً للأجيال»: لا تُرسم الزوجة بجانب زوجها، لأنّ ذلك يضعها في صفّ أبيها.
+function computeGenerations(persons, relations) {
+    const ids = (persons || []).map((p) => p.id), has = new Set(ids);
+    const adj = {};
+    ids.forEach((id) => { adj[id] = []; });
+    const marriages = [];
+    (relations || []).forEach((r) => {
+        if (!has.has(r.source) || !has.has(r.target) || r.source === r.target) return;
+        if (r.type === "parent") { adj[r.source].push([r.target, 1]); adj[r.target].push([r.source, -1]); }
+        else if (r.type === "sibling") { adj[r.source].push([r.target, 0]); adj[r.target].push([r.source, 0]); }
+        else if (famIsMarriage(r)) marriages.push([r.source, r.target]);
+    });
+    // ١) كتل الدم
+    const gen = {}, comp = {}, conflicts = [];
+    let nComp = 0;
+    ids.forEach((start) => {
+        if (start in gen) return;
+        const c = nComp++;
+        gen[start] = 0; comp[start] = c;
+        const q = [start];
+        while (q.length) {
+            const x = q.shift();
+            adj[x].forEach(([y, d]) => {
+                if (!(y in gen)) { gen[y] = gen[x] + d; comp[y] = c; q.push(y); }
+                else if (gen[y] !== gen[x] + d) conflicts.push([x, y]);
+            });
+        }
+    });
+    // ٢) محاذاة الكتل بالزواج — أوّل زواجٍ يحدّد الإزاحة، وما خالفها عابرٌ للأجيال
+    const offset = {}, cAdj = {};
+    marriages.forEach(([a, b]) => {
+        (cAdj[comp[a]] || (cAdj[comp[a]] = [])).push([a, b]);
+        (cAdj[comp[b]] || (cAdj[comp[b]] = [])).push([b, a]);
+    });
+    const crossGen = new Set();
+    const key = (a, b) => (a < b ? a + "|" + b : b + "|" + a);
+    for (let c = 0; c < nComp; c++) {
+        if (c in offset) continue;
+        offset[c] = 0;
+        const q = [c];
+        while (q.length) {
+            const cc = q.shift();
+            (cAdj[cc] || []).forEach(([a, b]) => {
+                const cb = comp[b], want = offset[cc] + gen[a] - gen[b];
+                if (!(cb in offset)) { offset[cb] = want; q.push(cb); }
+                else if (offset[cb] !== want) crossGen.add(key(a, b));
+            });
+        }
+    }
+    const out = {};
+    let min = Infinity;
+    ids.forEach((id) => { out[id] = gen[id] + offset[comp[id]]; min = Math.min(min, out[id]); });
+    ids.forEach((id) => { out[id] -= min; });
+    return { gen: out, crossGen, conflicts, isCrossGen: (a, b) => crossGen.has(key(a, b)) };
+}
+// ── التنقّل في الشجرة (C203): الأصل · الفروع · الأصهار ─────────
+// usul: أصولي (والداي وأجدادي صعوداً) · furu: فروعي (أبنائي وأحفادي نزولاً)
+// ashar: من دخل العائلة بالزواج أو جاء منه: زوجي، وأهل زوجي (والده/إخوته/أعمامه/أخواله/أجداده)،
+//        وأزواج أقاربي (زوجة الأخ، زوج البنت…) — مرتّبون: الأقرب أوّلاً.
+// صهرٌ: زوجي، أو من أهل زوجي، أو زوجُ قريبٍ لي (زوجة الأخ، زوج البنت…)
+function famIsInLaw(p) {
+    if (!p) return false;
+    if (p.kinSection === "zawj" || p.kinSection === "ashar") return true;
+    return /^(زوج|زوجة|طليق|طليقة) /.test(String(p.kinship || "")) || /(الزوجة|الزوج)( لأمها| لأمه)?$/.test(String(p.kinship || ""));
+}
+function treeNavGroups(persons, relations, meId) {
+    const byId = {};
+    (persons || []).forEach((p) => { byId[p.id] = p; });
+    const parents = {}, children = {};
+    (relations || []).forEach((r) => {
+        if (r.type !== "parent" || !byId[r.source] || !byId[r.target]) return;
+        (parents[r.target] || (parents[r.target] = [])).push(r.source);
+        (children[r.source] || (children[r.source] = [])).push(r.target);
+    });
+    const walk = (start, map) => {
+        const out = [], seen = new Set([start]);
+        let level = [start];
+        for (let d = 1; level.length && d <= 20; d++) {
+            const next = [];
+            level.forEach((x) => (map[x] || []).forEach((y) => { if (!seen.has(y)) { seen.add(y); next.push(y); out.push({ id: y, d }); } }));
+            level = next;
+        }
+        return out;
+    };
+    if (!meId || !byId[meId]) return { usul: [], furu: [], ashar: [] };
+    const usul = walk(meId, parents), furu = walk(meId, children);
+    const lineage = new Set([meId, ...usul.map((x) => x.id), ...furu.map((x) => x.id)]);
+    const PR = { "A***": 0, "A**": 1, "A*": 2, A: 3, B: 4, C: 5 };
+    const isInLaw = (p) => !lineage.has(p.id) && famIsInLaw(p);
+    const ashar = (persons || []).filter(isInLaw)
+        .map((p) => ({ id: p.id, d: PR[p.proximity] != null ? PR[p.proximity] : 6 }))
+        .sort((a, b) => a.d - b.d);
+    return { usul, furu, ashar };
+}
+// ── سجلّ التعديلات والتراجع (C203) ────────────────────────────
+// لقطةٌ لعائلةٍ واحدة قبل كلّ تعديل: الأشخاص وصلاتهم. «تراجع» يعيدها كما كانت،
+// والمزامنة (SawaSync.observe) تقارن بخطّ الأساس فتُرسل الفرق إلى الخادم كأيّ تعديل.
+const FAM_UNDO_MAX = 30;
+function famSnapshot(groupId, groupPersons, kinshipRelations) {
+    return {
+        persons: (groupPersons && groupPersons[groupId] || []).slice(),
+        relations: (kinshipRelations || []).filter((r) => r.groupId === groupId),
+    };
+}
+function famRestore(groupId, snap, groupPersons, kinshipRelations) {
+    return {
+        groupPersons: { ...(groupPersons || {}), [groupId]: snap.persons.slice() },
+        kinshipRelations: (kinshipRelations || []).filter((r) => r.groupId !== groupId).concat(snap.relations),
+    };
+}
+// ── واجهة الإضافة الموحّدة (C203) ─────────────────────────────
+// مثالٌ للاسم بحسب ما يُضاف: من يُعرف أبوه من الشجرة يكفيه اسمه، ومن لا يُعرف (زوجة، والد، والدة)
+// يُكتب اسمه واسم أبيه — «فاطمة بنت علي» أو «فاطمة علي».
+function nameExample(gender, relKey, fatherKnown, many) {
+    const f = gender === "female";
+    if (fatherKnown) return many
+        ? (f ? tl("مثال: فاطمة، مريم", "e.g. Fatima, Maryam") : tl("مثال: أحمد، عمر", "e.g. Ahmed, Omar"))
+        : (f ? tl("مثال: فاطمة", "e.g. Fatima") : tl("مثال: أحمد", "e.g. Ahmed"));
+    const ex = relKey === "parent"
+        ? (f ? tl("آمنة بنت عثمان", "Amna bint Osman") : tl("إبراهيم بن محمد", "Ibrahim bin Mohammed"))
+        : (f ? tl("فاطمة بنت علي", "Fatima bint Ali") : tl("عثمان بن صالح", "Osman bin Saleh"));
+    // المثال وحده في الحقل (يُقصّ ما زاد في الهاتف) — والشرح في سطر nameDepthHint تحته
+    return many ? tl("مثال: " + ex + "، فهد علي", "e.g. " + ex + ", Fahd Ali") : tl("مثال: " + ex, "e.g. " + ex);
+}
+function nameDepthHint(fatherKnown) {
+    return fatherKnown
+        ? tl("أبوه معروفٌ من الشجرة، فيُعرض نسبه تلقائيّاً (فلان بن فلان).", "The father is known from the tree, so the lineage is shown automatically.")
+        : tl("اكتب الاسم واسم الأب على الأقلّ (جيلين) — «فاطمة بنت علي» أو «فاطمة علي». يميّزه عن غيره بالاسم نفسه، و«بن/بنت» تضيف الأب إلى الشجرة.", "Write at least the name and the father's name (two generations). It tells same-named people apart; “bin/bint” also adds the father to the tree.");
+}
+// العبارة: «فاطمة» زوجةُ «خالد بن محمد»
+function relationPhrase(relKey, gender) {
+    const f = gender === "female";
+    return ({
+        child: f ? tl("بنتُ", "daughter of") : tl("ابنُ", "son of"),
+        parent: f ? tl("والدةُ", "mother of") : tl("والدُ", "father of"),
+        sibling: f ? tl("أختُ", "sister of") : tl("أخو", "brother of"),
+        spouse: f ? tl("زوجةُ", "wife of") : tl("زوجُ", "husband of"),
+        ex_spouse: f ? tl("زوجةٌ سابقة لـ", "former wife of") : tl("زوجٌ سابق لـ", "former husband of"),
+    })[relKey] || "";
+}
+function relationTierText(relKey, anchorFirst) {
+    return ({
+        child: tl("صفٌّ تحت «" + anchorFirst + "» — جيل الأبناء", "one row below " + anchorFirst + " — children's generation"),
+        parent: tl("صفٌّ فوق «" + anchorFirst + "» — جيل الوالدين", "one row above " + anchorFirst + " — parents' generation"),
+        sibling: tl("صفّ «" + anchorFirst + "» نفسه، مع إخوته", "same row as " + anchorFirst + ", with the siblings"),
+        spouse: tl("بجانب «" + anchorFirst + "» في صفّه، بلا خطٍّ نازل", "next to " + anchorFirst + ", same row"),
+        ex_spouse: tl("بجانب «" + anchorFirst + "» بخطٍّ متقطّع", "next to " + anchorFirst + ", dashed line"),
+    })[relKey] || "";
+}
+// بطاقة السياق: تُعرض قبل الحفظ في كلّ نوافذ الإضافة — من سيُضاف، ولمن، وماذا سيكون لك، وأين يظهر، وما يمنع الحفظ.
+function RelationContextCard({ names, gender, anchor, relKey, persons = [], relations = [], error, warn }) {
+    const { colors, isDark } = useTheme();
+    if (!anchor || !relKey) return null;
+    const { distinctLabel } = buildLineageHelpers(persons, relations);
+    const anchorLabel = distinctLabel(anchor) || anchor.local_name;
+    const shown = (names || []).filter(Boolean);
+    const who = shown.length ? shown.map((n) => "«" + n + "»").join(tl("، ", ", ")) : (gender === "female" ? tl("القريبة الجديدة", "the new relative") : tl("القريب الجديد", "the new relative"));
+    const mine = (() => { try { return kinPreview(persons, relations, anchor, relKey, gender); } catch (e) { return null; } })();
+    const mineTxt = mine ? kinshipLabel(mine) : null;
+    const row = (label, value, tone) => React.createElement("div", { className: `flex ${rowStart()} items-baseline gap-2 mt-1` },
+        React.createElement("span", { className: "text-[10.5px] font-bold shrink-0", style: { color: colors.textMuted, minWidth: 64 } }, label),
+        React.createElement("span", { className: `text-[11.5px] font-bold ${textStart()}`, style: { color: tone || colors.text } }, value));
+    return React.createElement("div", { "data-rel-context": "1", className: "rounded-2xl px-3.5 py-3 mb-3", style: { backgroundColor: colors.primary + "0d", border: `1.5px solid ${error ? colors.danger : colors.primary + "55"}` } },
+        React.createElement("p", { className: `text-[12.5px] font-extrabold ${textStart()}`, style: { color: colors.primary } },
+            who + " " + relationPhrase(relKey, gender) + " «" + anchorLabel + "»"),
+        row(tl("ماذا لك؟", "To you"), mineTxt ? mineTxt : tl("لا طريق إليك في الشجرة بعد", "no path to you in the tree yet")),
+        row(tl("في الشجرة", "In the tree"), relationTierText(relKey, famFirst(anchor))),
+        warn && React.createElement("p", { className: `text-[11px] font-bold mt-2 ${textStart()}`, style: { color: isDark ? "#FBBF24" : "#8F420F" } }, "⚠️ " + warn),
+        error && React.createElement("p", { role: "alert", className: `text-[11.5px] font-extrabold mt-2 ${textStart()}`, style: { color: colors.danger } }, "⛔ " + error));
 }
 // ============================================================
 // QuickRelativesSheet — إضافة عدة أقارب دفعةً واحدة لشخص محدَّد
@@ -2161,6 +2479,24 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
     const maxAllowed = sel.max || Infinity;
     const overLimit = names.length > maxAllowed;
     const parentLimit = overLimit; // نُبقي الاسم للتوافق مع باقي الشروط
+    // C203: الاسم بجيلين حين لا يُعرف الأب من الشجرة (الأزواج والوالدان، والإخوة من الأم)
+    const fatherKnown = fatherKnownFor(existingPersons, relations, person, sel.key, { coParent, half: sibHalf });
+    const shallow = fatherKnown ? [] : rawNames.filter((raw, i) => decisions[names[i].toLowerCase()] !== "same" && nameGenerations(raw) < 2);
+    const shallowMsg = shallow.length ? tl("أضف اسم الأب إلى: " + shallow.join("، ") + " — مثلاً «" + shallow[0] + (sel.gender === "female" ? " بنت " : " بن ") + "علي»", "Add the father's name to: " + shallow.join(", ")) : null;
+    // C203: قواعد الزواج قبل الحفظ — الاسم المطابق «هو نفسه» يُفحص بجنسه الحقيقيّ
+    const marriageErr = (() => {
+        if (sel.key !== "spouse" && sel.key !== "ex_spouse") return null;
+        let P = existingPersons.slice(), R = relations.slice();
+        for (let i = 0; i < names.length; i++) {
+            const same = decisions[names[i].toLowerCase()] === "same" ? existingPersons.find((p) => p.local_name.trim().toLowerCase() === names[i].toLowerCase()) : null;
+            const id = same ? same.id : "~n" + i;
+            if (!same) P = P.concat([{ id, local_name: names[i], gender: sel.gender }]);
+            const why = marriageCheck(P, R, person.id, id, sel.key);
+            if (why) return why.msg;
+            R = R.concat([{ id: "~r" + i, source: person.id, target: id, type: sel.key }]);
+        }
+        return null;
+    })();
     return (React.createElement(FamSheet, { title: tl("إضافة أقارب لـ " + person.local_name, "Add relatives of " + person.local_name), onClose: onClose, z: 30, maxHeight: "92%" },
         React.createElement("div", { className: "pt-1" },
             React.createElement("label", { className: `text-xs font-bold mb-2 block ${textStart()}`, style: { color: colors.text } }, t("nwa_alqraba")),
@@ -2182,7 +2518,8 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
                         { k: "father", l: tl("من الأب", "Same father") },
                         { k: "mother", l: tl("من الأم", "Same mother") }] })),
             React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, sel.max === 1 ? tl("الاسم", "Name") : tl("الأسماء — افصل بينها بفاصلة (،)", "Names — separate them with commas")),
-            React.createElement("textarea", { dir: isRTL() ? "rtl" : "ltr", value: namesText, onChange: (e) => setNamesText(e.target.value), placeholder: guide[1], rows: sel.max === 1 ? 1 : 3, className: "w-full rounded-xl px-3 py-2.5 text-sm mb-2", style: { backgroundColor: colors.card, color: colors.text, border: `1px solid ${colors.border}`, minWidth: 0, resize: "none" } }),
+            React.createElement("textarea", { dir: isRTL() ? "rtl" : "ltr", value: namesText, onChange: (e) => setNamesText(e.target.value), placeholder: nameExample(sel.gender, sel.key, fatherKnown, sel.max !== 1), "aria-describedby": "qr-name-hint", rows: sel.max === 1 ? 1 : 3, className: "w-full rounded-xl px-3 py-2.5 text-sm mb-2", style: { backgroundColor: colors.card, color: colors.text, border: `1px solid ${colors.border}`, minWidth: 0, resize: "none" } }),
+            React.createElement("p", { id: "qr-name-hint", className: `text-[10.5px] ${textStart()} mb-2`, style: { color: colors.textMuted } }, nameDepthHint(fatherKnown)),
             names.length > 0 && (React.createElement("p", { className: `text-[11px] ${textStart()} mb-3`, style: { color: colors.primary } },
                 (() => { const n = names.length; return tl(n === 1 ? "اسمٌ واحد: " : n === 2 ? "اسمان: " : n + (n <= 10 ? " أسماء: " : " اسماً: "), n + (n === 1 ? " name: " : " names: ")); })(),
                 parsedNames.map((x) => x.chain.length ? x.name + " ← " + x.chain.join(" ← ") : x.name).join(" · "))),
@@ -2221,9 +2558,12 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
                                     border: `1px solid ${decisions[d.low] === "new" ? colors.accent : colors.border}`,
                                 } }, t("shkhs_akhr")))));
                 }))),
+            React.createElement(RelationContextCard, { names: parsedNames.map((x) => x.chain.length ? x.name + (sel.gender === "female" ? " بنت " : " بن ") + x.chain.join(" بن ") : x.name), gender: sel.gender, anchor: person, relKey: sel.key, persons: existingPersons, relations: relations, error: marriageErr, warn: shallowMsg }),
             React.createElement(FamButton, { label: undecided.length > 0 ? t("hdd_asma_mkrra_awla", { length: undecided.length })
+                    : marriageErr ? tl("لا يمكن الحفظ — انظر السبب أعلاه", "Can't save — see the reason above")
+                    : shallow.length ? tl("أضف اسم الأب أوّلاً", "Add the father's name first")
                     : overLimit ? (maxAllowed === 1 ? tl("اسم واحد فقط", "Only one name") : t("akthr_mn", { maxAllowed }))
-                        : names.length === 0 ? (sel.max === 1 ? tl("اكتب الاسم أوّلاً", "Type the name first") : tl("اكتب الأسماء أوّلاً", "Type the names first")) : relCountLabel(names.length), disabled: names.length === 0 || undecided.length > 0 || parentLimit, onPress: () => {
+                        : names.length === 0 ? (sel.max === 1 ? tl("اكتب الاسم أوّلاً", "Type the name first") : tl("اكتب الأسماء أوّلاً", "Type the names first")) : relCountLabel(names.length), disabled: names.length === 0 || undecided.length > 0 || parentLimit || !!marriageErr || shallow.length > 0, onPress: () => {
                     onSave(person, sel.key === "sibling" && sibHalf ? { ...sel, half: sibHalf } : sel.key === "child" ? { ...sel, coParent } : sel, rawNames, decisions);
                     // نُفرغ الحقل ونُبقي الشيت مفتوحاً — الغالب أن يتبع الأبناءَ بناتٌ
                     setNamesText("");
@@ -2237,6 +2577,41 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
                         "\u2713 ",
                         tl(arCountFix(b.count + " " + b.label), b.count + " " + b.label))))),
                 React.createElement("button", { onClick: onClose, className: "w-full mt-2 py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: colors.card, color: colors.textMuted, border: `1px solid ${colors.border}` } }, t("inha")))))));
+}
+// ============================================================
+// C203: TreeNavBar — التنقّل داخل الشجرة: الأصل (أصولي صعوداً) · الفروع (فروعي نزولاً) · الأصهار
+// زرٌّ لكلّ جهة بعددها؛ يفتح شريطاً بأسمائها مرتّبةً من الأقرب، والضغط على اسمٍ ينقل إليه.
+// «الأصل» يبدأ بأعلى جدٍّ مسجَّل (رأس السلسلة) لأنّه المقصود غالباً.
+// ============================================================
+function TreeNavBar({ groups, persons, open, onToggle, onJump }) {
+    const { colors, isDark } = useTheme();
+    const byId = {};
+    (persons || []).forEach((p) => { byId[p.id] = p; });
+    const TABS = [
+        { k: "usul", l: tl("الأصل", "Roots"), sub: tl("الوالدان والأجداد", "parents and grandparents"), empty: tl("لا أصول مسجّلة لك بعد — أضف والدك من بطاقتك.", "No ancestors recorded yet.") },
+        { k: "furu", l: tl("الفروع", "Branches"), sub: tl("الأبناء والأحفاد", "children and grandchildren"), empty: tl("لا أبناء مسجّلين لك بعد.", "No descendants recorded yet.") },
+        { k: "ashar", l: tl("الأصهار", "In-laws"), sub: tl("الزوج وأهله، وأزواج الأقارب", "spouse, spouse's family, relatives' spouses"), empty: tl("لا أصهار بعد — أضف زوجك/زوجتك ثمّ «إضافة عائلته».", "No in-laws yet.") },
+    ];
+    const cur = TABS.find((x) => x.k === open);
+    const list = cur ? (groups[cur.k] || []) : [];
+    const ordered = cur && cur.k === "usul" && list.length ? [list[list.length - 1]].concat(list.slice(0, -1)) : list;   // الأعلى أوّلاً
+    return React.createElement("div", { className: "mb-3", "data-tree-nav": "1" },
+        React.createElement("div", { role: "tablist", "aria-label": tl("التنقّل في الشجرة", "Tree navigation"), className: `flex ${rowStart()} gap-2` }, TABS.map((tab) => {
+            const n = (groups[tab.k] || []).length, on = open === tab.k;
+            return React.createElement("button", { key: tab.k, role: "tab", "aria-selected": on, onClick: () => onToggle(on ? null : tab.k), className: "flex-1 rounded-2xl px-2 py-2 flex flex-col items-center", style: { backgroundColor: on ? colors.primary : colors.card, color: on ? "#fff" : colors.text, boxShadow: famShadow(isDark) } },
+                React.createElement("span", { className: "text-[12.5px] font-extrabold" }, tab.l + " (" + n + ")"),
+                React.createElement("span", { className: "text-[9.5px]", style: { opacity: 0.8 } }, tab.sub));
+        })),
+        cur && React.createElement("div", { className: `flex ${rowStart()} gap-1.5 mt-2 overflow-x-auto pb-1` },
+            ordered.length === 0 ? React.createElement("p", { className: `text-[11px] ${textStart()} px-1`, style: { color: colors.textMuted } }, cur.empty)
+                : ordered.map((x, i) => {
+                    const p = byId[x.id];
+                    if (!p) return null;
+                    const top = cur.k === "usul" && i === 0 && ordered.length > 1;
+                    return React.createElement("button", { key: x.id, onClick: () => onJump(x.id), className: "shrink-0 rounded-full px-3 py-1.5 flex flex-col items-center", style: { backgroundColor: top ? colors.primary + "1a" : colors.card, border: `1px solid ${top ? colors.primary : colors.border}` } },
+                        React.createElement("span", { className: "text-[11.5px] font-extrabold", style: { color: colors.text, whiteSpace: "nowrap" } }, (top ? "⬆ " : "") + shortName(p.local_name)),
+                        React.createElement("span", { className: "text-[9px]", style: { color: colors.textMuted, whiteSpace: "nowrap" } }, top ? tl("رأس السلسلة", "top of the line") : personKinLabel(p)));
+                })));
 }
 // ============================================================
 // FocusView — ثلاثة أجيال حول شخص واحد: والداه، إخوته وأزواجه، أبناؤه.
@@ -2398,7 +2773,7 @@ function normalizeArabicName(name) {
         .replace(/\s+/g, " ");
 }
 
-function FamilyTreeScreen({ initialFocusId, onClaimChildren, onChangeParent, groupId, persons, relations, canEdit = true, onAddRelation, onDeleteRelation, onEndMarriage, onOpenPerson, onMarkContact, onQuickSchedule, onOpenStats, onAddRelativeTo, onAddRelativesBulk, onOpenInLaws, onInheritParents, allGroupPersons = {}, onBack, }) {
+function FamilyTreeScreen({ undoCount = 0, onOpenHistory, onUndoLast, initialFocusId, onClaimChildren, onChangeParent, groupId, persons, relations, canEdit = true, onAddRelation, onDeleteRelation, onEndMarriage, onOpenPerson, onMarkContact, onQuickSchedule, onOpenStats, onAddRelativeTo, onAddRelativesBulk, onOpenInLaws, onInheritParents, allGroupPersons = {}, onBack, }) {
     var _a, _b, _c, _d;
     const { colors, isDark } = useTheme();
     const [showAddRelation, setShowAddRelation] = useState(false);
@@ -2546,6 +2921,18 @@ function FamilyTreeScreen({ initialFocusId, onClaimChildren, onChangeParent, gro
         persons.forEach((p) => { const r = find(p.id); const l = members.get(r); if (l) l.push(p); else members.set(r, [p]); });
         return { byIdM, order, find, members };
     }, [persons, relations]);
+    // C203: جيلٌ لكلّ شخص — زواجٌ «عابرٌ للأجيال» لا يُرسم متجاوراً (وإلّا جلست الزوجة في صفّ أبيها)
+    const genInfo = useMemo(() => computeGenerations(persons, relations), [persons, relations]);
+    // أصول كلّ شخص (لمنع جمع الأصل وفرعه في صفّ إخوةٍ واحد حين تخطئ علاقة أخوّة)
+    const ancMemo = useMemo(() => new Map(), [persons, relations]);
+    function ancestorsOf(id) {
+        if (ancMemo.has(id)) return ancMemo.get(id);
+        const seen = new Set(), q = [id];
+        while (q.length) { const x = q.pop(); (parentsOfChild[x] || []).forEach((y) => { if (!seen.has(y)) { seen.add(y); q.push(y); } }); }
+        ancMemo.set(id, seen);
+        return seen;
+    }
+    const directLine = (a, b) => ancestorsOf(a).has(b) || ancestorsOf(b).has(a);
     function findGroup(id) { return treeIdx.find(id); }
     function groupMembers(anyId) { return treeIdx.members.get(findGroup(anyId)) || []; }
     function personName(id) {
@@ -2715,7 +3102,7 @@ function FamilyTreeScreen({ initialFocusId, onClaimChildren, onChangeParent, gro
         const isMe = p.id === deepestId;
         // C34: بطاقة بيضاء ناعمة بظلّ؛ المحور بحلقةٍ بلون التطبيق، ونتيجة البحث بحلقةٍ ذهبيّة.
         //      شريطٌ علويّ رفيع يتدرّج بالجيل: كلّما بَعُد الجيل خفّ لونه — التمييز البصريّ السريع نفسه بلا تلوين البطاقة كلّها
-        return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", "data-tree-hit": highlighted ? "1" : undefined, "data-tree-me": isMe ? "1" : undefined, className: `text-center relative overflow-hidden ${isDeep ? "px-1.5 py-1" : "px-3 py-2"}`, style: {
+        return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", "data-pid": p.id, "data-tree-hit": highlighted ? "1" : undefined, "data-tree-me": isMe ? "1" : undefined, className: `text-center relative overflow-hidden ${isDeep ? "px-1.5 py-1" : "px-3 py-2"}`, style: {
                 borderRadius: isDeep ? 12 : 16,
                 backgroundColor: colors.card,
                 boxShadow: highlighted ? `0 0 0 2px ${colors.accent}, ${famShadow(isDark)}` : isMe ? `0 0 0 2px ${colors.primary}, 0 6px 16px ${colors.primary}33` : famShadow(isDark),
@@ -2766,8 +3153,9 @@ function FamilyTreeScreen({ initialFocusId, onClaimChildren, onChangeParent, gro
         // ابن لنفس الوالد بدون علاقة أخوّة صريحة بينهم (زي الإضافة السريعة
         // بالنسب المتسلسل)، لازم يظهروا مع بعض بنفس الصف رغم عدم وجود رابط
         // أخوّة مباشر، طالما كلهم أبناء لنفس الأب
-        const groupIdsSet = new Set();
-        memberIds.forEach((id) => { groupMembers(id).forEach((p) => groupIdsSet.add(p.id)); });
+        const groupIdsSet = new Set(memberIds);
+        // C203: من ينضمّ عبر الأخوّة لا يكون أصلاً أو فرعاً لأحد أهل الصفّ — جيلٌ لكلّ صفّ (علاقة أخوّة خاطئة كانت تضع الأب بجانب ابنه)
+        memberIds.forEach((id) => { groupMembers(id).forEach((p) => { if (!memberIds.some((m) => directLine(m, p.id))) groupIdsSet.add(p.id); }); });
         const group = [...groupIdsSet].filter((id) => !rendered.has(id) && treeIdx.byIdM.has(id))
             .sort((a, b) => treeIdx.order.get(a) - treeIdx.order.get(b)).map((id) => treeIdx.byIdM.get(id));
         if (group.length === 0)
@@ -2785,8 +3173,10 @@ function FamilyTreeScreen({ initialFocusId, onClaimChildren, onChangeParent, gro
             person: p,
             spouses: (spousesOf[p.id] || [])
                 .map((sid) => treeIdx.byIdM.get(sid))
-                .filter((sp) => sp && !rendered.has(sp.id))
+                .filter((sp) => sp && !rendered.has(sp.id) && !genInfo.isCrossGen(p.id, sp.id) && !directLine(p.id, sp.id))
                 .map((sp) => ({ person: sp, isEx: exSpousePairKey.has([p.id, sp.id].sort().join("|")) })),
+            // C203: زواجٌ من جيلٍ آخر — يبقى كلٌّ في صفّ جيله، وتربطهما شارةٌ تنقل إلى الطرف الآخر
+            farSpouses: (spousesOf[p.id] || []).filter((sid) => treeIdx.byIdM.has(sid) && (genInfo.isCrossGen(p.id, sid) || directLine(p.id, sid))).map((sid) => treeIdx.byIdM.get(sid)),
         }));
         units.forEach((u) => u.spouses.forEach((s) => rendered.add(s.person.id)));
         // فرع لكل زواج لا لكل والد: مع تعدّد الزوجات كان أبناء الزوجات كلهنّ
@@ -2903,6 +3293,8 @@ function FamilyTreeScreen({ initialFocusId, onClaimChildren, onChangeParent, gro
                                     borderTop: s.isEx ? `2px dashed ${colors.textMuted}` : "none",
                                 } })),
                         PersonCardButton({ p: s.person, depth: depth }))))),
+                        u.farSpouses.length > 0 && React.createElement("div", { className: `flex ${rowStart()} flex-wrap justify-center gap-1 mt-1` }, u.farSpouses.map((sp) => React.createElement("button", { key: "far-" + sp.id, onClick: () => treeCb.current.jumpTo(sp.id), className: "text-[9.5px] font-bold rounded-full px-2 py-0.5", style: { color: colors.primary, backgroundColor: colors.primary + "12", border: `1px dashed ${colors.primary}66` }, title: tl("زواجٌ من جيلٍ آخر — يُرسم في صفّ جيله", "Married across generations — shown in their own row") },
+                            "💍 " + (u.person.gender === "female" ? tl("زوجها ", "husband ") : tl("زوجته ", "wife ")) + shortName(sp.local_name) + " ↗"))),
                         myBranches.length > 0 && React.createElement("div", { className: `flex ${rowStart()} items-start justify-center gap-4 mt-1` }, myBranches.map(renderBranch))));
             }))));
     }
@@ -2981,6 +3373,22 @@ function FamilyTreeScreen({ initialFocusId, onClaimChildren, onChangeParent, gro
         return best || ((_a = persons[0]) === null || _a === void 0 ? void 0 : _a.id);
     })();
     const activeFocusId = focusId || deepestId;
+    // C203: التنقّل — الأصل/الفروع/الأصهار نسبةً إلى «أنا» في هذه الشجرة
+    const [navOpen, setNavOpen] = useState(null);
+    const navGroups = useMemo(() => treeNavGroups(persons, relations, deepestId), [persons, relations, deepestId]);
+    function jumpTo(id) {
+        if (viewMode === "full") {
+            const el = treeScrollRef.current && treeScrollRef.current.querySelector(`[data-pid="${String(id).replace(/["\\]/g, "")}"]`);
+            if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+                try { el.animate([{ boxShadow: `0 0 0 4px ${colors.accent}` }, { boxShadow: `0 0 0 4px ${colors.accent}` }, { boxShadow: "0 0 0 0 transparent" }], { duration: 1800 }); } catch (e) { }
+                return;
+            }
+        }
+        // مطويٌّ في الشجرة الكاملة أو في القائمة ⇒ وضع التركيز عليه (ثلاثة أجيال حوله)
+        setViewMode("focus");
+        goFocus(id);
+    }
     const focusPerson = persons.find((p) => p.id === activeFocusId);
     function goFocus(id) {
         if (!id)
@@ -3043,7 +3451,7 @@ function FamilyTreeScreen({ initialFocusId, onClaimChildren, onChangeParent, gro
             grandchildren: toPersons(grandChildIds),
         };
     })() : null;
-    treeCb.current = { onMarkContact, onQuickSchedule, onOpenPerson };
+    treeCb.current = { onMarkContact, onQuickSchedule, onOpenPerson, jumpTo };
     const qTree = deferQ(q);   // C46: البحث يُبرز في الشجرة بأولويّةٍ منخفضة — الكتابة لا تنتظر إعادة رسم مئات البطاقات
     const rootBlocks = useMemo(() => {
         if (viewMode !== "full")
@@ -3235,9 +3643,17 @@ function FamilyTreeScreen({ initialFocusId, onClaimChildren, onChangeParent, gro
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-3` },
                 React.createElement("div", { className: "flex-1 min-w-0" },
                     React.createElement(FamSeg, { value: viewMode, onChange: setViewMode, options: [{ k: "focus", l: t("trkyz") }, { k: "full", l: t("shjra_2") }, { k: "list", l: t("qayma_2") }] })),
+                // C203: «تراجع» سريع عن آخر تعديل + «السجلّ» — داخل الشجرة حيث يقع الخطأ
+                canEdit && onUndoLast && undoCount > 0 && React.createElement("button", { "aria-label": tl("تراجع عن آخر تعديل", "Undo last edit"), title: tl("تراجع عن آخر تعديل", "Undo last edit"), onClick: onUndoLast, className: "h-10 px-3 rounded-2xl flex items-center gap-1 shrink-0", style: { backgroundColor: colors.card, boxShadow: famShadow(isDark), color: colors.primary } },
+                    React.createElement(RotateCcw, { size: 15, color: colors.primary }),
+                    React.createElement("span", { className: "text-[11px] font-extrabold" }, tl("تراجع", "Undo"))),
+                onOpenHistory && React.createElement("button", { "aria-label": tl("السجلّ", "History"), title: tl("السجلّ", "History"), onClick: onOpenHistory, className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 relative", style: { backgroundColor: colors.card, boxShadow: famShadow(isDark) } },
+                    React.createElement(FileClock, { size: 17, color: colors.primary }),
+                    undoCount > 0 && React.createElement("span", { className: "absolute -top-1 rounded-full text-[9px] font-extrabold text-white flex items-center justify-center", style: { insetInlineEnd: -2, minWidth: 16, height: 16, padding: "0 4px", backgroundColor: colors.primary } }, undoCount)),
                 React.createElement("button", { "aria-label": tl("أدوات", "Tools"), onClick: () => setShowTreeTools(true), className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 relative", style: { backgroundColor: colors.card, boxShadow: famShadow(isDark) } },
                     React.createElement(MoreHorizontal, { size: 18, color: colors.primary }),
                     showAddRelation && React.createElement("span", { className: "absolute top-1 w-2 h-2 rounded-full", style: { insetInlineEnd: 6, backgroundColor: colors.accent } }))),
+            React.createElement(TreeNavBar, { groups: navGroups, persons: persons, open: navOpen, onToggle: setNavOpen, onJump: jumpTo }),
             showTreeTools && React.createElement(FamSheet, { title: tl("أدوات الشجرة", "Tree tools"), onClose: () => setShowTreeTools(false), maxHeight: "72%" },
                 canEdit && React.createElement(FamRow, { icon: UserPlus, title: t("rbt_alaqa_qraba_jdyda"), onPress: () => { setShowTreeTools(false); setShowAddRelation(true); } }),
                 canEdit && React.createElement(FamRow, { icon: Trash2, title: t("idara_alalaqat"), onPress: () => { setShowTreeTools(false); setShowManageRelations(true); } }),

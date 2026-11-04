@@ -980,7 +980,17 @@ function ContributionAmountModal({ onConfirm, onClose, walletBalance }) {
 function AppInner() {
     var _a, _b, _c, _d, _e, _f;
     const { colors } = useTheme();
-    const { showToast } = useToast();
+    const { showToast: showToast0 } = useToast();
+    // C203: تعديلٌ في الشجرة يُسجَّل (logActivity) ثمّ يُعلَن بإشعار نجاح — نُلحق بذلك الإشعار زرّ «تراجع».
+    //       pendingUndoRef يُملأ في logActivity ويُستهلك في أوّل إشعارٍ بعده في الدورة نفسها، ثمّ يُفرَّغ.
+    const pendingUndoRef = useRef(null);
+    const showToast = (message, type, opts) => {
+        const pu = pendingUndoRef.current;
+        pendingUndoRef.current = null;
+        if (pu && (type || "success") === "success" && !opts)
+            return showToast0(message, type, { action: tl("تراجع", "Undo"), onAction: () => famUndo(pu.groupId, pu.id) });
+        return showToast0(message, type, opts);
+    };
     // تنبيه واحد عند امتلاء التخزين — أفضل من فقدان صامت للبيانات
     useEffect(() => {
         const onFull = () => showToast(t("msaha_altkhzyn_mmtlya_bad"), "error");
@@ -1268,10 +1278,34 @@ function AppInner() {
         });
         if (Object.keys(upd).length) setFamMe((prev) => ({ ...(prev || {}), ...upd }));
     }, [members, familyGroups, groupPersons]);
-    const [activityLog, setActivityLog] = usePersistedState("famActivityLog", []); // { id, groupId, text, ts } — C75: يُحفظ (كان يضيع عند كلّ فتح فيبدو السجلّ فارغاً دائماً)
+    const [activityLog, setActivityLog] = usePersistedState("famActivityLog", []);
+    // C203: لقطات التراجع لكلّ عائلة: groupId ⇒ [{ id, text, ts, snap }] الأحدث أوّلاً. في الذاكرة وحدها —
+    //       اللقطة تحمل صور الأشخاص (data:‎) فحفظها في localStorage يملؤه. تُفقد بإغلاق التطبيق، والسجلّ النصّيّ يبقى.
+    const famUndoRef = useRef({});
+    const [famUndoVer, setFamUndoVer] = useState(0);
+    // تغييرٌ وصل من الخادم (عضوٌ آخر عدّل الشجرة): الرجوع إلى لقطةٍ أقدم يمحو تعديله، فتُسقط لقطات تلك العائلة.
+    const famUndoDropGroups = (gids) => {
+        let any = false;
+        gids.forEach((g) => { if ((famUndoRef.current[g] || []).length) { famUndoRef.current[g] = []; any = true; } });
+        if (any) setTimeout(() => setFamUndoVer((v) => v + 1), 0);
+    };
+    const remoteSetGroupPersons = (fn) => setGroupPersons((prev) => {
+        const next = typeof fn === "function" ? fn(prev) : fn;
+        famUndoDropGroups(Object.keys(next || {}).filter((k) => (prev || {})[k] !== next[k]));
+        return next;
+    });
+    const remoteSetKinshipRelations = (fn) => setKinshipRelations((prev) => {
+        const next = typeof fn === "function" ? fn(prev) : fn;
+        const old = new Set(prev || []), touched = new Set();
+        (next || []).forEach((r) => { if (!old.has(r)) touched.add(r.groupId); });
+        const kept = new Set(next || []);
+        (prev || []).forEach((r) => { if (!kept.has(r)) touched.add(r.groupId); });
+        famUndoDropGroups([...touched]);
+        return next;
+    }); // { id, groupId, text, ts } — C75: يُحفظ (كان يضيع عند كلّ فتح فيبدو السجلّ فارغاً دائماً)
     const [groupSettings, setGroupSettings] = usePersistedState("groupSettings", initialSettings);
     // الجسر (B5): يُعطي sawa-sync.js مُحدِّثات الحالة ليطبّق بيانات الخادم (القراءة، الاستعادة، الانضمام)
-    useEffect(() => { if (window.SawaSync && window.SawaSync.bindApp) window.SawaSync.bindApp({ setFamilyGroups, setGroupPersons, setKinshipRelations, setCurrentGroupId, setGroupSettings, setMembers, setEvents, setSchedules }); }, []);
+    useEffect(() => { if (window.SawaSync && window.SawaSync.bindApp) window.SawaSync.bindApp({ setFamilyGroups, setGroupPersons: remoteSetGroupPersons, setKinshipRelations: remoteSetKinshipRelations, setCurrentGroupId, setGroupSettings, setMembers, setEvents, setSchedules }); }, []);
     // الجسر (B4/B5): كلّ تغيّرٍ يُرسَل فرقُه للخادم (المجموعات المرفوعة فقط)، ويُبلَّغ بالمجموعة الحاليّة لمراقبتها
     useEffect(() => { if (window.SawaSync && window.SawaSync.observe) window.SawaSync.observe(groupPersons, kinshipRelations, currentGroupId, familyGroups, events, schedules); }, [groupPersons, kinshipRelations, currentGroupId, familyGroups, events, schedules]);
     // ⛔ كانت useState: كلّ سؤالٍ تجاهلتَه يعود عند إعادة التحميل. ويزداد
@@ -2671,6 +2705,19 @@ function AppInner() {
                 }
             });
         });
+        // C203: زوجاتٌ تُكتب في النسب السريع تمرّ بقواعد الزواج — ما يخالف لا يُربط ويُذكر سببه
+        {
+            const gpAll = (groupPersons[groupId] || []).concat(newPersons, extraPersons);
+            let rs = kinshipRelations.filter((r) => r.groupId === groupId).concat(newRelations.filter((r) => !famIsMarriage(r)));
+            const kept = [], why = [];
+            newRelations.forEach((r) => {
+                if (!famIsMarriage(r)) { kept.push(r); return; }
+                const w = marriageCheck(gpAll, rs, r.source, r.target, r.type);
+                if (w) { why.push(w.msg); return; }
+                kept.push(r); rs = rs.concat([r]);
+            });
+            if (why.length) { newRelations.length = 0; newRelations.push(...kept); setTimeout(() => showToast(why[0], "error"), 700); }
+        }
         setGroupPersons((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), ...newPersons, ...extraPersons] }));
         // نُسقط أي علاقة ذاتية أو مكرّرة قد تنشأ عند الربط بأشخاص موجودين
         setKinshipRelations((prev) => {
@@ -2689,7 +2736,7 @@ function AppInner() {
             let out = [...prev, ...accepted];
             const childIds = new Set(accepted.filter((r) => r.type === "parent").map((r) => r.target));
             childIds.forEach((cid) => {
-                const sp = inferSpouseFromParents(groupId, cid, out);
+                const sp = inferSpouseFromParents(groupId, cid, out, newPersons.concat(extraPersons));
                 if (sp)
                     out = [...out, sp];
             });
@@ -2730,9 +2777,11 @@ function AppInner() {
             const nm = chain[i], next = (chain[i + 1] || "").trim();
             const same = persons.filter((p) => normalizeArabicName(p.local_name) === normalizeArabicName(nm) && (p.gender || "male") === "male");
             let found = null;
-            if (next) found = same.find((p) => parentName(p.id) === normalizeArabicName(next)) || null;
-            else if (same.length === 1) found = same[0];
             const kin = deriveKinship(prevKin, "parent", "male") || "أخرى";
+            if (next) found = same.find((p) => parentName(p.id) === normalizeArabicName(next)) || null;
+            // C203: اسمٌ بلا أبٍ يؤكّده لا يُربط بمن يشبهه إلّا إن كانت صلته هي الصلة المنتظرة نفسها.
+            //       كان «نورة بنت علي» زوجةً لخالد تُربط بجدّه «علي» (الوحيد بهذا الاسم) فتصير عمّته وزوجته معاً.
+            else if (same.length === 1 && kin !== "أخرى" && same[0].kinship === kin) found = same[0];
             if (found) { ids.push(found.id); prevKin = found.kinship || kin; continue; }
             const id = `gp-${Date.now()}-n${i}-${Math.random().toString(36).slice(2, 5)}`;
             created.push({ id, local_name: nm, kinship: kin, gender: "male", proximity: proximityForKinship(kin), alive: true, favorite: false, locations: [],
@@ -2821,15 +2870,22 @@ function AppInner() {
         }
         // حدود الزواج — تُحسب على العلاقات الحالية فقط، والسابقة بلا حدّ
         // لأنها توثيق تاريخي قد يتضمن زيجات متعددة متعاقبة.
-        if (relKey === "spouse") {
-            const currentSpouses = kinshipRelations.filter((r) => r.groupId === groupId && r.type === "spouse"
-                && (r.source === person.id || r.target === person.id)).length;
-            // المرأة: زوج واحد. الرجل: حتى أربع.
-            const limit = sel.gender === "male" ? 1 : 4;
-            if (currentSpouses + ids.length > limit) {
-                showToast(limit === 1 ? t("ai_la_akthr_zwj") : t("ai_la_akthr_zwjat"), "error");
-                return;
+        // C203: الزواج (قائماً أو سابقاً) يمرّ بالقواعد نفسها: يُفحص كلّ اسمٍ مع ما قبله في الدفعة
+        //       (الحدّ القديم كان يعدّ الحاليّ وحده، ولا يفحص جنس شخصٍ موجود اختير «هو نفسه»).
+        if (relKey === "spouse" || relKey === "ex_spouse") {
+            const gp = existing.concat(created);
+            let rs = kinshipRelations.filter((r) => r.groupId === groupId);
+            for (let i = 0; i < ids.length; i++) {
+                const why = marriageCheck(gp, rs, person.id, ids[i], relKey);
+                if (why) { showToast(why.msg, "error"); return; }
+                rs = rs.concat([{ id: "~chk" + i, groupId, source: person.id, target: ids[i], type: relKey }]);
             }
+        }
+        // C203: بعد ربط النسب المكتوب — زوجٌ صار بالنسب أصلاً أو فرعاً أو أخاً لصاحب البطاقة يُرفض
+        if (relKey === "spouse" || relKey === "ex_spouse") {
+            const rs = kinshipRelations.filter((r) => r.groupId === groupId).concat(nasabRels);
+            const bad = ids.find((id) => famIsDirectKin(rs, person.id, id));
+            if (bad) { showToast(tl("النسب المكتوب يجعل «" + (names[ids.indexOf(bad)] || "") + "» من أصول «" + famFirst(person) + "» أو فروعه أو إخوته — لا يُسجَّل زواج. راجع اسم الأب.", "The written lineage makes them direct kin — marriage not recorded. Check the father's name."), "error"); return; }
         }
         setGroupPersons((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), ...created, ...nasabPersons] }));
         if (nasabConflicts.length) setTimeout(() => showToast(tl("لم يُضَف نسب: " + nasabConflicts.join("، ") + " — يختلف عن والدٍ مسجَّل", "Lineage skipped for: " + nasabConflicts.join(", ")), "info"), 600);
@@ -2851,7 +2907,7 @@ function AppInner() {
             if (relKey === "child") ids.forEach((cid) => { const cop = coParentEdge(groupId, person.id, cid, out, coParentOf[cid] || sel.coParent); if (cop) out = [...out, cop]; });   // C81 · C104: أبٌ مكتوب بالاسم
             const childIds = new Set(accepted.filter((r) => r.type === "parent").map((r) => r.target));
             childIds.forEach((cid) => {
-                const sp = inferSpouseFromParents(groupId, cid, out);
+                const sp = inferSpouseFromParents(groupId, cid, out, created.concat(nasabPersons));
                 if (sp)
                     out = [...out, sp];
             });
@@ -2869,8 +2925,42 @@ function AppInner() {
         showToast(reused ? t("adyf_wrbt_mwjwda_b", { length: created.length, reused, local_name: person.local_name })
             : t("adyf_qryb_l", { length: created.length, local_name: person.local_name }), "success");
     }
-    function logActivity(groupId, text) {
-        setActivityLog((prev) => [{ id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, groupId, text, ts: Date.now() }, ...(prev || [])].slice(0, 300));
+    // C203: كلّ سطرٍ في السجلّ يحمل لقطة العائلة **قبل** التعديل — هذه الدالّة تُنادى في نهاية كلّ تعديل،
+    //       وقيم groupPersons/kinshipRelations في إغلاقها هي حالة ما قبل التعديل (المُحدِّثات لم تُطبَّق بعد).
+    //       opts.undo === false: سطرٌ بلا تراجع (إنشاء مجموعة، تسمية…) — ليس تعديلاً في أشخاص الشجرة.
+    function famSnapshotFull(groupId) {
+        return { ...famSnapshot(groupId, groupPersons, kinshipRelations),
+            events: (events || []).filter((e) => e.groupId === groupId),
+            schedules: (schedules || []).filter((x) => x.groupId === groupId) };
+    }
+    function logActivity(groupId, text, opts) {
+        const id = `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const undoable = !(opts && opts.undo === false) && !!groupPersons[groupId];
+        if (undoable) {
+            const stack = famUndoRef.current[groupId] || [];
+            famUndoRef.current[groupId] = [{ id, text, ts: Date.now(), snap: (opts && opts.snap) || famSnapshotFull(groupId) }, ...stack].slice(0, FAM_UNDO_MAX);
+            setFamUndoVer((v) => v + 1);
+            pendingUndoRef.current = { groupId, id };
+            Promise.resolve().then(() => { if (pendingUndoRef.current && pendingUndoRef.current.id === id) pendingUndoRef.current = null; });
+        }
+        setActivityLog((prev) => [{ id, groupId, text, ts: Date.now(), undoable }, ...(prev || [])].slice(0, 300));
+    }
+    // تراجعٌ عن سطرٍ في السجلّ: تعود العائلة كما كانت قبله — وقبل كلّ ما جاء بعده أيضاً (اللقطات متتابعة).
+    // التراجع نفسه يُسجَّل بلقطةٍ لما قبله، فـ«تراجع» عنه = إعادة.
+    function famUndo(groupId, entryId) {
+        const stack = famUndoRef.current[groupId] || [];
+        const i = stack.findIndex((e) => e.id === entryId);
+        if (i < 0) { showToast0(tl("لا يمكن التراجع عن هذا الآن — تغيّرت الشجرة بعده (ربّما من جهازٍ آخر).", "Can't undo this any more — the tree changed since (maybe from another device)."), "error"); return; }
+        const entry = stack[i], before = famSnapshotFull(groupId), snap = entry.snap;
+        setGroupPersons((prev) => famRestore(groupId, snap, prev, []).groupPersons);
+        setKinshipRelations((prev) => famRestore(groupId, snap, {}, prev).kinshipRelations);
+        setEvents((prev) => (prev || []).filter((e) => e.groupId !== groupId).concat(snap.events || []));
+        setSchedules((prev) => (prev || []).filter((x) => x.groupId !== groupId).concat(snap.schedules || []));
+        famUndoRef.current[groupId] = stack.slice(i + 1);
+        const later = i;   // كم تعديلاً أحدث منه أُلغي معه
+        logActivity(groupId, tl("تراجعتُ عن: ", "Undid: ") + entry.text + (later ? tl(" (ومعه " + later + " تعديلاً بعده)", " (and " + later + " later edits)") : ""), { snap: before });
+        pendingUndoRef.current = null;
+        showToast0(tl("تمّ التراجع ✓", "Undone ✓"), "success", { action: tl("إعادة", "Redo"), onAction: () => { const top = (famUndoRef.current[groupId] || [])[0]; if (top) famUndo(groupId, top.id); } });
     }
     // C81: ابنٌ يُضاف لشخصٍ متزوّج ⇒ زوجه الحاليّ الوحيد والده الآخر تلقائيّاً.
     //      كان يُربط بأحد الوالدين فقط، فيظهر أبناء العمّة (زوجة الخال) «أبناءَها من زواجٍ آخر» لا أبناء الخال.
@@ -2894,6 +2984,11 @@ function AppInner() {
         var _a;
         const { relation, linkedTo, ancestorChain, ...personData } = data;
         const newPersonId = `gp-${Date.now()}`;
+        // C203: النموذج يمنع هذا قبل الحفظ؛ وهنا حارسٌ ثانٍ لكلّ مسارٍ آخر يصل إلى addPerson
+        if (relation && relation.relatedToId && (relation.relationType === "spouse" || relation.relationType === "ex_spouse")) {
+            const why = marriageCheck((groupPersons[groupId] || []).concat([{ ...personData, id: newPersonId }]), kinshipRelations.filter((r) => r.groupId === groupId), newPersonId, relation.relatedToId, relation.relationType);
+            if (why) { showToast(why.msg, "error"); return; }
+        }
         // نسب مكتوب في الاسم: نُنشئ الأصول الناقصة ونربطها صعوداً.
         // الموجود منهم يُعاد استعماله بدل إنشاء نسخة مكرّرة.
         const existing = groupPersons[groupId] || [];
@@ -2914,8 +3009,10 @@ function AppInner() {
             const sameName = existing.filter((p) => normalizeArabicName(p.local_name) === normalizeArabicName(nm));   // C74: أحمد = احمد
             let found = null;
             if (sameName.length === 1 && !expectedParent) {
-                // اسم فريد ولا سلف بعده — نقبله
-                found = sameName[0];
+                // اسم فريد ولا سلف بعده — نقبله فقط إن كانت صلته هي المنتظرة (C203: لا ربط بتشابه الاسم وحده)
+                const shared0 = !personData.kinship || ["نفسي", "الأخ", "الأخت"].indexOf(personData.kinship) >= 0;
+                const want = shared0 ? (i === 0 ? "الوالد" : i === 1 ? "الجد" : null) : null;
+                if (want && sameName[0].kinship === want) found = sameName[0];
             }
             else if (expectedParent) {
                 // نقبل من يطابق والده الاسم المتوقَّع، أو من لا والد له بعد
@@ -2990,7 +3087,7 @@ function AppInner() {
                     if (cop) next = [...next, cop];
                 }
                 if (edge.type === "parent") {
-                    const sp = inferSpouseFromParents(groupId, edge.target, next);
+                    const sp = inferSpouseFromParents(groupId, edge.target, next, [{ ...personData, id: newPersonId }].concat(newAncestors));
                     if (sp)
                         next = [...next, sp];
                     next = [...next, ...inferParentsForSiblings(groupId, edge.target, next)];
@@ -3011,6 +3108,22 @@ function AppInner() {
     function editPerson(groupId, personId, data) {
         var _a;
         const { linkedTo, motherApplicable, motherId, motherCandidateIds, kinLabel, kinAlso, kinComputed, kinStored, kinSection, ancestorChain, ...personData0 } = data;
+        // C203: تغيير الجنس لا يُنشئ زواجاً بين جنسٍ واحد ولا والدَين من جنسٍ واحد
+        {
+            const list = groupPersons[groupId] || [], cur = list.find((p) => p.id === personId);
+            if (cur && data.gender && cur.gender && data.gender !== cur.gender) {
+                const rels = kinshipRelations.filter((r) => r.groupId === groupId);
+                const after = list.map((p) => (p.id === personId ? { ...p, gender: data.gender } : p));
+                const bad = marriageViolations(after, rels).find((v) => v.ids.indexOf(personId) >= 0);
+                const kids = rels.filter((r) => r.type === "parent" && r.source === personId).map((r) => r.target);
+                const clash = kids.some((k) => rels.some((r) => r.type === "parent" && r.target === k && r.source !== personId && (after.find((p) => p.id === r.source) || {}).gender === data.gender));
+                if (bad || clash) {
+                    showToast(bad ? tl("لا يُغيَّر الجنس: «" + famFirst(cur) + "» مرتبطٌ بزواجٍ يصير بين جنسٍ واحد. احذف تلك العلاقة أوّلاً.", "Gender not changed: it would make a same-gender marriage. Remove that relation first.")
+                        : tl("لا يُغيَّر الجنس: لأحد أبناء «" + famFirst(cur) + "» والدٌ آخر من الجنس الجديد.", "Gender not changed: one of the children already has a parent of that gender."), "error");
+                    return;
+                }
+            }
+        }
         // C104: النسب المكتوب في الاسم عند التعديل ⇒ أصولٌ تُضاف وتُربط (إن لم يعارض والداً مسجَّلاً)
         if (ancestorChain && ancestorChain.length) {
             const gp = groupPersons[groupId] || [], me0 = gp.find((p) => p.id === personId) || {};
@@ -3083,6 +3196,23 @@ function AppInner() {
         const removePerson = (groupPersons[groupId] || []).find((p) => p.id === removeId);
         if (!keepPerson || !removePerson)
             return;
+        // C203: الدمج لا يجمع ذكراً وأنثى، ولا يُنتج امرأةً بزوجين حاليّين أو زواجاً بين جنسٍ واحد
+        {
+            if (keepPerson.gender && removePerson.gender && keepPerson.gender !== removePerson.gender) {
+                showToast(tl("لا يُدمج «" + famFirst(keepPerson) + "» و«" + famFirst(removePerson) + "»: أحدهما ذكر والآخر أنثى.", "Can't merge a male and a female record."), "error");
+                return;
+            }
+            const rels = kinshipRelations.filter((r) => r.groupId === groupId)
+                .map((r) => ({ ...r, source: r.source === removeId ? keepId : r.source, target: r.target === removeId ? keepId : r.target }))
+                .filter((r) => r.source !== r.target);
+            const seenM = new Set(), relsU = rels.filter((r) => { const k = [r.source, r.target].sort().join("|") + r.type; if (seenM.has(k)) return false; seenM.add(k); return true; });
+            const after = (groupPersons[groupId] || []).filter((p) => p.id !== removeId).map((p) => (p.id === keepId ? { ...p, gender: p.gender || removePerson.gender } : p));
+            const bad = marriageViolations(after, relsU).find((v) => v.ids.indexOf(keepId) >= 0);
+            if (bad) {
+                showToast(tl("لا يمكن الدمج: ", "Can't merge: ") + bad.msg, "error");
+                return;
+            }
+        }
         // نعيد توجيه كل علاقة كانت تشير للمكرّر لتشير للأصلي بدلاً عنه، ونحذف
         // أي علاقة تصبح ذاتية (شخص مرتبط بنفسه) أو مكرّرة بعد إعادة التوجيه
         setKinshipRelations((prev) => {
@@ -3144,7 +3274,7 @@ function AppInner() {
     // والدا الشخص الواحد زوجان بالضرورة — نستنتج الرابط تلقائياً.
     // بدونه يظهر كلٌّ منهما جذراً مستقلاً في كتلة منفصلة (كحال الجدة
     // المضافة كأمٍّ لوالدك بينما جدّك مسجَّل أباً له).
-    function inferSpouseFromParents(groupId, childId, relsSnapshot) {
+    function inferSpouseFromParents(groupId, childId, relsSnapshot, extraPersons) {
         const parentsOfChild = relsSnapshot
             .filter((r) => r.groupId === groupId && r.type === "parent" && r.target === childId)
             .map((r) => r.source);
@@ -3157,7 +3287,11 @@ function AppInner() {
             && ((r.source === a && r.target === b) || (r.source === b && r.target === a)));
         if (exists)
             return null;
-        return { id: `k-${Date.now()}-sp`, groupId, source: a, target: b, type: "spouse", inferred: "parents-spouse" };
+        // C203: قائمٌ إن جاز، وإلّا سابق (أبناءٌ من زواجٍ انتهى)، ولا شيء إن امتنع
+        const type = inferredMarriageType((groupPersons[groupId] || []).concat(extraPersons || []), relsSnapshot.filter((r) => r.groupId === groupId), a, b);
+        if (!type)
+            return null;
+        return { id: `k-${Date.now()}-sp`, groupId, source: a, target: b, type, inferred: "parents-spouse" };
     }
     // من كان أخاً لشخص، فوالدا ذلك الشخص والداه. نشتقّ الأبوّة الناقصة
     // تلقائياً — وإلا ظهر الإخوة بلا والد رغم ارتباطهم بمن له والد.
@@ -3266,8 +3400,12 @@ function AppInner() {
                 const has = [...out, ...spouses].some((r) => r.groupId === gid
                     && (r.type === "spouse" || r.type === "ex_spouse")
                     && ((r.source === a && r.target === b) || (r.source === b && r.target === a)));
-                if (!has)
-                    spouses.push({ id: `k-${Date.now()}-s${spouses.length}`, groupId: gid, source: a, target: b, type: "spouse", inferred: "parents-spouse" });
+                if (has)
+                    return;
+                // C203: كان يُسجَّل «قائماً» دائماً — فأمٌّ تزوّجت بعد طلاقٍ لم يُسجَّل تصير بزوجين حاليّين عند فتح الشجرة
+                const type = inferredMarriageType(groupPersons[gid] || [], [...out, ...spouses].filter((r) => r.groupId === gid), a, b);
+                if (type)
+                    spouses.push({ id: `k-${Date.now()}-s${spouses.length}`, groupId: gid, source: a, target: b, type, inferred: "parents-spouse" });
             });
             if (spouses.length)
                 out = [...out, ...spouses];
@@ -3311,6 +3449,12 @@ function AppInner() {
         }
         if (type === "parent" && wouldCreateParentCycle(groupId, sourceId, targetId)) {
             showToast(t("la_ymkn_itmam_hdha"), "error");
+            return;
+        }
+        // C203: قواعد الزواج (جنسان مختلفان معروفان · زوجٌ حاليّ واحد للمرأة · أربع للرجل · لا محارم)
+        const whyNot = marriageCheck(groupPersons[groupId] || [], kinshipRelations.filter((r) => r.groupId === groupId), sourceId, targetId, type);
+        if (whyNot) {
+            showToast(whyNot.msg, "error");
             return;
         }
         const newRelation = { id: `k-${Date.now()}`, groupId, source: sourceId, target: targetId, type };
@@ -3556,7 +3700,7 @@ function AppInner() {
         }));
         setMembers((prev) => ({ ...prev, [newId]: [{ userId: "u-1", name: "أنت", role: "owner" }] }));
         setGroupSettings((prev) => ({ ...prev, [newId]: { allowMemberEvents: false } }));
-        logActivity(sourceGroupId, t("anshat_mjmwaa_wrbttha_b", { groupName, local_name: person.local_name }));
+        logActivity(sourceGroupId, t("anshat_mjmwaa_wrbttha_b", { groupName, local_name: person.local_name }), { undo: false });
         showToast(t("anshyt_adf_waldha_wikhwtha", { groupName }), "success");
         // ننتقل مباشرة للمجموعة الجديدة
         setCurrentGroupId(newId);
@@ -3567,7 +3711,7 @@ function AppInner() {
         if (!clean)
             return;
         setFamilyGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, name: clean } : g)));
-        logActivity(groupId, t("fg_smyt_almjmwaa", { name: clean }));
+        logActivity(groupId, t("fg_smyt_almjmwaa", { name: clean }), { undo: false });
         showToast(t("fg_tmt_altsmya"), "success");
     }
     // ⛔ أثر المجموعة في تسعة مخازن. إغفال واحدٍ يترك يتامى لا سبيل إليهم
@@ -3825,7 +3969,7 @@ function AppInner() {
     }
     else if (discoverTop.type === "tree") {
         const canEditTree = famCanEdit(discoverTop.data);
-        discoverContent = (React.createElement(FamilyTreeScreen, { key: "tree:" + discoverTop.data.id + ":" + (discoverTop.focus || ""), initialFocusId: discoverTop.focus || null, groupId: discoverTop.data.id, persons: famPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), canEdit: canEditTree, onAddRelation: addKinshipRelation, onChangeParent: changeParent, onClaimChildren: claimChildren, onDeleteRelation: deleteKinshipRelation, onEndMarriage: endMarriage, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: discoverTop.data.id }]), onMarkContact: (personId) => markContactNow(discoverTop.data.id, personId), onQuickSchedule: (personId) => { setPreselectedSchedulePersonId(personId); setShowAddSchedule(true); }, onOpenStats: () => setDiscoverStack([...discoverStack, { type: "stats", data: discoverTop.data }]), onAddRelativeTo: (gid, person, relKey, kinship, gender) => setGapAddPreset({
+        discoverContent = (React.createElement(FamilyTreeScreen, { key: "tree:" + discoverTop.data.id + ":" + (discoverTop.focus || ""), initialFocusId: discoverTop.focus || null, groupId: discoverTop.data.id, undoCount: (famUndoRef.current[discoverTop.data.id] || []).length + 0 * famUndoVer, onOpenHistory: () => setDiscoverStack([...discoverStack, { type: "activityLog", data: discoverTop.data }]), onUndoLast: () => { const top = (famUndoRef.current[discoverTop.data.id] || [])[0]; if (top) famUndo(discoverTop.data.id, top.id); }, persons: famPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), canEdit: canEditTree, onAddRelation: addKinshipRelation, onChangeParent: changeParent, onClaimChildren: claimChildren, onDeleteRelation: deleteKinshipRelation, onEndMarriage: endMarriage, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: discoverTop.data.id }]), onMarkContact: (personId) => markContactNow(discoverTop.data.id, personId), onQuickSchedule: (personId) => { setPreselectedSchedulePersonId(personId); setShowAddSchedule(true); }, onOpenStats: () => setDiscoverStack([...discoverStack, { type: "stats", data: discoverTop.data }]), onAddRelativeTo: (gid, person, relKey, kinship, gender) => setGapAddPreset({
                 groupId: gid,
                 relatedToId: person.id,
                 relationType: relKey,
@@ -3912,7 +4056,8 @@ function AppInner() {
             onShare: cloud ? (role) => SS.shareLink(role, group.id) : null, onOpenActivityLog: () => setDiscoverStack([...discoverStack, { type: "activityLog", data: group }]), onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
     }
     else if (discoverTop.type === "activityLog") {
-        discoverContent = (React.createElement(FamilyActivityLogScreen, { groupId: discoverTop.data.id, activityLog: activityLog, onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
+        discoverContent = (React.createElement(FamilyActivityLogScreen, { groupId: discoverTop.data.id, activityLog: activityLog, onBack: () => setDiscoverStack(discoverStack.slice(0, -1)),
+            undoIds: (famUndoRef.current[discoverTop.data.id] || []).map((e) => e.id), onUndo: (id) => famUndo(discoverTop.data.id, id) }));
     }
     return (React.createElement(PhoneFrame, { dir: interfaceLanguage === "en" ? "ltr" : "rtl" },
         flow === "onboarding" && React.createElement(OnboardingScreen, { onDone: () => setFlow("setup") }),
