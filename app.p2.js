@@ -299,18 +299,22 @@ function useToast() {
 }
 function ToastProvider({ children }) {
     const [toasts, setToasts] = useState([]);
-    function showToast(message, type = "success") {
+    // C203: ‎opts = { action, onAction }‎ ⇒ زرّ في الإشعار («تراجع»)، ويبقى ٦ ثوانٍ بدل ٣ ليُضغط.
+    //       كان الوسيط الثالث يُهمَل: «أُرشفت — اضغط تراجع» في المحادثات بلا زرٍّ يُضغط.
+    function showToast(message, type = "success", opts) {
         const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-        setToasts((prev) => [...prev, { id, message, type }]);
+        const action = opts && opts.action && typeof opts.onAction === "function" ? { label: opts.action, run: opts.onAction } : null;
+        setToasts((prev) => [...prev, { id, message, type, action }]);
         setTimeout(() => {
             setToasts((prev) => prev.filter((t) => t.id !== id));
-        }, 3000);
+        }, action ? 6000 : 3000);
     }
+    const dismissToast = (id) => setToasts((prev) => prev.filter((t) => t.id !== id));
     return (React.createElement(ToastContext.Provider, { value: { showToast } },
         children,
-        React.createElement(ToastHost, { toasts: toasts })));
+        React.createElement(ToastHost, { toasts: toasts, onDismiss: dismissToast })));
 }
-function ToastHost({ toasts }) {
+function ToastHost({ toasts, onDismiss }) {
     const { colors } = useTheme();
     if (toasts.length === 0)
         return null;
@@ -319,7 +323,8 @@ function ToastHost({ toasts }) {
             color: "#fff",
         } },
         toast.type === "error" ? React.createElement(AlertCircle, { size: 13, color: "#fff" }) : React.createElement(Check, { size: 13, color: "#fff" }),
-        toast.message)))));
+        toast.message,
+        toast.action && React.createElement("button", { onClick: () => { onDismiss && onDismiss(toast.id); toast.action.run(); }, className: "pointer-events-auto rounded-full px-2.5 py-1 text-[11px] font-extrabold shrink-0", style: { backgroundColor: "rgba(255,255,255,0.22)", color: "#fff", marginInlineStart: 6 } }, toast.action.label))))));
 }
 function SkeletonBox({ height = 16, width = "100%", rounded = "rounded-md" }) {
     const { colors } = useTheme();
@@ -1568,6 +1573,11 @@ const KINSHIP_SECTIONS = [
         key: "zawj", titleKey: "sec_zawj", icon: "💍",
         items: ["الزوج", "الزوجة", "الزوج السابق", "الزوجة السابقة"],
     },
+    // C203: الأصهار — أهل الزوج/الزوجة: والده وإخوته وأعمامه وأخواله وأجداده من الطرفين
+    {
+        key: "ashar", titleKey: "sec_ashar", icon: "🤝",
+        items: ["والد الزوجة", "والدة الزوجة", "أخ الزوجة", "أخت الزوجة", "جد الزوجة", "جدة الزوجة", "عم الزوجة", "عمة الزوجة", "خال الزوجة", "خالة الزوجة", "جد الزوجة لأمها", "جدة الزوجة لأمها", "والد الزوج", "والدة الزوج", "أخ الزوج", "أخت الزوج", "جد الزوج", "جدة الزوج", "عم الزوج", "عمة الزوج", "خال الزوج", "خالة الزوج", "جد الزوج لأمه", "جدة الزوج لأمه"],
+    },
     {
         key: "other", titleKey: "sec_other", icon: "•",
         items: ["أخرى"],
@@ -1788,6 +1798,31 @@ const KINSHIP_EN = {
     "\u0627\u0644\u062D\u0641\u064A\u062F\u0629": "Granddaughter",
     "\u0627\u0644\u0632\u0648\u062C": "Husband",
     "\u0627\u0644\u0632\u0648\u062C\u0629": "Wife",
+    // C203: الأصهار — أهل الزوج/الزوجة (يحسبها kinCompute من الشجرة)
+    "\u0648\u0627\u0644\u062F \u0627\u0644\u0632\u0648\u062C\u0629": "Father-in-law (wife's father)",
+    "\u0648\u0627\u0644\u062F\u0629 \u0627\u0644\u0632\u0648\u062C\u0629": "Mother-in-law (wife's mother)",
+    "\u0623\u062E \u0627\u0644\u0632\u0648\u062C\u0629": "Brother-in-law (wife's brother)",
+    "\u0623\u062E\u062A \u0627\u0644\u0632\u0648\u062C\u0629": "Sister-in-law (wife's sister)",
+    "\u062C\u062F \u0627\u0644\u0632\u0648\u062C\u0629": "Wife's Grandfather",
+    "\u062C\u062F\u0629 \u0627\u0644\u0632\u0648\u062C\u0629": "Wife's Grandmother",
+    "\u0639\u0645 \u0627\u0644\u0632\u0648\u062C\u0629": "Wife's Paternal Uncle",
+    "\u0639\u0645\u0629 \u0627\u0644\u0632\u0648\u062C\u0629": "Wife's Paternal Aunt",
+    "\u062E\u0627\u0644 \u0627\u0644\u0632\u0648\u062C\u0629": "Wife's Maternal Uncle",
+    "\u062E\u0627\u0644\u0629 \u0627\u0644\u0632\u0648\u062C\u0629": "Wife's Maternal Aunt",
+    "\u062C\u062F \u0627\u0644\u0632\u0648\u062C\u0629 \u0644\u0623\u0645\u0647\u0627": "Wife's Maternal Grandfather",
+    "\u062C\u062F\u0629 \u0627\u0644\u0632\u0648\u062C\u0629 \u0644\u0623\u0645\u0647\u0627": "Wife's Maternal Grandmother",
+    "\u0648\u0627\u0644\u062F \u0627\u0644\u0632\u0648\u062C": "Father-in-law (husband's father)",
+    "\u0648\u0627\u0644\u062F\u0629 \u0627\u0644\u0632\u0648\u062C": "Mother-in-law (husband's mother)",
+    "\u0623\u062E \u0627\u0644\u0632\u0648\u062C": "Brother-in-law (husband's brother)",
+    "\u0623\u062E\u062A \u0627\u0644\u0632\u0648\u062C": "Sister-in-law (husband's sister)",
+    "\u062C\u062F \u0627\u0644\u0632\u0648\u062C": "Husband's Grandfather",
+    "\u062C\u062F\u0629 \u0627\u0644\u0632\u0648\u062C": "Husband's Grandmother",
+    "\u0639\u0645 \u0627\u0644\u0632\u0648\u062C": "Husband's Paternal Uncle",
+    "\u0639\u0645\u0629 \u0627\u0644\u0632\u0648\u062C": "Husband's Paternal Aunt",
+    "\u062E\u0627\u0644 \u0627\u0644\u0632\u0648\u062C": "Husband's Maternal Uncle",
+    "\u062E\u0627\u0644\u0629 \u0627\u0644\u0632\u0648\u062C": "Husband's Maternal Aunt",
+    "\u062C\u062F \u0627\u0644\u0632\u0648\u062C \u0644\u0623\u0645\u0647": "Husband's Maternal Grandfather",
+    "\u062C\u062F\u0629 \u0627\u0644\u0632\u0648\u062C \u0644\u0623\u0645\u0647": "Husband's Maternal Grandmother",
     "\u0623\u062E\u0631\u0649": "Other",
 };
 // ── «ما قرابتي بفلان؟» ───────────────────────────────────────────
