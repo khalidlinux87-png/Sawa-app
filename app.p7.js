@@ -284,7 +284,7 @@ function TaxiScreen({ ride, tripsHistory, scheduledRides, onRequestRide, onSched
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                     React.createElement("button", { onClick: () => { setShowSosConfirm(false); setSosActivated(true); showToast(t("tm_tfayl_tnbyh_altwary"), "error"); }, className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.danger } },
                         React.createElement("span", { className: "text-xs font-bold text-white" }, t("takyd_altwary"))),
-                    React.createElement("button", { onClick: () => setShowSosConfirm(false), className: "flex-1 rounded-xl py-2 border", style: { borderColor: colors.border } },
+                    React.createElement("button", { onClick: () => setShowSosConfirm(false), className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.btnFill } },
                         React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("ilgha")))))),
             sosActivated && (React.createElement("div", { className: `w-full rounded-xl mt-2 p-3 flex ${rowStart()} items-center gap-2`, style: { backgroundColor: colors.danger } },
                 React.createElement(AlertTriangle, { size: 14, color: "#fff" }),
@@ -553,7 +553,7 @@ function TaqaTokenScreen({ token, colors, onBack, onHistory }) {
                 ].map((step, i) => (React.createElement("div", { key: i, className: `flex ${isRTL() ? "flex-row" : "flex-row-reverse"} items-center gap-2 mb-2 last:mb-0` },
                     React.createElement("div", { className: "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, i + 1),
                     React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } }, step))))),
-            React.createElement("button", { onClick: onHistory, className: "w-full rounded-xl py-2.5 border text-xs font-bold", style: { borderColor: colors.border, color: colors.textMuted, backgroundColor: colors.card } }, t("tq_sjl_rmwz")))));
+            React.createElement("button", { onClick: onHistory, className: "w-full rounded-xl py-2.5 text-xs font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, t("tq_sjl_rmwz")))));
 }
 // ══════════════════════════════════════════════════════════════════════════
 // طاقة — مكوّن سجل الرموز
@@ -1472,7 +1472,7 @@ function PaymentMethodsScreen({ methods, onAddNew, onRemove, onBack }) {
                 confirmingId === m.id ? (React.createElement("div", { className: `flex ${rowStart()} gap-1.5 shrink-0` },
                     React.createElement("button", { onClick: () => { onRemove(m.id); setConfirmingId(null); }, className: "rounded-xl px-2.5 py-1.5", style: { backgroundColor: colors.danger } },
                         React.createElement("span", { className: "text-[11px] font-bold text-white" }, t("takyd"))),
-                    React.createElement("button", { onClick: () => setConfirmingId(null), className: "rounded-xl px-2.5 py-1.5 border", style: { borderColor: colors.border } },
+                    React.createElement("button", { onClick: () => setConfirmingId(null), className: "rounded-xl px-2.5 py-1.5", style: { backgroundColor: colors.btnFill } },
                         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, t("ilgha"))))) : (React.createElement("button", { "aria-label": t("hdhf"), onClick: () => setConfirmingId(m.id), className: "shrink-0" },
                     React.createElement(Trash2, { size: 16, color: colors.danger })))))),
             React.createElement("button", { onClick: onAddNew, className: "w-full rounded-full border border-dashed py-3 mt-2", style: { borderColor: colors.primary } },
@@ -1988,7 +1988,7 @@ function FxCardsScreens({ view, setView, balance, fxAccounts, cards, walletPinFo
                             React.createElement("div", { className: `text-xs font-bold mb-2 ${textStart()}`, style: { color: colors.danger } }, tl("حذف نهائيّ — لا يمكن استعادة البطاقة.", "Permanent — the card can't be restored.")),
                             React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                                 React.createElement("button", { onClick: () => { onCardsChange(cards.filter((x) => x.id !== cd.id)); setView("cards"); }, className: "flex-1 rounded-xl py-2.5 text-xs font-bold text-white", style: { backgroundColor: colors.danger } }, tl("نعم، احذفها", "Yes, delete")),
-                                React.createElement("button", { onClick: () => setConfirmDel(false), className: "flex-1 rounded-xl py-2.5 text-xs font-bold border", style: { borderColor: colors.border, color: colors.text } }, tl("إلغاء", "Cancel")))))),
+                                React.createElement("button", { onClick: () => setConfirmDel(false), className: "flex-1 rounded-xl py-2.5 text-xs font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, tl("إلغاء", "Cancel")))))),
             React.createElement(WalletDemoNote, { ar: "بطاقةٌ تجريبيّة — لا تعمل في أيّ متجر.", en: "Demo card — doesn't work at any merchant." })), () => setView("cards"));
     }
     return null;
@@ -2518,7 +2518,7 @@ ${txn.note}
                             React.createElement("p", { className: "text-sm font-extrabold text-center", style: { color: colors.text } }, t("tjmyd_almhfza_swal")),
                             React.createElement("p", { className: "text-xs text-center mt-2", style: { color: colors.textMuted } }, t("stwqf_kl_amlyat"))),
                         React.createElement("button", { onClick: () => { setWalletFrozen(true); setConfirmFreeze(false); }, className: "w-full py-3 rounded-xl text-sm font-extrabold text-white mb-2", style: { backgroundColor: colors.danger } }, t("nam_jmd_almhfza")),
-                        React.createElement("button", { onClick: () => setConfirmFreeze(false), className: "w-full py-3 rounded-xl text-sm font-bold", style: { color: colors.textMuted, border: `1px solid ${colors.border}` } }, t("ilgha")))))))),
+                        React.createElement("button", { onClick: () => setConfirmFreeze(false), className: "w-full py-3 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, t("ilgha")))))))),
         React.createElement(WalletNavBar, { navTab: navTab, setNavTab: setNavTab, colors: colors })));
 }
 function WalletLockScreen({ onUnlock, onBack, walletPasskeyId, onPasskeyRegistered, walletPin, onSetWalletPin }) {

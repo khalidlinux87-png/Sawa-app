@@ -154,7 +154,7 @@ function ScheduleRoomModal({ onSave, onClose }) {
                     React.createElement("button", { onClick: () => { copyText(link); showToast(t("nskh_alrabt_2"), "success"); }, className: "text-[10px] font-extrabold px-2 py-1 rounded-lg", "aria-label": t("nskh"), style: { backgroundColor: colors.primary, color: "#fff" } }, t("nskh"))),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                     React.createElement("button", { onClick: save, className: "flex-1 py-3 rounded-xl text-sm font-extrabold", style: { backgroundColor: colors.primary, color: "#fff" } }, t("hfz_almwad")),
-                    React.createElement("button", { onClick: onClose, className: "flex-1 py-3 rounded-xl text-sm font-bold", style: { backgroundColor: colors.bg, color: colors.textMuted, border: `1px solid ${colors.border}` } }, t("ilgha")))))));
+                    React.createElement("button", { onClick: onClose, className: "flex-1 py-3 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, t("ilgha")))))));
 }
 function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, groups = [], onSendTasksToGroup }) {
     var _a, _b, _c;
@@ -725,7 +725,7 @@ function FirstRunScreen({ onStartFresh, onViewDemo }) {
                 React.createElement("div", { className: "flex-1 h-px", style: { backgroundColor: colors.border } }),
                 React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } }, tl("\u0623\u0648", "or")),
                 React.createElement("div", { className: "flex-1 h-px", style: { backgroundColor: colors.border } })),
-            React.createElement("button", { onClick: onViewDemo, className: "w-full py-3 rounded-xl text-sm font-bold border", style: { borderColor: colors.border, color: colors.textMuted, backgroundColor: colors.card } }, tl("\u0627\u0633\u062A\u0639\u0631\u0636 \u0645\u062B\u0627\u0644 \u062A\u0648\u0636\u064A\u062D\u064A \u0623\u0648\u0644\u0627\u064B", "View a demo example first")),
+            React.createElement("button", { onClick: onViewDemo, className: "w-full py-3 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, tl("\u0627\u0633\u062A\u0639\u0631\u0636 \u0645\u062B\u0627\u0644 \u062A\u0648\u0636\u064A\u062D\u064A \u0623\u0648\u0644\u0627\u064B", "View a demo example first")),
             React.createElement("p", { className: "text-[10px] text-center mt-2", style: { color: colors.textMuted } }, tl("\u0628\u064A\u0627\u0646\u0627\u062A \u0648\u0647\u0645\u064A\u0629 \u0641\u0642\u0637 \u2014 \u0644\u0646 \u062A\u064F\u062D\u0641\u0638", "Demo data only — won't be saved")))));
 }
 
@@ -853,7 +853,7 @@ function CaptionSendSheet({ items, colors, onCancel, onSend }) {
                     more > 0 && React.createElement("p", { className: "text-[11px]", style: { color: colors.textMuted } }, tl("و" + more + " آخرون", "and " + more + " more")))),
             React.createElement("input", { value: cap, onChange: (e) => setCap(e.target.value), maxLength: 1000, autoFocus: true, placeholder: tl("أضف تعليقاً…", "Add a caption…"), dir: isRTL() ? "rtl" : "ltr", className: "w-full border rounded-xl px-3 py-2.5 text-sm mb-3", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             React.createElement("div", { className: "flex items-center gap-2" },
-                React.createElement("button", { onClick: onCancel, className: "flex-1 py-2.5 rounded-xl text-sm font-bold border", style: { borderColor: colors.border, color: colors.textMuted } }, tl("إلغاء", "Cancel")),
+                React.createElement("button", { onClick: onCancel, className: "flex-1 py-2.5 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, tl("إلغاء", "Cancel")),
                 React.createElement("button", { onClick: () => onSend(cap.trim()), className: "flex-1 py-2.5 rounded-xl text-sm font-bold text-white", style: { backgroundColor: colors.primary } }, tl("إرسال", "Send")))));
 }
 function FeedbackSheet({ onClose, currentScreen = "" }) {
@@ -3081,7 +3081,7 @@ function AppInner() {
                     setTimeout(() => showToast(t("lhdha_alshkhs_waldan_msjlan"), "error"), 0);
                     return prev;
                 }
-                let next = [...prev, { id: `k-${Date.now()}`, groupId, source: edge.source, target: edge.target, type: edge.type }];
+                let next = [...prev, Object.assign({ id: `k-${Date.now()}`, groupId, source: edge.source, target: edge.target, type: edge.type }, edge.type === "sibling" && (relation.half === "father" || relation.half === "mother") ? { half: relation.half } : {})];   // C204: نوع الأخوّة
                 if (edge.type === "parent" && edge.source === relation.relatedToId) {
                     const cop = coParentEdge(groupId, edge.source, edge.target, next);   // C81
                     if (cop) next = [...next, cop];
@@ -3477,6 +3477,60 @@ function AppInner() {
         const targetName = ((_b = (groupPersons[groupId] || []).find((p) => p.id === targetId)) === null || _b === void 0 ? void 0 : _b.local_name) || t("ai_shkhs");
         logActivity(groupId, t("rbtt_alaqa_qraba_byn", { sourceName, targetName }));
         showToast(t("tm_rbt_alalaqa"), "success");
+    }
+    // C204: والدٌ واحد لعدّة إخوة — حركةٌ واحدة (سطرٌ واحد في السجلّ وتراجعٌ واحد).
+    //       spec = { parentId } لشخصٍ من الشجرة، أو { newName, gender } لشخصٍ جديد («إبراهيم بن محمد» ⇒ تُضاف أصوله).
+    function batchAssignParent(groupId, spec, childIds) {
+        const gp = groupPersons[groupId] || [], rels0 = kinshipRelations.filter((r) => r.groupId === groupId);
+        let parentId = spec.parentId, created = [], nasabRels = [];
+        if (!parentId) {
+            const nb = splitNasab(spec.newName || "");
+            if (!nb.name) return;
+            parentId = `gp-${Date.now()}-bp`;
+            const first = gp.find((p) => p.id === childIds[0]);
+            const kin = (first && (kinPreview(gp, rels0, first, "parent", spec.gender) || deriveKinship(first.kinship, "parent", spec.gender))) || "أخرى";
+            created.push({ id: parentId, local_name: nb.name, gender: spec.gender, kinship: kin, proximity: proximityForKinship(kin), alive: true, favorite: false, locations: [],
+                lastContactDate: null, addedAt: Date.now(), contacts: null, notes: "", linkedTo: null });
+            if (nb.chain.length) {
+                const r = resolveNasab(groupId, parentId, kin, nb.chain, gp.concat(created), kinshipRelations);
+                if (!r.conflict) { created = created.concat(r.created); nasabRels = nasabEdges(groupId, parentId, r.ids, kinshipRelations); }
+            }
+        }
+        const plan = planBatchParent(gp.concat(created), rels0.concat(nasabRels), parentId, childIds);
+        if (!plan.add.length) { showToast(tl("لم يُربط أحد: ", "No one linked: ") + plan.skipped.map((x) => x.why).join("، "), "error"); return; }
+        if (created.length) setGroupPersons((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), ...created] }));
+        setKinshipRelations((prev) => {
+            let out = prev.concat(nasabRels, plan.add.map((e, i) => ({ id: `k-${Date.now()}-bp${i}`, groupId, ...e })));
+            plan.add.forEach((e) => { const sp = inferSpouseFromParents(groupId, e.target, out, created); if (sp) out = [...out, sp]; });
+            plan.add.forEach((e) => { out = [...out, ...inferParentsForSiblings(groupId, e.target, out)]; });
+            return out;
+        });
+        const pn = (created[0] || gp.find((p) => p.id === parentId) || {}).local_name || "";
+        logActivity(groupId, tl("صار «" + pn + "» " + (spec.gender === "female" || (gp.find((p) => p.id === parentId) || {}).gender === "female" ? "أمّاً" : "أباً") + " لـ" + plan.add.length + ": " + plan.add.map((e) => famFirst(gp.find((p) => p.id === e.target))).join("، "), pn + " linked as parent of " + plan.add.length));
+        showToast(tl("رُبط «" + pn + "» بـ" + plan.add.length + (plan.skipped.length ? " · تُخطّي " + plan.skipped.length : ""), "Linked " + plan.add.length), "success");
+    }
+    // C204: نوع الأخوّة بين اثنين (شقيق · لأب · لأم) — الوالدان يُعدَّلان تبعاً، وحافّة الأخوّة تحمل النوع
+    function applySiblingType(groupId, aId, bId, type, otherParentId) {
+        const gp = groupPersons[groupId] || [], rels0 = kinshipRelations.filter((r) => r.groupId === groupId);
+        const plan = planSiblingType(gp, rels0, aId, bId, type, otherParentId);
+        if (plan.error) { showToast(plan.error, "error"); return; }
+        for (const e of plan.add) if (e.type === "parent" && wouldCreateParentCycle(groupId, e.source, e.target)) { showToast(t("la_ymkn_itmam_hdha"), "error"); return; }
+        setKinshipRelations((prev) => {
+            const rm = new Set(plan.remove), up = {};
+            plan.update.forEach((u) => { up[u.id] = u.half; });
+            let out = prev.filter((r) => !rm.has(r.id)).map((r) => {
+                if (!(r.id in up)) return r;
+                const n = { ...r };
+                if (up[r.id]) n.half = up[r.id]; else delete n.half;
+                return n;
+            });
+            out = out.concat(plan.add.map((e, i) => ({ id: `k-${Date.now()}-st${i}`, groupId, ...e })));
+            [aId, bId].forEach((c) => { const sp = inferSpouseFromParents(groupId, c, out); if (sp) out = [...out, sp]; });
+            return out;
+        });
+        const nm = (id) => famFirst(gp.find((p) => p.id === id));
+        logActivity(groupId, tl("«" + nm(bId) + "» أخٌ " + ({ full: "شقيق", father: "لأب", mother: "لأم" })[type] + " لـ«" + nm(aId) + "»", nm(bId) + " set as " + type + " sibling of " + nm(aId)));
+        showToast(tl("حُفظ نوع الأخوّة", "Sibling type saved"), "success");
     }
     // C79: تغيير أب/أمّ شخصٍ واحد (أو إزالته) — حذف حافّة الوالد من ذلك الجنس ثمّ إضافة الجديدة
     // C81: إصلاح «أبناء زوجته من زواجٍ آخر» حين يكونون أبناءه هو أيضاً — يُضاف والداً لمن ليس له والدٌ من جنسه
@@ -3876,7 +3930,7 @@ function AppInner() {
         discoverContent = (React.createElement(FamilyGroupDetailScreen, { meId: famMe[group.id] || (((famPersons[group.id] || []).find((p) => p.kinship === SELF_KINSHIP && p.kinStored !== SELF_KINSHIP)) || {}).id || null, onPickMe: (pid) => { setFamMe((prev) => { const o = { ...(prev || {}) }; if (pid) o[group.id] = pid; else delete o[group.id]; return o; }); famClaim(group.id, pid || null);
                 if (pid && group.role && group.role !== "owner" && group.role !== "editor") setTimeout(() => showToast(tl("تُعرض القرابات منك على جهازك. ليُربط حسابك بهذا الشخص يرسل لك أحد محرّري العائلة «هل هذا أنت؟»", "Relations now show from you on this device. To link your account, a family editor sends you “Is this you?”"), "info"), 300); }, key: group.id + ":" + (discoverTop.filter || "all"), initialFilterStatus: discoverTop.filter || "all", group: group, persons: famPersons[group.id] || [], favorites: familyFavorites, otherGroups: otherGroups, onToggleFav: toggleFamilyFav, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: group.id }]), onOpenGroups: IS_RAHIM ? () => setDiscoverStack(groupsStackFrom(discoverStack)) : undefined,
             // ⛔ الشاشة نفسها جذرٌ في أرحام ومحطّةٌ في سوا — السهم يتبع المكدّس
-            onBack: discoverStack.length ? () => setDiscoverStack(discoverStack.slice(0, -1)) : undefined, onAddPerson: (data) => addPerson(group.id, data), onAddPersonChain: (chainNames, groupsOfRelatives, targetIndex, matchDecisions, firstGender, firstIsSelf) => addPersonChain(group.id, chainNames, groupsOfRelatives, targetIndex, matchDecisions, firstGender, firstIsSelf), onMergePersons: (keepId, removeId) => mergePersons(keepId, removeId), relations: kinshipRelations.filter((r) => r.groupId === group.id), onAddRelativesBulk: addRelativesBulk, onDeletePerson: (pid) => deletePerson(group.id, pid), onDeletePersonsBulk: (ids) => {
+            onBack: discoverStack.length ? () => setDiscoverStack(discoverStack.slice(0, -1)) : undefined, onAddPerson: (data) => addPerson(group.id, data), onAddPersonChain: (chainNames, groupsOfRelatives, targetIndex, matchDecisions, firstGender, firstIsSelf) => addPersonChain(group.id, chainNames, groupsOfRelatives, targetIndex, matchDecisions, firstGender, firstIsSelf), onMergePersons: (keepId, removeId) => mergePersons(keepId, removeId), onBatchParent: batchAssignParent, onSiblingType: applySiblingType, relations: kinshipRelations.filter((r) => r.groupId === group.id), onAddRelativesBulk: addRelativesBulk, onDeletePerson: (pid) => deletePerson(group.id, pid), onDeletePersonsBulk: (ids) => {
                 const gid = group.id;
                 const names = (groupPersons[gid] || []).filter((p) => ids.includes(p.id)).map((p) => p.local_name);
                 // حذف واحد لكل الحالات — الاستدعاء المتتابع كان يقرأ حالة قديمة فيفشل
@@ -3969,7 +4023,7 @@ function AppInner() {
     }
     else if (discoverTop.type === "tree") {
         const canEditTree = famCanEdit(discoverTop.data);
-        discoverContent = (React.createElement(FamilyTreeScreen, { key: "tree:" + discoverTop.data.id + ":" + (discoverTop.focus || ""), initialFocusId: discoverTop.focus || null, groupId: discoverTop.data.id, undoCount: (famUndoRef.current[discoverTop.data.id] || []).length + 0 * famUndoVer, onOpenHistory: () => setDiscoverStack([...discoverStack, { type: "activityLog", data: discoverTop.data }]), onUndoLast: () => { const top = (famUndoRef.current[discoverTop.data.id] || [])[0]; if (top) famUndo(discoverTop.data.id, top.id); }, persons: famPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), canEdit: canEditTree, onAddRelation: addKinshipRelation, onChangeParent: changeParent, onClaimChildren: claimChildren, onDeleteRelation: deleteKinshipRelation, onEndMarriage: endMarriage, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: discoverTop.data.id }]), onMarkContact: (personId) => markContactNow(discoverTop.data.id, personId), onQuickSchedule: (personId) => { setPreselectedSchedulePersonId(personId); setShowAddSchedule(true); }, onOpenStats: () => setDiscoverStack([...discoverStack, { type: "stats", data: discoverTop.data }]), onAddRelativeTo: (gid, person, relKey, kinship, gender) => setGapAddPreset({
+        discoverContent = (React.createElement(FamilyTreeScreen, { key: "tree:" + discoverTop.data.id + ":" + (discoverTop.focus || ""), initialFocusId: discoverTop.focus || null, groupId: discoverTop.data.id, onMergePersons: canEditTree ? (keepId, removeId) => mergePersons(keepId, removeId) : null, onBatchParent: canEditTree ? batchAssignParent : null, onSiblingType: canEditTree ? applySiblingType : null, onDeletePerson: canEditTree ? (gid, pid) => deletePerson(gid, pid) : null, undoCount: (famUndoRef.current[discoverTop.data.id] || []).length + 0 * famUndoVer, onOpenHistory: () => setDiscoverStack([...discoverStack, { type: "activityLog", data: discoverTop.data }]), onUndoLast: () => { const top = (famUndoRef.current[discoverTop.data.id] || [])[0]; if (top) famUndo(discoverTop.data.id, top.id); }, persons: famPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), canEdit: canEditTree, onAddRelation: addKinshipRelation, onChangeParent: changeParent, onClaimChildren: claimChildren, onDeleteRelation: deleteKinshipRelation, onEndMarriage: endMarriage, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: discoverTop.data.id }]), onMarkContact: (personId) => markContactNow(discoverTop.data.id, personId), onQuickSchedule: (personId) => { setPreselectedSchedulePersonId(personId); setShowAddSchedule(true); }, onOpenStats: () => setDiscoverStack([...discoverStack, { type: "stats", data: discoverTop.data }]), onAddRelativeTo: (gid, person, relKey, kinship, gender) => setGapAddPreset({
                 groupId: gid,
                 relatedToId: person.id,
                 relationType: relKey,

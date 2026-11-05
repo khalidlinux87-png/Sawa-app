@@ -35,6 +35,8 @@ function App() {
         // C193: نصٌّ على الخلفيّة الملوّنة الفاتحة (primaryLight). في الفاتح = primaryDark كما كان؛ في الداكن الخلفيّة داكنة فيصير فاتحاً — كان الحرف في صور المحادثات لا يُرى.
         primaryInk: isDark ? accent.accentTint : accent.accentDark,
         primaryLight: isDark ? base.primaryLight : accent.accentTint,
+        // C204: تعبئة الزرّ الثانويّ المحايد (إلغاء/رجوع…) — صلبٌ بلا حدّ رفيع. يُنشر ‎--sawa-btn-fill‎ لنوافذ sawa-chat أيضاً
+        btnFill: isDark ? "#2B323C" : "#E7ECF2",
         // تباين عالٍ: نص أسود/أبيض خالص + حدود أوضح، بدل الدرجات المتوسطة
         ...(highContrast
             ? { text: isDark ? "#FFFFFF" : "#000000", border: isDark ? "#5B6B7C" : "#8A93A0", textMuted: isDark ? "#DFE5EC" : "#3D4450" }

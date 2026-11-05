@@ -230,10 +230,65 @@ function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, 
         transcript && showTranscript && (React.createElement("p", { className: "text-xs mt-1", style: { color: mine ? "#fff" : colors.text } }, transcript))));
 }
 // ============================================================
+// ============================================================
+// C204: ChatMediaGallery — الوسائط والملفّات المشتركة (الخاصّة والمجموعة معاً)
+// ------------------------------------------------------------
+// كانت «معلومات المجموعة» تعرض العدد وحده («12 وسائط») بلا أيّ معرض. وفي الخاصّة: الملفّ بلا اسم (الاسم لم يعد
+// يُرسل نصّاً منذ C185) ولا يُفتح بالضغط، والوسائط السحابيّة غير المنزَّلة مربّعٌ رماديّ لا يتغيّر.
+// الآن: شبكة صورٍ وفيديو تُنزَّل مصغّراتها عند الحاجة (SawaChat.ensureMedia — أوّل ٣٠)، والضغط يفتح العارض
+// بملء الشاشة · قائمة ملفّاتٍ باسمها وحجمها وتاريخها، والضغط يفتحها (SawaChat.openFile: فتح · حفظ · مشاركة).
+// ============================================================
+function ChatMediaGallery({ messages = [] }) {
+    const { colors } = useTheme();
+    const [tab, setTab] = useState("media");
+    const [viewUrl, setViewUrl] = useState(null);
+    const [preview, setPreview] = useState(null);
+    const live = (messages || []).filter((m) => m && !m.deleted && !m.deletedForAll && !m.viewOnce);
+    const media = live.filter((m) => m.type === "image" || m.type === "video").slice().reverse();   // الأحدث أوّلاً
+    const files = live.filter((m) => m.type === "file").slice().reverse();
+    const urlOf = (m) => m.fileUrl || null;
+    useEffect(() => {
+        const SC = window.SawaChat;
+        if (!SC || !SC.ensureMedia) return;
+        media.slice(0, 30).forEach((m) => { if (!m.fileUrl && m.cloudMid && m.cloudCid) { try { SC.ensureMedia(m.cloudCid, m.cloudMid); } catch (e) { } } });
+    }, [media.length]);
+    const items = media.filter(urlOf).map((m) => ({ url: m.fileUrl, type: m.type, name: m.fileName || "" }));
+    const fileName = (m) => m.fileName || m.text || tl("ملفّ", "File");
+    const openFile = (m) => {
+        const SC = window.SawaChat;
+        if (m.cloudMid && SC && SC.openFile) { SC.openFile(m); return; }
+        if (m.fileUrl) setPreview({ url: m.fileUrl, name: fileName(m), mime: m.mime || "" });
+    };
+    const when = (ts) => { try { return new Date(ts).toLocaleDateString(loc(), { day: "numeric", month: "short" }); } catch (e) { return ""; } };
+    const size = (b) => !b ? "" : b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
+    return React.createElement("div", { "data-media-gallery": "1" },
+        React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-2` },
+            React.createElement(Chip, { label: tl("صور وفيديو (" + media.length + ")", "Photos & videos (" + media.length + ")"), active: tab === "media", onPress: () => setTab("media") }),
+            React.createElement(Chip, { label: tl("ملفّات (" + files.length + ")", "Files (" + files.length + ")"), active: tab === "files", onPress: () => setTab("files") })),
+        tab === "media"
+            ? (media.length === 0 ? React.createElement("p", { className: "text-xs text-center py-4", style: { color: colors.textMuted } }, tl("لا صور ولا فيديو بعد", "No photos or videos yet"))
+                : React.createElement("div", { className: "grid grid-cols-3 gap-1.5" }, media.map((m) => {
+                    const u = urlOf(m), thumb = u || m.thumb || null;
+                    return React.createElement("button", { key: m.id, "aria-label": m.type === "video" ? tl("فيديو", "Video") : tl("صورة", "Photo"), onClick: () => u ? setViewUrl(u) : (window.SawaChat && m.cloudMid && window.SawaChat.ensureMedia && window.SawaChat.ensureMedia(m.cloudCid, m.cloudMid)), className: "relative overflow-hidden rounded-lg", style: { aspectRatio: "1 / 1", backgroundColor: colors.border + "55" } },
+                        thumb ? (m.type === "video" && u ? React.createElement("video", { src: u, muted: true, preload: "metadata", className: "w-full h-full object-cover" }) : React.createElement("img", { src: thumb, alt: "", loading: "lazy", className: "w-full h-full object-cover" }))
+                            : React.createElement("div", { className: "w-full h-full flex flex-col items-center justify-center gap-1" }, React.createElement(m.type === "video" ? Video : Images, { size: 18, color: colors.textMuted }), React.createElement("span", { className: "text-[9px]", style: { color: colors.textMuted } }, tl("اضغط للتنزيل", "Tap to load"))),
+                        m.type === "video" && React.createElement("div", { className: "absolute inset-0 flex items-center justify-center", style: { backgroundColor: "rgba(0,0,0,0.25)" } }, React.createElement(Play, { size: 18, color: "#fff", fill: "#fff" })));
+                })))
+            : (files.length === 0 ? React.createElement("p", { className: "text-xs text-center py-4", style: { color: colors.textMuted } }, tl("لا ملفّات بعد", "No files yet"))
+                : React.createElement("div", null, files.map((m) => React.createElement("button", { key: m.id, onClick: () => openFile(m), className: `w-full flex ${rowStart()} items-center gap-3 px-3 py-2.5 rounded-xl mb-1.5`, style: { backgroundColor: colors.bg } },
+                    React.createElement("span", { className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary } }, React.createElement(FileIconLucide, { size: 17, color: "#fff" })),
+                    React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+                        React.createElement("div", { className: "text-[13px] font-bold truncate", dir: "auto", style: { color: colors.text } }, fileName(m)),
+                        React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted } }, [size(m.fileSize), when(m.createdAt), m.senderName].filter(Boolean).join(" · "))),
+                    React.createElement("span", { className: "text-[11px] font-extrabold shrink-0 rounded-full px-3 py-1.5", style: { backgroundColor: colors.primary, color: "#fff" } }, tl("فتح", "Open")))))),
+        viewUrl && React.createElement(MediaLightbox, { items, startIndex: Math.max(0, items.findIndex((it) => it.url === viewUrl)), onClose: () => setViewUrl(null) }),
+        preview && React.createElement(FilePreviewSheet, { file: preview, onClose: () => setPreview(null) }));
+}
+// ============================================================
 // GroupInfoScreen — معلومات المجموعة وإدارة الأعضاء
 // المشرف وحده يرى أزرار التعديل والترقية والإزالة.
 // ============================================================
-function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembers, onRemoveMember, onToggleAdmin, onLeave, onBack, contacts = null, onInviteLink = null, onUpdate = null }) {
+function GroupInfoScreen({ messages = [], onMessageMember = null, group, myUserId, mediaCount = 0, onRename, onAddMembers, onRemoveMember, onToggleAdmin, onLeave, onBack, contacts = null, onInviteLink = null, onUpdate = null }) {
     const { colors } = useTheme();
     const [editingName, setEditingName] = useState(false);
     const [nameDraft, setNameDraft] = useState(group.name);
@@ -301,13 +356,21 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
                         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.primary } }, t("gi_idafa")))),
                 group.members.map((m) => React.createElement("div", { key: m.id, className: `flex ${rowStart()} items-center gap-3 px-4 py-2.5` },
                     // C185: الصورة في أقصى اليسار (آخر عنصر في الصفّ) بدل أوّله
-                    React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
-                        React.createElement("div", { className: "text-sm truncate", style: { color: colors.text } }, m.name),
-                        m.role === "admin" && React.createElement("div", { className: "text-[10px] font-bold", style: { color: colors.accent } }, t("gi_mshrf"))),
+                    // C204: الضغط على العضو يفتح محادثةً خاصّة معه (وصورته تُعرض كبيرة)
+                    React.createElement("button", { "data-member-dm": m.uid || m.id, disabled: m.id === myUserId, onClick: () => onMessageMember && onMessageMember(m), "aria-label": m.id === myUserId ? m.name : tl("مراسلة " + m.name + " على الخاصّ", "Message " + m.name + " privately"), className: `flex-1 min-w-0 flex ${rowStart()} items-center gap-2 ${textStart()}` },
+                        React.createElement("div", { className: "flex-1 min-w-0" },
+                            React.createElement("div", { className: "text-sm font-bold truncate", style: { color: colors.text } }, m.name + (m.id === myUserId ? tl(" (أنت)", " (you)") : "")),
+                            React.createElement("div", { className: "text-[11px]", style: { color: m.role === "admin" ? colors.accent : colors.textMuted, fontWeight: m.role === "admin" ? 700 : 400 } }, m.role === "admin" ? t("gi_mshrf") : (m.id !== myUserId ? tl("اضغط للمراسلة على الخاصّ", "Tap to message privately") : ""))),
+                        m.id !== myUserId && React.createElement("span", { className: "w-8 h-8 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary } }, React.createElement(MessageCircle, { size: 15, color: "#fff" }))),
                     // المشرف لا يدير نفسه من هنا — الخروج له زر مستقل بالأسفل
                     isAdmin && !isFamily && m.id !== myUserId && React.createElement("button", { "aria-label": t("gi_khyarat"), onClick: () => setMemberMenu(m), className: "w-7 h-7 flex items-center justify-center shrink-0" },
                         React.createElement(MoreVertical, { size: 15, color: colors.textMuted })),
-                    React.createElement(Pic, { photo: m.photo || null, letter: (m.name || "?").charAt(0), size: 40, bg: colors.primaryLight, color: colors.primary })))),
+                    React.createElement("button", { "aria-label": tl("صورة ", "Photo of ") + m.name, onClick: () => m.photo ? setViewPhoto(m.photo) : (onMessageMember && m.id !== myUserId && onMessageMember(m)), className: "shrink-0 rounded-full" },
+                        React.createElement(Pic, { photo: m.photo || null, letter: (m.name || "?").charAt(0), size: 40, bg: colors.primaryLight, color: colors.primary }))))),
+            // C204: معرض الوسائط والملفّات
+            React.createElement("div", { className: "mt-3 px-4 py-3", style: { backgroundColor: colors.card } },
+                React.createElement("div", { className: `text-xs font-extrabold mb-2 ${textStart()}`, style: { color: colors.textMuted } }, tl("الوسائط والملفّات", "Media & files")),
+                React.createElement(ChatMediaGallery, { messages })),
             isFamily && React.createElement("p", { className: `text-[11px] px-4 py-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, t("c3_family_managed")),
             !isFamily && onUpdate && React.createElement("div", { className: "mt-3 px-4 py-3", style: { backgroundColor: colors.card } },
                 React.createElement("div", { className: `text-xs font-extrabold mb-1.5 ${textStart()}`, style: { color: colors.textMuted } }, t("c3_desc")),
@@ -370,7 +433,7 @@ function GroupInfoScreen({ group, myUserId, mediaCount = 0, onRename, onAddMembe
                         ? t("gi_almshrf_alwhyd")
                         : t("gi_ln_tslk")),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
-                    React.createElement("button", { onClick: () => setConfirmLeave(false), className: "flex-1 rounded-xl py-2.5 border", style: { borderColor: colors.border } },
+                    React.createElement("button", { onClick: () => setConfirmLeave(false), className: "flex-1 rounded-xl py-2.5", style: { backgroundColor: colors.btnFill } },
                         React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("gi_ilgha"))),
                     React.createElement("button", { onClick: () => { setConfirmLeave(false); onLeave(); }, className: "flex-1 rounded-xl py-2.5", style: { backgroundColor: colors.danger } },
                         React.createElement("span", { className: "text-xs font-bold", style: { color: "#fff" } }, t("gi_mghadra_btn"))))))));
@@ -448,7 +511,7 @@ function DailyReminderCard({ card, onClose, onFamily }) {
             // الأزرار
             React.createElement("div", { style: { display: "flex", gap: 10, padding: "14px 18px 18px" } },
                 React.createElement("button", { onClick: onFamily, className: "flex-1", style: { padding: "12px 8px", borderRadius: 14, background: "linear-gradient(135deg,#2774BA,#1E3A63)", color: "#fff", fontSize: 14, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 } }, React.createElement(Heart, { size: 16, "aria-hidden": true }), t("sla_alrhm")),
-                React.createElement("button", { onClick: share, "aria-label": tl("مشاركة", "Share"), style: { padding: "12px 16px", borderRadius: 14, backgroundColor: colors.bg, color: colors.text, fontSize: 14, fontWeight: 800, border: `1px solid ${colors.border}` } }, tl("مشاركة", "Share")))));
+                React.createElement("button", { onClick: share, "aria-label": tl("مشاركة", "Share"), style: { padding: "12px 16px", borderRadius: 14, backgroundColor: colors.btnFill, color: colors.text, fontSize: 14, fontWeight: 800 } }, tl("مشاركة", "Share")))));
 }
 // C107: ربط قريبٍ بحسابه في سوا — برمزه · من جهات اتّصالي · أو دعوةٌ لمن ليس في سوا (رابطٌ باسمه في الشجرة)
 function famLinkErr(m) {
@@ -682,6 +745,11 @@ function openUrl(u, e) {
 }
 // نصّ غنيّ: روابط + إشارات @ (في المجموعات)
 // C194: اتّجاه النصّ من أوّل حرفٍ قويّ (عربيّ ⇒ rtl، لاتينيّ ⇒ ltr) — كان الإيموجي يقفز يسار الجملة الإنجليزيّة
+// C204: نصّ الفقاعة كتلةٌ لا سطرٌ ضمنيّ (span): كان span بـ dir داخل فقاعةٍ تتبع لغة الواجهة، فتأخذ أسطر الرسالة
+//       الإنجليزيّة الملتفّة محاذاةَ الفقاعة العربيّة (تبدأ «من منتصف الشاشة»)، وتأخذ الفقرة العربيّة في رسالةٍ تبدأ
+//       بالإنجليزيّة اتّجاهاً لاتينيّاً (النقطة في الجهة الخطأ). unicode-bidi: plaintext ⇒ لكلّ فقرة (سطرٍ بعد Enter)
+//       اتّجاهُ أوّل حرفٍ قويّ فيها، وtext-align: start يحاذيها إلى بدايتها هي · pre-wrap يحفظ الأسطر · anywhere يكسر الروابط الطويلة.
+const BIDI_TEXT_STYLE = { display: "block", unicodeBidi: "plaintext", textAlign: "start", whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "normal" };
 function textDir(s, fb) { const m = /[A-Za-z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF]|[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.exec(String(s || "")); return m ? (/[A-Za-z\u00C0-\u04FF]/.test(m[0]) ? "ltr" : "rtl") : (fb || (isRTL() ? "rtl" : "ltr")); }
 // C227: تنسيق الرسائل كواتساب — *عريض* (بخطٍّ أكبر قليلاً) · _مائل_ · ~مشطوب~ · ```أحاديّ المسافة```
 //   العلامة تُفتح عند بداية النصّ أو بعد مسافة/علامة ترقيم، ولا يلي الفاتحةَ أو يسبق الخاتمةَ فراغ (حتّى لا يتنسّق «2 * 3 * 4»)
@@ -796,7 +864,7 @@ function useMessageWindow(messages, unread, showAll, scrollRef) {
 function OlderButton({ hidden, onMore }) {
     const { colors } = useTheme();
     return (React.createElement("div", { className: "flex justify-center mb-2" },
-        React.createElement("button", { onClick: () => onMore(), className: "text-[11px] font-bold px-3 py-1.5 rounded-full border", style: { borderColor: colors.border, backgroundColor: colors.card, color: colors.primary } }, tl("عرض الرسائل الأقدم (" + hidden.toLocaleString(loc()) + ")", "Show older messages (" + hidden + ")"))));
+        React.createElement("button", { onClick: () => onMore(), className: "text-[11px] font-bold px-3 py-1.5 rounded-full", style: { backgroundColor: colors.btnFill, color: colors.primary } }, tl("عرض الرسائل الأقدم (" + hidden.toLocaleString(loc()) + ")", "Show older messages (" + hidden + ")"))));
 }
 
 // موضع الفاصل: قبل أول رسالة غير مقروءة.
@@ -1714,11 +1782,11 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                                 React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: editingText, onChange: (e) => setEditingText(e.target.value), onKeyDown: (e) => { if (e.key === "Enter" && editingText.trim()) { e.preventDefault(); onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); } else if (e.key === "Escape") setEditingMessageId(null); }, className: "text-sm rounded px-2 py-1", style: { backgroundColor: mine ? "rgba(255,255,255,0.15)" : colors.bg, color: mine ? "#fff" : colors.text, border: `1px solid ${mine ? "#ffffff55" : colors.border}` }, autoFocus: true }),
                                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                                     React.createElement("button", { onClick: () => { onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); }, className: "text-[10px] font-bold", style: { color: mine ? "#fff" : colors.primary } }, t("hfz")),
-                                    React.createElement("button", { onClick: () => setEditingMessageId(null), className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, t("ilgha"))))) : (React.createElement("span", { className: "text-sm", dir: textDir(m.text), style: { color: mine ? "#fff" : colors.text } },
+                                    React.createElement("button", { onClick: () => setEditingMessageId(null), className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, t("ilgha"))))) : (React.createElement("span", { className: "text-sm", "data-bubble-text": "1", dir: textDir(m.text), style: Object.assign({ color: mine ? "#fff" : colors.text }, BIDI_TEXT_STYLE) },
                                 renderRichText(m.text, { mine, colors }),
                                 m.edited && React.createElement("span", { className: "text-[10px] opacity-70" }, t("ch_madla")),
                                 (!m.type || m.type === "text") && urlsIn(m.text).length ? React.createElement(LinkCard, { text: m.text, mine }) : null)),
-                                (["image", "video", "file"].includes(m.type) && m.extra && m.extra.cap && !m.viewOnce && !m.deleted) ? React.createElement("p", { className: "text-sm rounded-xl px-3 py-2 mt-1 whitespace-pre-wrap break-words", style: { backgroundColor: mine ? myBubbleColor : colors.card, color: mine ? "#fff" : colors.text, direction: textDir(m.extra.cap), maxWidth: 320 } }, m.extra.cap) : null, React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 justify-end`, style: { marginTop: 2, marginBottom: -2 } }, mine && m.status && (React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : m.status === "pending" ? t("c2_pending") : m.status === "failed" ? t("c2_failed") : t("ch_tm_alirsal") }, m.status === "pending" ? (m.uploadPct != null ? React.createElement("span", { className: "text-[10px] font-bold", style: { color: onTint ? "rgba(255,255,255,0.9)" : colors.textMuted } }, "⏫ " + m.uploadPct + "%") : React.createElement(Clock, { size: 11, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted })) : m.status === "failed" ? React.createElement("button", { onClick: (e) => { e.stopPropagation(); if (window.SawaChat && window.SawaChat.failedSheet) window.SawaChat.failedSheet(m.id); }, className: "inline-flex items-center gap-1", style: { color: colors.danger, fontSize: 10, fontWeight: 700 } }, React.createElement(AlertCircle, { size: 12, color: colors.danger }), tl("لم تُرسل · اضغط", "Not sent · tap")) : m.status === "sent" ? React.createElement(Check, { size: 12, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted }) : React.createElement(CheckCheck, { size: 12, color: m.status === "read" ? (onTint ? "#BFE0F5" : colors.primary) : (onTint ? "rgba(255,255,255,0.85)" : colors.textMuted) }))), React.createElement("span", { className: "text-[10px]", style: { color: onTint ? "rgba(255,255,255,0.75)" : colors.textMuted } }, m.time || (m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "numeric", minute: "2-digit" }) : "")))),
+                                (["image", "video", "file"].includes(m.type) && m.extra && m.extra.cap && !m.viewOnce && !m.deleted) ? React.createElement("p", { className: "text-sm rounded-xl px-3 py-2 mt-1", dir: "auto", style: { ...BIDI_TEXT_STYLE,  backgroundColor: mine ? myBubbleColor : colors.card, color: mine ? "#fff" : colors.text, direction: textDir(m.extra.cap), maxWidth: 320 } }, m.extra.cap) : null, React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 justify-end`, style: { marginTop: 2, marginBottom: -2 } }, mine && m.status && (React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : m.status === "pending" ? t("c2_pending") : m.status === "failed" ? t("c2_failed") : t("ch_tm_alirsal") }, m.status === "pending" ? (m.uploadPct != null ? React.createElement("span", { className: "text-[10px] font-bold", style: { color: onTint ? "rgba(255,255,255,0.9)" : colors.textMuted } }, "⏫ " + m.uploadPct + "%") : React.createElement(Clock, { size: 11, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted })) : m.status === "failed" ? React.createElement("button", { onClick: (e) => { e.stopPropagation(); if (window.SawaChat && window.SawaChat.failedSheet) window.SawaChat.failedSheet(m.id); }, className: "inline-flex items-center gap-1", style: { color: colors.danger, fontSize: 10, fontWeight: 700 } }, React.createElement(AlertCircle, { size: 12, color: colors.danger }), tl("لم تُرسل · اضغط", "Not sent · tap")) : m.status === "sent" ? React.createElement(Check, { size: 12, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted }) : React.createElement(CheckCheck, { size: 12, color: m.status === "read" ? (onTint ? "#BFE0F5" : colors.primary) : (onTint ? "rgba(255,255,255,0.85)" : colors.textMuted) }))), React.createElement("span", { className: "text-[10px]", style: { color: onTint ? "rgba(255,255,255,0.75)" : colors.textMuted } }, m.time || (m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "numeric", minute: "2-digit" }) : "")))),
                         m.reaction && React.createElement(ReactionChip, { m, colors, nameOf: () => conversation.name, onSet: (e) => onReact(m.id, e) }))));
                 }),
                 // C147: «يكتب…» في جهة الطرف الآخر (حيث تظهر رسائله) في اللغتين — كانت items-end فتنقلب في الإنجليزيّة
@@ -2512,6 +2580,12 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
             group: group,
             myUserId: myUserId,
             mediaCount: (messages || []).filter((m) => m.type === "image" || m.type === "video").length,
+            messages: messages,
+            onMessageMember: (m) => {
+                const uid = m.uid || (group.cloud ? m.id : null);
+                if (uid && window.__sawaFamContact) { setShowGroupInfo(false); window.__sawaFamContact(uid, m.name, "msg"); }
+                else showToast(tl("«" + m.name + "» ليس على سوا بعد — لا يمكن مراسلته على الخاصّ", m.name + " isn't on Sawa yet"), "info");
+            },
             onRename: (n) => onRenameGroup && onRenameGroup(group.id, n),
             onAddMembers: (names) => onAddGroupMembers && onAddGroupMembers(group.id, names),
             contacts: contacts, onInviteLink: onInviteLink ? () => onInviteLink(group.id) : null,
@@ -2722,11 +2796,11 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                     React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: editingText, onChange: (e) => setEditingText(e.target.value), onKeyDown: (e) => { if (e.key === "Enter" && editingText.trim()) { e.preventDefault(); onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); } else if (e.key === "Escape") setEditingMessageId(null); }, className: "text-sm rounded px-2 py-1", style: { backgroundColor: mine ? "rgba(255,255,255,0.15)" : colors.bg, color: mine ? "#fff" : colors.text, border: `1px solid ${mine ? "#ffffff55" : colors.border}` }, autoFocus: true }),
                     React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                         React.createElement("button", { onClick: () => { onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); }, className: "text-[10px] font-bold", style: { color: mine ? "#fff" : colors.primary } }, t("hfz")),
-                        React.createElement("button", { onClick: () => setEditingMessageId(null), className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, t("ilgha"))))) : (React.createElement("span", { className: "text-sm", dir: textDir(m.text), style: { color: mine ? "#fff" : colors.text } },
+                        React.createElement("button", { onClick: () => setEditingMessageId(null), className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, t("ilgha"))))) : (React.createElement("span", { className: "text-sm", "data-bubble-text": "1", dir: textDir(m.text), style: Object.assign({ color: mine ? "#fff" : colors.text }, BIDI_TEXT_STYLE) },
                     renderMessageText(m.text, mine),
                     m.edited && React.createElement("span", { className: "text-[10px] opacity-70" }, t("gc_madla")),
                     m.type === "text" && urlsIn(m.text).length ? React.createElement(LinkCard, { text: m.text, mine }) : null)),
-                    (["image", "video", "file"].includes(m.type) && m.extra && m.extra.cap && !m.deleted) ? React.createElement("p", { className: "text-sm rounded-xl px-3 py-2 mt-1 whitespace-pre-wrap break-words", style: { backgroundColor: mine ? colors.primary : colors.card, color: mine ? "#fff" : colors.text, direction: textDir(m.extra.cap), maxWidth: 320 } }, m.extra.cap) : null),
+                    (["image", "video", "file"].includes(m.type) && m.extra && m.extra.cap && !m.deleted) ? React.createElement("p", { className: "text-sm rounded-xl px-3 py-2 mt-1", dir: "auto", style: { ...BIDI_TEXT_STYLE,  backgroundColor: mine ? colors.primary : colors.card, color: mine ? "#fff" : colors.text, direction: textDir(m.extra.cap), maxWidth: 320 } }, m.extra.cap) : null),
                 // التوجيه والتعديل في قائمة الضغط المطوّل — إظهارهما تحت كل
                 // رسالة يزدحم ويكرّر ما هو متاح أصلاً. الوقت مكانهما كما في الخاص.
                 React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-0.5` },
@@ -2866,7 +2940,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                         ":",
                         vcSecs)),
                 React.createElement("button", { onClick: endVoiceChatForAll, className: "w-full py-2.5 rounded-xl text-sm font-extrabold text-white mb-2", style: { backgroundColor: colors.danger } }, t("inha_lljmya")),
-                React.createElement("button", { onClick: () => setConfirmEndAll(false), className: "w-full py-2.5 rounded-xl text-sm font-bold", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}`, color: colors.textMuted } }, t("ilgha"))))),
+                React.createElement("button", { onClick: () => setConfirmEndAll(false), className: "w-full py-2.5 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, t("ilgha"))))),
         group.e2e ? React.createElement(E2eBar, { e2e: group.e2e }) : null,
         (group.e2e && group.e2e.state !== "ready") ? null : React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 p-2 border-t relative`, style: { borderColor: colors.border, backgroundColor: colors.card } },
             React.createElement("input", { ref: mediaInputRef, type: "file", accept: "image/*,video/*", multiple: true, onChange: (e) => {

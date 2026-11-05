@@ -390,7 +390,7 @@ function FamilyActivityLogScreen({ groupId, activityLog, onBack, undoIds = [], o
                             tl("يُلغى هذا التعديل و" + i + " تعديلاً جاء بعده. متابعة؟", "This edit and the " + i + " after it will be undone. Continue?")),
                         React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                             React.createElement("button", { onClick: () => { setConfirmId(null); onUndo(a.id); }, className: "flex-1 rounded-xl py-1.5 text-[11px] font-extrabold text-white", style: { backgroundColor: colors.primary } }, tl("نعم، تراجع", "Yes, undo")),
-                            React.createElement("button", { onClick: () => setConfirmId(null), className: "flex-1 rounded-xl py-1.5 text-[11px] font-bold", style: { backgroundColor: colors.card, color: colors.text, border: `1px solid ${colors.border}` } }, t("ilgha")))));
+                            React.createElement("button", { onClick: () => setConfirmId(null), className: "flex-1 rounded-xl py-1.5 text-[11px] font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, t("ilgha")))));
             }))));
 }
 // C109: المرحلة 4 — اقتراحات الربط بالأرقام الموثَّقة + ربط عضوٍ بشخصه من شاشة الأعضاء
@@ -994,7 +994,8 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
         || (presetKinship && KINSHIP_GENDER_DEFAULTS[presetKinship])
         || (presetRelationType && KINSHIP_GENDER_DEFAULTS[KINSHIP_FOR_PRESET[presetRelationType]])
         || null);   // C203: كان «ذكر» افتراضاً صامتاً — كلّ من لم تُحدِّد صلتُه جنسَه يُحفظ ذكراً. الآن يُختار إلزاماً.
-    const [dupAck, setDupAck] = useState(false);   // C203: «شخصٌ آخر بالاسم نفسه» — إقرارٌ قبل الحفظ
+    const [dupAck, setDupAck] = useState(false);
+    const [sibHalf, setSibHalf] = useState("");   // C204: نوع الأخوّة عند الإضافة — "" شقيق · father لأب · mother لأم   // C203: «شخصٌ آخر بالاسم نفسه» — إقرارٌ قبل الحفظ
     const [phone, setPhone] = useState(((_a = person === null || person === void 0 ? void 0 : person.contacts) === null || _a === void 0 ? void 0 : _a.phone) || "");
     const [birthday, setBirthday] = useState((person === null || person === void 0 ? void 0 : person.birthday) || "");
     const [birthYear, setBirthYear] = useState((person === null || person === void 0 ? void 0 : person.birthYear) || "");
@@ -1092,7 +1093,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
             locations: home && geoValid(Number(home.lat), Number(home.lng)) ? [{ type: "home", lat: Number(home.lat), lng: Number(home.lng), radius_meters: Number(home.radius_meters) > 0 ? Number(home.radius_meters) : 0, address_text: String(home.address_text || "").slice(0, 120) }] : [],
             alive: !isDeceased,
             death_date: isDeceased ? (deathDate || null) : null,
-            relation: !isEdit && linkEnabled && relatedToId ? { relatedToId, relationType } : null,
+            relation: !isEdit && linkEnabled && relatedToId ? Object.assign({ relatedToId, relationType }, relationType === "sibling" && sibHalf ? { half: sibHalf } : {}) : null,
             linkedTo: crossLinkEnabled && crossLinkGroupId && crossLinkPersonId ? { groupId: crossLinkGroupId, personId: crossLinkPersonId } : null,
         });
         onClose();
@@ -1325,6 +1326,13 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                         // التمييز إلى «الاسم (الصلة)» — أصدقُ من اختلاق نسبٍ لا نملكه
                         relations: [], value: crossLinkPersonId, onChange: setCrossLinkPersonId, maxHeight: 200 })) : (React.createElement("p", { className: "text-[11px]", style: { color: colors.textMuted } }, t("la_ywjd_ashkhas_bhdhh"))),
                     React.createElement("p", { className: "text-[10px] mt-1", style: { color: colors.primary } }, t("rqm_alhatf_wtarykh_almylad")))))),
+            linking && relationType === "sibling" && React.createElement("div", { className: "mb-3", "data-sib-half": "1" },
+                React.createElement("label", { className: `text-[11.5px] font-bold mb-1.5 block ${textStart()}`, style: { color: colors.textMuted } }, tl("نوع الأخوّة", "Sibling type")),
+                React.createElement(FamSeg, { value: sibHalf, onChange: setSibHalf, options: [
+                        { k: "", l: gender === "female" ? tl("شقيقة", "Full") : tl("شقيق", "Full") },
+                        { k: "father", l: tl("لأب", "Same father") },
+                        { k: "mother", l: tl("لأم", "Same mother") }] }),
+                React.createElement("p", { className: `text-[10.5px] mt-1 ${textStart()}`, style: { color: colors.textMuted } }, sibHalf === "father" ? tl("يشاركه الأب وحده — يرث أباه لا أمّه", "Shares the father only") : sibHalf === "mother" ? tl("يشاركه الأم وحدها — يرث أمّه لا أباه", "Shares the mother only") : tl("يشاركه الأب والأم — يرث والديه كليهما", "Shares both parents"))),
             linking && React.createElement(RelationContextCard, { names: [localName.trim()].filter(Boolean), gender: gender, anchor: relatedP, relKey: relationType, persons: existingPersons, relations: relations, error: marriageErr }),
             isEdit && marriageErr && React.createElement("p", { role: "alert", className: `text-[11.5px] font-extrabold mb-2 ${textStart()}`, style: { color: colors.danger } }, "⛔ " + marriageErr),
             blockers.length > 0 && React.createElement("p", { className: `text-[10.5px] mb-2 ${textStart()}`, style: { color: colors.textMuted } }, tl("قبل الحفظ: ", "Before saving: ") + blockers.join(tl(" · ", " · "))),
@@ -1334,7 +1342,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                     React.createElement("button", { onClick: () => { onDelete(); onClose(); }, className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.danger } },
                         React.createElement("span", { className: "text-xs font-bold text-white" }, t("nam_ahdhf"))),
-                    React.createElement("button", { onClick: () => setConfirmDelete(false), className: "flex-1 rounded-xl py-2 border", style: { borderColor: colors.border } },
+                    React.createElement("button", { onClick: () => setConfirmDelete(false), className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.btnFill } },
                         React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("ilgha")))))))))));
 }
 // ⛔ الرقاقة تصلح لثلاثة خيارات لا لاثنين وعشرين. ولاثنين وعشرين شخصاً
@@ -2111,7 +2119,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                     React.createElement(MoreVertical, { size: 22, color: showNewMenu ? "#fff" : colors.textMuted })),
                 React.createElement("button", { "aria-label": showSearch ? tl("إغلاق البحث", "Close search") : tl("بحث", "Search"), "aria-expanded": showSearch, onClick: () => { const nv = !showSearch; setShowSearch(nv); if (!nv) setSearchQuery(""); }, className: "w-10 h-10 rounded-full flex items-center justify-center border", style: { borderColor: showSearch ? colors.primary : colors.border, backgroundColor: showSearch ? colors.primaryLight : "transparent" } },
                     React.createElement(Search, { size: 20, color: showSearch ? colors.primary : colors.textMuted })),
-                lockedCount > 0 && (React.createElement("button", { "aria-label": t("qfl"), onClick: onOpenLockedChats, className: "w-10 h-10 rounded-full flex items-center justify-center border relative", style: { borderColor: colors.border } },
+                lockedCount > 0 && (React.createElement("button", { "aria-label": t("qfl"), onClick: onOpenLockedChats, className: "w-10 h-10 rounded-full flex items-center justify-center relative", style: { backgroundColor: colors.btnFill } },
                     React.createElement(Lock, { size: 18, color: colors.textMuted }),
                     React.createElement("span", { className: "absolute -top-1 -left-1 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-bold text-white", style: { backgroundColor: colors.primary } }, lockedCount)))),
             React.createElement("div", { style: { flex: 1, display: "flex", justifyContent: "center" } }),
@@ -2708,7 +2716,7 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                 (() => { const ph = conversation.photo || (conversation.peerUid && window.SawaChat && window.SawaChat.photoOf ? window.SawaChat.photoOf(conversation.peerUid) : null);
                     return React.createElement("button", { "aria-label": tl("الصورة", "Photo"), onClick: () => ph && setViewPhoto(ph), className: "mb-2", style: { cursor: ph ? "pointer" : "default" } },
                         React.createElement(Pic, { photo: ph, letter: conversation.isSavedMessages ? null : ((conversation.name || "?").trim().charAt(0) || "?"), size: 96, bg: colors.primaryLight, color: colors.primaryInk }, !ph && conversation.isSavedMessages ? React.createElement(Bookmark, { size: 36, color: colors.primaryInk }) : null)); })(),
-                viewPhoto && React.createElement(PhotoViewer, { photo: viewPhoto, onClose: () => setViewPhoto(null) }),
+                viewPhoto && React.createElement(PhotoViewer, { photo: viewPhoto, title: conversation.name, hdId: conversation.peerUid || null, onClose: () => setViewPhoto(null) }),
                 React.createElement("span", { className: "text-lg font-extrabold", style: { color: colors.text } }, conversation.name),
                 React.createElement("span", { className: "text-[11px] mt-1", style: { color: colors.textMuted } }, t("mhadtha_mshfra_mn_trf"))),
             React.createElement("div", { className: "p-4" },
@@ -2754,25 +2762,8 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                     tl(" \u0627\u0644\u0648\u0633\u0627\u0626\u0637 \u0627\u0644\u0645\u0634\u062A\u0631\u0643\u0629 (", " Shared media ("),
                     totalMediaCount,
                     ")"),
-                totalMediaCount === 0 ? (React.createElement(Card, { className: "mb-3" },
-                    React.createElement("p", { className: "text-xs text-center", style: { color: colors.textMuted } }, t("la_twjd_wsayt_mshtrka")))) : (React.createElement(React.Fragment, null,
-                    React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-2` },
-                        React.createElement(Chip, { label: t("swr_wfydyw", { length: mediaMessages.length }), active: mediaTab === "media", onPress: () => setMediaTab("media") }),
-                        React.createElement(Chip, { label: t("mlfat", { length: fileMessages.length }), active: mediaTab === "files", onPress: () => setMediaTab("files") })),
-                    mediaTab === "media" ? (mediaMessages.length === 0 ? (React.createElement(Card, { className: "mb-3" },
-                        React.createElement("p", { className: "text-xs text-center", style: { color: colors.textMuted } }, t("ma_fyh_swr_aw")))) : (React.createElement("div", { className: "grid grid-cols-3 gap-1.5 mb-3" }, mediaMessages.map((m) => (React.createElement("button", { key: m.id, onClick: () => setViewingMediaUrl(m.fileUrl), className: "aspect-square rounded-lg overflow-hidden relative", style: { backgroundColor: colors.card } }, m.type === "video" ? (React.createElement(React.Fragment, null,
-                        m.fileUrl ? React.createElement("video", { src: m.fileUrl, className: "w-full h-full object-cover" }) : (React.createElement("div", { className: "w-full h-full flex items-center justify-center", style: { backgroundColor: colors.border + "44" } },
-                            React.createElement(Video, { size: 16, color: colors.textMuted }))),
-                        React.createElement("div", { className: "absolute inset-0 flex items-center justify-center", style: { backgroundColor: "rgba(0,0,0,0.25)" } },
-                            React.createElement(Play, { size: 16, color: "#fff", fill: "#fff" })))) : m.fileUrl ? (React.createElement("img", { src: m.fileUrl, alt: m.text, className: "w-full h-full object-cover" })) : (React.createElement("div", { className: "w-full h-full flex items-center justify-center", style: { backgroundColor: colors.border + "44" } },
-                        React.createElement(Images, { size: 16, color: colors.textMuted }))))))))) : (fileMessages.length === 0 ? (React.createElement(Card, { className: "mb-3" },
-                        React.createElement("p", { className: "text-xs text-center", style: { color: colors.textMuted } }, t("ma_fyh_mlfat_mshtrka")))) : (React.createElement("div", { className: "mb-3" }, fileMessages.map((m) => (React.createElement(Card, { key: m.id, className: `flex ${rowStart()} items-center mb-1.5` },
-                        React.createElement(FileIconLucide, { size: 16, color: colors.primary }),
-                        React.createElement("div", { className: `flex-1 ${me("2")}` },
-                            React.createElement("div", { className: "text-xs font-bold", style: { color: colors.text } }, m.text),
-                            React.createElement("div", { className: "text-[10px]", style: { color: colors.textMuted } },
-                                (m.fileSize / 1024).toFixed(0),
-                                tl(" \u0643\u064A\u0644\u0648\u0628\u0627\u064A\u062A", " KB"))))))))))),
+                // C204: المعرض المشترك — الملفّ باسمه ويُفتح بالضغط، والوسائط السحابيّة تُنزَّل عند الحاجة
+                React.createElement(Card, { className: "mb-3" }, React.createElement(ChatMediaGallery, { messages })),
                 SHOW_E2E_UI && React.createElement("h4", { className: `text-xs font-extrabold mb-2 flex ${rowStart()} items-center gap-1.5`, style: { color: colors.text } },
                     React.createElement(ShieldCheck, { size: 13, color: colors.primary }),
                     t("altshfyr")),
@@ -2840,7 +2831,7 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                     React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                         React.createElement("button", { onClick: () => { onBlock(); setConfirmingBlock(false); }, className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.danger } },
                             React.createElement("span", { className: "text-xs font-bold text-white" }, t("nam_ahzr"))),
-                        React.createElement("button", { onClick: () => setConfirmingBlock(false), className: "flex-1 rounded-xl py-2 border", style: { borderColor: colors.border } },
+                        React.createElement("button", { onClick: () => setConfirmingBlock(false), className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.btnFill } },
                             React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("ilgha")))))),
                 !reported ? (React.createElement("button", { onClick: () => { onReport(() => setReported(true)); }, className: `w-full flex ${rowStart()} items-center justify-center gap-2 rounded-xl p-3 border mt-2`, style: { borderColor: colors.danger, backgroundColor: colors.card } },
                     React.createElement(Flag, { size: 15, color: colors.danger }),
