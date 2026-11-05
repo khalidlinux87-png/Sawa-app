@@ -290,8 +290,33 @@ server.listen(0, "127.0.0.1", async () => {
     const lst = await page.evaluate(() => ({ more: !!document.querySelector("[data-fam-more]"), oldTools: [...document.querySelectorAll("button")].some((b) => /^By lineage$|^Select$/.test((b.innerText || "").trim())) }));
     check(lst.more && !lst.oldTools, "قائمة الأقارب: «More» بدل صفّ الأدوات", lst);
 
+    // ── C205: واجهة «تركيز» — أربعة أجداد وستّة إخوة أعرض من الشاشة: كلّ بطاقةٍ تُسحب إلى وسط اللوحة، والمختار ظاهرٌ عند الفتح ──
+    {
+      const fs2 = require("./focus-seed.js");
+      const ctx2 = await browser.newContext({ viewport: { width: 360, height: 800 }, serviceWorkers: "block" });
+      await ctx2.route(/^https?:\/\/(?!127\.0\.0\.1)/, (r) => { const f = cdn(r.request().url()); return f && fs.existsSync(f) ? r.fulfill({ path: f, contentType: "application/javascript" }) : r.abort(); });
+      await ctx2.addInitScript((sd) => { try { localStorage.setItem("sawa_onboarded", String(Date.now())); localStorage.setItem("sawaLang", "en"); localStorage.setItem("sawa:groupPersons", JSON.stringify({ "g-1": sd.persons })); localStorage.setItem("sawa:kinshipRelations", JSON.stringify(sd.relations)); } catch (e) {} }, fs2);
+      const pg2 = await ctx2.newPage();
+      pg2.on("pageerror", (e) => errors.push(e.message));
+      await pg2.goto(base, { waitUntil: "load" }); await pg2.waitForFunction(() => !!window.SawaApp); await pg2.waitForTimeout(1000);
+      const c2 = (re) => pg2.evaluate((src) => { const r = new RegExp(src); const b = [...document.querySelectorAll("button")].find((x) => r.test((x.innerText || "").trim())); if (b) b.click(); return !!b; }, re);
+      await c2("^Explore$"); await pg2.waitForTimeout(500); await c2("^Silat Rehim"); await pg2.waitForTimeout(600); await c2("عائلتي"); await pg2.waitForTimeout(600); await c2("^Tree$"); await pg2.waitForTimeout(900);
+      const fv = await pg2.evaluate((names) => {
+        const v = document.querySelector("[data-focus-canvas]"); if (!v) return null;
+        const vr = v.getBoundingClientRect(), bad = [];
+        names.forEach((nm) => { const w = document.createTreeWalker(v, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) if (n.nodeValue.trim() === nm) {
+          const r = n.parentElement.getBoundingClientRect(), cx = r.left + r.width / 2 - vr.left + v.scrollLeft, cy = r.top + r.height / 2 - vr.top + v.scrollTop;
+          if (!(cx >= v.clientWidth / 2 - 1 && cx <= v.scrollWidth - v.clientWidth / 2 + 1 && cy >= v.clientHeight / 2 - 1 && cy <= v.scrollHeight - v.clientHeight / 2 + 1)) bad.push(nm); } });
+        const c = v.querySelector("[data-focus-center]").getBoundingClientRect();
+        return { bad, focusIn: c.left >= vr.left && c.right <= vr.right && c.top >= vr.top && c.bottom <= vr.bottom, wide: v.scrollWidth > v.clientWidth * 2 };
+      }, ["ابوالحسن", "زينب", "احمد", "فاطمة", "محمد", "سعاد", "إبتهال", "أسماء", "إيمان", "عمر", "خديجة", "يوسف"]);
+      check(fv && fv.bad.length === 0, "تركيز: كلّ الأجداد والإخوة يُسحبون إلى وسط اللوحة (لا قصّ عند الأطراف)", fv);
+      check(fv && fv.focusIn, "تركيز: المختار ظاهرٌ كاملاً عند الفتح", fv);
+      await ctx2.close();
+    }
+
     if (errors.length) { failN++; console.error("✗ استثناءات في الصفحة:\n  " + errors.join("\n  ")); }
-    console.log((failN ? "✗" : "✓") + " family C203+C204: " + pass + " passed, " + failN + " failed");
+    console.log((failN ? "✗" : "✓") + " family C203–C205: " + pass + " passed, " + failN + " failed");
     process.exitCode = failN ? 1 : 0;
   } finally { await browser.close(); server.close(); }
 });
