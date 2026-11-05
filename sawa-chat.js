@@ -1800,7 +1800,7 @@
   function prepareVideo(blob) {
     return new Promise(function (res) {
       var url = URL.createObjectURL(blob), v = document.createElement("video"), done = false;
-      var finish = function (th, dur, w, h) { if (done) return; done = true; URL.revokeObjectURL(url); res({ blob: blob, thumb: th, duration: dur, w: w, h: h }); };
+      var finish = function (th, dur, w, h) { if (done) return; done = true; URL.revokeObjectURL(url); res({ blob: blob, thumb: th, duration: (isFinite(dur) && dur > 0) ? dur : null, w: w, h: h }); };   // WebM المسجَّل لا مدّة له (Infinity) ⇒ null };
       v.muted = true; v.playsInline = true; v.preload = "metadata";
       v.onloadeddata = function () { try { v.currentTime = Math.min(0.2, (v.duration || 1) / 2); } catch (e) { finish(null, v.duration, v.videoWidth, v.videoHeight); } };
       v.onseeked = function () { var th = null; try { th = smallThumb(v, v.videoWidth, v.videoHeight); } catch (e) {} finish(th, v.duration, v.videoWidth, v.videoHeight); };
@@ -1852,7 +1852,7 @@
     v.src = url; v.playsInline = true; v.muted = true; v.preload = "auto";
     v.style.cssText = "max-width:100%;max-height:52vh;border-radius:12px;background:#000";
     var info = document.createElement("div"); info.style.cssText = "text-align:center;line-height:1.6;min-height:2.6em";
-    var mkRange = function () { var r = document.createElement("input"); r.type = "range"; r.min = "0"; r.step = "0.1"; r.style.cssText = "width:100%"; return r; };
+    var mkRange = function () { var r = document.createElement("input"); r.type = "range"; r.min = "0"; r.step = "0.01"; r.style.cssText = "width:100%"; return r; };
     var sS = mkRange(), sE = mkRange();
     var rows = document.createElement("div"); rows.style.cssText = "width:min(560px,100%);display:flex;flex-direction:column;gap:10px";
     var bar = document.createElement("div"); bar.style.cssText = "display:flex;gap:10px;justify-content:center";
@@ -1885,17 +1885,23 @@
       v.currentTime = +sE.value; paint();
     };
     v.ontimeupdate = function () { if (!v.paused && v.currentTime >= +sE.value) v.currentTime = +sS.value; };
-    v.onloadedmetadata = function () {
+    function setup() {
       total = v.duration || 0;
       if (!isFinite(total) || total <= 0) { toast(L("تعذّر قراءة الفيديو", "Couldn't read the video")); close(); return; }
       sS.max = sE.max = total; sS.value = 0; sE.value = Math.min(total, MOMENT_MAX_VIDEO_SEC);
       paint();
+    }
+    v.onloadedmetadata = function () {
+      if (isFinite(v.duration) && v.duration > 0) return setup();
+      // WebM المسجَّل لا يحمل مدّة: نقفز إلى آخره فيعرف المتصفّح طولَه، ثم نعود للبداية
+      v.ondurationchange = function () { if (isFinite(v.duration) && v.duration > 0) { v.ondurationchange = null; try { v.currentTime = 0; } catch (e) {} setup(); } };
+      try { v.currentTime = 1e101; } catch (e) {}
     };
     v.onerror = function () { toast(L("تعذّر قراءة الفيديو", "Couldn't read the video")); close(); };
     cancel.onclick = function () { if (!busy) close(); };
     go.onclick = function () {
       if (busy) return;
-      var st = cur(), whole = st.s < 0.05 && st.e > total - 0.05;
+      var st = cur(), whole = st.s < 0.05 && st.e > total - 0.2;
       if (whole && st.len <= MOMENT_MAX_VIDEO_SEC + 0.05 && file.size <= MAX_MEDIA - 64) { close(); onDone(file); return; }
       busy = true; paint(L("جارٍ القصّ… انتظر لحظة", "Trimming… please wait"));
       trimVideoTo(v, st.s, st.len, MAX_MEDIA - 64).then(function (out) {
@@ -3377,7 +3383,7 @@
         }
         if (video && f.size > MAX_MEDIA - 64) { trimThenTake(f); return; }
         (video ? prepareVideo(f) : prepareImage(f)).then(function (r) {
-          if (video && r.duration && r.duration > MOMENT_MAX_VIDEO_SEC + 1) { trimThenTake(f); return; }
+          if (video && (!r.duration || r.duration > MOMENT_MAX_VIDEO_SEC + 1)) { trimThenTake(f); return; }   // مدّة مجهولة ⇒ يُقصّ (المحرّر يحسبها)
           take(r, f);
         }).catch(function () { toast(L("تعذّر قراءة الملفّ", "Couldn't read the file")); });
       });
@@ -3480,12 +3486,20 @@
     fi.onchange = function () {
       var f = fi.files && fi.files[0]; fi.value = ""; if (!f) return;
       var video = /^video\//.test(f.type);
-      if (f.size > MAX_MEDIA - 64 && !/^image\//.test(f.type)) { toast(L("الحدّ 16 ميجابايت", "Limit is 16 MB")); return; }
-      (video ? prepareVideo(f) : prepareImage(f)).then(function (r) {
-        if (video && r.duration && r.duration > 31) { toast(L("الفيديو أطول من 30 ثانية — قصّه أوّلاً", "Video is longer than 30 s — trim it first")); return; }
+      // القصّة كاللحظة: الفيديو حتى دقيقتين، والزائد أو الكبير يُفتح له القصّ بدل الرفض
+      function take(r, src) {
         if (picked && picked.url) URL.revokeObjectURL(picked.url);
-        var b = r.blob || f; picked = { blob: b, video: video, url: URL.createObjectURL(b), thumb: r.thumb || null, w: r.w || null, h: r.h || null, dur: r.duration || null };
+        var b = r.blob || src; picked = { blob: b, video: video, url: URL.createObjectURL(b), thumb: r.thumb || null, w: r.w || null, h: r.h || null, dur: r.duration || null };
         mode = "media"; paint();
+      }
+      function trimThenTake(src) {
+        openMomentTrimmer(src, function (out) { prepareVideo(out).then(function (r2) { take(r2, out); }); });
+      }
+      if (video && f.size > MAX_MEDIA - 64) { trimThenTake(f); return; }
+      if (!video && f.size > MAX_MEDIA - 64) { toast(L("الحدّ 16 ميجابايت", "Limit is 16 MB")); return; }
+      (video ? prepareVideo(f) : prepareImage(f)).then(function (r) {
+        if (video && (!r.duration || r.duration > MOMENT_MAX_VIDEO_SEC + 1)) { trimThenTake(f); return; }   // مدّة مجهولة ⇒ يُقصّ (المحرّر يحسبها)
+        take(r, f);
       }).catch(function () { toast(L("تعذّر قراءة الملفّ", "Couldn't read the file")); });
     };
     post.onclick = function () {
