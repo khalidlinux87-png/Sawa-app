@@ -211,6 +211,9 @@ function FamilySuggestionsScreen({ groupId, persons, relations, events, dismisse
             return false;
         if (g.kind === "marriage" && p.neverMarried)
             return false;
+        // «لم يتزوّج» ⇒ لا أبناء له ولا زوج: تُتخطّى أسئلتهم كلّها (المواصفة ②)
+        if (g.kind === "children" && p.neverMarried)
+            return false;
         return true;
     });
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },

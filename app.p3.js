@@ -2074,6 +2074,20 @@ function FamilyRelationsManagerSheet({ persons, relations, onDeleteRelation, onE
     }
     function personOf(id) { return persons.find((p) => p.id === id); }
     const relationLabel = (type) => { const r = KINSHIP_RELATION_TYPES.find((x) => x.key === type); return r ? t(r.labelKey) : type; };
+    // نصّ العلاقة بحسب جنس الطرف الأوّل: «فلان هو والد فلانة» لا «أب» و«زوج» العامّتين
+    const RELATION_PHRASES = {
+        parent:    [() => tl("هو والد", "is the father of"),    () => tl("هي والدة", "is the mother of")],
+        sibling:   [() => tl("هو أخو", "is the brother of"),    () => tl("هي أخت", "is the sister of")],
+        spouse:    [() => tl("هو زوج", "is the husband of"),    () => tl("هي زوجة", "is the wife of")],
+        ex_spouse: [() => tl("هو طليق", "is the former husband of"), () => tl("هي طليقة", "is the former wife of")],
+    };
+    const relationPhrase = (r) => {
+        const src = personOf(r.source);
+        const g = src && src.gender;
+        const pair = RELATION_PHRASES[r.type];
+        if (!pair || (g !== "male" && g !== "female")) return relationLabel(r.type);   // بلا جنس معروف نعود للنصّ العامّ
+        return (g === "female" ? pair[1] : pair[0])();
+    };
     // ── كشف العلاقات المشبوهة ────────────────────────────────
     // الاستنتاج التلقائي صحيح منطقياً (من كان أخي فوالدي والده)، لكنه
     // يعني أن خطأ إدخال واحد يتضاعف صامتاً. هنا نُظهر ما يستحق المراجعة
@@ -2180,7 +2194,7 @@ function FamilyRelationsManagerSheet({ persons, relations, onDeleteRelation, onE
                         React.createElement("span", { className: "text-sm", style: { color: colors.text } },
                             React.createElement("b", null, personName(r.source)),
                             " ",
-                            relationLabel(r.type),
+                            relationPhrase(r),
                             " ",
                             React.createElement("b", null, personName(r.target))),
                         React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-1 flex-wrap` },

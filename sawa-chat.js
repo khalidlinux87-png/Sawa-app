@@ -1809,6 +1809,104 @@
       v.src = url;
     });
   }
+  // ── قصّ فيديو اللحظة (لحظات): حتى دقيقتين، ويُقصّ المقطع ليُناسب الحجم ──
+  // يُعاد المقطع كما هو إن كان ضمن الحدّين (المدّة والحجم)، وإلا يُعاد ترميزه: يُشغَّل
+  // المقطع المختار ويُسجَّل (MediaRecorder) بمعدّل بتّ يُحسب ليبقى تحت حدّ الحجم.
+  // ⚠ الترميز بالزمن الحقيقي: الانتظار ≈ طول المقطع المختار.
+  var MOMENT_MAX_VIDEO_SEC = 120;
+  function trimVideoTo(v, start, len, maxBytes) {
+    return new Promise(function (res, rej) {
+      var capture = v.captureStream || v.mozCaptureStream;
+      if (!capture || !window.MediaRecorder) return rej(new Error("no-recorder"));
+      var mime = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].filter(function (t) { return MediaRecorder.isTypeSupported(t); })[0];
+      if (!mime) return rej(new Error("no-mime"));
+      // 0.85 هامش على الهدف: معدّل البتّ تقريبٌ لا حدّ صارم
+      var bps = Math.max(200000, Math.min(2500000, Math.floor((maxBytes * 8 / len) * 0.85) - 96000));
+      var rec, parts = [], stopT = null, done = false;
+      function stop() { if (done) return; done = true; clearTimeout(stopT); try { v.pause(); } catch (e) {} if (rec && rec.state !== "inactive") rec.stop(); }
+      try { rec = new MediaRecorder(capture.call(v), { mimeType: mime, videoBitsPerSecond: bps, audioBitsPerSecond: 96000 }); }
+      catch (e) { return rej(e); }
+      rec.ondataavailable = function (e) { if (e.data && e.data.size) parts.push(e.data); };
+      rec.onstop = function () { v.onended = null; res(new Blob(parts, { type: mime.split(";")[0] })); };
+      rec.onerror = function (e) { if (!done) { done = true; rej((e && e.error) || new Error("recorder")); } };
+      function startRec() {
+        v.onseeked = null;
+        v.muted = false;
+        rec.start(1000);
+        v.onended = stop;
+        var p = v.play(); if (p && p.catch) p.catch(function () {});
+        stopT = setTimeout(stop, len * 1000 + 300);
+      }
+      if (Math.abs(v.currentTime - start) < 0.05) startRec();
+      else { v.onseeked = startRec; v.currentTime = start; }
+    });
+  }
+  // نافذة قصّ: منزلقان للبداية والنهاية بطولٍ لا يتجاوز MOMENT_MAX_VIDEO_SEC.
+  // onDone(blob) يُستدعى بالمقطع الجاهز (الأصل إن كان ضمن الحدّين، وإلا المُعاد ترميزه).
+  function openMomentTrimmer(file, onDone) {
+    var url = URL.createObjectURL(file), total = 0, busy = false;
+    var ov = document.createElement("div");
+    ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true");
+    ov.style.cssText = "position:fixed;inset:0;z-index:2147483600;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;box-sizing:border-box;color:#fff;font:600 14px var(--sawa-font,system-ui)";
+    var v = document.createElement("video");
+    v.src = url; v.playsInline = true; v.muted = true; v.preload = "auto";
+    v.style.cssText = "max-width:100%;max-height:52vh;border-radius:12px;background:#000";
+    var info = document.createElement("div"); info.style.cssText = "text-align:center;line-height:1.6;min-height:2.6em";
+    var mkRange = function () { var r = document.createElement("input"); r.type = "range"; r.min = "0"; r.step = "0.1"; r.style.cssText = "width:100%"; return r; };
+    var sS = mkRange(), sE = mkRange();
+    var rows = document.createElement("div"); rows.style.cssText = "width:min(560px,100%);display:flex;flex-direction:column;gap:10px";
+    var bar = document.createElement("div"); bar.style.cssText = "display:flex;gap:10px;justify-content:center";
+    var cancel = document.createElement("button"), go = document.createElement("button");
+    [cancel, go].forEach(function (b) { b.style.cssText = "border:0;border-radius:12px;padding:10px 18px;font:800 14px var(--sawa-font,system-ui);color:#fff"; });
+    cancel.style.background = "rgba(255,255,255,.18)"; go.style.background = "#7C3AED";
+    cancel.textContent = L("إلغاء", "Cancel"); go.textContent = L("قصّ وأكمل", "Trim & continue");
+    rows.appendChild(sS); rows.appendChild(sE);
+    bar.appendChild(cancel); bar.appendChild(go);
+    ov.appendChild(v); ov.appendChild(info); ov.appendChild(rows); ov.appendChild(bar);
+    document.body.appendChild(ov);
+    function close() { try { URL.revokeObjectURL(url); } catch (e) {} ov.remove(); }
+    function sec(x) { return (Math.round(x * 10) / 10).toFixed(1); }
+    function cur() { var s = +sS.value, e = +sE.value; return { s: s, e: e, len: e - s }; }
+    function paint(msg) {
+      var st = cur(), ok = st.len >= 0.5 && st.len <= MOMENT_MAX_VIDEO_SEC + 0.05;
+      info.textContent = msg || (L("من ", "From ") + sec(st.s) + L(" إلى ", " to ") + sec(st.e) + L(" · المدّة ", " · length ") + sec(st.len) + L(" ث من الحدّ ", " s of the ") + MOMENT_MAX_VIDEO_SEC + L(" ث", " s max"));
+      go.disabled = !ok || busy; go.style.opacity = go.disabled ? ".5" : "1";
+    }
+    sS.oninput = function () {
+      var s = +sS.value;
+      if (+sE.value - s > MOMENT_MAX_VIDEO_SEC) sE.value = Math.min(total, s + MOMENT_MAX_VIDEO_SEC);
+      if (+sE.value - s < 0.5) sE.value = Math.min(total, s + 0.5);
+      v.currentTime = s; paint();
+    };
+    sE.oninput = function () {
+      var e = +sE.value;
+      if (e - +sS.value > MOMENT_MAX_VIDEO_SEC) sS.value = Math.max(0, e - MOMENT_MAX_VIDEO_SEC);
+      if (e - +sS.value < 0.5) sS.value = Math.max(0, e - 0.5);
+      v.currentTime = +sE.value; paint();
+    };
+    v.ontimeupdate = function () { if (!v.paused && v.currentTime >= +sE.value) v.currentTime = +sS.value; };
+    v.onloadedmetadata = function () {
+      total = v.duration || 0;
+      if (!isFinite(total) || total <= 0) { toast(L("تعذّر قراءة الفيديو", "Couldn't read the video")); close(); return; }
+      sS.max = sE.max = total; sS.value = 0; sE.value = Math.min(total, MOMENT_MAX_VIDEO_SEC);
+      paint();
+    };
+    v.onerror = function () { toast(L("تعذّر قراءة الفيديو", "Couldn't read the video")); close(); };
+    cancel.onclick = function () { if (!busy) close(); };
+    go.onclick = function () {
+      if (busy) return;
+      var st = cur(), whole = st.s < 0.05 && st.e > total - 0.05;
+      if (whole && st.len <= MOMENT_MAX_VIDEO_SEC + 0.05 && file.size <= MAX_MEDIA - 64) { close(); onDone(file); return; }
+      busy = true; paint(L("جارٍ القصّ… انتظر لحظة", "Trimming… please wait"));
+      trimVideoTo(v, st.s, st.len, MAX_MEDIA - 64).then(function (out) {
+        if (out.size > MAX_MEDIA - 64) throw new Error("too-big");
+        close(); onDone(out);
+      }).catch(function (err) {
+        busy = false; paint();
+        toast(err && err.message === "too-big" ? L("ما زال الحجم كبيراً — اختر مقطعاً أقصر", "Still too large — pick a shorter clip") : L("تعذّر قصّ الفيديو على هذا الجهاز", "Couldn't trim the video on this device"));
+      });
+    };
+  }
   // kind: image | video | voice | file · src: Blob/File أو dataURL
   // C32: مشاركة الموقع — يُطلب من الجهاز (دقّةٌ عالية، 15 ثانية) ويُرسل كرسالة «location» (وتُشفَّر في السرّيّة كغيرها)
   function sendLocation(cid, label) {
@@ -3267,13 +3365,20 @@
     }
     function addFiles(files, video) {
       Array.prototype.slice.call(files || [], 0, video ? 1 : 4 - media.length).forEach(function (f) {
-        if (f.size > MAX_MEDIA - 64 && video) { toast(L("الحدّ 16 ميجابايت", "Limit is 16 MB")); return; }
-        (video ? prepareVideo(f) : prepareImage(f)).then(function (r) {
-          if (video && r.duration && r.duration > 31) { toast(L("الفيديو أطول من 30 ثانية — قصّه أوّلاً", "Video is longer than 30 s — trim it first")); return; }
+        // لحظة الفيديو: حتى دقيقتين. الزائد أو الكبيرُ الحجم يُفتح له القصّ بدل الرفض (MOMENT_MAX_VIDEO_SEC)
+        function take(r, src) {
           if (!video && media.length >= 4) return;
-          var b = r.blob || f, item = { blob: b, video: video, url: URL.createObjectURL(b), thumb: r.thumb || null, w: r.w || null, h: r.h || null, dur: r.duration || null };
+          var b = r.blob || src, item = { blob: b, video: video, url: URL.createObjectURL(b), thumb: r.thumb || null, w: r.w || null, h: r.h || null, dur: r.duration || null };
           media.push(item); paint();
           if (video) item.posterP = moPosterOf(b, r.duration).then(function (pp) { item.poster = pp; return pp; }, function () { return null; });   // C137
+        }
+        function trimThenTake(src) {
+          openMomentTrimmer(src, function (out) { prepareVideo(out).then(function (r2) { take(r2, out); }); });
+        }
+        if (video && f.size > MAX_MEDIA - 64) { trimThenTake(f); return; }
+        (video ? prepareVideo(f) : prepareImage(f)).then(function (r) {
+          if (video && r.duration && r.duration > MOMENT_MAX_VIDEO_SEC + 1) { trimThenTake(f); return; }
+          take(r, f);
         }).catch(function () { toast(L("تعذّر قراءة الملفّ", "Couldn't read the file")); });
       });
     }
