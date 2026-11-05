@@ -2929,6 +2929,58 @@ function TreeNavBar({ groups, persons, open, onToggle, onJump }) {
                 })));
 }
 // ============================================================
+// C205: PanSurface — لوحةٌ تُسحب في كلّ الاتّجاهات لواجهة «تركيز»
+// ------------------------------------------------------------
+// كانت صفوف التركيز مُوسَّطةً بلا تمرير: أربعة أجداد (أو إخوةٌ كثيرون) أعرض من الشاشة يفيضون من الجهتين
+// ويُقصّ الطرفان قصّاً لا يُبلغ بالسحب، وصفّ الإخوة وحده له شريطٌ أفقيّ منفصل. الآن: نافذةٌ واحدة بارتفاع
+// الشاشة المتاحة تُمرَّر أفقيّاً وعموديّاً معاً · المحتوى بعرض أوسع صفّ (والضيّق مُوسَّط) · هامشٌ حوله ليبلغ
+// كلُّ طرفٍ وسط الشاشة · تتمركز على [data-focus-center] عند الفتح وعند تغيّر centerKey · سحبٌ بالفأرة على الحاسوب.
+// ============================================================
+function PanSurface({ children, centerKey, heightRef, colors }) {
+    const vp = useRef(null), inner = useRef(null);
+    const size = () => {
+        const el = vp.current, sc = heightRef && heightRef.current;
+        if (!el) return;
+        if (sc) el.style.height = Math.max(300, sc.clientHeight - 24) + "px";
+        const padX = Math.round(el.clientWidth * 0.5), padY = Math.round(el.clientHeight * 0.5);   // كلّ طرفٍ يبلغ وسط الشاشة
+        if (inner.current) inner.current.style.padding = `${padY}px ${padX}px`;
+    };
+    // البداية: الأجيال الثلاثة من أعلاها إن اتّسعت لها النافذة · أفقيّاً بين المختار ووالديه، والمختار ظاهرٌ كاملاً
+    const center = () => {
+        const el = vp.current, inn = inner.current;
+        if (!el || !inn) return;
+        const vr = el.getBoundingClientRect(), toX = (x) => x - vr.left + el.scrollLeft, toY = (y) => y - vr.top + el.scrollTop;
+        const c = el.querySelector("[data-focus-center]");
+        if (!c) { el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2; return; }
+        const cr = c.getBoundingClientRect(), par = el.querySelector("[data-focus-parents]"), pr = par && par.getBoundingClientRect();
+        const fx = toX(cr.left + cr.width / 2), px = pr && pr.width ? toX(pr.left + pr.width / 2) : fx;
+        let x = (fx + px) / 2 - el.clientWidth / 2;
+        const m = 12, cl = toX(cr.left), crr = toX(cr.right);
+        if (cl - m < x) x = cl - m;                                   // المختار لا يخرج من جهةٍ
+        if (crr + m > x + el.clientWidth) x = crr + m - el.clientWidth; // ولا من الأخرى (إن اتّسع)
+        el.scrollLeft = x;
+        const padTop = parseFloat(inn.style.paddingTop) || 0, contentH = inn.scrollHeight - 2 * padTop;
+        el.scrollTop = contentH + 24 <= el.clientHeight ? padTop - 12 : toY(cr.top + cr.height / 2) - el.clientHeight * 0.55;
+    };
+    React.useLayoutEffect(() => { size(); center(); }, [centerKey]);
+    useEffect(() => {
+        const el = vp.current;
+        if (!el) return;
+        const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => size()) : null;
+        if (ro && heightRef && heightRef.current) ro.observe(heightRef.current);
+        let drag = null, moved = false;
+        const down = (e) => { if (e.pointerType !== "mouse" || e.button !== 0) return; drag = { x: e.clientX, y: e.clientY, sl: el.scrollLeft, st: el.scrollTop }; moved = false; };
+        const move = (e) => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (!moved && Math.hypot(dx, dy) < 5) return; moved = true; el.style.cursor = "grabbing"; el.scrollLeft = drag.sl - dx; el.scrollTop = drag.st - dy; };
+        const up = () => { drag = null; el.style.cursor = ""; };
+        const swallow = (e) => { if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; } };
+        el.addEventListener("pointerdown", down); window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); el.addEventListener("click", swallow, true);
+        return () => { if (ro) ro.disconnect(); el.removeEventListener("pointerdown", down); window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); el.removeEventListener("click", swallow, true); };
+    }, []);
+    return React.createElement("div", { ref: vp, "data-focus-canvas": "1", "aria-label": tl("ثلاثة أجيال — اسحب في أيّ اتّجاه", "Three generations — drag in any direction"),
+        style: { marginInline: -16, overflow: "auto", direction: "ltr", touchAction: "pan-x pan-y", overscrollBehavior: "contain", height: 520, position: "relative", borderTop: `1px solid ${colors.border}`, borderBottom: `1px solid ${colors.border}` } },
+        React.createElement("div", { ref: inner, style: { width: "max-content", minWidth: "100%", boxSizing: "border-box", direction: isRTL() ? "rtl" : "ltr" } }, children));
+}
+// ============================================================
 // FocusView — ثلاثة أجيال حول شخص واحد: والداه، إخوته وأزواجه، أبناؤه.
 // يُغني عن التمرير الأفقي المستمر في شاشة الهاتف الضيقة.
 // ============================================================
@@ -2993,7 +3045,7 @@ function FocusView({ data, onGo, onOpenMenu, colors, onAddRelative, onClaimStep 
                 i > 0 && React.createElement(MarriageLink, null),
                 React.createElement(CardNode, { p: p, d: 48 }))))),
             React.createElement(Stem, { h: 16 }))),
-        React.createElement("div", { className: `flex ${rowStart()} items-stretch justify-center gap-0` },
+        React.createElement("div", { "data-focus-parents": "1", className: `flex ${rowStart()} items-stretch justify-center gap-0` },
             parents.map((p, i) => (React.createElement(React.Fragment, { key: p.id },
                 i > 0 && React.createElement(MarriageLink, null),
                 React.createElement(CardNode, { p: p, d: 54 })))),
@@ -3008,13 +3060,10 @@ function FocusView({ data, onGo, onOpenMenu, colors, onAddRelative, onClaimStep 
                         top: 0, right: bloodRow.length ? "12%" : "50%", left: bloodRow.length ? "12%" : "50%",
                         height: 2, backgroundColor: colors.border,
                     } })))),
-        React.createElement("div", { className: `flex ${rowStart()} items-start gap-2 overflow-x-auto pb-2`, style: {
-                marginRight: -16, marginLeft: -16, paddingRight: 16, paddingLeft: 16,
-                scrollbarWidth: "thin", WebkitOverflowScrolling: "touch",
-                overscrollBehaviorX: "contain",
-            } },
-            React.createElement("div", { className: `flex ${rowStart()} items-start gap-2 mx-auto` },
-                React.createElement("div", { className: "flex flex-col items-center shrink-0" },
+        // C205: صفّ الإخوة بلا شريطٍ خاصّ — اللوحة (PanSurface) تحرّك الواجهة كلّها معاً
+        React.createElement("div", { className: `flex ${rowStart()} items-start justify-center gap-2 pb-2` },
+            React.createElement("div", { className: `flex ${rowStart()} items-start gap-2` },
+                React.createElement("div", { "data-focus-center": "1", className: "flex flex-col items-center shrink-0" },
                     hasParents && React.createElement("div", { style: { width: 2, height: 12, backgroundColor: colors.border } }),
                     React.createElement("div", { className: `px-2.5 py-2.5 flex ${rowStart()} items-center gap-0`, style: { borderRadius: 22, backgroundColor: colors.card, boxShadow: `0 0 0 2px ${colors.primary}, 0 8px 20px ${colors.primary}33` } },
                         React.createElement("button", { onClick: () => onGo(person.id), onContextMenu: (e) => { e.preventDefault(); onOpenMenu === null || onOpenMenu === void 0 ? void 0 : onOpenMenu(person); }, className: "flex flex-col items-center shrink-0", style: { width: 86 } },
@@ -3058,9 +3107,8 @@ function FocusView({ data, onGo, onOpenMenu, colors, onAddRelative, onClaimStep 
                     grandchildren.length,
                     ")"),
                 React.createElement("div", { className: "flex-1", style: { height: 1, backgroundColor: colors.border } })),
-            React.createElement("div", { className: `flex ${rowStart()} gap-1 overflow-x-auto pb-2`, style: { marginRight: -16, marginLeft: -16, paddingRight: 16, paddingLeft: 16,
-                    WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" } },
-                React.createElement("div", { className: `flex ${rowStart()} gap-1 mx-auto` }, grandchildren.map((p) => React.createElement(CircleNode, { key: p.id, p: p, d: 44 })))))),
+            React.createElement("div", { className: `flex ${rowStart()} justify-center gap-1 pb-2` },
+                React.createElement("div", { className: `flex ${rowStart()} gap-1` }, grandchildren.map((p) => React.createElement(CircleNode, { key: p.id, p: p, d: 44 })))))),
         React.createElement("div", { className: `flex ${rowStart()} items-center justify-center gap-3 mt-3 flex-wrap` },
             React.createElement("span", { className: `flex ${rowStart()} items-center gap-1` },
                 React.createElement("span", { style: { width: 14, height: 2, backgroundColor: colors.border, display: "inline-block" } }),
@@ -4177,7 +4225,7 @@ function FamilyTreeScreen({ onBatchParent, onSiblingType, onMergePersons, onDele
                                 personKinLabel(p),
                                 p.alive === false ? t("ft_mtwfa") : "")),
                         p.proximity && !hasNoProximityPerson(p) && React.createElement(FamChip, { tone: "muted", label: proxLabel(p.proximity) })))))));
-            })())) : viewMode === "focus" && focusData ? (React.createElement(FocusView, { data: focusData, onGo: goFocus, onOpenMenu: setNodeMenu, colors: colors, onClaimStep: canEdit && onClaimChildren ? (kidIds) => onClaimChildren(groupId, focusData.person.id, kidIds) : null, onAddRelative: (relKey) => {
+            })())) : viewMode === "focus" && focusData ? (React.createElement(PanSurface, { centerKey: focusData.person.id, heightRef: treeScrollRef, colors: colors }, React.createElement(FocusView, { data: focusData, onGo: goFocus, onOpenMenu: setNodeMenu, colors: colors, onClaimStep: canEdit && onClaimChildren ? (kidIds) => onClaimChildren(groupId, focusData.person.id, kidIds) : null, onAddRelative: (relKey) => {
                     if (!canEdit)
                         return;
                     // نمرّ بنفس مسار القائمة: الصلة تُشتقّ نسبةً لصاحب الشجرة،
@@ -4187,7 +4235,7 @@ function FamilyTreeScreen({ onBatchParent, onSiblingType, onMergePersons, onDele
                         : relKey === "parent_f" ? "female" : "male";
                     if (relKey === "parent_m" || relKey === "parent_f") relKey = "parent";   // C33: أب/أمّ بحسب الوالد الموجود
                     onAddRelativeTo === null || onAddRelativeTo === void 0 ? void 0 : onAddRelativeTo(groupId, focusData.person, relKey, kinPreview(persons, relations, focusData.person, relKey, g) || deriveKinship(focusData.person.kinship, relKey, g), g);
-                } })) : (React.createElement("div", { ref: pinchRef, "data-tree-canvas": "1", "aria-label": tl("لوحة الشجرة — اسحب في أيّ اتّجاه، وقرّب بإصبعين", "Tree canvas — drag in any direction, pinch to zoom"),
+                } }))) : (React.createElement("div", { ref: pinchRef, "data-tree-canvas": "1", "aria-label": tl("لوحة الشجرة — اسحب في أيّ اتّجاه، وقرّب بإصبعين", "Tree canvas — drag in any direction, pinch to zoom"),
                     style: { marginInline: -16, overflow: "auto", direction: "ltr", touchAction: "pan-x pan-y", overscrollBehavior: "contain", position: "relative", height: 480, backgroundColor: colors.bg, borderTop: `1px solid ${colors.border}`, borderBottom: `1px solid ${colors.border}` } },
                 React.createElement("div", { ref: worldRef, style: { position: "relative" } },
                     React.createElement("div", { ref: stageRef, style: {
