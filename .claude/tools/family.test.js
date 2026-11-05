@@ -105,6 +105,31 @@ server.listen(0, "127.0.0.1", async () => {
     check(tree.usul.join() === "p-moh,p-zay,p-ali" && tree.furu.join() === "p-son", "الأصل والفروع من «أنا»", [tree.usul, tree.furu]);
     check(tree.labels.has === "والد الزوجة" && tree.labels.yas === "أخ الزوجة" && tree.labels.uth === "جد الزوجة لأمها" && tree.labels.sec === "ashar", "قرابات الأصهار وقسمها", tree.labels);
 
+    // ── C204: والدٌ لعدّة إخوة · نوع الأخوّة · معاينة الدمج ─────────────────
+    const c204 = await page.evaluate(() => {
+      const P = (id, g) => ({ id, local_name: id, gender: g });
+      const R = (s, t, type, id, half) => Object.assign({ id: id || s + ">" + t, source: s, target: t, type }, half ? { half } : {});
+      const ppl = [P("F", "male"), P("M1", "female"), P("M2", "female"), P("A", "male"), P("B", "male"), P("C", "female"), P("X", "male"), P("XF", "male"), P("N", "male"), P("K1", "male"), P("K2", "female")];
+      const rels = [R("F", "M1", "spouse"), R("F", "M2", "spouse"), R("F", "A", "parent"), R("M1", "A", "parent"), R("F", "B", "parent"), R("M1", "B", "parent"), R("F", "C", "parent"), R("XF", "X", "parent")];
+      const sib = famSiblingsOf(ppl, rels, "A").map((x) => x.id + ":" + x.type).sort().join(",");
+      const toPaternal = planSiblingType(ppl, rels, "A", "B", "father", "M2");
+      const toFull = planSiblingType(ppl, rels, "A", "C", "full", null);
+      const clash = planSiblingType(ppl, rels, "A", "X", "full", null);
+      const bpNew = planBatchParent(ppl.concat([P("NEWF", "male")]), rels, "NEWF", ["K1", "K2", "A"]);
+      const bpMom = planBatchParent(ppl, rels, "M2", ["C", "A"]);
+      const bpCycle = planBatchParent(ppl, rels, "A", ["F"]);
+      const dupA = famMergePreview(ppl, rels, "A", "B"), dupX = famMergePreview(ppl, rels, "F", "C");
+      return { sib, toPaternal, toFull, clash: !!clash.error, bpNew: [bpNew.add.map((e) => e.target).join(), bpNew.skipped.map((x) => x.id).join()], bpMom: bpMom.add.map((e) => e.target).join() + "|" + bpMom.skipped.map((x) => x.id).join(), bpCycle: bpCycle.skipped.length, dupA: [dupA.movedCount, dupA.warn.length, !!dupA.block], dupX: !!dupX.block };
+    });
+    check(c204.sib === "B:full,C:unknown", "إخوة A: B شقيق، وC (أبٌ مشترك فقط) غير محدَّد", c204.sib);
+    check(c204.toPaternal.remove.includes("M1>B") && c204.toPaternal.add.some((e) => e.source === "M2" && e.target === "B") && c204.toPaternal.add.some((e) => e.type === "sibling" && e.half === "father"), "«لأب»: تُفكّ أمّ B المشتركة وتُربط M2، وتُسجَّل الأخوّة لأب", c204.toPaternal);
+    check(c204.toFull.add.some((e) => e.source === "M1" && e.target === "C") && !c204.toFull.error, "«شقيق»: ترث C أمّ A", c204.toFull);
+    check(c204.clash, "«شقيق» مع أبٍ مختلف مسجَّل يُرفض");
+    check(c204.bpNew[0] === "K1,K2" && c204.bpNew[1] === "A", "أبٌ جديد لثلاثة: يُتخطّى من له أب", c204.bpNew);
+    check(c204.bpMom === "C|A", "أمٌّ لـ C (بلا أمّ) وتخطّي A (أمّه M1)", c204.bpMom);
+    check(c204.bpCycle === 1, "لا يكون المرء والدَ أبيه");
+    check(c204.dupA[0] === 2 && c204.dupA[2] === false && c204.dupX === true, "معاينة الدمج: عدد العلاقات المنقولة، ومنع دمج ذكرٍ وأنثى", [c204.dupA, c204.dupX]);
+
     // ── ٢) الواجهة ───────────────────────────────────────────────────
     const click = (re, opts) => page.evaluate(([src, scope]) => {
       const r = new RegExp(src);
@@ -196,8 +221,77 @@ server.listen(0, "127.0.0.1", async () => {
     const hist = await text();
     check(/History & undo/.test(hist) && /Undid:/.test(hist) && /Undo/.test(hist), "شاشة السجلّ بالتراجع", hist.slice(0, 400));
 
+    // ── C204 (واجهة): اللوحة · قائمة البطاقة · والدٌ لعدّة إخوة · نوع الأخوّة · دمج مكرّر · قائمة الأقارب ──
+    const rels = () => page.evaluate(() => JSON.parse(localStorage.getItem("sawa:kinshipRelations")));
+    const ppl = () => page.evaluate(() => JSON.parse(localStorage.getItem("sawa:groupPersons"))["g-1"]);
+    const openTreeFull = async () => {
+      await page.goto(base, { waitUntil: "load" }); await page.waitForFunction(() => !!window.SawaApp); await page.waitForTimeout(900);
+      await openFamily(); await click("عائلتي"); await page.waitForTimeout(500); await click("^Tree$"); await page.waitForTimeout(700);
+      await page.evaluate(() => { const b = [...document.querySelectorAll("button")].filter((x) => (x.innerText || "").trim() === "Tree"); b[b.length - 1] && b[b.length - 1].click(); });
+      await page.waitForTimeout(900);
+    };
+    const cardMenu = async (pid, re) => {
+      await page.evaluate((id) => { const c = document.querySelector(`[data-pid="${id}"] button`); c && c.click(); }, pid); await page.waitForTimeout(450);
+      return click(re);
+    };
+    await openTreeFull();
+    const canvas = await page.evaluate(() => {
+      const v = document.querySelector("[data-tree-canvas]"); if (!v) return null;
+      const vr = v.getBoundingClientRect(); let bad = 0, n = 0;
+      document.querySelectorAll("[data-pid]").forEach((c) => { n++; const r = c.getBoundingClientRect(); const cx = r.left + r.width / 2 - vr.left + v.scrollLeft, cy = r.top + r.height / 2 - vr.top + v.scrollTop;
+        if (cx < v.clientWidth / 2 - 1 || cx > v.scrollWidth - v.clientWidth / 2 + 1 || cy < v.clientHeight / 2 - 1 || cy > v.scrollHeight - v.clientHeight / 2 + 1) bad++; });
+      const me = document.querySelector("[data-tree-me='1']"), mr = me && me.getBoundingClientRect();
+      return { n, bad, meIn: !!mr && mr.left >= vr.left && mr.right <= vr.right && mr.top >= vr.top && mr.bottom <= vr.bottom };
+    });
+    check(canvas && canvas.n >= 8 && canvas.bad === 0, "اللوحة: كلّ بطاقة تُسحب إلى وسط الشاشة (في المحورين)", canvas);
+    check(canvas && canvas.meIn, "اللوحة تبدأ عند «أنا»", canvas);
+    // والدٌ لعدّة إخوة: أمٌّ جديدة لسعيد (بلا أمّ) — ويُعرض سببُ تخطّي من له أمّ
+    check(await cardMenu("p-sae", "^Parent for several siblings"), "قائمة البطاقة: «Parent for several siblings»"); await page.waitForTimeout(400);
+    await click("^Mother$"); await page.waitForTimeout(200);
+    await page.fill("[data-batch-parent] input", "حليمة بنت يوسف"); await page.waitForTimeout(300);
+    const bp = await page.evaluate(() => document.querySelector("[data-batch-parent]").innerText);
+    check(/سعيد/.test(bp) && !/سعيد[^\n]*\n[^\n]*has a/.test(bp), "سعيد مؤهَّل (بلا أمّ مسجَّلة)", bp.slice(0, 300));
+    check(await click("^Link to 1$"), "زرّ «Link to 1»"); await page.waitForTimeout(700);
+    let P2 = await ppl(), R2 = await rels();
+    const hal = P2.find((x) => x.local_name === "حليمة") || {};
+    check(!!hal && R2.some((r) => r.type === "parent" && r.source === hal.id && r.target === "p-sae") && P2.some((x) => x.local_name === "يوسف"), "حليمة أمٌّ لسعيد، وأبوها يوسف أُضيف من النسب", hal);
+    check(R2.some((r) => [r.source, r.target].sort().join() === [hal.id, "p-sal2"].sort().join() && r.type === "spouse"), "زواج صالح وحليمة (والدَي سعيد) يُستنتج", R2.filter((r) => r.source === hal.id || r.target === hal.id).map((r) => r.type));
+    // نوع الأخوّة: عمر «لأب» لخالد (يشاركه الأب وحده)
+    await openTreeFull();
+    check(await cardMenu("p-kha", "^Sibling type"), "قائمة البطاقة: «Sibling type»"); await page.waitForTimeout(400);
+    const st0 = await page.evaluate(() => document.querySelector("[data-sibling-type]").innerText);
+    check(/عمر/.test(st0) && /فارس/.test(st0), "قائمة إخوة خالد: عمر (أب) وفارس (أم)", st0.slice(0, 300));
+    // من الوالدين المسجّلين: عمر ابن محمد وزينب (استُنتجت أمّه عند فتح الشجرة) ⇒ شقيق · فارس ابن زينب وطارق ⇒ لأم
+    check(/عمر[\s\S]*?Now: full/.test(st0) && /فارس[\s\S]*?Now: maternal half/.test(st0), "النوع محسوبٌ من الوالدين: عمر شقيق، فارس لأم", st0.slice(0, 300));
+    // تعديل: عمر «لأب» ⇒ تُفكّ أمّه زينب، وتحمل حافّة الأخوّة النوع
+    await page.evaluate(() => { const row = [...document.querySelectorAll("[data-sibling-type] > div")].find((d) => /عمر/.test(d.innerText || "")); const b = row && row.querySelector("button"); b && b.click(); });
+    await page.waitForTimeout(300);
+    check(await click("^Paternal$"), "خيار «Paternal»"); await page.waitForTimeout(300);
+    const prevTxt = await page.evaluate(() => document.querySelector("[data-sibling-type]").innerText);
+    check(/زينب is unlinked as عمر's mother/.test(prevTxt), "المعاينة: تُفكّ زينب أمّاً عن عمر", prevTxt.slice(0, 400));
+    check(await click("^Apply$"), "«Apply»"); await page.waitForTimeout(700);
+    R2 = await rels();
+    check(!R2.some((r) => r.type === "parent" && r.source === "p-zay" && r.target === "p-omr") && R2.some((r) => r.type === "sibling" && r.half === "father" && [r.source, r.target].sort().join() === ["p-kha", "p-omr"].sort().join()), "عمر أخٌ لأب: بلا أمّ زينب، والأخوّة half=father", R2.filter((r) => r.source === "p-omr" || r.target === "p-omr").map((r) => r.source + ">" + r.target + ":" + r.type + (r.half ? "/" + r.half : "")));
+    // دمج مكرّر: «محمد» مرّتين
+    await page.addInitScript(() => { if (sessionStorage.getItem("inject-dup") !== "1") return; sessionStorage.setItem("inject-dup", "done"); const g = JSON.parse(localStorage.getItem("sawa:groupPersons")); g["g-1"].push({ id: "p-moh2", local_name: "محمد", gender: "male", kinship: "أخرى", alive: true, locations: [] }); localStorage.setItem("sawa:groupPersons", JSON.stringify(g)); const r = JSON.parse(localStorage.getItem("sawa:kinshipRelations")); r.push({ id: "rdup", groupId: "g-1", source: "p-moh2", target: "p-sae", type: "sibling" }); localStorage.setItem("sawa:kinshipRelations", JSON.stringify(r)); });
+    await page.evaluate(() => sessionStorage.setItem("inject-dup", "1"));
+    await openTreeFull();
+    check(await cardMenu("p-moh2", "^Merge with a duplicate"), "قائمة البطاقة: «Merge with a duplicate»"); await page.waitForTimeout(400);
+    const dup = await page.evaluate(() => document.querySelector("[data-dup-sheet]").innerText);
+    check(/محمد/.test(dup) && /stays/.test(dup), "المكرّر يُقترح تلقائيّاً بالاسم ومعاينةٌ لما ينتقل", dup.slice(0, 300));
+    const keepBtn = await page.evaluate(() => { const b = [...document.querySelectorAll("[data-dup-sheet] button")].find((x) => /^That:/.test((x.innerText || "").trim())); if (b) b.click(); return !!b; });
+    await page.waitForTimeout(200);
+    check(keepBtn && await click("^Merge the records$"), "«أيّ النسختين تبقى» ثمّ الدمج"); await page.waitForTimeout(700);
+    P2 = await ppl(); R2 = await rels();
+    check(!P2.some((x) => x.id === "p-moh2") && R2.some((r) => r.type === "sibling" && [r.source, r.target].sort().join() === ["p-moh", "p-sae"].sort().join()), "حُذف المكرّر وانتقلت علاقته إلى الأصل", R2.filter((r) => r.source === "p-sae" || r.target === "p-sae").map((r) => r.source + ">" + r.target + ":" + r.type));
+    // قائمة الأقارب: صفٌّ واحد للتصفية + «المزيد»
+    await page.goto(base, { waitUntil: "load" }); await page.waitForFunction(() => !!window.SawaApp); await page.waitForTimeout(900);
+    await openFamily(); await click("عائلتي"); await page.waitForTimeout(700);
+    const lst = await page.evaluate(() => ({ more: !!document.querySelector("[data-fam-more]"), oldTools: [...document.querySelectorAll("button")].some((b) => /^By lineage$|^Select$/.test((b.innerText || "").trim())) }));
+    check(lst.more && !lst.oldTools, "قائمة الأقارب: «More» بدل صفّ الأدوات", lst);
+
     if (errors.length) { failN++; console.error("✗ استثناءات في الصفحة:\n  " + errors.join("\n  ")); }
-    console.log((failN ? "✗" : "✓") + " family C203: " + pass + " passed, " + failN + " failed");
+    console.log((failN ? "✗" : "✓") + " family C203+C204: " + pass + " passed, " + failN + " failed");
     process.exitCode = failN ? 1 : 0;
   } finally { await browser.close(); server.close(); }
 });

@@ -343,9 +343,10 @@ function Button({ label, icon: Icon, onPress, variant = "filled", disabled, clas
     const filled = variant === "filled";
     return (React.createElement("button", { onClick: onPress, disabled: disabled, className: `w-full flex ${rowStart()} items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-extrabold transition-transform active:scale-[0.98] ${className}`, style: {
             // C199: المعطّل رماديّ بنصٍّ خافت (كان لون المظهر بشفافيّة 50٪ — نصٌّ أبيض على أزرق شاحب ~1.6:1)
-            backgroundColor: disabled ? (filled ? colors.border : colors.card) : filled ? colors.primary : colors.card,
-            color: disabled ? colors.textMuted : filled ? "#fff" : colors.primary,
-            border: disabled ? (filled ? "none" : `1.5px solid ${colors.border}`) : filled ? "none" : `1.5px solid ${colors.primary}`,
+            // C204: «outline» صار تعبئةً لونيّةً صلبة (primaryLight/primaryInk) بلا حدٍّ رفيع — الهرميّة بقوّة التعبئة لا بالخطّ
+            backgroundColor: disabled ? colors.border : filled ? colors.primary : (colors.primaryLight || colors.btnFill),
+            color: disabled ? colors.textMuted : filled ? "#fff" : (colors.primaryInk || colors.primary),
+            border: "none",
             opacity: 1,
             boxShadow: filled && !disabled ? `0 4px 14px ${colors.primary}40` : "none",
         } },
@@ -429,11 +430,66 @@ function Pic({ photo, letter, size, bg, color, className, style, children }) {
     return React.createElement("div", { className: "rounded-full shrink-0 flex items-center justify-center font-extrabold " + (className || ""), style: Object.assign({ color, fontSize: Math.round(size * 0.42) }, base) }, letter, children || null);
 }
 // C155: عرض صورة الحساب/المجموعة كبيرةً (اضغط في أيّ مكان للإغلاق)
-function PhotoViewer({ photo, onClose }) {
-    useEffect(() => { const h = () => onClose(); window.addEventListener("popstate", h); return () => window.removeEventListener("popstate", h); }, []);
-    return React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, zIndex: 2147483000, backgroundColor: "rgba(0,0,0,0.92)", display: "flex", alignItems: "center", justifyContent: "center" } },
-        React.createElement("img", { src: photo, alt: "", style: { width: "min(88vw, 88vh)", height: "min(88vw, 88vh)", objectFit: "cover", borderRadius: 16 } }),
-        React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: onClose, style: { position: "absolute", top: "calc(env(safe-area-inset-top,0px) + 14px)", insetInlineEnd: 14, width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" } }, React.createElement(X, { size: 20, color: "#fff" })));
+// C204: عارض الصورة بملء الشاشة — كانت تُقصّ مربّعاً مدوّراً (cover) من مصغّرةٍ 160px مكبّرة ⇒ ضبابيّة.
+//       الآن: الصورة كاملة (contain) على خلفيّةٍ سوداء، تظهر المصغّرة فوراً ثمّ تُستبدل بالنسخة العالية (avatars/{id}_hd)
+//       حين تصل · تكبيرٌ بإصبعين وبنقرتين (حتّى 4×) وسحبٌ وهي مكبّرة · سحبٌ للأسفل أو Esc أو «رجوع» للإغلاق.
+//       hdId اختياريّ — بدونه يُعرف صاحب الصورة من المصغّرة نفسها (SawaChat.photoHdOf).
+function PhotoViewer({ photo, onClose, hdId, title }) {
+    const [src, setSrc] = useState(photo);
+    const [hdState, setHdState] = useState("loading");   // loading | hd | none
+    const imgRef = useRef(null), st = useRef({ s: 1, x: 0, y: 0 }), pts = useRef({}), g = useRef(null), lastTap = useRef(0);
+    useEffect(() => { const h = () => onClose(); window.addEventListener("popstate", h); const k = (e) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => { window.removeEventListener("popstate", h); window.removeEventListener("keydown", k); }; }, []);
+    useEffect(() => {
+        let dead = false;
+        const SC = window.SawaChat;
+        const p = !SC ? Promise.resolve(null) : hdId && SC.photoHd ? SC.photoHd(hdId) : SC.photoHdOf ? SC.photoHdOf(photo) : Promise.resolve(null);
+        Promise.resolve(p).then((hd) => { if (dead) return; if (hd) { setSrc(hd); setHdState("hd"); } else setHdState("none"); }).catch(() => { if (!dead) setHdState("none"); });
+        return () => { dead = true; };
+    }, [photo, hdId]);
+    const apply = (anim) => { const el = imgRef.current; if (!el) return; const v = st.current; el.style.transition = anim ? "transform .2s ease" : "none"; el.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.s})`; };
+    const reset = () => { st.current = { s: 1, x: 0, y: 0 }; apply(true); };
+    const onDown = (e) => {
+        pts.current[e.pointerId] = { x: e.clientX, y: e.clientY };
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch (x) { }
+        const ids = Object.keys(pts.current);
+        if (ids.length === 2) { const a = pts.current[ids[0]], b = pts.current[ids[1]]; g.current = { d: Math.hypot(a.x - b.x, a.y - b.y), s: st.current.s }; }
+        else g.current = { x0: e.clientX, y0: e.clientY, x: st.current.x, y: st.current.y, moved: false };
+    };
+    const onMove = (e) => {
+        if (!pts.current[e.pointerId] || !g.current) return;
+        pts.current[e.pointerId] = { x: e.clientX, y: e.clientY };
+        const ids = Object.keys(pts.current), v = st.current;
+        if (ids.length >= 2 && g.current.d) { const a = pts.current[ids[0]], b = pts.current[ids[1]]; v.s = Math.min(4, Math.max(1, g.current.s * Math.hypot(a.x - b.x, a.y - b.y) / g.current.d)); if (v.s === 1) { v.x = 0; v.y = 0; } apply(false); return; }
+        if (g.current.x0 == null) return;
+        const dx = e.clientX - g.current.x0, dy = e.clientY - g.current.y0;
+        if (Math.hypot(dx, dy) > 6) g.current.moved = true;
+        if (v.s > 1) { v.x = g.current.x + dx; v.y = g.current.y + dy; apply(false); }
+        else if (dy > 0) { const el = imgRef.current; if (el) { el.style.transition = "none"; el.style.transform = `translateY(${dy}px)`; el.style.opacity = String(Math.max(0.3, 1 - dy / 400)); } }
+    };
+    const onUp = (e) => {
+        delete pts.current[e.pointerId];
+        const gg = g.current; if (Object.keys(pts.current).length) return; g.current = null;
+        if (!gg) return;
+        const v = st.current, el = imgRef.current;
+        if (gg.x0 != null && v.s === 1) {
+            const dy = e.clientY - gg.y0;
+            if (dy > 110) { onClose(); return; }   // سحبٌ للأسفل ⇒ إغلاق
+            if (el) { el.style.opacity = "1"; } apply(true);
+        }
+        if (gg.x0 != null && !gg.moved) {   // نقرتان ⇒ تكبير/إرجاع
+            const now = Date.now();
+            if (now - lastTap.current < 300) { if (v.s > 1) reset(); else { st.current = { s: 2.5, x: 0, y: 0 }; apply(true); } lastTap.current = 0; }
+            else lastTap.current = now;
+        }
+    };
+    return React.createElement("div", { role: "dialog", "aria-modal": true, "aria-label": title || tl("الصورة", "Photo"), "data-photo-viewer": hdState, style: { position: "fixed", inset: 0, zIndex: 2147483000, backgroundColor: "#000", display: "flex", flexDirection: "column" } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "calc(env(safe-area-inset-top,0px) + 10px) 12px 10px", color: "#fff", direction: isRTL() ? "rtl" : "ltr" } },
+            React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: onClose, style: { width: 40, height: 40, borderRadius: 20, border: 0, backgroundColor: "rgba(255,255,255,0.16)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, React.createElement(X, { size: 22, color: "#fff" })),
+            React.createElement("span", { style: { flex: 1, minWidth: 0, fontWeight: 800, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, dir: "auto" }, title || ""),
+            hdState === "loading" && React.createElement("span", { style: { fontSize: 11, opacity: 0.75 } }, tl("جارٍ تحميل الدقّة العالية…", "Loading full quality…"))),
+        React.createElement("div", { onPointerDown: onDown, onPointerMove: onMove, onPointerUp: onUp, onPointerCancel: onUp, style: { flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", touchAction: "none", paddingBottom: "env(safe-area-inset-bottom,0px)" } },
+            React.createElement("img", { ref: imgRef, src: src, alt: title || "", draggable: false, style: { maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", objectFit: "contain", userSelect: "none", filter: hdState === "loading" ? "blur(2px)" : "none", transition: "filter .25s ease", imageRendering: "auto" } })),
+        hdState === "none" && React.createElement("p", { style: { color: "rgba(255,255,255,0.6)", fontSize: 11, textAlign: "center", padding: "0 16px calc(env(safe-area-inset-bottom,0px) + 12px)" } }, tl("هذه الصورة رُفعت قبل الدقّة العالية — ستظهر بوضوحٍ أكبر حين يعيد صاحبها رفعها.", "This photo was uploaded before full quality was available.")));
 }
 // C195: يلوّن رؤوس TopBar داخل خدمةٍ بلونها، دون تغيير باقي الألوان (الأزرار تبقى بلون المظهر).
 function ServiceTheme({ color, children }) {
@@ -545,8 +601,9 @@ function FamButton({ label, icon: Icon, onPress, disabled, variant = "filled", c
     const filled = variant === "filled";
     return React.createElement("button", { onClick: onPress, disabled: disabled, className: `w-full flex ${rowStart()} items-center justify-center gap-2 py-3.5 text-[15px] font-extrabold active:scale-[0.98] transition-transform ${className}`, style: filled
             ? { background: famGrad(colors), color: "#fff", borderRadius: 16, opacity: disabled ? 0.5 : 1, boxShadow: disabled ? "none" : `0 8px 20px ${colors.primary}40` }
-            : variant === "danger" ? { backgroundColor: colors.danger + "14", color: colors.danger, borderRadius: 16, opacity: disabled ? 0.5 : 1 }
-                : { backgroundColor: colors.bg, color: colors.primary, borderRadius: 16, opacity: disabled ? 0.5 : 1 } },
+            // C204: الخطر أحمرُ صلبٌ بنصٍّ أبيض · «soft» تعبئةٌ لونيّة (كانت بلون الخلفيّة فتبدو نصّاً بلا زرّ)
+            : variant === "danger" ? { backgroundColor: colors.danger, color: "#fff", borderRadius: 16, opacity: disabled ? 0.5 : 1 }
+                : { backgroundColor: colors.primaryLight || colors.btnFill, color: colors.primaryInk || colors.primary, borderRadius: 16, opacity: disabled ? 0.5 : 1 } },
         Icon && React.createElement(Icon, { size: 18 }), label);
 }
 // حقل إدخال ناعم بلا حدود
@@ -1448,7 +1505,7 @@ function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiome
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                     React.createElement("button", { onClick: () => { onDeleteKeys(); setConfirmDeleteKeys(false); }, className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.danger } },
                         React.createElement("span", { className: "text-xs font-bold text-white" }, t("nam_ahdhf_nhayya"))),
-                    React.createElement("button", { onClick: () => setConfirmDeleteKeys(false), className: "flex-1 rounded-xl py-2 border", style: { borderColor: colors.border } },
+                    React.createElement("button", { onClick: () => setConfirmDeleteKeys(false), className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.btnFill } },
                         React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("ilgha")))))))));
 }
 function EncryptedNotesDemoScreen({ onBack, notes, onAdd, onDelete }) {

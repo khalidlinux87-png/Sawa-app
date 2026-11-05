@@ -239,12 +239,13 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c227";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c228";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
-      var v = du === "-" ? "" : du;
-      return call("group.update", { cid: cid, photo: v }).then(function () {
+      var v = du === "-" ? "" : du, hd = v ? hdFor[v] || null : null;
+      return call("group.update", hd ? { cid: cid, photo: v, photoHd: hd } : { cid: cid, photo: v }).then(function () {
+        delete hdCache[cid]; if (hd) hdCache[cid] = hd;
         var all = avAll(); all[cid] = { d: v || null, at: Date.now() }; avSave(); avChanged();
         toast(v ? L("تغيّرت صورة المجموعة ✓", "Group photo updated ✓") : L("أُزيلت صورة المجموعة", "Group photo removed"));
         return true;
@@ -257,9 +258,32 @@
     return c.photoTs ? photoOf(c.cid) : null;
   }
   function setMyPhoto(dataUrl) {   // null ⇒ إزالة
-    return call("profile.set", { photo: dataUrl || null }).then(function () {
+    var hd = dataUrl ? hdFor[dataUrl] || null : null;
+    return call("profile.set", hd ? { photo: dataUrl, photoHd: hd } : { photo: dataUrl || null }).then(function () {
       var all = avAll(); all[state.uid] = { d: dataUrl || null, at: Date.now() }; avSave(); avChanged();
+      delete hdCache[state.uid]; if (hd) hdCache[state.uid] = hd;
     });
+  }
+  // ── C204: الصورة بدقّةٍ عالية — avatars/{id}_hd (يكتبها الخادم v121). تُجلب عند فتح الصورة وحدها، لا في القوائم ──
+  var hdFor = {};     // المصغّرة ⇒ نسختها العالية (من محرّر القصّ، حتّى تُرسَل)
+  var hdCache = {};   // id ⇒ data: | null (لا نسخة عالية)
+  function photoHd(id) {
+    if (!id || !/^[A-Za-z0-9_-]{1,128}$/.test(String(id))) return Promise.resolve(null);
+    if (id in hdCache) return Promise.resolve(hdCache[id]);
+    var d = fsdb();
+    if (!d) return Promise.resolve(null);
+    return withTimeout(d.collection("avatars").doc(id + "_hd").get(), 15000, null).then(function (doc) {
+      var x = doc && doc.exists ? (doc.data() || {}).d : null;
+      x = typeof x === "string" && /^data:image\/(jpeg|webp);base64,/.test(x) ? x : null;
+      hdCache[id] = x; return x;
+    }).catch(function () { return null; });   // بلا صلاحيّة/شبكة ⇒ تبقى المصغّرة
+  }
+  // من المصغّرة نفسها (كلّ عارضٍ يعرف الصورة لا صاحبها): نبحث عن صاحبها في مخزون الصور ثمّ نجلب نسخته العالية
+  function photoHdOf(thumb) {
+    if (!thumb) return Promise.resolve(null);
+    var all = avAll();
+    for (var k in all) if (all[k] && all[k].d === thumb) return photoHd(k);
+    return Promise.resolve(null);
   }
   // صورةٌ صغيرة مربّعة (128px, JPEG) ≤ 20 ألف حرف
   function squareThumb(blob) {
@@ -392,10 +416,19 @@
         var fin = function (v) { ov.remove(); try { URL.revokeObjectURL(r.url); } catch (e) {} res(v); };
         no.onclick = function () { fin(null); };
         ok.onclick = function () {
+          // C204: نسخةٌ عالية الدقّة للعرض بملء الشاشة (≤ 960px بقدر دقّة الأصل، ≤ 380 ألف حرف) — تُرسَل مع المصغّرة
+          var hd = null;
+          try {
+            var hs = Math.max(320, Math.min(960, Math.round(S / z))), hq = [0.86, 0.8, 0.72, 0.62];
+            for (var j = 0; j < hq.length && !hd; j++) {
+              var side = j < 2 ? hs : Math.round(hs * 0.75), hc = document.createElement("canvas"); hc.width = hc.height = side; draw(hc.getContext("2d"), side);
+              var hdu = hc.toDataURL("image/jpeg", hq[j]); if (hdu.length <= 380000) hd = hdu;
+            }
+          } catch (e) { hd = null; }
           var sizes = [160, 128, 96, 72], qs = [0.82, 0.72, 0.62, 0.5];
           for (var i = 0; i < sizes.length; i++) {
             var c = document.createElement("canvas"); c.width = c.height = sizes[i]; draw(c.getContext("2d"), sizes[i]);
-            var du = c.toDataURL("image/jpeg", qs[i]); if (du.length <= 20000) return fin(du);
+            var du = c.toDataURL("image/jpeg", qs[i]); if (du.length <= 20000) { if (hd) hdFor[du] = hd; return fin(du); }
           }
           toast(L("الصورة كبيرة جدّاً", "Image too large"));
         };
@@ -4222,7 +4255,7 @@
     var css = kind === "primary" ? "background:var(--sawa-primary,#2774BA);color:#fff;border:0"
       : kind === "danger" ? "background:#fdecec;color:#b42318;border:0"
       : kind === "ghost" ? "background:transparent;color:var(--sawa-primary,#2774BA);border:0"
-      : "background:#fff;color:#1A1A2E;border:1.5px solid #dfe5ec";
+      : "background:var(--sawa-btn-fill,#E7ECF2);color:var(--sawa-text,#1A1A2E);border:0";   // C204: ثانويٌّ صلب بلا حدٍّ رفيع
     return mk("button", css + ";border-radius:12px;padding:12px 14px;font:800 14px var(--sawa-font,system-ui);width:100%;box-sizing:border-box;cursor:pointer", text);
   }
   // C196: النوافذ المنبثقة في الوضع الداكن. أُنشئت كلّها بألوانٍ فاتحة مكتوبة مباشرة (40 نافذة)، فكانت تبقى بيضاء فوق شاشةٍ داكنة.
@@ -6351,7 +6384,7 @@
     setBlocked: setBlocked,
     sendLocation: sendLocation, mapsUrl: mapsUrl, sendCard: sendCard, cleanCard: cleanCard, cardText: cardText, phonePickKind: phonePickKind, readPhoneContacts: readPhoneContacts, invitePhone: invitePhone, myUid: function () { return state.uid || null; },   // C184
       // C32
-    photoOf: photoOf, setMyPhoto: setMyPhoto, setGroupPhoto: setGroupPhoto,   // C25
+    photoOf: photoOf, photoHd: photoHd, photoHdOf: photoHdOf, setMyPhoto: setMyPhoto, setGroupPhoto: setGroupPhoto,   // C25
     e2eCreateDm: e2eCreateDm, e2eCreateGroup: e2eCreateGroup, e2eJoin: e2eJoin, e2eState: function (cid) { return e2eState(chats[cid]); },
     _e2e: e2e, _plain: function () { return plain; },
     installState: installState, installable: installable, installSheet: installSheet, installNow: installNow,

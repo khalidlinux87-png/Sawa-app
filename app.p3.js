@@ -346,7 +346,7 @@ function FamilyGroupsScreen({ groups, groupPersons, currentGroupId, onSetCurrent
                     React.createElement("p", { className: `text-[12px] font-bold mb-3 leading-relaxed ${textStart()}`, style: { color: colors.text } }, t("fg_thdhyr_alhdhf", { name: menuGroup.name, n: n((groupPersons[menuGroup.id] || []).length) })),
                     React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                         React.createElement("button", { onClick: () => { const id = menuGroup.id; setMenuFor(null); setConfirming(false); onDeleteGroup(id); }, className: "flex-1 py-2.5 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.danger } }, t("hdhf")),
-                        React.createElement("button", { onClick: () => setConfirming(false), className: "flex-1 py-2.5 rounded-xl text-sm font-bold", style: { backgroundColor: colors.card, color: colors.text, border: `1px solid ${colors.border}` } }, t("ilgha")))))));
+                        React.createElement("button", { onClick: () => setConfirming(false), className: "flex-1 py-2.5 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, t("ilgha")))))));
 }
 // ============================================================
 // اشتقاق صلة القرابة نسبةً لصاحب الشجرة (الجذر السفلي = "أنا").
@@ -618,13 +618,13 @@ function kinBloodPaths(G, ancM, T) {
 }
 function kinSiblingQualifier(G, M, T, commonsAtOne) {
     const h = G.half[M + "|" + T];
-    if (h) return h === "mother" ? " من الأم" : " من الأب";
+    if (h) return h === "mother" ? " لأم" : " لأب";   // C204: «الأخ لأب / الأخ لأم» — المصطلح الشرعيّ
     const real = (id) => (G.parents[id] || []).filter((x) => !x.startsWith("~v:"));
     const pm = real(M), pt = real(T);
     const shared = commonsAtOne.filter((c) => !c.startsWith("~v:"));
     if (pm.length >= 2 && pt.length >= 2) {
         if (shared.length >= 2) return " الشقيق";
-        if (shared.length === 1) return (G.byId[shared[0]] || {}).gender === "female" ? " من الأم" : " من الأب";
+        if (shared.length === 1) return (G.byId[shared[0]] || {}).gender === "female" ? " لأم" : " لأب";
     }
     return "";
 }
@@ -756,8 +756,13 @@ function inferOtherParents(gid, rels) {
         if (r.type === "parent") { (parents[r.target] || (parents[r.target] = [])).push(r.source); (kids[r.source] || (kids[r.source] = [])).push(r.target); }
         else if (r.type === "spouse") { (spouses[r.source] || (spouses[r.source] = [])).push(r.target); (spouses[r.target] || (spouses[r.target] = [])).push(r.source); }
     });
+    // C204: من سُجّلت له أخوّةٌ «لأب/لأم» صراحةً فوالداه مختارٌ أمرُهما — لا نخمّن له الوالد الآخر
+    //       (كان «عمر أخٌ لأب» يُعيد إليه زوجةَ أبيه الوحيدة أمّاً عند كلّ فتحٍ للشجرة)
+    const explicitHalf = new Set();
+    R.forEach((r) => { if (r.type === "sibling" && r.half) { explicitHalf.add(r.source); explicitHalf.add(r.target); } });
     const out = [];
     Object.keys(parents).forEach((c) => {
+        if (explicitHalf.has(c)) return;
         const ps = [...new Set(parents[c])];
         if (ps.length !== 1) return;
         const P = ps[0], sp = [...new Set(spouses[P] || [])];
@@ -863,6 +868,305 @@ function buildLineageHelpers(persons, relations) {
     }
     return { lineageLabel, distinctLabel, generationDepth, sortedByGeneration };
 }
+// ============================================================
+// C204: والدٌ لعدّة إخوة · نوع الأخوّة — مخطِّطان نقيّان (يحسبان ما يُضاف ويُحذف ويُعدَّل قبل أيّ كتابة)
+// ------------------------------------------------------------
+// النموذج بلا تغيير في المخطّط: الأخوّة تُستنتج من الوالدين (parent)، وحافّة sibling تحمل half
+// ("father" لأب · "mother" لأم · بلا قيمة = شقيق/غير محدَّد) حين لا يكفي الوالدان. الخادم يقبل half منذ v53،
+// وتغيير half يُرسَل حذفاً ثمّ إضافة (diffAndEnqueue) — فلا يلزم Worker جديد.
+// ============================================================
+function famParentsMap(relations) {
+    const m = {};
+    (relations || []).forEach((r) => { if (r.type === "parent") (m[r.target] || (m[r.target] = [])).push(r.source); });
+    return m;
+}
+// ربط والدٍ واحد بعدّة أبناء دفعةً واحدة ⇒ { add:[edges], skipped:[{ id, why }] }
+// يتخطّى (ويذكر السبب): الوالد نفسه · من له والدٌ آخر من جنسه · من له والدان · من هو من أصول الوالد (دورة)
+function planBatchParent(persons, relations, parentId, childIds) {
+    const byId = {};
+    (persons || []).forEach((p) => { byId[p.id] = p; });
+    const P = byId[parentId], pm = famParentsMap(relations);
+    const ancOf = (id) => { const seen = new Set(), q = [id]; while (q.length) { const x = q.pop(); (pm[x] || []).forEach((y) => { if (!seen.has(y)) { seen.add(y); q.push(y); } }); } return seen; };
+    const parentAnc = ancOf(parentId), add = [], skipped = [];
+    (childIds || []).forEach((cid) => {
+        const C = byId[cid], ps = pm[cid] || [];
+        const why = !C ? tl("غير موجود", "missing")
+            : cid === parentId ? tl("هو الوالد نفسه", "is the parent")
+            : ps.indexOf(parentId) >= 0 ? tl("مرتبطٌ به أصلاً", "already linked")
+            : parentAnc.has(cid) ? tl("من أصول الوالد — لا يكون ابنه", "is an ancestor of the parent")
+            : P && P.gender && ps.some((x) => byId[x] && byId[x].gender === P.gender) ? (P.gender === "female" ? tl("له أمٌّ مسجَّلة: ", "has a mother: ") : tl("له أبٌ مسجَّل: ", "has a father: ")) + famFirst(byId[ps.find((x) => byId[x] && byId[x].gender === P.gender)])
+            : ps.length >= 2 ? tl("له والدان مسجَّلان", "already has two parents")
+            : null;
+        if (why) skipped.push({ id: cid, why });
+        else add.push({ source: parentId, target: cid, type: "parent" });
+    });
+    return { add, skipped };
+}
+// الإخوة المعروفون لشخص: حافّة أخوّة، أو والدٌ مشترك ⇒ [{ id, type: "full"|"father"|"mother"|"unknown", rel }]
+function famSiblingsOf(persons, relations, id) {
+    const byId = {};
+    (persons || []).forEach((p) => { byId[p.id] = p; });
+    const pm = famParentsMap(relations), mine = pm[id] || [], out = {};
+    const g = (x) => (byId[x] || {}).gender;
+    const typeOf = (other, rel) => {
+        const theirs = pm[other] || [], shared = mine.filter((x) => theirs.indexOf(x) >= 0);
+        if (shared.length >= 2) return "full";
+        if (shared.length === 1) {
+            // والدٌ مشترك واحد: نصف أخوّة إن عُرف لكليهما والدٌ آخر — وإلّا يبقى ما سُجّل في الحافّة (أو «غير محدَّد»)
+            const other1 = mine.find((x) => x !== shared[0] && g(x) !== g(shared[0])), other2 = theirs.find((x) => x !== shared[0] && g(x) !== g(shared[0]));
+            if ((other1 && other2) || (rel && rel.half)) return g(shared[0]) === "female" ? "mother" : "father";   // كلاهما له والدٌ آخر (مختلف بالضرورة)
+            return rel && !rel.half ? "full" : "unknown";
+        }
+        return rel ? (rel.half || "full") : "unknown";
+    };
+    (relations || []).forEach((r) => {
+        if (r.type === "sibling" && (r.source === id || r.target === id)) { const o = r.source === id ? r.target : r.source; out[o] = { id: o, rel: r }; }
+    });
+    Object.keys(pm).forEach((c) => { if (c !== id && byId[c] && (pm[c] || []).some((x) => mine.indexOf(x) >= 0) && !out[c]) out[c] = { id: c, rel: null }; });
+    return Object.values(out).filter((x) => byId[x.id]).map((x) => ({ ...x, type: typeOf(x.id, x.rel) }));
+}
+// تغيير نوع الأخوّة بين A وB ⇒ { add, remove:[relIds], update:[{ id, half }], error, notes:[] }
+// type: "full" | "father" | "mother". otherParentId: للأخ لأب = أمّ B (من زوجات الأب) · للأخ لأم = أبو B — أو null (غير معروف)
+function planSiblingType(persons, relations, aId, bId, type, otherParentId) {
+    const byId = {};
+    (persons || []).forEach((p) => { byId[p.id] = p; });
+    const pm = famParentsMap(relations), g = (x) => (byId[x] || {}).gender;
+    const parentOf = (id, gender) => (pm[id] || []).find((x) => g(x) === gender) || null;
+    const relOf = (id, gender) => (relations || []).find((r) => r.type === "parent" && r.target === id && g(r.source) === gender);
+    const out = { add: [], remove: [], update: [], error: null, notes: [] };
+    const name = (x) => famFirst(byId[x]);
+    // ١) الوالد المشترك (أو الوالدان) — يُنسخ من A إلى B إن كان مقعد B فارغاً، ويُرفض إن كان مشغولاً بغيره
+    const shareGender = (gender) => {
+        const pa = parentOf(aId, gender), pb = parentOf(bId, gender);
+        if (pa && pb && pa !== pb) { out.error = tl("لـ«" + name(aId) + "» و«" + name(bId) + "» " + (gender === "female" ? "أمّان مختلفتان" : "أبوان مختلفان") + " مسجَّلان — غيّر " + (gender === "female" ? "الأم" : "الأب") + " أوّلاً.", "They have different recorded " + (gender === "female" ? "mothers" : "fathers") + " — change that first."); return; }
+        const src = pa || pb, dst = pa ? bId : aId;
+        if (src && !(pa && pb)) { out.add.push({ source: src, target: dst, type: "parent" }); out.notes.push(tl("يصير «" + name(src) + "» " + (gender === "female" ? "أمّ" : "أبا") + " «" + name(dst) + "»", name(src) + " becomes " + name(dst) + "'s " + (gender === "female" ? "mother" : "father"))); }
+    };
+    // ٢) الوالد غير المشترك — يُفصل: B يأخذ الوالد المختار (otherParentId) أو لا أحد
+    const splitGender = (gender) => {
+        const pa = parentOf(aId, gender), pb = parentOf(bId, gender);
+        if (pb && pb === pa) {
+            const r = relOf(bId, gender);
+            if (r) { out.remove.push(r.id); out.notes.push(tl("يُفكّ «" + name(pb) + "» " + (gender === "female" ? "أمّاً" : "أباً") + " عن «" + name(bId) + "»", name(pb) + " is unlinked as " + name(bId) + "'s " + (gender === "female" ? "mother" : "father"))); }
+        }
+        if (otherParentId && otherParentId !== pa && (!pb || pb === pa)) {
+            if (g(otherParentId) !== gender) { out.error = tl("الوالد المختار من الجنس الآخر", "The chosen parent has the wrong gender"); return; }
+            out.add.push({ source: otherParentId, target: bId, type: "parent" });
+            out.notes.push(tl("يصير «" + name(otherParentId) + "» " + (gender === "female" ? "أمّ" : "أبا") + " «" + name(bId) + "»", name(otherParentId) + " becomes " + name(bId) + "'s " + (gender === "female" ? "mother" : "father")));
+        }
+    };
+    if (type === "full") { shareGender("male"); if (!out.error) shareGender("female"); }
+    else if (type === "father") { shareGender("male"); if (!out.error) splitGender("female"); }
+    else if (type === "mother") { shareGender("female"); if (!out.error) splitGender("male"); }
+    if (out.error) return out;
+    // ٣) حافّة الأخوّة تحمل النوع — تُنشأ إن لم توجد (حين لا والدَين مسجَّلين يشهدان به)، وتُعدَّل إن اختلف
+    const half = type === "full" ? null : type;
+    const edge = (relations || []).find((r) => r.type === "sibling" && famPairOf(r, aId, bId));
+    if (edge) { if ((edge.half || null) !== half) out.update.push({ id: edge.id, half }); }
+    else out.add.push(Object.assign({ source: aId, target: bId, type: "sibling" }, half ? { half } : {}));
+    return out;
+}
+// C204: «أبٌ/أمٌّ لعدّة إخوة» — اختيار الوالد (جديدٌ باسمه ونسبه، أو من الشجرة) ثمّ تحديد الأبناء، وحفظٌ واحد (تراجعٌ واحد)
+function BatchParentSheet({ anchor, persons = [], relations = [], preselectIds, onSave, onClose }) {
+    const { colors } = useTheme();
+    const pm = famParentsMap(relations), g = (x) => ((persons.find((p) => p.id === x) || {}).gender);
+    const lacks = (gender) => !(pm[anchor ? anchor.id : ""] || []).some((x) => g(x) === gender);
+    const [role, setRole] = useState(anchor && !lacks("male") && lacks("female") ? "female" : "male");
+    const [src, setSrc] = useState("new");
+    const [name, setName] = useState("");
+    const [pickId, setPickId] = useState(null);
+    const [q, setQ] = useState("");
+    const [q2, setQ2] = useState("");
+    const { distinctLabel } = buildLineageHelpers(persons, relations);
+    // المرشّحون: صاحب البطاقة وإخوته (والمحدَّدون من القائمة) أوّلاً
+    const base = [...new Set([...(anchor ? [anchor.id] : []), ...(anchor ? famSiblingsOf(persons, relations, anchor.id).map((x) => x.id) : []), ...(preselectIds || [])])];
+    const [extra, setExtra] = useState([]);
+    const pool = [...new Set([...base, ...extra])];
+    const NEW = "~newparent";
+    const parentId = src === "new" ? NEW : pickId;
+    const P2 = src === "new" ? persons.concat([{ id: NEW, local_name: splitNasab(name).name || "؟", gender: role }]) : persons;
+    const plan = parentId ? planBatchParent(P2, relations, parentId, pool) : { add: [], skipped: [] };
+    const okIds = new Set(plan.add.map((e) => e.target)), why = {};
+    plan.skipped.forEach((x) => { why[x.id] = x.why; });
+    const [checked, setChecked] = useState(null);   // null = كلّ المؤهَّلين
+    const sel = pool.filter((id) => okIds.has(id) && (checked ? checked.indexOf(id) >= 0 : true));
+    const toggle = (id) => setChecked((c) => { const cur = c || pool.filter((x) => okIds.has(x)); return cur.indexOf(id) >= 0 ? cur.filter((x) => x !== id) : cur.concat([id]); });
+    const nameBad = src === "new" && !!name.trim() && !nameDepthOK(name, false);
+    const ready = sel.length > 0 && (src === "new" ? !!name.trim() && !nameBad : !!pickId);
+    const qn = normalizeArabicName(q), q2n = normalizeArabicName(q2);
+    const parentCands = persons.filter((p) => p.gender === role && pool.indexOf(p.id) < 0 && (!qn || normalizeArabicName(distinctLabel(p) + " " + p.local_name).includes(qn))).slice(0, 20);
+    const moreCands = q2n ? persons.filter((p) => pool.indexOf(p.id) < 0 && p.id !== pickId && normalizeArabicName(distinctLabel(p) + " " + p.local_name).includes(q2n)).slice(0, 12) : [];
+    const roleWord = role === "female" ? tl("الأم", "mother") : tl("الأب", "father");
+    const lbl = (txt) => React.createElement("p", { className: `text-[11.5px] font-extrabold mt-3 mb-1.5 ${textStart()}`, style: { color: colors.text } }, txt);
+    const childRow = (id) => {
+        const p = persons.find((x) => x.id === id); if (!p) return null;
+        const ok = okIds.has(id), on = sel.indexOf(id) >= 0;
+        return React.createElement("button", { key: id, disabled: !ok, onClick: () => toggle(id), role: "checkbox", "aria-checked": on, className: `w-full flex ${rowStart()} items-center gap-2.5 px-3 py-2 rounded-xl mb-1.5`, style: { backgroundColor: on ? colors.primaryLight : colors.card, border: `1.5px solid ${on ? colors.primary : colors.border}`, opacity: ok ? 1 : 0.6 } },
+            React.createElement("span", { className: "w-5 h-5 rounded-md flex items-center justify-center shrink-0", style: { backgroundColor: on ? colors.primary : "transparent", border: `2px solid ${on ? colors.primary : colors.border}` } }, on && React.createElement(Check, { size: 13, color: "#fff" })),
+            React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+                React.createElement("p", { className: "text-[12.5px] font-extrabold truncate", style: { color: colors.text } }, distinctLabel(p) || p.local_name),
+                React.createElement("p", { className: "text-[10.5px]", style: { color: ok ? colors.textMuted : colors.accent } }, ok ? personKinLabel(p) : "⚠️ " + why[id])));
+    };
+    return React.createElement(FamSheet, { title: tl("أبٌ أو أمٌّ لعدّة إخوة", "One parent for several siblings"), onClose, z: 32, maxHeight: "92%" },
+        React.createElement("div", { className: "pt-1", "data-batch-parent": "1" },
+            React.createElement("p", { className: `text-[11.5px] mb-2 ${textStart()}`, style: { color: colors.textMuted } }, tl("اربط والداً واحداً بكلّ من تحدّدهم في خطوةٍ واحدة — تُستنتج الأخوّة وزواج الوالدين تلقائيّاً، والتراجع عنها خطوةٌ واحدة.", "Link one parent to everyone you tick in one step — siblinghood and the parents' marriage are inferred; one undo reverts it.")),
+            React.createElement(FamSeg, { value: role, onChange: (v) => { setRole(v); setPickId(null); setChecked(null); }, options: [{ k: "male", l: tl("أب", "Father") }, { k: "female", l: tl("أم", "Mother") }] }),
+            lbl(tl("من هو " + roleWord + "؟", "Who is the " + roleWord + "?")),
+            React.createElement(FamSeg, { value: src, onChange: (v) => { setSrc(v); setChecked(null); }, options: [{ k: "new", l: tl("شخصٌ جديد", "New person") }, { k: "pick", l: tl("من الشجرة", "From the tree") }] }),
+            src === "new" ? React.createElement("div", { className: "mt-2" },
+                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: name, onChange: (e) => setName(e.target.value), placeholder: nameExample(role, "parent", false, false), "aria-label": tl("اسم " + roleWord, "Name"), className: "w-full rounded-xl px-3 py-2.5 text-sm", style: { backgroundColor: colors.card, color: colors.text, border: `1px solid ${nameBad ? colors.accent : colors.border}` } }),
+                React.createElement("p", { className: `text-[10.5px] mt-1 ${textStart()}`, style: { color: nameBad ? colors.accent : colors.textMuted, fontWeight: nameBad ? 700 : 400 } }, (nameBad ? "⚠️ " : "") + nameDepthHint(false)))
+                : React.createElement("div", { className: "mt-2" },
+                    React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: q, onChange: (e) => setQ(e.target.value), placeholder: tl("ابحث بالاسم…", "Search by name…"), className: "w-full rounded-xl px-3 py-2 text-[12px] mb-2", style: { backgroundColor: colors.bg, color: colors.text, border: `1px solid ${colors.border}` } }),
+                    parentCands.length === 0 ? React.createElement("p", { className: `text-[11px] ${textStart()}`, style: { color: colors.textMuted } }, tl("لا أحد بهذا الوصف — جرّب «شخصٌ جديد».", "No match — try “New person”."))
+                        : parentCands.map((p) => React.createElement("button", { key: p.id, onClick: () => { setPickId(p.id); setChecked(null); }, "aria-pressed": pickId === p.id, className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2 rounded-xl mb-1.5`, style: { backgroundColor: pickId === p.id ? colors.primaryLight : colors.card, border: `1.5px solid ${pickId === p.id ? colors.primary : colors.border}` } },
+                            React.createElement("span", { className: `flex-1 text-[12.5px] font-bold truncate ${textStart()}`, style: { color: colors.text } }, distinctLabel(p) || p.local_name),
+                            React.createElement("span", { className: "text-[10.5px]", style: { color: colors.textMuted } }, personKinLabel(p))))),
+            lbl(tl("أبناؤه — حدّد من يُربط", "Their children — tick who to link")),
+            pool.map(childRow),
+            React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: q2, onChange: (e) => setQ2(e.target.value), placeholder: tl("أضف أخاً آخر إلى القائمة بالاسم…", "Add another sibling by name…"), className: "w-full rounded-xl px-3 py-2 text-[12px] mt-1", style: { backgroundColor: colors.bg, color: colors.text, border: `1px solid ${colors.border}` } }),
+            moreCands.map((p) => React.createElement("button", { key: "m" + p.id, onClick: () => { setExtra((x) => x.concat([p.id])); setChecked((c) => (c ? c.concat([p.id]) : c)); setQ2(""); }, className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2 rounded-xl mt-1`, style: { backgroundColor: colors.card, border: `1px dashed ${colors.primary}` } },
+                React.createElement(Plus, { size: 14, color: colors.primary }),
+                React.createElement("span", { className: `flex-1 text-[12px] font-bold ${textStart()}`, style: { color: colors.text } }, distinctLabel(p) || p.local_name))),
+            React.createElement("div", { className: "rounded-2xl px-3.5 py-3 mt-3", style: { backgroundColor: colors.primary + "0d", border: `1.5px solid ${colors.primary}55` } },
+                React.createElement("p", { className: `text-[12px] font-extrabold ${textStart()}`, style: { color: colors.primary } },
+                    sel.length ? tl("يصير «" + (src === "new" ? (splitNasab(name).name || "…") : famFirst(persons.find((p) => p.id === pickId))) + "» " + roleWord + " " + sel.length + (sel.length === 1 ? " شخص" : " إخوة") + ": " + sel.map((id) => famFirst(persons.find((p) => p.id === id))).join("، "), (sel.length + " will be linked")) : tl("حدّد شخصاً واحداً على الأقلّ", "Tick at least one person"))),
+            React.createElement("div", { className: "mt-3" },
+                React.createElement(FamButton, { label: ready ? tl("اربط " + roleWord + " بـ" + sel.length, "Link to " + sel.length) : tl("أكمل الاختيار", "Complete the choice"), disabled: !ready, onPress: () => { onSave(src === "new" ? { newName: name.trim(), gender: role } : { parentId: pickId }, sel); onClose(); } }))));
+}
+// C204: «نوع الأخوّة» — لكلّ أخٍ: شقيق · لأب · لأم، مع الوالد الآخر (من زوجات الأب أو أزواج الأم)، ومعاينةٌ لما سيتغيّر
+function SiblingTypeSheet({ person, persons = [], relations = [], onApply, onClose }) {
+    const { colors } = useTheme();
+    const sibs = famSiblingsOf(persons, relations, person.id);
+    const [openId, setOpenId] = useState(null);
+    const [want, setWant] = useState({});      // id ⇒ type
+    const [other, setOther] = useState({});    // id ⇒ otherParentId | ""
+    const byId = {};
+    persons.forEach((p) => { byId[p.id] = p; });
+    const pm = famParentsMap(relations);
+    const parentOf = (id, gender) => (pm[id] || []).find((x) => (byId[x] || {}).gender === gender) || null;
+    const spousesOf = (id) => relations.filter((r) => famIsMarriage(r) && (r.source === id || r.target === id)).map((r) => (r.source === id ? r.target : r.source));
+    const TYPES = (s) => [{ k: "full", l: (byId[s] || {}).gender === "female" ? tl("شقيقة", "Full") : tl("شقيق", "Full") }, { k: "father", l: tl("لأب", "Paternal") }, { k: "mother", l: tl("لأم", "Maternal") }];
+    const label = (t0) => ({ full: tl("شقيق", "full"), father: tl("لأب", "paternal half"), mother: tl("لأم", "maternal half"), unknown: tl("غير محدَّد", "not set") })[t0];
+    return React.createElement(FamSheet, { title: tl("نوع الأخوّة — " + person.local_name, "Sibling type — " + person.local_name), onClose, z: 32, maxHeight: "92%" },
+        React.createElement("div", { className: "pt-1", "data-sibling-type": "1" },
+            React.createElement("p", { className: `text-[11.5px] mb-3 ${textStart()}`, style: { color: colors.textMuted } }, tl("الشقيق يشارك الأب والأم · الأخ لأب يشارك الأب وحده · الأخ لأم يشارك الأم وحدها. يُعدَّل الوالدان تبعاً لاختيارك.", "Full shares both parents · paternal shares the father · maternal shares the mother. Parents are adjusted to match.")),
+            sibs.length === 0 && React.createElement("p", { className: `text-[12px] ${textStart()}`, style: { color: colors.textMuted } }, tl("لا إخوة مسجّلون — أضفهم من «إضافة أقارب».", "No siblings recorded yet.")),
+            sibs.map((sb) => {
+                const p = byId[sb.id], t0 = want[sb.id] || sb.type, isOpen = openId === sb.id;
+                const sharedGender = t0 === "father" ? "male" : t0 === "mother" ? "female" : null;
+                const shared = sharedGender ? (parentOf(person.id, sharedGender) || parentOf(sb.id, sharedGender)) : null;
+                const myOther = sharedGender ? parentOf(person.id, sharedGender === "male" ? "female" : "male") : null;
+                const opts = shared ? spousesOf(shared).filter((x) => x !== myOther && byId[x]) : [];
+                const otherId = other[sb.id] != null ? other[sb.id] : (sharedGender ? (parentOf(sb.id, sharedGender === "male" ? "female" : "male") !== myOther ? parentOf(sb.id, sharedGender === "male" ? "female" : "male") : null) || "" : "");
+                const plan = isOpen && want[sb.id] ? planSiblingType(persons, relations, person.id, sb.id, t0, otherId || null) : null;
+                return React.createElement("div", { key: sb.id, className: "rounded-2xl p-3 mb-2", style: { backgroundColor: colors.card, border: `1.5px solid ${isOpen ? colors.primary : colors.border}` } },
+                    React.createElement("button", { onClick: () => setOpenId(isOpen ? null : sb.id), className: `w-full flex ${rowStart()} items-center gap-2.5` },
+                        React.createElement(FamAvatar, { name: p.local_name, photo: p.photo, size: 34 }),
+                        React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+                            React.createElement("p", { className: "text-[13px] font-extrabold truncate", style: { color: colors.text } }, p.local_name),
+                            React.createElement("p", { className: "text-[11px]", style: { color: sb.type === "unknown" ? colors.accent : colors.textMuted } }, tl("الآن: ", "Now: ") + label(sb.type))),
+                        React.createElement("span", { className: "text-[11px] font-extrabold rounded-full px-3 py-1.5", style: { backgroundColor: colors.primary, color: "#fff" } }, isOpen ? tl("إغلاق", "Close") : tl("تعديل", "Edit"))),
+                    isOpen && React.createElement("div", { className: "mt-3" },
+                        React.createElement(FamSeg, { value: t0, onChange: (v) => setWant((w) => ({ ...w, [sb.id]: v })), options: TYPES(sb.id) }),
+                        sharedGender && React.createElement(React.Fragment, null,
+                            React.createElement("p", { className: `text-[11px] font-extrabold mt-2.5 mb-1.5 ${textStart()}`, style: { color: colors.text } }, sharedGender === "male" ? tl("أمّ «" + famFirst(p) + "»", famFirst(p) + "'s mother") : tl("أبو «" + famFirst(p) + "»", famFirst(p) + "'s father")),
+                            React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-1.5` },
+                                opts.map((x) => React.createElement(Chip, { key: x, label: famFirst(byId[x]), active: otherId === x, onPress: () => { setOther((o) => ({ ...o, [sb.id]: x })); setWant((w) => ({ ...w, [sb.id]: t0 })); } })),
+                                React.createElement(Chip, { label: tl("غير معروف", "Unknown"), active: !otherId, onPress: () => { setOther((o) => ({ ...o, [sb.id]: "" })); setWant((w) => ({ ...w, [sb.id]: t0 })); } })),
+                            opts.length === 0 && React.createElement("p", { className: `text-[10.5px] mt-1 ${textStart()}`, style: { color: colors.textMuted } }, tl("سجّل الزوجة/الزوج الآخر أوّلاً ليظهر هنا.", "Record the other spouse first to pick them here."))),
+                        plan && React.createElement("div", { className: "rounded-xl px-3 py-2 mt-2.5", style: { backgroundColor: colors.primary + "0d" } },
+                            plan.error ? React.createElement("p", { role: "alert", className: `text-[11.5px] font-extrabold ${textStart()}`, style: { color: colors.danger } }, "⛔ " + plan.error)
+                                : (plan.notes.length ? plan.notes : [tl("يُسجَّل النوع فقط — الوالدان كما هما", "Only the type is recorded")]).map((n, i) => React.createElement("p", { key: i, className: `text-[11px] ${textStart()}`, style: { color: colors.text } }, "• " + n))),
+                        React.createElement("div", { className: "mt-2.5" },
+                            React.createElement(FamButton, { label: tl("تطبيق", "Apply"), disabled: !plan || !!plan.error, onPress: () => { onApply(person.id, sb.id, t0, otherId || null); setOpenId(null); setWant((w) => { const n = { ...w }; delete n[sb.id]; return n; }); } }))));
+            })));
+}
+// ============================================================
+// C204: DuplicateActionSheet — «دمج مع مكرّر» و«حذف المكرّر» من بطاقة الشخص نفسه
+// ------------------------------------------------------------
+// كانت أداة الدمج العامّة تطلب اختيار الشخصين من قائمة الشجرة كلّها، والحذف يقطع علاقات المحذوف كلّها
+// (من أُضيف مرّتين فحُذفت نسخته المربوطة سقط أبناؤه من الشجرة). هنا يبدأ كلّ شيءٍ من البطاقة:
+//   • المرشّحون: الاسم نفسه أوّلاً، ثمّ الاسم الأوّل نفسه، والجنس متوافق — وبحثٌ لغيرهم.
+//   • «حذف المكرّر» = تبقى النسخة الأصليّة التي تختارها، وتنتقل إليها علاقات المكرّر قبل حذفه (لا ينقطع أحد).
+//   • «دمج» = تختار أيّ النسختين تبقى (الأغنى بالعلاقات افتراضاً).
+//   • معاينة قبل التنفيذ: كم علاقة تنتقل، وما يتعارض (والدان من جنسٍ واحد، أكثر من والدَين، قواعد الزواج).
+//   • كلاهما يمرّ بـ mergePersons (حارس الزواج C203) ويُسجَّل فيُتراجع عنه.
+// ============================================================
+function famMergePreview(persons, relations, keepId, removeId) {
+    const byId = {};
+    (persons || []).forEach((p) => { byId[p.id] = p; });
+    const moved = (relations || []).filter((r) => r.source === removeId || r.target === removeId);
+    const redirected = (relations || []).map((r) => ({ ...r, source: r.source === removeId ? keepId : r.source, target: r.target === removeId ? keepId : r.target }))
+        .filter((r) => r.source !== r.target);
+    const seen = new Set(), uniq = redirected.filter((r) => { const k = [r.source, r.target].sort().join("|") + r.type; if (seen.has(k)) return false; seen.add(k); return true; });
+    const parents = [...new Set(uniq.filter((r) => r.type === "parent" && r.target === keepId).map((r) => r.source))];
+    const warn = [];
+    if (parents.length > 2) warn.push(tl("سيصير له " + parents.length + " والدين — راجع «تغيير الأب/الأم» بعد الدمج", "They'd have " + parents.length + " parents — review afterwards"));
+    else if (parents.length === 2 && byId[parents[0]] && byId[parents[1]] && byId[parents[0]].gender && byId[parents[0]].gender === byId[parents[1]].gender)
+        warn.push(tl("سيصير له والدان من جنسٍ واحد — أحدهما خطأ", "Two parents of the same gender — one is wrong"));
+    const keep = byId[keepId], rem = byId[removeId];
+    const after = (persons || []).filter((p) => p.id !== removeId).map((p) => (p.id === keepId ? { ...p, gender: p.gender || (rem && rem.gender) } : p));
+    const bad = marriageViolations(after, uniq).find((v) => v.ids.indexOf(keepId) >= 0);
+    const block = keep && rem && keep.gender && rem.gender && keep.gender !== rem.gender
+        ? tl("أحدهما ذكر والآخر أنثى — ليسا شخصاً واحداً", "One is male and the other female — not the same person")
+        : bad ? bad.msg : null;
+    return { movedCount: moved.length, warn, block };
+}
+function DuplicateActionSheet({ person, persons = [], relations = [], mode = "merge", onMerge, onDelete, onClose }) {
+    const { colors } = useTheme();
+    const [search, setSearch] = useState("");
+    const { distinctLabel } = buildLineageHelpers(persons, relations);
+    const relCount = (id) => relations.filter((r) => r.source === id || r.target === id).length;
+    const nm = normalizeArabicName(person.local_name || ""), first = nm.split(" ")[0];
+    const compatible = (p) => p.id !== person.id && (!p.gender || !person.gender || p.gender === person.gender);
+    const score = (p) => { const n = normalizeArabicName(p.local_name || ""); return n === nm ? 0 : n.split(" ")[0] === first ? 1 : 2; };
+    const qn = normalizeArabicName(search || "");
+    const cands = persons.filter(compatible)
+        .filter((p) => qn ? normalizeArabicName(distinctLabel(p) + " " + (p.local_name || "")).includes(qn) : score(p) < 2)
+        .sort((a, b) => score(a) - score(b) || relCount(b) - relCount(a)).slice(0, 30);
+    const [otherId, setOtherId] = useState(() => (cands[0] || {}).id || null);
+    const other = persons.find((p) => p.id === otherId) || null;
+    // «حذف المكرّر» يُبقي الآخر دائماً؛ «دمج» يُبقي الأغنى بالعلاقات ما لم يختر المستخدم
+    const [keepSel, setKeepSel] = useState(null);
+    const keepId = !other ? null : mode === "delete" ? other.id : (keepSel || (relCount(person.id) >= relCount(other.id) ? person.id : other.id));
+    const removeId = !other ? null : keepId === person.id ? other.id : person.id;
+    const pv = other ? famMergePreview(persons, relations, keepId, removeId) : null;
+    const nameOf = (id) => (persons.find((p) => p.id === id) || {}).local_name || "";
+    const row = (p, active, onPress) => React.createElement("button", { key: p.id, onClick: onPress, "aria-pressed": active, className: `w-full flex ${rowStart()} items-center gap-2.5 px-3 py-2.5 rounded-xl mb-1.5`, style: { backgroundColor: active ? colors.primaryLight : colors.card, border: `1.5px solid ${active ? colors.primary : colors.border}` } },
+        React.createElement(FamAvatar, { name: p.local_name, photo: p.photo, size: 32, gray: p.alive === false }),
+        React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+            React.createElement("p", { className: "text-[12.5px] font-extrabold truncate", style: { color: colors.text } }, distinctLabel(p) || p.local_name),
+            React.createElement("p", { className: "text-[10.5px]", style: { color: colors.textMuted } }, personKinLabel(p) + " · " + tl(relCount(p.id) + " علاقة", relCount(p.id) + " links"))),
+        active && React.createElement(Check, { size: 16, color: colors.primary }));
+    const title = mode === "delete" ? tl("حذف «" + person.local_name + "» المكرّر", "Delete duplicate “" + person.local_name + "”") : tl("دمج «" + person.local_name + "» مع مكرّر", "Merge “" + person.local_name + "” with a duplicate");
+    return React.createElement(FamSheet, { title, onClose, z: 32, maxHeight: "92%" },
+        React.createElement("div", { className: "pt-1", "data-dup-sheet": mode },
+            React.createElement("p", { className: `text-[11.5px] mb-3 ${textStart()}`, style: { color: colors.textMuted } }, mode === "delete"
+                ? tl("اختر النسخة الأصليّة: تنتقل إليها علاقات هذه النسخة (والداه، أبناؤه، زواجه) ثمّ تُحذف — فلا ينقطع أحدٌ من الشجرة.", "Pick the original: this copy's links move to it, then this copy is removed — no one is cut off.")
+                : tl("اختر الشخص المكرّر، ثمّ أيّ النسختين تبقى. تنتقل كلّ العلاقات إلى الباقية، وتُستكمل بياناتها الناقصة من الأخرى.", "Pick the duplicate, then which record stays. All links move to it and missing details are filled in.")),
+            React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 rounded-xl px-3 mb-3`, style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
+                React.createElement(Search, { size: 14, color: colors.textMuted }),
+                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: search, onChange: (e) => setSearch(e.target.value), placeholder: tl("ابحث عن النسخة الأخرى بالاسم أو النسب…", "Search the other record by name or lineage…"), className: "flex-1 py-2 text-[12px] bg-transparent outline-none", style: { color: colors.text, minWidth: 0 } })),
+            React.createElement("p", { className: `text-[11px] font-extrabold mb-1.5 ${textStart()}`, style: { color: colors.text } }, qn ? tl("نتائج البحث", "Results") : tl("يُشبهه بالاسم", "Same or similar name")),
+            cands.length === 0 && React.createElement("p", { className: `text-[11px] mb-3 ${textStart()}`, style: { color: colors.textMuted } }, tl("لا أحد بهذا الاسم — ابحث باسمٍ آخر إن كانت النسخة الأخرى مكتوبةً بغيره.", "No one with this name — search if the other copy is spelled differently.")),
+            cands.map((p) => row(p, p.id === otherId, () => { setOtherId(p.id); setKeepSel(null); })),
+            other && mode === "merge" && React.createElement(React.Fragment, null,
+                React.createElement("p", { className: `text-[11px] font-extrabold mt-3 mb-1.5 ${textStart()}`, style: { color: colors.text } }, tl("أيّ النسختين تبقى؟", "Which record stays?")),
+                React.createElement(FamSeg, { value: keepId, onChange: setKeepSel, options: [{ k: person.id, l: tl("هذه: ", "This: ") + shortName(person.local_name) + " (" + relCount(person.id) + ")" }, { k: other.id, l: tl("تلك: ", "That: ") + shortName(other.local_name) + " (" + relCount(other.id) + ")" }] })),
+            pv && React.createElement("div", { className: "rounded-2xl px-3.5 py-3 mt-3", style: { backgroundColor: colors.primary + "0d", border: `1.5px solid ${pv.block ? colors.danger : colors.primary + "55"}` } },
+                React.createElement("p", { className: `text-[12px] font-extrabold ${textStart()}`, style: { color: colors.primary } },
+                    tl("تبقى «" + nameOf(keepId) + "»، وتنتقل إليها " + pv.movedCount + " علاقة من «" + nameOf(removeId) + "» ثمّ تُحذف.", "“" + nameOf(keepId) + "” stays; " + pv.movedCount + " links move from “" + nameOf(removeId) + "”, which is then removed.")),
+                pv.warn.map((w, i) => React.createElement("p", { key: i, className: `text-[11px] font-bold mt-1.5 ${textStart()}`, style: { color: colors.accent } }, "⚠️ " + w)),
+                pv.block && React.createElement("p", { role: "alert", className: `text-[11.5px] font-extrabold mt-1.5 ${textStart()}`, style: { color: colors.danger } }, "⛔ " + pv.block),
+                React.createElement("p", { className: `text-[10.5px] mt-1.5 ${textStart()}`, style: { color: colors.textMuted } }, tl("يمكنك التراجع من «السجلّ».", "You can undo this from History."))),
+            React.createElement("div", { className: "mt-4" },
+                React.createElement(FamButton, { label: !other ? tl("اختر النسخة الأخرى", "Pick the other record") : pv.block ? tl("لا يمكن — انظر السبب", "Not possible — see why") : mode === "delete" ? tl("انقل العلاقات واحذف المكرّر", "Move links and delete duplicate") : tl("ادمج النسختين", "Merge the records"),
+                    disabled: !other || !!pv.block, onPress: () => { onMerge(keepId, removeId); onClose(); } })),
+            mode === "delete" && onDelete && React.createElement("div", { className: "mt-4 pt-3", style: { borderTop: `1px solid ${colors.border}` } },
+                React.createElement("p", { className: `text-[10.5px] mb-2 ${textStart()}`, style: { color: colors.textMuted } }, tl("ليس مكرّراً؟ الحذف العاديّ يزيل «" + person.local_name + "» و" + relCount(person.id) + " علاقة معه.", "Not a duplicate? A plain delete removes them and " + relCount(person.id) + " links.")),
+                React.createElement(FamButton, { variant: "danger", icon: Trash2, label: tl("حذف بلا نقل العلاقات", "Delete without moving links"), onPress: () => { onDelete(person.id); onClose(); } }))));
+}
 function FamilyMergeSheet({ persons, relations = [], onMerge, onClose }) {
     var _a, _b;
     const { colors } = useTheme();
@@ -924,7 +1228,7 @@ function FamilyMergeSheet({ persons, relations = [], onMerge, onClose }) {
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                     React.createElement("button", { onClick: () => { onMerge(keepId, removeId); onClose(); }, className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.danger } },
                         React.createElement("span", { className: "text-xs font-bold text-white" }, t("nam_admj_wahdhf"))),
-                    React.createElement("button", { onClick: () => setConfirming(false), className: "flex-1 rounded-xl py-2 border", style: { borderColor: colors.border } },
+                    React.createElement("button", { onClick: () => setConfirming(false), className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.btnFill } },
                         React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("ilgha")))))))));
 }
 // ============================================================
@@ -1035,7 +1339,7 @@ function AdvancedSearchScreen({ persons, relations = [], onBack, onOpenPerson })
                         "(",
                         activeCount,
                         tl(" \u0645\u0631\u0634\u0650\u0651\u062D)", " filters)")))),
-                activeCount > 0 && (React.createElement("button", { onClick: resetAll, className: "rounded-xl px-3 py-2.5 text-[11px] font-bold shrink-0", style: { backgroundColor: colors.card, color: colors.danger, border: `1px solid ${colors.border}` } }, t("msh_alkl")))),
+                activeCount > 0 && (React.createElement("button", { onClick: resetAll, className: "rounded-xl px-3 py-2.5 text-[11px] font-bold shrink-0", style: { backgroundColor: colors.btnFill, color: colors.danger } }, t("msh_alkl")))),
             results.length === 0 ? (React.createElement(FamCard, null,
                 React.createElement("p", { className: "text-xs text-center py-4", style: { color: colors.textMuted } }, t("la_ntayj_mtabqa_jrb")))) : (results.map((p) => {
                 var _a;
@@ -1088,12 +1392,16 @@ function FamilyTreeToolsSheet({ personsCount, missingSpouseLinks, mismatchedCoun
 }
 // C33: من يملك تعديل الشجرة؟ كلّ من ليس «مشاهداً» (المالك والمحرّر، والعائلة المحلّيّة لصاحبها)
 function famCanEdit(group) { return !!group && group.role !== "viewer"; }
-function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons, relations = [], favorites, otherGroups = [], onToggleFav, onOpenPerson, onBack, onOpenGroups, onAddPerson, onAddPersonChain, onMergePersons, onOpenTree, onOpenSuggestions, onOpenSchedules, onOpenEvents, onOpenMembers, onAddRelativesBulk, onExportSelected, onPrioritizeSelected, onSuggestForSelected, onDeletePerson, onDeletePersonsBulk, onMarkContactBulk, onRecalcProximity, onInferSpouses, groupAllowsMemberEvents = false, initialFilterStatus = "all", }) {
+function FamilyGroupDetailScreen({ onBatchParent, onSiblingType, onShowInTree, meId, onPickMe, group, persons, relations = [], favorites, otherGroups = [], onToggleFav, onOpenPerson, onBack, onOpenGroups, onAddPerson, onAddPersonChain, onMergePersons, onOpenTree, onOpenSuggestions, onOpenSchedules, onOpenEvents, onOpenMembers, onAddRelativesBulk, onExportSelected, onPrioritizeSelected, onSuggestForSelected, onDeletePerson, onDeletePersonsBulk, onMarkContactBulk, onRecalcProximity, onInferSpouses, groupAllowsMemberEvents = false, initialFilterStatus = "all", }) {
     const { colors, isDark } = useTheme();
     const [showAddForm, setShowAddForm] = useState(false);
     const [showChainAdd, setShowChainAdd] = useState(false);
     const [showMerge, setShowMerge] = useState(false);
     const [cardMenu, setCardMenu] = useState(null);   // C202: قائمة ⋯ في بطاقة الشخص
+    const [dupSheet, setDupSheet] = useState(null);   // C204: { person, mode: "merge" | "delete" }
+    const [showMore, setShowMore] = useState(false);   // C204: «المزيد ⋯» بدل صفّ الأدوات
+    const [batchFor, setBatchFor] = useState(null);   // C204: { anchor, ids }
+    const [sibTypeFor, setSibTypeFor] = useState(null);
     const [showStatusRow, setShowStatusRow] = useState(initialFilterStatus !== "all");   // C202: صفّ الحالة والترتيب خلف «تصفية»
     const [showTools, setShowTools] = useState(false);
     const [bulkFor, setBulkFor] = useState(null); // شخص لإضافة عدة أقارب له
@@ -1243,6 +1551,9 @@ function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons,
         bulkFor && (React.createElement(QuickRelativesSheet, { person: bulkFor, existingPersons: persons, relations: relations, onSave: (pp, relKey, names, decisions) => onAddRelativesBulk === null || onAddRelativesBulk === void 0 ? void 0 : onAddRelativesBulk(group.id, pp, relKey, names, decisions), onClose: () => setBulkFor(null) })),
         showTools && React.createElement(FamilyTreeToolsSheet, { personsCount: persons.length, missingSpouseLinks: missingSpouseLinks, mismatchedCount: mismatchedCount, onMerge: () => setShowMerge(true), onInferSpouses: onInferSpouses, onRecalcProximity: onRecalcProximity, onClose: () => setShowTools(false) }),
         showMerge && React.createElement(FamilyMergeSheet, { persons: persons, relations: relations, onMerge: onMergePersons, onClose: () => setShowMerge(false) }),
+        batchFor && React.createElement(BatchParentSheet, { anchor: batchFor.anchor, preselectIds: batchFor.ids, persons: persons, relations: relations, onSave: (spec, ids) => onBatchParent(group.id, spec, ids), onClose: () => setBatchFor(null) }),
+        sibTypeFor && React.createElement(SiblingTypeSheet, { person: sibTypeFor, persons: persons, relations: relations, onApply: (a, b, ty, op) => onSiblingType(group.id, a, b, ty, op), onClose: () => setSibTypeFor(null) }),
+        dupSheet && React.createElement(DuplicateActionSheet, { person: dupSheet.person, mode: dupSheet.mode, persons: persons, relations: relations, onMerge: onMergePersons, onDelete: onDeletePerson, onClose: () => setDupSheet(null) }),
         showAddForm && React.createElement(FamilyPersonFormSheet, { persons: persons, relations: relations, otherGroups: otherGroups, onSave: (data) => onAddPerson(data), onClose: () => setShowAddForm(false) }),
         showChainAdd && React.createElement(FamilyChainAddSheet, { existingPersons: persons, relations: relations, onSave: (chainNames, groupsOfRelatives, targetIndex, matchDecisions, firstGender, firstIsSelf) => { onAddPersonChain(chainNames, groupsOfRelatives, targetIndex, matchDecisions, firstGender, firstIsSelf); setShowChainAdd(false); }, onClose: () => setShowChainAdd(false) }),
         showAdvancedSearch && (React.createElement("div", { className: "absolute inset-0 z-40 flex flex-col", style: { backgroundColor: colors.bg } },
@@ -1258,7 +1569,7 @@ function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons,
                 React.createElement("p", { className: "text-[11px] text-center mb-5 leading-relaxed", style: { color: colors.textMuted } }, t("sthdhf_alaqathm_fy_alshjra")),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                     React.createElement("button", { onClick: () => { onDeletePersonsBulk === null || onDeletePersonsBulk === void 0 ? void 0 : onDeletePersonsBulk(selectedIds); setSelectedIds([]); setConfirmBulkDelete(false); }, className: "flex-1 py-2.5 rounded-xl text-xs font-extrabold", style: { backgroundColor: colors.danger, color: "#fff" } }, t("hdhf")),
-                    React.createElement("button", { onClick: () => setConfirmBulkDelete(false), className: "flex-1 py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: colors.bg, color: colors.textMuted, border: `1px solid ${colors.border}` } }, t("ilgha")))))),
+                    React.createElement("button", { onClick: () => setConfirmBulkDelete(false), className: "flex-1 py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, t("ilgha")))))),
         selectionMode && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-3 px-4 py-2.5 mx-4 mt-3 rounded-2xl`, style: { backgroundColor: colors.primaryLight, boxShadow: famShadow(isDark) } },
             React.createElement("button", { onClick: () => setSelectedIds([]), "aria-label": t("ilgha_althdyd") },
                 React.createElement(X, { size: 17, color: colors.primary })),
@@ -1274,6 +1585,8 @@ function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons,
                 React.createElement(Lightbulb, { size: 16, color: colors.primary })),
             React.createElement("button", { onClick: () => { onMarkContactBulk === null || onMarkContactBulk === void 0 ? void 0 : onMarkContactBulk(selectedIds); setSelectedIds([]); }, "aria-label": t("tsjyl_twasl"), title: t("sjl_ank_twaslt_mahm") },
                 React.createElement(CheckCheck, { size: 16, color: colors.success || colors.primary })),
+            canEdit && onBatchParent && selectedIds.length > 0 && React.createElement("button", { onClick: () => { const ids = selectedIds.slice(); setBatchFor({ anchor: persons.find((x) => x.id === ids[0]), ids }); setSelectedIds([]); }, "aria-label": tl("ربط المحدَّدين بأبٍ أو أمّ", "Link selected to a parent"), title: tl("ربط المحدَّدين بأبٍ أو أمّ", "Link selected to a parent") },
+                React.createElement(Users2, { size: 16, color: colors.primary })),
             canEdit && (React.createElement("button", { onClick: () => setConfirmBulkDelete(true), "aria-label": t("hdhf") },
                 React.createElement(Trash2, { size: 16, color: colors.danger }))))),
         React.createElement("div", { className: "flex-1 overflow-y-auto p-4 pt-3", style: { backgroundColor: colors.bg, paddingBottom: canEdit ? 140 : 90 }, onScroll: (e) => { const el = e.currentTarget; if (listN < sortedPersons.length && el.scrollHeight - el.scrollTop - el.clientHeight < 600) setListN((n) => n + 60); } },
@@ -1309,10 +1622,10 @@ function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons,
                             { k: "B", l: t("aqarb_alwaldyn") },
                             { k: "C", l: t("abad") },
                         ].concat(persons.some(famIsInLaw) ? [{ k: "ashar", l: tl("الأصهار", "In-laws") }] : []) })),
-                React.createElement("button", { "aria-expanded": showStatusRow || filterStatus !== "all", onClick: () => setShowStatusRow((v) => !v), className: `shrink-0 mb-1 flex ${rowStart()} items-center gap-1 rounded-full px-3 py-1.5 text-[11.5px] font-bold`, style: { backgroundColor: (showStatusRow || filterStatus !== "all") ? colors.primary : colors.card, color: (showStatusRow || filterStatus !== "all") ? "#fff" : colors.primary, boxShadow: famShadow(isDark), marginInlineEnd: 6 } },
-                    React.createElement(SlidersHorizontal, { size: 12 }), tl("تصفية", "Filter")),
-                React.createElement("button", { "aria-label": t("kyf_thsb_mda_altdhkyr"), onClick: () => setShowProximityHelp(function (v) { return !v; }), className: "w-7 h-7 rounded-full flex items-center justify-center shrink-0 mb-1", style: { backgroundColor: showProximityHelp ? colors.primary : colors.card, boxShadow: famShadow(isDark) } },
-                    React.createElement("span", { className: "text-[12px] font-extrabold", style: { color: showProximityHelp ? "#fff" : colors.textMuted } }, t("fg_swal")))),
+                // C204: صفٌّ واحد — التبويبات وزرّ «تصفية» بأيقونة (نقطةٌ حين تكون تصفيةٌ فعّالة). «؟» انتقل إلى «المزيد».
+                React.createElement("button", { "aria-label": tl("تصفية وترتيب", "Filter and sort"), title: tl("تصفية وترتيب", "Filter and sort"), "aria-expanded": showStatusRow || filterStatus !== "all", onClick: () => setShowStatusRow((v) => !v), className: "relative w-9 h-9 rounded-full flex items-center justify-center shrink-0 mb-1", style: { backgroundColor: (showStatusRow || filterStatus !== "all") ? colors.primary : colors.card, boxShadow: famShadow(isDark) } },
+                    React.createElement(window.__L.Filter, { size: 15, color: (showStatusRow || filterStatus !== "all") ? "#fff" : colors.primary }),   // قمعٌ لا منزلقات — المنزلقات في شريط البحث للبحث المتقدّم
+                    filterStatus !== "all" && React.createElement("span", { className: "absolute top-0 w-2.5 h-2.5 rounded-full", style: { insetInlineEnd: 0, backgroundColor: colors.accent, border: `2px solid ${colors.bg}` } }))),
             (showStatusRow || filterStatus !== "all") && React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mt-1.5 mb-2 -mx-1 px-1` },
                 React.createElement("div", { className: "flex-1 min-w-0" },
                     React.createElement(FamTabs, { value: filterStatus, onChange: (k) => setFilterStatus(filterStatus === k ? "all" : k), options: [
@@ -1345,22 +1658,20 @@ function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons,
                 React.createElement("span", { className: `flex-1 ${textStart()} text-[11px] font-bold`, style: { color: colors.accent } },
                     (isRTL() ? arCountFix : (x) => x)(unlinkedCount + t("fg_bla_alaqa"))),
                 React.createElement(ChevronLeft, { size: 13, color: colors.accent, style: { transform: isRTL() ? "none" : "scaleX(-1)" } }))),
-            !selectionMode && sortedPersons.length > 0 && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-2.5 px-0.5` },
-                React.createElement("p", { className: `text-[11px] font-bold flex-1 min-w-0 whitespace-nowrap ${textStart()}`, style: { color: colors.textMuted } }, (filterProximity !== "all" || filterStatus !== "all" || searchQuery.trim())
+            // C204: سطرٌ خفيف واحد: العدد + «المزيد ⋯» (كانت أربعة أزرارٍ بصناديق: بالنسب · تصدير · أدوات · تحديد)
+            !selectionMode && sortedPersons.length > 0 && (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-2.5 px-0.5` },
+                React.createElement("p", { className: `text-[12px] font-bold flex-1 min-w-0 whitespace-nowrap ${textStart()}`, style: { color: colors.textMuted } }, (filterProximity !== "all" || filterStatus !== "all" || searchQuery.trim())
                     ? t("mn_length_length", { shown: filteredPersons.length, total: persons.length })
                     : t("qryb_length", { length: persons.length })),
-                canEdit && React.createElement("button", { "aria-label": t("idafa_sryaa_nsb"), title: t("idafa_sryaa_nsb"), onClick: () => setShowChainAdd(true), className: `h-8 flex ${rowStart()} items-center gap-1 text-[11px] font-bold px-3 rounded-full`, style: { backgroundColor: colors.card, color: colors.primary, boxShadow: famShadow(isDark) } },
-                    React.createElement(GitBranch, { size: 13, color: colors.primary }), tl("بالنسب", "By lineage")),   // C202: أسماءٌ ظاهرة بدل أيقوناتٍ وحدها
-                React.createElement("button", { "aria-label": t("tsdyr"), title: t("tsdyr"), onClick: () => onExportSelected === null || onExportSelected === void 0 ? void 0 : onExportSelected(sortedPersons), className: `h-8 flex ${rowStart()} items-center gap-1 text-[11px] font-bold px-3 rounded-full`, style: { backgroundColor: colors.card, color: colors.primary, boxShadow: famShadow(isDark) } },
-                    React.createElement(Download, { size: 13, color: colors.primary }), t("tsdyr")),
-                // ⛔ الصيانة للمحرِّر وحده: كان زرّا الإصلاح يظهران لمن دوره «مشاهدة فقط»
-                // فيعدّل الشجرة وهو لا يملك التعديل.
-                canEdit && (persons.length >= 2 || treeFixCount > 0) && (React.createElement("button", { "aria-label": t("fg_adwat_alshjra"), title: t("fg_adwat_alshjra"), onClick: () => setShowTools(true), className: `h-8 flex ${rowStart()} items-center gap-1 text-[11px] font-bold px-3 rounded-full relative`, style: { color: colors.primary, backgroundColor: colors.card, boxShadow: famShadow(isDark) } },
-                    React.createElement(SettingsIcon, { size: 13, color: colors.primary }), tl("أدوات", "Tools"),
-                    treeFixCount > 0 && (React.createElement("span", { className: "absolute -top-1 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-extrabold text-white", style: { insetInlineEnd: -4, backgroundColor: colors.accent } }, treeFixCount.toLocaleString(loc()))))),
-                React.createElement("button", { onClick: () => setSelectedIds(sortedPersons.length ? [sortedPersons[0].id] : []), className: `h-8 flex ${rowStart()} items-center gap-1 text-[11px] font-bold px-3 rounded-full`, style: { backgroundColor: colors.card, color: colors.primary, boxShadow: famShadow(isDark) } },
-                    React.createElement(CheckCheck, { size: 13, color: colors.primary }),
-                    t("thdyd")))),
+                React.createElement("button", { "data-fam-more": "1", "aria-label": tl("المزيد", "More"), onClick: () => setShowMore(true), className: `relative h-8 flex ${rowStart()} items-center gap-1 text-[12px] font-extrabold px-3.5 rounded-full shrink-0`, style: { backgroundColor: colors.primary, color: "#fff" } },
+                    tl("المزيد", "More"), React.createElement(MoreHorizontal, { size: 15, color: "#fff" }),
+                    canEdit && treeFixCount > 0 && React.createElement("span", { className: "absolute -top-1 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-extrabold text-white", style: { insetInlineEnd: -4, backgroundColor: colors.accent } }, treeFixCount)))),
+            showMore && React.createElement(FamSheet, { title: tl("المزيد", "More"), onClose: () => setShowMore(false), maxHeight: "70%" },
+                canEdit && React.createElement(FamRow, { icon: GitBranch, title: t("idafa_sryaa_nsb"), sub: tl("اكتب السلسلة «خالد بن محمد بن علي» دفعةً واحدة", "Type a whole chain at once"), onPress: () => { setShowMore(false); setShowChainAdd(true); } }),
+                canEdit && (persons.length >= 2 || treeFixCount > 0) && React.createElement(FamRow, { icon: SettingsIcon, title: t("fg_adwat_alshjra"), sub: treeFixCount > 0 ? tl(treeFixCount + " إصلاحاً مقترحاً", treeFixCount + " suggested fixes") : tl("الدمج، الإصلاح، درجات القرب", "Merge, fixes, closeness"), onPress: () => { setShowMore(false); setShowTools(true); } }),
+                React.createElement(FamRow, { icon: CheckCheck, title: tl("تحديد عدّة أقارب", "Select several"), sub: tl("أو اضغط مطوّلاً على أيّ بطاقة", "Or long-press any card"), onPress: () => { setShowMore(false); setSelectedIds(sortedPersons.length ? [sortedPersons[0].id] : []); } }),
+                React.createElement(FamRow, { icon: Download, title: t("tsdyr"), sub: tl("القائمة الظاهرة الآن", "The list shown now"), onPress: () => { setShowMore(false); if (onExportSelected) onExportSelected(sortedPersons); } }),
+                React.createElement(FamRow, { icon: HelpCircle, title: t("kyf_thsb_mda_altdhkyr"), last: true, onPress: () => { setShowMore(false); setShowProximityHelp(true); } })),
             persons.length === 0 && React.createElement("div", { className: "mt-4" },
                 React.createElement(FamCard, { className: "text-center", style: { padding: 24 } },
                     React.createElement("div", { className: "mx-auto mb-3 rounded-full flex items-center justify-center", style: { width: 64, height: 64, background: famGrad(colors) } },
@@ -1435,7 +1746,11 @@ function FamilyGroupDetailScreen({ onShowInTree, meId, onPickMe, group, persons,
                     cardMenu === p.id && React.createElement("div", { className: "basis-full flex flex-col mt-2 rounded-xl overflow-hidden border", style: { borderColor: colors.border } },
                         [{ icon: Star, label: fav ? tl("إزالة من المفضّلة", "Remove from favorites") : tl("إضافة إلى المفضّلة", "Add to favorites"), on: () => onToggleFav(p.id) },
                             canEdit && { icon: UserPlus, label: t("idafa_aqarb"), on: () => setBulkFor(p) },
-                            onShowInTree && { icon: GitBranch, label: tl("موقعه في الشجرة", "Show in tree"), on: () => onShowInTree(p.id) }].filter(Boolean).map((it, i, arr) => React.createElement("button", { key: i, onClick: (e) => { e.stopPropagation(); setCardMenu(null); it.on(); }, className: `flex ${rowStart()} items-center gap-3 px-3 py-2.5 text-sm font-bold ${textStart()}`, style: { color: colors.text, backgroundColor: colors.bg, borderBottom: i < arr.length - 1 ? `1px solid ${colors.border}` : "none" } },
+                            onShowInTree && { icon: GitBranch, label: tl("موقعه في الشجرة", "Show in tree"), on: () => onShowInTree(p.id) },
+                            canEdit && onBatchParent && { icon: Users2, label: tl("أبٌ أو أمٌّ لعدّة إخوة", "Parent for several siblings"), on: () => setBatchFor({ anchor: p }) },
+                            canEdit && onSiblingType && { icon: GitBranch, label: tl("نوع الأخوّة (شقيق · لأب · لأم)", "Sibling type"), on: () => setSibTypeFor(p) },
+                            canEdit && onMergePersons && { icon: Combine, label: tl("دمج مع مكرّر", "Merge with a duplicate"), on: () => setDupSheet({ person: p, mode: "merge" }) },
+                            canEdit && onMergePersons && { icon: Trash2, label: tl("حذف المكرّر", "Delete duplicate"), on: () => setDupSheet({ person: p, mode: "delete" }) }].filter(Boolean).map((it, i, arr) => React.createElement("button", { key: i, onClick: (e) => { e.stopPropagation(); setCardMenu(null); it.on(); }, className: `flex ${rowStart()} items-center gap-3 px-3 py-2.5 text-sm font-bold ${textStart()}`, style: { color: colors.text, backgroundColor: colors.bg, borderBottom: i < arr.length - 1 ? `1px solid ${colors.border}` : "none" } },
                             React.createElement(it.icon, { size: 16, color: colors.primary }), it.label))),
                     // سطرٌ مستقلّ بعرض البطاقة: «آخر تواصل» (أحمر إن حان الوقت) + «✓ تواصلت» بضغطةٍ واحدة
                     // (يسجّل تاريخ اليوم ويتزامن بين أجهزتك). مستقلّ حتّى لا يضيّق الاسم وصلة القرابة.
@@ -1874,13 +2189,13 @@ function FamilyRelationsManagerSheet({ persons, relations, onDeleteRelation, onE
                     r.type === "spouse" && onEndMarriage && confirmingId !== r.id && (endingId === r.id ? (React.createElement("div", { className: `flex ${rowStart()} gap-1.5 shrink-0` },
                         React.createElement("button", { onClick: () => { onEndMarriage(r.id); setEndingId(null); }, className: "rounded-xl px-2.5 py-1.5", style: { backgroundColor: colors.accent } },
                             React.createElement("span", { className: "text-[11px] font-bold text-white" }, t("takyd"))),
-                        React.createElement("button", { onClick: () => setEndingId(null), className: "rounded-xl px-2.5 py-1.5 border", style: { borderColor: colors.border } },
-                            React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, t("ilgha"))))) : (React.createElement("button", { "aria-label": t("ft_anha_alzwaj"), title: t("ft_anha_alzwaj"), onClick: () => setEndingId(r.id), className: "shrink-0 rounded-xl px-2 py-1.5 border", style: { borderColor: colors.border } },
+                        React.createElement("button", { onClick: () => setEndingId(null), className: "rounded-xl px-2.5 py-1.5", style: { backgroundColor: colors.btnFill } },
+                            React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, t("ilgha"))))) : (React.createElement("button", { "aria-label": t("ft_anha_alzwaj"), title: t("ft_anha_alzwaj"), onClick: () => setEndingId(r.id), className: "shrink-0 rounded-xl px-2 py-1.5", style: { backgroundColor: colors.btnFill } },
                         React.createElement("span", { className: "text-sm" }, "\uD83D\uDC94")))),
                     endingId === r.id ? null : confirmingId === r.id ? (React.createElement("div", { className: `flex ${rowStart()} gap-1.5 shrink-0` },
                         React.createElement("button", { onClick: () => { onDeleteRelation(r.id); setConfirmingId(null); }, className: "rounded-xl px-2.5 py-1.5", style: { backgroundColor: colors.danger } },
                             React.createElement("span", { className: "text-[11px] font-bold text-white" }, t("takyd"))),
-                        React.createElement("button", { onClick: () => setConfirmingId(null), className: "rounded-xl px-2.5 py-1.5 border", style: { borderColor: colors.border } },
+                        React.createElement("button", { onClick: () => setConfirmingId(null), className: "rounded-xl px-2.5 py-1.5", style: { backgroundColor: colors.btnFill } },
                             React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, t("ilgha"))))) : (React.createElement("button", { "aria-label": t("hdhf"), onClick: () => setConfirmingId(r.id), className: "shrink-0 mt-0.5" },
                         React.createElement(Trash2, { size: 16, color: colors.danger }))))))),
             React.createElement("p", { className: "text-[10px] text-center mt-3", style: { color: colors.textMuted } }, t("hdhf_alaqa_mstntja_qd")))));
@@ -2515,8 +2830,8 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
                 React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, sel.gender === "female" ? tl("نوع الأخوّة", "Sisters are") : tl("نوع الأخوّة", "Brothers are")),
                 React.createElement(FamSeg, { value: sibHalf, onChange: setSibHalf, options: [
                         { k: "", l: sel.gender === "female" ? tl("شقيقات", "Full") : tl("أشقّاء", "Full") },
-                        { k: "father", l: tl("من الأب", "Same father") },
-                        { k: "mother", l: tl("من الأم", "Same mother") }] })),
+                        { k: "father", l: tl("لأب", "Same father") },
+                        { k: "mother", l: tl("لأم", "Same mother") }] })),
             React.createElement("label", { className: `text-xs font-bold mb-1.5 block ${textStart()}`, style: { color: colors.text } }, sel.max === 1 ? tl("الاسم", "Name") : tl("الأسماء — افصل بينها بفاصلة (،)", "Names — separate them with commas")),
             React.createElement("textarea", { dir: isRTL() ? "rtl" : "ltr", value: namesText, onChange: (e) => setNamesText(e.target.value), placeholder: nameExample(sel.gender, sel.key, fatherKnown, sel.max !== 1), "aria-describedby": "qr-name-hint", rows: sel.max === 1 ? 1 : 3, className: "w-full rounded-xl px-3 py-2.5 text-sm mb-2", style: { backgroundColor: colors.card, color: colors.text, border: `1px solid ${colors.border}`, minWidth: 0, resize: "none" } }),
             React.createElement("p", { id: "qr-name-hint", className: `text-[10.5px] ${textStart()} mb-2`, style: { color: colors.textMuted } }, nameDepthHint(fatherKnown)),
@@ -2576,7 +2891,7 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
                     savedBatches.map((b, i2) => (React.createElement("p", { key: i2, className: `text-[10px] ${textStart()}`, style: { color: colors.primaryInk } },
                         "\u2713 ",
                         tl(arCountFix(b.count + " " + b.label), b.count + " " + b.label))))),
-                React.createElement("button", { onClick: onClose, className: "w-full mt-2 py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: colors.card, color: colors.textMuted, border: `1px solid ${colors.border}` } }, t("inha")))))));
+                React.createElement("button", { onClick: onClose, className: "w-full mt-2 py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, t("inha")))))));
 }
 // ============================================================
 // C203: TreeNavBar — التنقّل داخل الشجرة: الأصل (أصولي صعوداً) · الفروع (فروعي نزولاً) · الأصهار
@@ -2773,7 +3088,7 @@ function normalizeArabicName(name) {
         .replace(/\s+/g, " ");
 }
 
-function FamilyTreeScreen({ undoCount = 0, onOpenHistory, onUndoLast, initialFocusId, onClaimChildren, onChangeParent, groupId, persons, relations, canEdit = true, onAddRelation, onDeleteRelation, onEndMarriage, onOpenPerson, onMarkContact, onQuickSchedule, onOpenStats, onAddRelativeTo, onAddRelativesBulk, onOpenInLaws, onInheritParents, allGroupPersons = {}, onBack, }) {
+function FamilyTreeScreen({ onBatchParent, onSiblingType, onMergePersons, onDeletePerson, undoCount = 0, onOpenHistory, onUndoLast, initialFocusId, onClaimChildren, onChangeParent, groupId, persons, relations, canEdit = true, onAddRelation, onDeleteRelation, onEndMarriage, onOpenPerson, onMarkContact, onQuickSchedule, onOpenStats, onAddRelativeTo, onAddRelativesBulk, onOpenInLaws, onInheritParents, allGroupPersons = {}, onBack, }) {
     var _a, _b, _c, _d;
     const { colors, isDark } = useTheme();
     const [showAddRelation, setShowAddRelation] = useState(false);
@@ -2974,45 +3289,83 @@ function FamilyTreeScreen({ undoCount = 0, onOpenHistory, onUndoLast, initialFoc
     //      والشاشة تبدأ بوضع «تركيز» فلا يجد العنصر، فلم يعمل القرص قطّ.
     // C158: النقطة تحت الإصبعين تبقى ثابتة — بنسبتها من الشجرة لا بالبكسل: كان الحساب يخلط بكسل الشاشة ببكسل التخطيط
     //       المكبَّر (CSS zoom) ويهمل موضع الشجرة داخل الصفحة، فينزاح التكبير عن الإصبعين بعد أوّل تكبير.
+    // ── C204: لوحة الشجرة ثنائيّة الأبعاد ─────────────────────────────────────
+    // كانت الشجرة داخل صندوقٍ أفقيّ فقط (والعموديّ للصفحة)، وتُكبَّر بـ CSS zoom غير القياسيّ: تمريرٌ بمحورٍ
+    // واحد في كلّ سحبة، وحوافّ لا تبلغ وسط الشاشة، وفي WebKit (آيفون) يُقصّ جزءٌ من الشجرة عند الأطراف.
+    // الآن: نافذةٌ واحدة تُمرَّر في كلّ الاتّجاهات (pinchRef) ⇐ «عالَمٌ» بمقاسٍ صريح (worldRef) ⇐ الشجرة (stageRef)
+    // مطلقة الموضع ومُكبَّرة بـ transform من الزاوية. حول الشجرة هامشٌ بنصف النافذة من كلّ جهة، فأيّ بطاقةٍ — ولو في
+    // الطرف — تُسحب إلى وسط الشاشة. القرص والعجلة والأزرار تُثبّت النقطة تحت الإصبع/المؤشّر.
+    const worldRef = useRef(null);
+    const appliedZ = useRef(1);     // التكبير المطبَّق فعلاً على الشجرة
+    const centeredRef = useRef(false);
+    // يضبط مقاس العالم وموضع الشجرة لتكبيرٍ z — بلا إعادة تخطيط للشجرة نفسها (transform)
+    const layoutCanvas = (z) => {
+        const st = stageRef.current, wd = worldRef.current, el = pinchRef.current, sc = treeScrollRef.current;
+        if (!st || !wd || !el) return null;
+        if (sc) el.style.height = Math.max(260, sc.clientHeight - 24) + "px";   // النافذة بارتفاع الشاشة المتاحة
+        const w = st.offsetWidth * z, h = st.offsetHeight * z;                 // offset* لا يتأثّر بـ transform
+        const padX = Math.round(el.clientWidth * 0.5), padY = Math.round(el.clientHeight * 0.5);
+        const W = Math.max(el.clientWidth, w + 2 * padX), H = Math.max(el.clientHeight, h + 2 * padY);
+        const left = Math.round((W - w) / 2), top = Math.round((H - h) / 2);
+        wd.style.width = W + "px"; wd.style.height = H + "px";
+        st.style.left = left + "px"; st.style.top = top + "px";
+        st.style.transform = `scale(${z})`;
+        appliedZ.current = z;
+        return { left, top };
+    };
+    // تكبيرٌ حول نقطةٍ على الشاشة (cx,cy) — افتراضيّاً وسط النافذة
     const applyZoom = (z, cx, cy) => {
-        const st = stageRef.current, el = pinchRef.current, sc = treeScrollRef.current;
-        if (!st) return;
-        const r0 = st.getBoundingClientRect();
-        const vx = el ? el.getBoundingClientRect() : r0, vy = sc ? sc.getBoundingClientRect() : r0;
-        const px = cx != null ? cx : Math.max(vx.left, r0.left) + Math.min(vx.width, r0.width) / 2;
-        const py = cy != null ? cy : vy.top + vy.height / 2;
-        const fx = r0.width ? (px - r0.left) / r0.width : 0.5, fy = r0.height ? (py - r0.top) / r0.height : 0.5;
-        st.style.zoom = String(z);
-        st.style.minWidth = `${100 / z}%`;
-        const r1 = st.getBoundingClientRect();
-        if (el) el.scrollLeft += (r1.left + fx * r1.width) - px;
-        if (sc) sc.scrollTop += (r1.top + fy * r1.height) - py;
+        const st = stageRef.current, el = pinchRef.current;
+        if (!st || !el) return;
+        const vr = el.getBoundingClientRect();
+        const fx = cx != null ? cx - vr.left : el.clientWidth / 2, fy = cy != null ? cy - vr.top : el.clientHeight / 2;
+        const oz = appliedZ.current || 1, ol = parseFloat(st.style.left) || 0, ot = parseFloat(st.style.top) || 0;
+        const ux = (el.scrollLeft + fx - ol) / oz, uy = (el.scrollTop + fy - ot) / oz;   // النقطة بإحداثيّات الشجرة
+        const pos = layoutCanvas(z);
+        if (!pos) return;
+        el.scrollLeft = ux * z + pos.left - fx;
+        el.scrollTop = uy * z + pos.top - fy;
+    };
+    // أوّل عرضٍ للشجرة الكاملة: نبدأ عند «أنا» (أو رأس الشجرة) لا عند زاوية الهامش الفارغة
+    const centerOn = (node) => {
+        const el = pinchRef.current, st = stageRef.current;
+        if (!el || !st) return;
+        const vr = el.getBoundingClientRect(), z = appliedZ.current || 1;
+        if (node) {
+            const r = node.getBoundingClientRect();
+            el.scrollLeft += (r.left + r.width / 2) - (vr.left + el.clientWidth / 2);
+            el.scrollTop += (r.top + r.height / 2) - (vr.top + el.clientHeight / 3);
+        } else {
+            el.scrollLeft = (parseFloat(st.style.left) || 0) + (st.offsetWidth * z) / 2 - el.clientWidth / 2;
+            el.scrollTop = (parseFloat(st.style.top) || 0) - 24;
+        }
     };
     useEffect(() => {
-        const el = pinchRef.current;
-        if (!el)
-            return;
-        // C99: أثناء القرص نكبّر الصورة فقط (transform — سريعٌ بلا إعادة تخطيط)، وعند رفع الإصبعين نطبّق التكبير الحقيقيّ مرّةً واحدة.
-        //      كان كلّ تحريكٍ يعيد تخطيط الشجرة كلّها (CSS zoom) فيتأخّر ويتقطّع في الشجرة الكبيرة.
-        let startDist = 0, startZoom = 1, raf = 0, mid0 = null;
+        const el = pinchRef.current, st = stageRef.current;
+        if (viewMode !== "full" || !el || !st) { centeredRef.current = false; return; }
+        // مقاس الشجرة يتغيّر بالطيّ والفتح والبيانات ⇒ يُعاد ضبط العالم بالتكبير نفسه (والنقطة في الوسط ثابتة)
+        const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => {
+            applyZoom(appliedZ.current || zoomRef.current);
+            if (!centeredRef.current && st.offsetWidth) { centeredRef.current = true; centerOn(st.querySelector("[data-tree-me='1']")); }
+        }) : null;
+        if (ro) { ro.observe(st); if (treeScrollRef.current) ro.observe(treeScrollRef.current); }
+        else { layoutCanvas(zoomRef.current); centerOn(st.querySelector("[data-tree-me='1']")); }
+        // القرص بإصبعين: تكبيرٌ حقيقيّ في كلّ إطار (transform ومقاس العالم فقط — رخيص) حول منتصف الإصبعين
+        let startDist = 0, startZoom = 1, raf = 0, mid = null;
         const d2 = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+        const mids = (t) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
         const start = (e) => {
             if (e.touches.length !== 2) return;
-            startDist = d2(e.touches);
-            startZoom = zoomRef.current;
-            pinching.current = true;
-            mid0 = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
-            const st = stageRef.current;
-            if (st) { const r = st.getBoundingClientRect(); st.style.transformOrigin = `${r.width ? ((mid0.x - r.left) / r.width) * 100 : 50}% ${r.height ? ((mid0.y - r.top) / r.height) * 100 : 50}%`; st.style.willChange = "transform"; }   // C158: بالنسبة لا بالبكسل
+            startDist = d2(e.touches); startZoom = zoomRef.current; pinching.current = true; mid = mids(e.touches);
         };
         const move = (e) => {
             if (!pinching.current || e.touches.length !== 2 || !startDist) return;
             if (e.cancelable) e.preventDefault();
             zoomRef.current = Math.min(ZMAX, Math.max(ZMIN, startZoom * (d2(e.touches) / startDist)));
+            mid = mids(e.touches);
             if (!raf) raf = requestAnimationFrame(() => {
                 raf = 0;
-                const st = stageRef.current;
-                if (st) st.style.transform = `scale(${zoomRef.current / startZoom})`;
+                applyZoom(zoomRef.current, mid.x, mid.y);
                 if (labelRef.current) labelRef.current.textContent = `${Math.round(zoomRef.current * 100)}%`;
             });
         };
@@ -3020,27 +3373,62 @@ function FamilyTreeScreen({ undoCount = 0, onOpenHistory, onUndoLast, initialFoc
             if (!pinching.current || (e.touches && e.touches.length >= 2)) return;
             pinching.current = false; startDist = 0;
             if (raf) { cancelAnimationFrame(raf); raf = 0; }
-            const st = stageRef.current;
-            if (st) { st.style.transform = ""; st.style.willChange = ""; }
-            applyZoom(zoomRef.current, mid0 && mid0.x, mid0 && mid0.y);
+            applyZoom(zoomRef.current, mid && mid.x, mid && mid.y);
             setZoom(+zoomRef.current.toFixed(2));
+        };
+        // السحب بالفأرة (الحاسوب): يحرّك اللوحة في كلّ الاتّجاهات — اللمس يسحب أصلاً بالتمرير الأصليّ
+        let drag = null, moved = false;
+        const pdown = (e) => {
+            if (e.pointerType !== "mouse" || e.button !== 0 || e.target.closest("input,textarea,select")) return;
+            drag = { x: e.clientX, y: e.clientY, sl: el.scrollLeft, st: el.scrollTop }; moved = false;
+        };
+        const pmove = (e) => {
+            if (!drag) return;
+            const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+            if (!moved && Math.hypot(dx, dy) < 5) return;
+            if (!moved) { moved = true; el.style.cursor = "grabbing"; }
+            el.scrollLeft = drag.sl - dx; el.scrollTop = drag.st - dy;
+        };
+        const pup = () => { drag = null; el.style.cursor = ""; };
+        const swallowClick = (e) => { if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; } };   // سحبٌ لا يفتح بطاقة
+        // Ctrl/⌘ + العجلة (وقرص لوحة اللمس) = تكبيرٌ حول المؤشّر
+        const wheel = (e) => {
+            if (!e.ctrlKey && !e.metaKey) return;
+            e.preventDefault();
+            const z = Math.min(ZMAX, Math.max(ZMIN, zoomRef.current * Math.exp(-e.deltaY * 0.004)));
+            zoomRef.current = z;
+            applyZoom(z, e.clientX, e.clientY);
+            if (labelRef.current) labelRef.current.textContent = `${Math.round(z * 100)}%`;
+            clearTimeout(wheel.t); wheel.t = setTimeout(() => setZoom(+z.toFixed(2)), 180);
         };
         el.addEventListener("touchstart", start, { passive: true });
         el.addEventListener("touchmove", move, { passive: false });
         el.addEventListener("touchend", end);
         el.addEventListener("touchcancel", end);
+        el.addEventListener("pointerdown", pdown);
+        window.addEventListener("pointermove", pmove);
+        window.addEventListener("pointerup", pup);
+        el.addEventListener("click", swallowClick, true);
+        el.addEventListener("wheel", wheel, { passive: false });
         return () => {
+            if (ro) ro.disconnect();
             if (raf) cancelAnimationFrame(raf);
+            clearTimeout(wheel.t);
             el.removeEventListener("touchstart", start);
             el.removeEventListener("touchmove", move);
             el.removeEventListener("touchend", end);
             el.removeEventListener("touchcancel", end);
+            el.removeEventListener("pointerdown", pdown);
+            window.removeEventListener("pointermove", pmove);
+            window.removeEventListener("pointerup", pup);
+            el.removeEventListener("click", swallowClick, true);
+            el.removeEventListener("wheel", wheel);
         };
     }, [viewMode]);
-    // مزامنة المرجع مع الحالة (أزرار +/− أو إعادة الحجم)
+    // الأزرار (+ / − / 100%) والقيمة بعد القرص: تكبيرٌ حول وسط النافذة — وتكرار القيمة نفسها لا يحرّك شيئاً
     useEffect(() => {
         zoomRef.current = zoom;
-        if (!pinching.current) applyZoom(zoom);
+        if (!pinching.current && viewMode === "full") applyZoom(zoom);
     }, [zoom, viewMode]);
     const [compactDeep, setCompactDeep] = useState(true); // ضغط الأجيال البعيدة
     const [focusId, setFocusId] = useState(initialFocusId || null);   // C162: «موقعه في الشجرة»
@@ -3375,6 +3763,9 @@ function FamilyTreeScreen({ undoCount = 0, onOpenHistory, onUndoLast, initialFoc
     const activeFocusId = focusId || deepestId;
     // C203: التنقّل — الأصل/الفروع/الأصهار نسبةً إلى «أنا» في هذه الشجرة
     const [navOpen, setNavOpen] = useState(null);
+    const [dupSheet, setDupSheet] = useState(null);   // C204
+    const [batchFor, setBatchFor] = useState(null);   // C204: والدٌ لعدّة إخوة
+    const [sibTypeFor, setSibTypeFor] = useState(null);   // C204: نوع الأخوّة
     const navGroups = useMemo(() => treeNavGroups(persons, relations, deepestId), [persons, relations, deepestId]);
     function jumpTo(id) {
         if (viewMode === "full") {
@@ -3576,7 +3967,7 @@ function FamilyTreeScreen({ undoCount = 0, onOpenHistory, onUndoLast, initialFoc
                             React.createElement("span", { className: `flex-1 text-[11px] font-bold ${textStart()}`, style: { color: colors.text } }, t("ft_anha_maa", { name: other.local_name })),
                             React.createElement("button", { onClick: () => { const id = r.id; setEndingRelId(null); setNodeMenu(null); onEndMarriage(id); }, className: "rounded-xl px-3 py-1.5 shrink-0", style: { backgroundColor: colors.accent } },
                                 React.createElement("span", { className: "text-[11px] font-bold text-white" }, t("takyd"))),
-                            React.createElement("button", { onClick: () => setEndingRelId(null), className: "rounded-xl px-3 py-1.5 border shrink-0", style: { borderColor: colors.border } },
+                            React.createElement("button", { onClick: () => setEndingRelId(null), className: "rounded-xl px-3 py-1.5 shrink-0", style: { backgroundColor: colors.btnFill } },
                                 React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, t("ilgha")))));
                     return React.createElement(FamRow, { key: r.id, icon: Users2, tone: "danger", title: t("ft_anha_maa", { name: other.local_name }), sub: t("ft_anha_alzwaj_hint"), onPress: () => setEndingRelId(r.id) });
                 }),
@@ -3587,7 +3978,15 @@ function FamilyTreeScreen({ undoCount = 0, onOpenHistory, onUndoLast, initialFoc
                     if (!curP) return null;   // غير المسجَّل يُضاف من «أب/أم» أعلاه
                     return React.createElement(FamRow, { key: "cp-" + g, icon: RotateCcw, title: g === "female" ? tl("تغيير الأم", "Change mother") : tl("تغيير الأب", "Change father"), sub: tl("الحاليّ: ", "Current: ") + curP.local_name, onPress: () => { const c = nodeMenu; setNodeMenu(null); setChangingParent({ child: c, gender: g }); } });
                 }),
-                React.createElement(FamRow, { icon: LinkIcon, tone: "violet", title: t("rbt_bshkhs_mwjwd"), sub: t("idha_kan_alqryb_mdafa"), last: true, onPress: () => { setLinkPicker({ person: nodeMenu, relKey: "spouse" }); setNodeMenu(null); } })))),
+                React.createElement(FamRow, { icon: LinkIcon, tone: "violet", title: t("rbt_bshkhs_mwjwd"), sub: t("idha_kan_alqryb_mdafa"), last: !(canEdit && onMergePersons), onPress: () => { setLinkPicker({ person: nodeMenu, relKey: "spouse" }); setNodeMenu(null); } }),
+                canEdit && onBatchParent && React.createElement(FamRow, { icon: Users2, title: tl("أبٌ أو أمٌّ لعدّة إخوة", "Parent for several siblings"), sub: tl("اربط والداً بـ" + famFirst(nodeMenu) + " وإخوته دفعةً واحدة", "Link one parent to them and their siblings at once"), onPress: () => { setBatchFor(nodeMenu); setNodeMenu(null); } }),
+                canEdit && onSiblingType && React.createElement(FamRow, { icon: GitBranch, title: tl("نوع الأخوّة", "Sibling type"), sub: tl("شقيق · لأب · لأم — لكلّ أخٍ من إخوته", "Full · paternal · maternal"), onPress: () => { setSibTypeFor(nodeMenu); setNodeMenu(null); } }),
+                // C204: المكرّر من البطاقة نفسها — دمجٌ أو حذفٌ تنتقل فيه العلاقات
+                canEdit && onMergePersons && React.createElement(FamRow, { icon: Combine, title: tl("دمج مع مكرّر", "Merge with a duplicate"), sub: tl("أُضيف مرّتين؟ اجمع النسختين في شخصٍ واحد", "Added twice? Combine both records"), onPress: () => { setDupSheet({ person: nodeMenu, mode: "merge" }); setNodeMenu(null); } }),
+                canEdit && onMergePersons && React.createElement(FamRow, { icon: Trash2, tone: "danger", title: tl("حذف المكرّر", "Delete duplicate"), sub: tl("تنتقل علاقاته إلى الأصل ثمّ يُحذف", "Its links move to the original, then it's removed"), last: true, onPress: () => { setDupSheet({ person: nodeMenu, mode: "delete" }); setNodeMenu(null); } })))),
+        dupSheet && React.createElement(DuplicateActionSheet, { person: dupSheet.person, mode: dupSheet.mode, persons: persons, relations: relations, onMerge: onMergePersons, onDelete: onDeletePerson ? (id) => onDeletePerson(groupId, id) : null, onClose: () => setDupSheet(null) }),
+        batchFor && React.createElement(BatchParentSheet, { anchor: batchFor, persons: persons, relations: relations, onSave: (spec, ids) => onBatchParent(groupId, spec, ids), onClose: () => setBatchFor(null) }),
+        sibTypeFor && React.createElement(SiblingTypeSheet, { person: sibTypeFor, persons: persons, relations: relations, onApply: (a, b, ty, op) => onSiblingType(groupId, a, b, ty, op), onClose: () => setSibTypeFor(null) }),
         linkPicker && (React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => { setLinkPicker(null); setLinkQ(""); }, style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.35)" } }),
             React.createElement("div", { className: "sawa-pop-in", style: { position: "fixed", left: 16, right: 16, top: "14%", bottom: "14%", zIndex: 41, backgroundColor: colors.card, borderRadius: 20, display: "flex", flexDirection: "column" } },
@@ -3637,7 +4036,7 @@ function FamilyTreeScreen({ undoCount = 0, onOpenHistory, onUndoLast, initialFoc
                 React.createElement("button", { onClick: () => setZoom(1), "aria-label": t("iaada_alhjm"), ref: labelRef, className: "w-10 h-8 text-[9.5px] font-bold flex items-center justify-center", style: { color: colors.textMuted, borderBottom: `1px solid ${colors.border}` } }, Math.round(zoom * 100), "%"),
                 React.createElement("button", { onClick: () => setZoom((z) => clampZoom(z - 0.15)), className: "w-10 h-10 flex items-center justify-center", style: { color: colors.text, borderBottom: `1px solid ${colors.border}` }, "aria-label": t("tsghyr") }, React.createElement("span", { className: "text-lg font-bold" }, "\u2212")),
                 // C99: «الشجرة كاملة» — أصغر تكبيرٍ يُظهر عرض الشجرة كلّه في الشاشة
-                React.createElement("button", { onClick: () => { const st = stageRef.current, el = pinchRef.current; if (!st || !el) return; const cur = parseFloat(st.style.zoom || "1") || 1; const natural = st.getBoundingClientRect().width / cur; if (natural > 0) setZoom(clampZoom(Math.min(1, (el.clientWidth - 8) / natural))); try { el.scrollLeft = 0; } catch (e) { } }, className: "w-10 h-10 flex items-center justify-center", style: { color: colors.text, borderBottom: `1px solid ${colors.border}` }, "aria-label": tl("الشجرة كاملة", "Fit tree"), title: tl("الشجرة كاملة", "Fit tree") }, React.createElement(ChevronsDownUp, { size: 16, style: { transform: "rotate(90deg)" } })),
+                React.createElement("button", { onClick: () => { const st = stageRef.current, el = pinchRef.current; if (!st || !el || !st.offsetWidth) return; const z = clampZoom(Math.min(1, (el.clientWidth - 24) / st.offsetWidth, (el.clientHeight - 24) / st.offsetHeight)); zoomRef.current = z; layoutCanvas(z); setZoom(z); centerOn(null); el.scrollTop = Math.max(0, (parseFloat(st.style.top) || 0) - (el.clientHeight - st.offsetHeight * z) / 2); }, className: "w-10 h-10 flex items-center justify-center", style: { color: colors.text, borderBottom: `1px solid ${colors.border}` }, "aria-label": tl("الشجرة كاملة", "Fit tree"), title: tl("الشجرة كاملة", "Fit tree") }, React.createElement(ChevronsDownUp, { size: 16, style: { transform: "rotate(90deg)" } })),
                 React.createElement("button", { onClick: () => setCompactDeep((v) => !v), className: "w-10 h-10 flex items-center justify-center text-[13px] font-extrabold", style: { backgroundColor: compactDeep ? colors.primary + "14" : "transparent", color: compactDeep ? colors.primary : colors.textMuted }, "aria-label": t("dght_alajyal_albayda"), title: compactDeep ? t("ilgha_dght_alajyal") : t("ft_dght_alajyal") }, "\u21F2"))),
         React.createElement("div", { ref: treeScrollRef, className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 mb-3` },
@@ -3788,19 +4187,15 @@ function FamilyTreeScreen({ undoCount = 0, onOpenHistory, onUndoLast, initialFoc
                         : relKey === "parent_f" ? "female" : "male";
                     if (relKey === "parent_m" || relKey === "parent_f") relKey = "parent";   // C33: أب/أمّ بحسب الوالد الموجود
                     onAddRelativeTo === null || onAddRelativeTo === void 0 ? void 0 : onAddRelativeTo(groupId, focusData.person, relKey, kinPreview(persons, relations, focusData.person, relKey, g) || deriveKinship(focusData.person.kinship, relKey, g), g);
-                } })) : (React.createElement("div", { ref: pinchRef, onWheel: (e) => {
-                    // Ctrl+عجلة = تكبير، كالمعتاد في المتصفحات
-                    if (!e.ctrlKey)
-                        return;
-                    e.preventDefault();
-                    setZoom((z) => clampZoom(z - e.deltaY * 0.003));
-                }, style: { overflowX: "auto", overflowY: "visible", direction: "ltr", paddingBottom: 8, touchAction: "pan-x pan-y" } },
-                React.createElement("div", { ref: stageRef, style: {
-                        direction: "rtl",
-                        display: "inline-block",
-                        minWidth: `${100 / zoom}%`,
-                        zoom: zoom,   // C75: يغيّر التخطيط فيبقى كلّ الشجرة في مدى التمرير
-                    } }, rootBlocks))),
+                } })) : (React.createElement("div", { ref: pinchRef, "data-tree-canvas": "1", "aria-label": tl("لوحة الشجرة — اسحب في أيّ اتّجاه، وقرّب بإصبعين", "Tree canvas — drag in any direction, pinch to zoom"),
+                    style: { marginInline: -16, overflow: "auto", direction: "ltr", touchAction: "pan-x pan-y", overscrollBehavior: "contain", position: "relative", height: 480, backgroundColor: colors.bg, borderTop: `1px solid ${colors.border}`, borderBottom: `1px solid ${colors.border}` } },
+                React.createElement("div", { ref: worldRef, style: { position: "relative" } },
+                    React.createElement("div", { ref: stageRef, style: {
+                            position: "absolute", left: 0, top: 0,
+                            direction: "rtl",
+                            width: "max-content",
+                            transformOrigin: "0 0",   // C204: تكبيرٌ بـ transform من الزاوية (كان CSS zoom)
+                        } }, rootBlocks)))),
             unlinkedPersons.length > 0 && (React.createElement("div", { className: "mt-5 pt-3 border-t-2 border-dashed", style: { borderColor: colors.border } },
                 React.createElement("div", { className: "rounded-xl px-3 py-2 mb-3", style: { backgroundColor: colors.accent + "15", border: `1px solid ${colors.accent}55` } },
                     React.createElement("p", { className: `text-[11px] font-extrabold ${textStart()} mb-0.5`, style: { color: colors.accent } },
