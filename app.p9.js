@@ -6,6 +6,7 @@ const AccountantScreen = (function () {
     const h = React.createElement;
     const TEAL = "#0f766e";
     const L = window.__L || {};
+    const Repeat = L.Repeat || L.RefreshCw;   // not in the shared icon list of app.p1
     const ICONS = { cart: "ShoppingBag", home: "Home", bolt: "Zap", car: "Car", phone: "Smartphone", heart: "Heart", book: "Bookmark", users: "Users",
         wrench: "Settings", percent: "Target", dots: "MoreHorizontal", briefcase: "Briefcase", laptop: "Server", receipt: "FileText", gift: "Gift",
         plus: "Plus", tag: "Bookmark", cup: "Coffee" };
@@ -65,6 +66,47 @@ const AccountantScreen = (function () {
     function guessCurrency() {
         try { const r = new Intl.Locale(navigator.language).maximize().region; if (REGION_CUR[r]) return REGION_CUR[r]; } catch (e) {}
         return "USD";
+    }
+
+    // ── P2 helpers: same matching as the server (pfm-core normText / matchCategoryRule), and labels ──
+    const normText = (v) => String(v || "").toLowerCase().normalize("NFKC").replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+        .replace(/[\u0623\u0625\u0622\u0671]/g, "\u0627").replace(/\u0649/g, "\u064A").replace(/\u0629/g, "\u0647").replace(/\s+/g, " ").trim();
+    function matchRule(rules, kind, who, note) {
+        const hay = normText((who || "") + " | " + (note || "")); let best = null;
+        (rules || []).forEach((r) => { const n = normText(r.contains); if (!n || (r.kind && r.kind !== kind) || hay.indexOf(n) < 0) return; if (!best || n.length > best.n.length) best = { n, r }; });
+        return best && best.r;
+    }
+    const weekdayName = (i) => new Intl.DateTimeFormat(locale(), { weekday: "long", timeZone: "UTC" }).format(Date.UTC(2026, 10, 1 + i));   // 1 Nov 2026 is a Sunday
+    function ruleText(rule) {
+        if (!rule) return "";
+        if (rule.freq === "weekly") return (rule.interval > 1 ? tl(`كلّ ${rule.interval} أسابيع`, `Every ${rule.interval} weeks`) : tl("أسبوعيّاً", "Weekly")) + " · " + weekdayName(rule.weekday);
+        if (rule.freq === "yearly") return tl("سنويّاً", "Yearly") + " · " + new Intl.DateTimeFormat(locale(), { day: "numeric", month: "long", timeZone: "UTC" }).format(Date.UTC(2026, rule.month - 1, rule.day));
+        return (rule.interval > 1 ? tl(`كلّ ${rule.interval} أشهر`, `Every ${rule.interval} months`) : tl("شهريّاً", "Monthly")) + " · " + tl("يوم ", "day ") + rule.day;
+    }
+    const ruleFromDate = (freq, date) => { const [y, m, d] = date.split("-").map(Number);
+        return freq === "weekly" ? { freq, weekday: new Date(Date.UTC(y, m - 1, d)).getUTCDay() } : freq === "yearly" ? { freq, month: m, day: d } : { freq: "monthly", day: d }; };
+    const TOTAL = "_total";
+    const budgetName = (id, cats) => (id === TOTAL ? tl("كلّ المصروفات", "All spending") : catName(cats[id]));
+    function alertLine(a, cats, cur) {
+        const name = budgetName(a.categoryId, cats), p = Math.round((a.spent * 100) / a.limit);
+        if (a.kind === "pace") return tl(`${name}: بهذه الوتيرة ستصل إلى ${money(a.projected, cur)} من ${money(a.limit, cur)}`, `${name}: at this pace you'll reach ${money(a.projected, cur)} of ${money(a.limit, cur)}`);
+        if (a.bp >= 10000 || a.spent > a.limit) return tl(`تجاوزت ميزانيّة ${name}: ${money(a.spent, cur)} من ${money(a.limit, cur)}`, `Over budget: ${name} — ${money(a.spent, cur)} of ${money(a.limit, cur)}`);
+        return tl(`${name}: استُهلك ${p}% — بقي ${money(a.limit - a.spent, cur)}`, `${name}: ${p}% used — ${money(a.limit - a.spent, cur)} left`);
+    }
+    // Several thresholds can fire in one write (e.g. a budget set after spending): show only the most serious per budget.
+    const sevOf = (a) => (a.kind === "pace" ? 9000 : a.bp);
+    function topAlerts(list) { const by = {}; list.forEach((a) => { const c = by[a.categoryId]; if (!c || sevOf(a) > sevOf(c)) by[a.categoryId] = a; }); return Object.values(by).sort((a, b) => sevOf(b) - sevOf(a)); }
+    // "spent / limit": each amount isolated, so Arabic symbols with dots don't reorder across the slash
+    const ofLimit = (a, b, cur) => h("span", { style: { whiteSpace: "nowrap" } }, h("bdi", null, money(a, cur)), " / ", h("bdi", null, money(b, cur)));
+    function Check({ checked, onChange, children }) {
+        const { colors } = useTheme();
+        return h("label", { style: { display: "flex", alignItems: "center", gap: 10, minHeight: 40, marginBottom: 8, fontSize: 13, color: colors.text, cursor: "pointer" } },
+            h("input", { type: "checkbox", checked: !!checked, onChange: (e) => onChange(e.target.checked), style: { width: 20, height: 20, accentColor: TEAL } }), h("span", { dir: "auto" }, children));
+    }
+    function Meter({ usedBp, colors }) {
+        const c = usedBp >= 10000 ? colors.danger : usedBp >= 8000 ? colors.warning : colors.success;
+        return h("div", { role: "meter", "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": Math.round(usedBp / 100), style: { height: 8, borderRadius: 4, backgroundColor: colors.bg, overflow: "hidden", border: "1px solid " + colors.border } },
+            h("div", { style: { width: Math.min(100, usedBp / 100) + "%", height: "100%", backgroundColor: c, borderRadius: 4 } }));
     }
 
     // ── shared bits ──
@@ -201,12 +243,24 @@ const AccountantScreen = (function () {
                         v > 0 && h("rect", { x: i * bw + bw * 0.2, y: pos ? H / 2 - v : H / 2, width: bw * 0.6, height: v, rx: 3, fill: pos ? colors.success : colors.danger }),
                         h("text", { x: i * bw + bw / 2, y: H + 13, fontSize: 9.5, fill: colors.textMuted, textAnchor: "middle" }, monthShort(m.month))); })));
     }
-    function Overview({ data, cats, cur, onPickCat, onAdd }) {
+    function Overview({ data, cats, cur, onPickCat, onAdd, alerts, suggestedCount, budgets, onDismissAlerts, onGoSuggested, onGoBudgets }) {
         const { colors } = useTheme();
         if (!data) return h(Loading);
         const f = data.focus;
-        if (!f.txCount) return h(Empty, { onAdd });
-        return h("div", { style: { display: "grid", gap: 12 } },
+        const top = (budgets || []).slice().sort((a, b) => b.usedBp - a.usedBp).slice(0, 3);
+        const head = [
+            alerts && alerts.length > 0 && h(Card, { key: "al", style: { borderColor: colors.warning, padding: 12 } },
+                h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6 } },
+                    h(AlertTriangle, { size: 16, color: colors.warning }), h("b", { style: { flex: 1, fontSize: 14 } }, tl("تنبيهات الميزانيّة", "Budget alerts")),
+                    h("button", { type: "button", onClick: onDismissAlerts, style: { border: 0, background: "none", color: TEAL, fontWeight: 700, fontSize: 13, minHeight: 36, cursor: "pointer" } }, tl("تمّ", "Dismiss"))),
+                topAlerts(alerts).slice(0, 4).map((a) => h("div", { key: a.id, dir: "auto", style: { fontSize: 13, padding: "3px 0", textAlign: ar() ? "right" : "left" } }, alertLine(a, cats, cur)))),
+            suggestedCount > 0 && h("button", { key: "sg", type: "button", onClick: onGoSuggested, style: { display: "flex", alignItems: "center", gap: 10, width: "100%", padding: 12, borderRadius: 16,
+                border: "1.5px dashed " + TEAL, backgroundColor: colors.card, color: colors.text, cursor: "pointer", textAlign: "start", fontSize: 14 } },
+                h(Repeat, { size: 18, color: TEAL }), h("span", { style: { flex: 1, fontWeight: 700 } }, tl(`${suggestedCount} حركات متكرّرة بانتظار التأكيد`, `${suggestedCount} recurring ${suggestedCount === 1 ? "entry" : "entries"} to confirm`)),
+                h(ar() ? ChevronLeft : ChevronRight, { size: 16, color: colors.textMuted })),
+        ].filter(Boolean);
+        if (!f.txCount) return h("div", { style: { display: "grid", gap: 12 } }, head, h(Empty, { onAdd }));
+        return h("div", { style: { display: "grid", gap: 12 } }, head,
             f.ratePending > 0 && h(Card, { style: { borderColor: colors.warning, padding: 10, fontSize: 13 } },
                 tl(`${f.ratePending} من الحركات تنتظر سعر صرف، ولم تُحسب في المجاميع`, `${f.ratePending} entries need an exchange rate and aren't in the totals yet`)),
             h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } },
@@ -214,6 +268,13 @@ const AccountantScreen = (function () {
                 h(Kpi, { label: tl("المصروف", "Spending"), value: money(f.expense, cur), color: colors.danger }),
                 h(Kpi, { label: tl("الصافي", "Net"), value: money(f.net, cur), color: f.net < 0 ? colors.danger : colors.text }),
                 h(Kpi, { label: tl("نسبة الادّخار", "Savings rate"), value: pct(f.savingsRateBp), sub: tl("من الدخل", "of income") })),
+            top.length > 0 && h(Card, null,
+                h("div", { style: { display: "flex", alignItems: "center", marginBottom: 10 } }, h("b", { style: { flex: 1, fontSize: 14 } }, tl("الميزانيّات", "Budgets")),
+                    h("button", { type: "button", onClick: onGoBudgets, style: { border: 0, background: "none", color: TEAL, fontWeight: 700, fontSize: 13, minHeight: 36, cursor: "pointer" } }, tl("الكلّ", "All"))),
+                top.map((b) => h("div", { key: b.categoryId, style: { marginBottom: 10 } },
+                    h("div", { style: { display: "flex", fontSize: 13, marginBottom: 5 } }, h("span", { style: { flex: 1, fontWeight: 600 } }, budgetName(b.categoryId, cats)),
+                        h("span", { style: { color: colors.textMuted } }, ofLimit(b.spent, b.limit, cur))),
+                    h(Meter, { usedBp: b.usedBp, colors })))),
             h(CashFlow, { days: f.days, cur, month: f.month }),
             h(Categories, { rows: f.byCategory, cats, cur, onPick: onPickCat }),
             h(Trend, { months: data.months, cur }));
@@ -229,22 +290,27 @@ const AccountantScreen = (function () {
     }
 
     // ── ledger ──
-    function Ledger({ list, cats, base, filter, onClearFilter, onOpen, onAdd }) {
+    function Ledger({ list, cats, base, filter, onClearFilter, onOpen, onAdd, onConfirm, onSkip, recurringCount, rulesCount, onRecurring, onRules }) {
         const { colors } = useTheme();
         if (!list) return h(Loading);
         const items = filter ? list.items.filter((t) => t.categoryId === filter) : list.items;
-        if (!list.items.length) return h(Empty, { onAdd });
+        const tools = h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+            [[Repeat, tl("المتكرّرة", "Recurring"), recurringCount, onRecurring], [SlidersHorizontal, tl("القواعد", "Rules"), rulesCount, onRules]].map(([I, label, n, fn], i) =>
+                h("button", { key: i, type: "button", onClick: fn, style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 40, borderRadius: 12,
+                    border: "1px solid " + colors.border, backgroundColor: colors.card, color: colors.text, fontWeight: 700, fontSize: 13, cursor: "pointer" } },
+                    h(I, { size: 15, color: TEAL }), label, n > 0 && h("span", { style: { fontSize: 11, color: colors.textMuted } }, "(" + n + ")"))));
+        if (!list.items.length) return h("div", null, tools, h(Empty, { onAdd }));
         const groups = []; items.forEach((t) => { const g = groups[groups.length - 1]; if (g && g.date === t.date) g.items.push(t); else groups.push({ date: t.date, items: [t] }); });
-        return h("div", null,
+        return h("div", null, tools,
             filter && h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 13 } },
                 h("span", { style: { color: colors.textMuted } }, tl("الفئة:", "Category:")), h("b", null, catName(cats[filter])),
                 h("button", { type: "button", onClick: onClearFilter, style: { marginInlineStart: "auto", border: 0, background: "none", color: TEAL, fontWeight: 700, cursor: "pointer", minHeight: 36 } }, tl("عرض الكلّ", "Show all"))),
             groups.map((g) => h("div", { key: g.date, style: { marginBottom: 12 } },
                 h("div", { style: { fontSize: 12, fontWeight: 700, color: colors.textMuted, margin: "0 4px 6px" } }, dayLabel(g.date)),
                 h(Card, { style: { padding: 0 } }, g.items.map((t, i) => {
-                    const c = cats[t.categoryId], I = iconOf(c && c.icon), inc = t.kind === "income";
-                    return h("button", { key: t.id, type: "button", onClick: () => onOpen(t), style: { display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 14px", border: 0,
-                        borderTop: i ? "1px solid " + colors.border : 0, background: "none", color: colors.text, textAlign: "start", cursor: "pointer", minHeight: 56 } },
+                    const c = cats[t.categoryId], I = iconOf(c && c.icon), inc = t.kind === "income", sug = t.status === "suggested";
+                    const row = h("button", { key: t.id, type: "button", onClick: () => onOpen(t), style: { display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 14px", border: 0,
+                        borderTop: i && !sug ? "1px solid " + colors.border : 0, background: "none", color: colors.text, textAlign: "start", cursor: "pointer", minHeight: 56, opacity: sug ? 0.8 : 1 } },
                         h("span", { style: { width: 36, height: 36, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: ((c && c.color) || TEAL) + "22", flexShrink: 0 } }, h(I, { size: 17, color: (c && c.color) || TEAL })),
                         h("span", { style: { flex: 1, minWidth: 0 } },
                             h("div", { dir: "auto", style: { fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: ar() ? "right" : "left" } }, t.counterparty || catName(c)),   // Latin names in Arabic stay on the start side
@@ -253,11 +319,18 @@ const AccountantScreen = (function () {
                             h("div", { dir: "ltr", style: { fontWeight: 800, fontSize: 14, color: inc ? colors.success : colors.text } }, (inc ? "+" : "−") + money(t.amount, t.currency)),
                             t.currency !== base && h("div", { dir: "ltr", style: { fontSize: 11, color: t.baseAmount == null ? colors.warning : colors.textMuted } },
                                 t.baseAmount == null ? tl("بانتظار السعر", "rate needed") : "≈ " + money(t.baseAmount, base))));
+                    if (!sug) return row;
+                    // suggested by a recurring entry: not in the totals until confirmed
+                    return h("div", { key: t.id, style: { borderTop: i ? "1px solid " + colors.border : 0, outline: "1.5px dashed " + TEAL, outlineOffset: -4, borderRadius: i ? 0 : 16 } }, row,
+                        h("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "0 14px 12px" } },
+                            h("span", { style: { flex: 1, fontSize: 12, color: TEAL, fontWeight: 700 } }, tl("مقترحة — لم تُحسب بعد", "Suggested — not counted yet")),
+                            h(Btn, { kind: "ghost", onClick: () => onSkip(t), style: { minHeight: 36, padding: "6px 12px", fontSize: 13 } }, tl("تخطّي", "Skip")),
+                            h(Btn, { onClick: () => onConfirm(t), style: { minHeight: 36, padding: "6px 14px", fontSize: 13 } }, tl("تأكيد", "Confirm"))));
                 })))));
     }
 
     // ── add / edit sheet ──
-    function TxSheet({ tx, settings, cats, today, onClose, onSaved }) {
+    function TxSheet({ tx, settings, cats, today, rules, onClose, onSaved }) {
         const { colors } = useTheme();
         const base = settings.baseCurrency, editing = !!tx;
         const [kind, setKind] = useState(tx ? tx.kind : "expense");
@@ -270,6 +343,16 @@ const AccountantScreen = (function () {
         const [who, setWho] = useState(tx ? tx.counterparty || "" : "");
         const [busy, setBusy] = useState(false), [err, setErr] = useState("");
         const [newCat, setNewCat] = useState(null);
+        const [autoRule, setAutoRule] = useState(null), [remember, setRemember] = useState(false);
+        const [repeat, setRepeat] = useState("none"), [autoBook, setAutoBook] = useState(false);
+        const suggested = !!(tx && tx.status === "suggested");
+        // A rule picks the category while the user types the payee, unless they chose one themselves.
+        useEffect(() => {
+            if (editing) return;
+            const r = matchRule(rules, kind, who, note);
+            if (r && cats[r.categoryId] && (!catId || (autoRule && catId === autoRule.categoryId))) { setCatId(r.categoryId); setAutoRule(r); }
+            else if (!r && autoRule && catId === autoRule.categoryId) { setCatId(""); setAutoRule(null); }
+        }, [who, note, kind]);
         const key = useRef(newKey());
         const curs = useMemo(currencyList, []);
         useEffect(() => { // pre-fill the user's own last rate for this pair
@@ -282,12 +365,19 @@ const AccountantScreen = (function () {
             setBusy(true); setErr("");
             const p = { kind, amount: amount.trim(), currency: cur, categoryId: catId, date, note: note.trim() || null, counterparty: who.trim() || null };
             if (cur !== base) p.fxRate = rate.trim() || null; else delete p.fxRate;
-            const req = editing ? call("pfm.tx.update", Object.assign({ id: tx.id, rev: tx.rev }, p))
+            const req = suggested ? call("pfm.tx.confirm", { id: tx.id, rev: tx.rev, amount: p.amount, date: p.date, categoryId: p.categoryId, note: p.note, fxRate: p.fxRate })
+                : editing ? call("pfm.tx.update", Object.assign({ id: tx.id, rev: tx.rev }, p))
                 : call("pfm.tx.add", Object.assign({ idemKey: key.current }, p));
-            req.then((r) => onSaved(r.tx), (e) => { setErr(errText(e)); setBusy(false); });
+            // Follow-ups never block the entry itself: it is saved first, then the rule and the repeat.
+            req.then((r) => {
+                const after = [];
+                if (remember && who.trim()) after.push(call("pfm.rule.upsert", { contains: who.trim(), categoryId: catId, kind }));
+                if (!editing && repeat !== "none") after.push(call("pfm.recurring.upsert", Object.assign({}, p, { rule: ruleFromDate(repeat, date), startDate: date, after: true, mode: autoBook ? "auto" : "suggest" })));
+                return Promise.all(after).then(() => onSaved(r.tx), (e) => { setErr(tl("حُفظت الحركة، لكن: ", "Entry saved, but: ") + errText(e)); setBusy(false); });
+            }, (e) => { setErr(errText(e)); setBusy(false); });
         };
         const del = () => {
-            if (!window.confirm(tl("حذف هذه الحركة؟", "Delete this entry?"))) return;
+            if (!suggested && !window.confirm(tl("حذف هذه الحركة؟", "Delete this entry?"))) return;
             setBusy(true); call("pfm.tx.delete", { id: tx.id, rev: tx.rev }).then(() => onSaved(null), (e) => { setErr(errText(e)); setBusy(false); });
         };
         const addCat = () => {
@@ -295,7 +385,8 @@ const AccountantScreen = (function () {
             call("pfm.cat.upsert", { name, nameAr: name, kind }).then((r) => { cats[r.category.id] = r.category; setCatId(r.category.id); setNewCat(null); }, (e) => setErr(errText(e)));
         };
         const canSave = !busy && Number(amount) > 0 && catId && date;
-        return h(Sheet, { title: editing ? tl("تعديل الحركة", "Edit entry") : tl("حركة جديدة", "New entry"), onClose },
+        const showRemember = who.trim().length >= 2 && catId && !(autoRule && autoRule.categoryId === catId && normText(autoRule.contains) && normText(who).indexOf(normText(autoRule.contains)) >= 0);
+        return h(Sheet, { title: suggested ? tl("تأكيد حركة متكرّرة", "Confirm recurring entry") : editing ? tl("تعديل الحركة", "Edit entry") : tl("حركة جديدة", "New entry"), onClose },
             h("div", { style: { marginBottom: 14 } }, h(Seg, { value: kind, onChange: (v) => { setKind(v); setCatId(""); }, options: [
                 { value: "expense", label: tl("مصروف", "Spending"), color: colors.danger }, { value: "income", label: tl("دخل", "Income"), color: colors.success }] })),
             h("div", { style: { display: "flex", gap: 8 } },
@@ -308,10 +399,12 @@ const AccountantScreen = (function () {
             cur !== base && h(Field, { label: tl("سعر الصرف: ", "Exchange rate: ") + "\u2066" + `1 ${cur} = ? ${base}` + "\u2069",   // LRI…PDI: the formula stays left-to-right inside Arabic
                 hint: preview || tl("اكتب السعر الذي حصلت عليه فعلاً. اتركه فارغاً لتضيفه لاحقاً", "Type the rate you actually got. Leave empty to add it later") },
                 h("input", { dir: "ltr", inputMode: "decimal", value: rate, placeholder: "0.00", onChange: (e) => setRate(e.target.value.replace(/[^0-9.]/g, "")), style: inputStyle(colors) })),
+            autoRule && catId === autoRule.categoryId && h("div", { style: { fontSize: 12, color: TEAL, fontWeight: 700, margin: "-4px 0 6px" } },
+                tl(`اختيرت الفئة بقاعدة «${autoRule.contains}»`, `Category picked by your rule “${autoRule.contains}”`)),
             h(Field, { label: tl("الفئة", "Category"), group: true },
                 h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
                     list.map((c) => { const I = iconOf(c.icon), on = c.id === catId;
-                        return h("button", { key: c.id, type: "button", "aria-pressed": on, onClick: () => setCatId(c.id), style: { display: "flex", alignItems: "center", gap: 6, minHeight: 38, padding: "6px 12px",
+                        return h("button", { key: c.id, type: "button", "aria-pressed": on, onClick: () => { setCatId(c.id); setAutoRule(null); }, style: { display: "flex", alignItems: "center", gap: 6, minHeight: 38, padding: "6px 12px",
                             borderRadius: 19, border: "1.5px solid " + (on ? c.color : colors.border), backgroundColor: on ? c.color + "1f" : "transparent", color: colors.text, fontSize: 13, fontWeight: 600, cursor: "pointer" } },
                             h(I, { size: 15, color: c.color }), catName(c)); }),
                     newCat == null
@@ -322,12 +415,110 @@ const AccountantScreen = (function () {
             h(Field, { label: tl("التاريخ", "Date") }, h("input", { type: "date", value: date, max: today, onChange: (e) => setDate(e.target.value), style: inputStyle(colors) })),
             h(Field, { label: kind === "income" ? tl("من (اختياريّ)", "From (optional)") : tl("إلى (اختياريّ)", "Paid to (optional)") },
                 h("input", { dir: "auto", value: who, maxLength: 80, onChange: (e) => setWho(e.target.value), style: inputStyle(colors) })),
+            showRemember && h(Check, { checked: remember, onChange: setRemember }, tl(`استعمل «${catName(cats[catId])}» دائماً لـ«${who.trim()}»`, `Always use “${catName(cats[catId])}” for “${who.trim()}”`)),
             h(Field, { label: tl("ملاحظة (اختياريّ)", "Note (optional)"), hint: tl("الملاحظات والأسماء تُحفظ مشفّرة", "Notes and names are stored encrypted") },
                 h("input", { dir: "auto", value: note, maxLength: 300, onChange: (e) => setNote(e.target.value), style: inputStyle(colors) })),
+            !editing && h(Field, { label: tl("التكرار", "Repeat"), hint: repeat !== "none" ? tl("تظهر الحركة القادمة مقترحةً في موعدها لتؤكّدها", "The next one appears as a suggestion on its date, for you to confirm") : undefined },
+                h("select", { value: repeat, onChange: (e) => setRepeat(e.target.value), style: inputStyle(colors) },
+                    h("option", { value: "none" }, tl("لا تتكرّر", "Doesn't repeat")),
+                    h("option", { value: "monthly" }, tl("شهريّاً في يوم ", "Monthly on day ") + Number(date.slice(8, 10))),
+                    h("option", { value: "weekly" }, tl("أسبوعيّاً يوم ", "Weekly on ") + weekdayName(new Date(date + "T00:00:00Z").getUTCDay())),
+                    h("option", { value: "yearly" }, tl("سنويّاً", "Yearly")))),
+            !editing && repeat !== "none" && h(Check, { checked: autoBook, onChange: setAutoBook }, tl("سجّلها تلقائيّاً دون أن تسألني", "Record it automatically, don't ask me")),
+            err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13, marginBottom: 10 } }, err),
+            h("div", { style: { display: "flex", gap: 8 } },
+                editing && h(Btn, { kind: suggested ? "ghost" : "danger", onClick: del, disabled: busy }, suggested ? tl("تخطّي", "Skip") : tl("حذف", "Delete")),
+                h(Btn, { onClick: save, disabled: !canSave, style: { flex: 1 } }, busy ? tl("جارٍ الحفظ…", "Saving…") : suggested ? tl("تأكيد", "Confirm") : tl("حفظ", "Save"))));
+    }
+
+    // ── budgets ──
+    function Budgets({ data, cats, cur, onEdit, onAdd }) {
+        const { colors } = useTheme();
+        if (!data) return h(Loading);
+        if (!data.budgets.length) return h(Card, { style: { textAlign: "center", padding: 24 } },
+            h(Target, { size: 32, color: TEAL }),
+            h("div", { style: { fontWeight: 800, marginTop: 8 } }, tl("لا ميزانيّات بعد", "No budgets yet")),
+            h("p", { style: { fontSize: 13, color: colors.textMuted, margin: "6px 0 14px", lineHeight: 1.6 } },
+                tl("ضع حدّاً شهريّاً لفئة أو لكلّ مصروفاتك، ونُنبّهك عند 50% و80% و100%، وإن كان إنفاقك أسرع من المتوقّع.", "Set a monthly limit for a category or all spending. We'll alert you at 50%, 80% and 100%, and if you're spending faster than planned.")),
+            h(Btn, { onClick: onAdd }, tl("أضف ميزانيّة", "Add a budget")));
+        return h("div", { style: { display: "grid", gap: 10 } },
+            data.budgets.map((b) => {
+                const over = b.remaining < 0, done = b.elapsed >= b.period.days;
+                const paceTxt = done ? "" : b.onPace ? tl("ضمن المسار", "On track") : tl(`بهذه الوتيرة ≈ ${money(b.projected, cur)} بنهاية الشهر`, `At this pace ≈ ${money(b.projected, cur)} by month end`);
+                return h("button", { key: b.categoryId, type: "button", onClick: () => onEdit(b), style: { display: "block", width: "100%", textAlign: "start", padding: 14, borderRadius: 16,
+                    border: "1px solid " + (over ? colors.danger : colors.border), backgroundColor: colors.card, color: colors.text, cursor: "pointer" } },
+                    h("div", { style: { display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 } },
+                        h("b", { style: { flex: 1, fontSize: 15 } }, budgetName(b.categoryId, cats)),
+                        h("span", { dir: "ltr", style: { fontSize: 13, color: colors.textMuted } }, pct(b.usedBp))),
+                    h(Meter, { usedBp: b.usedBp, colors }),
+                    h("div", { style: { display: "flex", gap: 8, marginTop: 8, fontSize: 13 } },
+                        h("span", { style: { flex: 1 } }, ofLimit(b.spent, b.limit, cur)),
+                        h("span", { style: { fontWeight: 700, color: over ? colors.danger : colors.success } },
+                            over ? tl("تجاوز بـ ", "Over by ") + money(-b.remaining, cur) : tl("بقي ", "Left ") + money(b.remaining, cur))),
+                    paceTxt && h("div", { style: { fontSize: 12, marginTop: 4, color: b.onPace ? colors.textMuted : colors.warning } }, paceTxt));
+            }),
+            h(Btn, { kind: "ghost", onClick: onAdd }, "＋ " + tl("ميزانيّة أخرى", "Another budget")));
+    }
+    function BudgetSheet({ budget, existing, cats, cur, onClose, onSaved }) {
+        const { colors } = useTheme();
+        const editing = !!budget;
+        const free = [{ id: TOTAL }].concat(Object.values(cats).filter((c) => c.kind === "expense" && !c.archived).sort((a, b) => a.order - b.order))
+            .filter((c) => editing ? c.id === budget.categoryId : existing.indexOf(c.id) < 0);
+        const [catId, setCatId] = useState(editing ? budget.categoryId : (free[0] && free[0].id) || "");
+        const [limit, setLimit] = useState(editing ? String(budget.limit / Math.pow(10, expOf(cur))) : "");
+        const [th, setTh] = useState(editing ? budget.alertsBp : [5000, 8000, 10000]);
+        const [busy, setBusy] = useState(false), [err, setErr] = useState("");
+        const save = () => { setBusy(true); setErr(""); call("pfm.budget.set", { categoryId: catId, limit: limit.trim(), alertsBp: th }).then(onSaved, (e) => { setErr(errText(e)); setBusy(false); }); };
+        const del = () => { if (!window.confirm(tl("حذف هذه الميزانيّة؟", "Delete this budget?"))) return; setBusy(true); call("pfm.budget.delete", { categoryId: catId }).then(onSaved, (e) => { setErr(errText(e)); setBusy(false); }); };
+        return h(Sheet, { title: editing ? tl("تعديل الميزانيّة", "Edit budget") : tl("ميزانيّة جديدة", "New budget"), onClose },
+            h(Field, { label: tl("الفئة", "Category") },
+                h("select", { value: catId, disabled: editing, onChange: (e) => setCatId(e.target.value), style: inputStyle(colors) },
+                    free.map((c) => h("option", { key: c.id, value: c.id }, budgetName(c.id, cats))))),
+            h(Field, { label: tl("الحدّ الشهريّ", "Monthly limit") + " (" + cur + ")" },
+                h("input", { dir: "ltr", inputMode: "decimal", value: limit, placeholder: "0", onChange: (e) => setLimit(e.target.value.replace(/[^0-9.٠-٩٫]/g, "")), style: Object.assign(inputStyle(colors), { fontSize: 20, fontWeight: 800 }) })),
+            h(Field, { label: tl("نبّهني عند", "Alert me at"), group: true },
+                h("div", { style: { display: "flex", gap: 8 } }, [5000, 8000, 10000].map((b) => { const on = th.indexOf(b) >= 0;
+                    return h("button", { key: b, type: "button", "aria-pressed": on, onClick: () => setTh(on ? th.filter((x) => x !== b) : th.concat(b).sort((a, c) => a - c)),
+                        style: { flex: 1, minHeight: 40, borderRadius: 12, border: "1.5px solid " + (on ? TEAL : colors.border), backgroundColor: on ? TEAL + "1f" : "transparent", color: colors.text, fontWeight: 700, cursor: "pointer" } }, b / 100 + "%"); }))),
             err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13, marginBottom: 10 } }, err),
             h("div", { style: { display: "flex", gap: 8 } },
                 editing && h(Btn, { kind: "danger", onClick: del, disabled: busy }, tl("حذف", "Delete")),
-                h(Btn, { onClick: save, disabled: !canSave, style: { flex: 1 } }, busy ? tl("جارٍ الحفظ…", "Saving…") : tl("حفظ", "Save"))));
+                h(Btn, { onClick: save, disabled: busy || !(Number(limit) > 0) || !catId, style: { flex: 1 } }, busy ? tl("جارٍ الحفظ…", "Saving…") : tl("حفظ", "Save"))));
+    }
+
+    // ── recurring entries and rules ──
+    function RecurringSheet({ items, cats, onClose, onChanged }) {
+        const { colors } = useTheme();
+        const [busy, setBusy] = useState(""), [err, setErr] = useState("");
+        const act = (id, op, payload, ask) => { if (ask && !window.confirm(ask)) return; setBusy(id); setErr(""); call(op, payload).then(() => { setBusy(""); onChanged(); }, (e) => { setErr(errText(e)); setBusy(""); }); };
+        return h(Sheet, { title: tl("الحركات المتكرّرة", "Recurring entries"), onClose },
+            !items.length && h("p", { style: { fontSize: 13, color: colors.textMuted, lineHeight: 1.6 } },
+                tl("لا شيء بعد. عند إضافة حركة اختر «التكرار» (الراتب، الإيجار، الاشتراكات…)، فتظهر القادمة مقترحةً في موعدها.", "Nothing yet. When adding an entry, choose “Repeat” (salary, rent, subscriptions…) and the next one appears as a suggestion on its date.")),
+            items.map((r) => { const c = cats[r.categoryId], I = iconOf(c && c.icon);
+                return h(Card, { key: r.id, style: { marginBottom: 10, padding: 12, opacity: r.paused ? 0.65 : 1 } },
+                    h("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+                        h(I, { size: 18, color: (c && c.color) || TEAL }),
+                        h("div", { style: { flex: 1, minWidth: 0 } },
+                            h("div", { dir: "auto", style: { fontWeight: 700, fontSize: 14, textAlign: ar() ? "right" : "left" } }, r.counterparty || catName(c)),
+                            h("div", { style: { fontSize: 12, color: colors.textMuted } }, ruleText(r.rule) + (r.mode === "auto" ? " · " + tl("تلقائيّ", "automatic") : ""))),
+                        h("div", { dir: "ltr", style: { fontWeight: 800, color: r.kind === "income" ? colors.success : colors.text } }, (r.kind === "income" ? "+" : "−") + money(r.amount, r.currency))),
+                    h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 10 } },
+                        h("span", { style: { flex: 1, fontSize: 12, color: colors.textMuted } }, r.paused ? tl("متوقّفة", "Paused") : tl("القادمة: ", "Next: ") + dayLabel(r.nextDate)),
+                        h(Btn, { kind: "ghost", disabled: busy === r.id, onClick: () => act(r.id, "pfm.recurring.pause", { id: r.id, paused: !r.paused }), style: { minHeight: 36, padding: "6px 12px", fontSize: 13 } }, r.paused ? tl("استئناف", "Resume") : tl("إيقاف", "Pause")),
+                        h(Btn, { kind: "danger", disabled: busy === r.id, onClick: () => act(r.id, "pfm.recurring.delete", { id: r.id }, tl("حذف هذا التكرار؟ الحركات المسجّلة تبقى.", "Delete this repeat? Entries already recorded stay.")), style: { minHeight: 36, padding: "6px 12px", fontSize: 13 } }, tl("حذف", "Delete")))); }),
+            err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13 } }, err));
+    }
+    function RulesSheet({ rules, cats, onClose, onChanged }) {
+        const { colors } = useTheme();
+        const [err, setErr] = useState("");
+        return h(Sheet, { title: tl("قواعد التصنيف", "Category rules"), onClose },
+            h("p", { style: { fontSize: 13, color: colors.textMuted, lineHeight: 1.6, marginTop: 0 } },
+                tl("إذا احتوى اسم الطرف أو الملاحظة على النصّ، تُختار الفئة تلقائيّاً. أضف قاعدة من نموذج الحركة: «استعمل هذه الفئة دائماً».", "If the payee or note contains the text, the category is picked for you. Add a rule from the entry form: “Always use this category”.")),
+            !rules.length && h("p", { style: { fontSize: 13, color: colors.textMuted } }, tl("لا قواعد بعد.", "No rules yet.")),
+            rules.map((r) => h(Card, { key: r.id, style: { marginBottom: 8, padding: 12, display: "flex", alignItems: "center", gap: 10 } },
+                h("span", { dir: "auto", style: { flex: 1, fontSize: 14 } }, h("b", null, "«" + r.contains + "»"), "  →  ", catName(cats[r.categoryId])),
+                h(Btn, { kind: "danger", onClick: () => call("pfm.rule.delete", { id: r.id }).then(onChanged, (e) => setErr(errText(e))), style: { minHeight: 36, padding: "6px 12px", fontSize: 13 } }, tl("حذف", "Delete")))),
+            err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13 } }, err));
     }
 
     // ── screen ──
@@ -336,7 +527,7 @@ const AccountantScreen = (function () {
         const [boot, setBoot] = useState(null), [bootErr, setBootErr] = useState("");
         const [tab, setTab] = useState("overview");
         const [month, setMonth] = useState(null);
-        const [summary, setSummary] = useState(null), [list, setList] = useState(null);
+        const [summary, setSummary] = useState(null), [list, setList] = useState(null), [budgets, setBudgets] = useState(null);
         const [sheet, setSheet] = useState(null), [filter, setFilter] = useState(null);
         const load = () => { setBootErr(""); call("pfm.get").then((r) => { setBoot(r); if (r.settings) setMonth((m) => m || r.month); }, (e) => setBootErr(errText(e))); };
         useEffect(load, []);
@@ -345,7 +536,13 @@ const AccountantScreen = (function () {
             setSummary(null); setList(null);
             call("pfm.summary", { from: shiftMonth(month, -5), to: month, focus: month }).then(setSummary, (e) => setBootErr(errText(e)));
             call("pfm.tx.list", { month }).then(setList, (e) => setBootErr(errText(e)));
+            call("pfm.budget.list", { month }).then(setBudgets, () => setBudgets({ budgets: [] }));
         }, [month]);
+        const reloadAll = () => { load(); refresh(); };
+        const confirmTx = (t) => call("pfm.tx.confirm", { id: t.id, rev: t.rev }).then(reloadAll, (e) => setBootErr(errText(e)));
+        const skipTx = (t) => call("pfm.tx.delete", { id: t.id, rev: t.rev }).then(reloadAll, (e) => setBootErr(errText(e)));
+        const dismissAlerts = () => { const ids = ((boot && boot.alerts) || []).map((a) => a.id); setBoot(Object.assign({}, boot, { alerts: [] })); call("pfm.alerts.read", { ids }).catch(() => {}); };
+        const goSuggested = () => { const m = boot.month; setFilter(null); setTab("ledger"); if (month !== m) setMonth(m); };
         useEffect(refresh, [refresh]);
         const cats = useMemo(() => { const m = {}; ((boot && boot.categories) || []).forEach((c) => { m[c.id] = c; }); return m; }, [boot]);
         const s = boot && boot.settings;
@@ -358,19 +555,29 @@ const AccountantScreen = (function () {
                     h("button", { type: "button", "aria-label": tl("الشهر السابق", "Previous month"), onClick: () => setMonth(shiftMonth(month, -1)), style: navBtn(colors) }, h(ar() ? ChevronRight : ChevronLeft, { size: 20 })),
                     h("div", { style: { flex: 1, textAlign: "center", fontWeight: 800, fontSize: 16 } }, monthName(month)),
                     h("button", { type: "button", "aria-label": tl("الشهر التالي", "Next month"), disabled: month >= boot.month, onClick: () => setMonth(shiftMonth(month, 1)), style: Object.assign(navBtn(colors), { opacity: month >= boot.month ? 0.35 : 1 }) }, h(ar() ? ChevronLeft : ChevronRight, { size: 20 }))),
-                h("div", { style: { marginBottom: 14 } }, h(Seg, { value: tab, onChange: setTab, options: [{ value: "overview", label: tl("نظرة عامّة", "Overview") }, { value: "ledger", label: tl("السجلّ", "Ledger") }] })),
+                h("div", { style: { marginBottom: 14 } }, h(Seg, { value: tab, onChange: setTab, options: [{ value: "overview", label: tl("نظرة عامّة", "Overview") }, { value: "ledger", label: tl("السجلّ", "Ledger") }, { value: "budgets", label: tl("الميزانيّات", "Budgets") }] })),
                 tab === "overview"
-                    ? h(Overview, { data: summary, cats, cur, onAdd: () => setSheet({}), onPickCat: (id) => { setFilter(id); setTab("ledger"); } })
-                    : h(Ledger, { list, cats, base: cur, filter, onClearFilter: () => setFilter(null), onOpen: (t) => setSheet({ tx: t }), onAdd: () => setSheet({}) }));
+                    ? h(Overview, { data: summary, cats, cur, onAdd: () => setSheet({}), onPickCat: (id) => { setFilter(id); setTab("ledger"); },
+                        alerts: boot.month === month ? boot.alerts : [], suggestedCount: boot.suggestedCount, budgets: budgets && budgets.budgets,
+                        onDismissAlerts: dismissAlerts, onGoSuggested: goSuggested, onGoBudgets: () => setTab("budgets") })
+                    : tab === "ledger"
+                    ? h(Ledger, { list, cats, base: cur, filter, onClearFilter: () => setFilter(null), onOpen: (t) => setSheet({ tx: t }), onAdd: () => setSheet({}),
+                        onConfirm: confirmTx, onSkip: skipTx, recurringCount: (boot.recurring || []).length, rulesCount: (boot.rules || []).length,
+                        onRecurring: () => setSheet({ type: "recurring" }), onRules: () => setSheet({ type: "rules" }) })
+                    : h(Budgets, { data: budgets, cats, cur, onAdd: () => setSheet({ type: "budget" }), onEdit: (b) => setSheet({ type: "budget", budget: b }) }));
         return h(ServiceTheme, { color: TEAL },
             h("div", { dir: ar() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col", style: { color: colors.text } },
                 h(TopBar, { title: tl("المحاسب الشخصيّ", "Personal accountant"), subtitle: cur ? tl("المجاميع بـ", "Totals in ") + cur : undefined, onBack }),
                 h("div", { className: "flex-1 overflow-y-auto", style: { backgroundColor: colors.bg } }, body),
-                s && h("button", { type: "button", "aria-label": tl("حركة جديدة", "New entry"), onClick: () => setSheet({}),
+                s && tab !== "budgets" && h("button", { type: "button", "aria-label": tl("حركة جديدة", "New entry"), onClick: () => setSheet({}),
                     style: { position: "fixed", insetInlineEnd: 20, bottom: "calc(env(safe-area-inset-bottom,0px) + 24px)", width: 56, height: 56, borderRadius: 28, border: 0,
                         backgroundColor: TEAL, color: "#fff", boxShadow: "0 6px 16px rgba(15,118,110,.35)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 40 } }, h(Plus, { size: 26 })),
-                sheet && s && h(TxSheet, { tx: sheet.tx, settings: s, cats, today: boot.today, onClose: () => setSheet(null),
-                    onSaved: () => { setSheet(null); refresh(); } })));
+                sheet && s && !sheet.type && h(TxSheet, { tx: sheet.tx, settings: s, cats, today: boot.today, rules: boot.rules, onClose: () => setSheet(null),
+                    onSaved: () => { setSheet(null); reloadAll(); } }),
+                sheet && s && sheet.type === "budget" && h(BudgetSheet, { budget: sheet.budget, existing: ((budgets && budgets.budgets) || []).map((b) => b.categoryId), cats, cur,
+                    onClose: () => setSheet(null), onSaved: () => { setSheet(null); refresh(); } }),
+                sheet && s && sheet.type === "recurring" && h(RecurringSheet, { items: boot.recurring || [], cats, onClose: () => setSheet(null), onChanged: reloadAll }),
+                sheet && s && sheet.type === "rules" && h(RulesSheet, { rules: boot.rules || [], cats, onClose: () => setSheet(null), onChanged: reloadAll })));
     }
     const navBtn = (colors) => ({ width: 40, height: 40, borderRadius: 20, border: "1px solid " + colors.border, backgroundColor: colors.card, color: colors.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" });
     return Screen;
