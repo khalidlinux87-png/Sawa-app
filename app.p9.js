@@ -180,13 +180,58 @@ const AccountantScreen = (function () {
     }
 
     // ── overview ──
-    function Kpi({ label, value, color, sub }) {
-        const { colors } = useTheme();
-        return h(Card, { style: { padding: 12, minWidth: 0 } },
-            h("div", { style: { fontSize: 12, color: colors.textMuted, fontWeight: 600 } }, label),
-            h("div", { dir: "ltr", style: { fontSize: 18, fontWeight: 800, color: color || colors.text, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: ar() ? "right" : "left" } }, value),
-            sub && h("div", { style: { fontSize: 11, color: colors.textMuted, marginTop: 2 } }, sub));
+    // ── overview (C265 design pass): one sentence + the month's day ruler lead; only "Needs you" gets a box ──
+    const T = { h1: 24, h2: 15, body: 15, small: 13, tiny: 12 };     // type scale, one family (Sawa Plex)
+    const reduceMotion = () => { try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; } };
+    function periodOf(month, startDay) {     // same as pfm-core budgetPeriod: { start, days }
+        const [y, m] = month.split("-").map(Number), last = (yy, mm) => new Date(Date.UTC(yy, mm, 0)).getUTCDate();
+        const s0 = Date.UTC(y, m - 1, Math.min(startDay, last(y, m))), ny = m === 12 ? y + 1 : y, nm = m === 12 ? 1 : m + 1;
+        const e0 = Date.UTC(ny, nm - 1, Math.min(startDay, last(ny, nm)));
+        return { start: s0, days: Math.round((e0 - s0) / 86400000) };
     }
+    const fig = (minor, cur) => h("bdi", { style: { fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" } }, money(minor, cur));
+    function Headline({ f, cur, past, monthLabel }) {
+        const { colors } = useTheme();
+        const net = f.net, kept = f.savingsRateBp, M = monthLabel;
+        const amount = f.income === 0 ? f.expense : Math.abs(net);
+        // [before the amount, after it] — six plain sentences: no income / money left / overspent, this month or a past one
+        const kind = f.income === 0 ? "spent" : net >= 0 ? "left" : "over";
+        const S = {
+            spent: past ? tl(["صرفت ", " في " + M], ["You spent ", " in " + M]) : tl(["صرفت ", " هذا الشهر"], ["You've spent ", " this month"]),
+            left: past ? tl(["ادّخرت ", " في " + M], ["You kept ", " in " + M]) : tl(["بقي لك ", " هذا الشهر"], ["", " left this month"]),
+            over: past ? tl(["صرفت أكثر من دخلك بـ ", " في " + M], ["You spent ", " more than you earned in " + M]) : tl(["صرفت أكثر من دخلك بـ ", " هذا الشهر"], ["You've spent ", " more than you earned"]),
+        }[kind];
+        return h("div", { style: { marginBottom: 10 } },
+            h("h2", { style: { margin: 0, fontSize: T.h1, lineHeight: 1.35, fontWeight: 800, color: colors.text } }, S[0], fig(amount, cur), S[1]),
+            f.income > 0 && h("p", { style: { margin: "6px 0 0", fontSize: T.body, lineHeight: 1.6, color: colors.textMuted } },
+                tl("دخلك ", "You earned "), fig(f.income, cur), tl(" وصرفت ", " and spent "), fig(f.expense, cur),
+                kept != null && kept > 0 ? [tl("، فادّخرت ", ", keeping "), h("bdi", { key: "k" }, pct(kept))] : null, tl("", ".")));   // no Arabic full stop: it jumps to the line start after a figure
+    }
+    // The budget month as a row of days: past days filled, today marked, the rest empty. Fills once per month change.
+    function DayRuler({ days, elapsed, past }) {
+        const { colors } = useTheme();
+        const [on, setOn] = useState(reduceMotion());
+        useEffect(() => { if (reduceMotion()) { setOn(true); return; } setOn(false); const t = setTimeout(() => setOn(true), 30); return () => clearTimeout(t); }, [days, elapsed]);
+        const left = days - elapsed;
+        return h("div", { style: { margin: "14px 0 6px" } },
+            h("div", { role: "img", "aria-label": past ? tl("الشهر انتهى", "Month complete") : tl(`مضى ${elapsed} من ${days} يوماً`, `Day ${elapsed} of ${days}`), style: { display: "flex", gap: 2, alignItems: "flex-end", height: 18 } },
+                Array.from({ length: days }, (_, i) => {
+                    const done = i < elapsed, today = !past && i === elapsed - 1;
+                    return h("span", { key: i, "data-day": done ? (today ? "today" : "done") : "left", style: { flex: 1, height: today ? 18 : 10, borderRadius: 2,
+                        backgroundColor: done && on ? TEAL : colors.border, opacity: done && on && !today ? 0.55 : 1,
+                        transition: reduceMotion() ? "none" : `background-color 180ms ${i * 12}ms, opacity 180ms ${i * 12}ms` } });
+                })),
+            !past && h("div", { style: { fontSize: T.tiny, color: colors.textMuted, marginTop: 6 } },
+                left === 0 ? tl("آخر يومٍ في الشهر", "Last day of the month") : tl(`بقي ${left} ${left === 1 ? "يوم" : left <= 10 ? "أيّام" : "يوماً"}`, `${left} ${left === 1 ? "day" : "days"} left`)));
+    }
+    function Section({ title, action, children }) {
+        const { colors } = useTheme();
+        return h("section", { style: { marginTop: 28 } },
+            h("div", { style: { display: "flex", alignItems: "baseline", marginBottom: 10 } },
+                h("h3", { style: { flex: 1, margin: 0, fontSize: T.h2, fontWeight: 800, color: colors.text } }, title), action || null),
+            children);
+    }
+    const linkBtn = (label, onClick) => h("button", { type: "button", onClick, style: { border: 0, background: "none", color: TEAL, fontWeight: 700, fontSize: T.small, minHeight: 40, padding: "0 4px", cursor: "pointer" } }, label);
     function CashFlow({ days, cur, month }) {
         const { colors } = useTheme();
         const [y, m] = month.split("-").map(Number); const n = new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -194,8 +239,8 @@ const AccountantScreen = (function () {
         const max = Math.max(1, ...(days || []).map((d) => Math.max(d.income, d.expense)));
         const W = 320, H = 120, bw = W / n;
         const [tip, setTip] = useState(null);
-        return h(Card, null,
-            h("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 8 } }, tl("التدفّق النقديّ اليوميّ", "Daily cash flow")),
+        const ink = colors.textMuted;   // spending is normal: ink, not red
+        return h(Section, { title: tl("الداخل والخارج يوماً بيوم", "Money in and out, day by day") },
             h("svg", { viewBox: `0 0 ${W} ${H + 16}`, width: "100%", role: "img", "aria-label": tl("الدخل والمصروف لكلّ يوم", "Income and spending per day"), style: { display: "block", direction: "ltr" } },
                 h("line", { x1: 0, x2: W, y1: H / 2, y2: H / 2, stroke: colors.border }),
                 Array.from({ length: n }, (_, i) => { const d = by[i + 1] || { income: 0, expense: 0 }, x = i * bw;
@@ -203,11 +248,11 @@ const AccountantScreen = (function () {
                     return h("g", { key: i, onMouseEnter: () => setTip(i + 1), onClick: () => setTip(i + 1) },
                         h("rect", { x: x, y: 0, width: bw, height: H, fill: "transparent" }),
                         hi > 0 && h("rect", { x: x + 1, y: H / 2 - hi, width: Math.max(bw - 2, 1), height: hi, rx: 1.5, fill: colors.success }),
-                        he > 0 && h("rect", { x: x + 1, y: H / 2, width: Math.max(bw - 2, 1), height: he, rx: 1.5, fill: colors.danger, opacity: 0.85 })); }),
+                        he > 0 && h("rect", { x: x + 1, y: H / 2, width: Math.max(bw - 2, 1), height: he, rx: 1.5, fill: ink })); }),
                 [1, 10, 20, n].map((d) => h("text", { key: d, x: (d - 0.5) * bw, y: H + 12, fontSize: 9, fill: colors.textMuted, textAnchor: "middle" }, String(d)))),
             h("div", { style: { display: "flex", gap: 14, fontSize: 12, color: colors.textMuted, marginTop: 6, flexWrap: "wrap" } },
-                h("span", null, h("span", { style: { display: "inline-block", width: 8, height: 8, borderRadius: 2, backgroundColor: colors.success, marginInlineEnd: 6 } }), tl("دخل", "Income")),
-                h("span", null, h("span", { style: { display: "inline-block", width: 8, height: 8, borderRadius: 2, backgroundColor: colors.danger, marginInlineEnd: 6 } }), tl("مصروف", "Spending")),
+                h("span", null, h("span", { style: { display: "inline-block", width: 8, height: 8, borderRadius: 2, backgroundColor: colors.success, marginInlineEnd: 6 } }), tl("داخل", "In")),
+                h("span", null, h("span", { style: { display: "inline-block", width: 8, height: 8, borderRadius: 2, backgroundColor: ink, marginInlineEnd: 6 } }), tl("خارج", "Out")),
                 tip && h("span", { dir: "auto", style: { marginInlineStart: "auto", color: colors.text, fontWeight: 600 } },
                     `${tip}: +${money((by[tip] || {}).income || 0, cur)} / −${money((by[tip] || {}).expense || 0, cur)}`)));
     }
@@ -216,67 +261,63 @@ const AccountantScreen = (function () {
         const spend = rows.filter((r) => r.expense > 0);
         if (!spend.length) return null;
         const max = spend[0].expense;
-        return h(Card, null,
-            h("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 10 } }, tl("المصروف حسب الفئة", "Spending by category")),
+        return h(Section, { title: tl("أين ذهب المال", "Where the money went") },
             spend.map((r) => { const c = cats[r.categoryId]; const I = iconOf(c && c.icon);
                 return h("button", { key: r.categoryId, type: "button", onClick: () => onPick(r.categoryId), style: { display: "block", width: "100%", textAlign: "start", border: 0, background: "none", padding: "6px 0", color: colors.text, cursor: "pointer" } },
-                    h("div", { style: { display: "flex", alignItems: "center", gap: 8, fontSize: 13 } },
+                    h("div", { style: { display: "flex", alignItems: "center", gap: 8, fontSize: T.small } },
                         h(I, { size: 16, color: (c && c.color) || colors.textMuted }),
                         h("span", { style: { flex: 1, fontWeight: 600 } }, catName(c)),
-                        h("span", { dir: "ltr", style: { fontWeight: 700 } }, money(r.expense, cur)),
+                        h("span", { style: { fontWeight: 700 } }, fig(r.expense, cur)),
                         h("span", { style: { width: 44, textAlign: "end", color: colors.textMuted, fontSize: 12 } }, pct(r.shareBp))),
-                    h("div", { style: { height: 6, borderRadius: 3, backgroundColor: colors.bg, marginTop: 6, overflow: "hidden" } },
-                        h("div", { style: { width: Math.max(2, (r.expense / max) * 100) + "%", height: "100%", borderRadius: 3, backgroundColor: (c && c.color) || TEAL } }))); }));
+                    h("div", { style: { height: 4, borderRadius: 2, backgroundColor: colors.border, marginTop: 7, overflow: "hidden" } },
+                        h("div", { style: { width: Math.max(2, (r.expense / max) * 100) + "%", height: "100%", borderRadius: 3, backgroundColor: colors.textMuted } }))); }));
     }
     function Trend({ months, cur }) {
         const { colors } = useTheme();
         if (!months || months.length < 2) return null;
         const max = Math.max(1, ...months.map((m) => Math.abs(m.net)));
         const W = 320, H = 110, bw = W / months.length;
-        return h(Card, null,
-            h("div", { style: { fontWeight: 800, fontSize: 14, marginBottom: 8 } }, tl("صافي آخر الشهور", "Net by month")),
+        return h(Section, { title: tl("ما بقي في آخر الشهور", "What was left, month by month") },
             h("svg", { viewBox: `0 0 ${W} ${H + 18}`, width: "100%", role: "img", "aria-label": tl("صافي كلّ شهر", "Net per month"), style: { display: "block", direction: "ltr" } },
                 h("line", { x1: 0, x2: W, y1: H / 2, y2: H / 2, stroke: colors.border }),
                 months.map((m, i) => { const v = (Math.abs(m.net) / max) * (H / 2 - 6), pos = m.net >= 0;
                     return h("g", { key: m.month },
                         h("title", null, monthName(m.month) + ": " + money(m.net, cur)),
-                        v > 0 && h("rect", { x: i * bw + bw * 0.2, y: pos ? H / 2 - v : H / 2, width: bw * 0.6, height: v, rx: 3, fill: pos ? colors.success : colors.danger }),
+                        v > 0 && h("rect", { x: i * bw + bw * 0.2, y: pos ? H / 2 - v : H / 2, width: bw * 0.6, height: v, rx: 3, fill: pos ? colors.success : colors.textMuted }),
                         h("text", { x: i * bw + bw / 2, y: H + 13, fontSize: 9.5, fill: colors.textMuted, textAnchor: "middle" }, monthShort(m.month))); })));
     }
-    function Overview({ data, cats, cur, onPickCat, onAdd, alerts, suggestedCount, budgets, onDismissAlerts, onGoSuggested, onGoBudgets }) {
+    function Overview({ data, cats, cur, onPickCat, onAdd, alerts, suggestedCount, budgets, onDismissAlerts, onGoSuggested, onGoBudgets, onGoLedger, ruler }) {
         const { colors } = useTheme();
         if (!data) return h(Loading);
-        const f = data.focus;
+        const f = data.focus, past = f.month < data.currentMonth;
         const top = (budgets || []).slice().sort((a, b) => b.usedBp - a.usedBp).slice(0, 3);
-        const head = [
-            alerts && alerts.length > 0 && h(Card, { key: "al", style: { borderColor: colors.warning, padding: 12 } },
-                h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6 } },
-                    h(AlertTriangle, { size: 16, color: colors.warning }), h("b", { style: { flex: 1, fontSize: 14 } }, tl("تنبيهات الميزانيّة", "Budget alerts")),
-                    h("button", { type: "button", onClick: onDismissAlerts, style: { border: 0, background: "none", color: TEAL, fontWeight: 700, fontSize: 13, minHeight: 36, cursor: "pointer" } }, tl("تمّ", "Dismiss"))),
-                topAlerts(alerts).slice(0, 4).map((a) => h("div", { key: a.id, dir: "auto", style: { fontSize: 13, padding: "3px 0", textAlign: ar() ? "right" : "left" } }, alertLine(a, cats, cur)))),
-            suggestedCount > 0 && h("button", { key: "sg", type: "button", onClick: onGoSuggested, style: { display: "flex", alignItems: "center", gap: 10, width: "100%", padding: 12, borderRadius: 16,
-                border: "1.5px dashed " + TEAL, backgroundColor: colors.card, color: colors.text, cursor: "pointer", textAlign: "start", fontSize: 14 } },
-                h(Repeat, { size: 18, color: TEAL }), h("span", { style: { flex: 1, fontWeight: 700 } }, tl(`${suggestedCount} حركات متكرّرة بانتظار التأكيد`, `${suggestedCount} recurring ${suggestedCount === 1 ? "entry" : "entries"} to confirm`)),
-                h(ar() ? ChevronLeft : ChevronRight, { size: 16, color: colors.textMuted })),
-        ].filter(Boolean);
-        if (!f.txCount) return h("div", { style: { display: "grid", gap: 12 } }, head, h(Empty, { onAdd }));
-        return h("div", { style: { display: "grid", gap: 12 } }, head,
-            f.ratePending > 0 && h(Card, { style: { borderColor: colors.warning, padding: 10, fontSize: 13 } },
-                tl(`${f.ratePending} من الحركات تنتظر سعر صرف، ولم تُحسب في المجاميع`, `${f.ratePending} entries need an exchange rate and aren't in the totals yet`)),
-            h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } },
-                h(Kpi, { label: tl("الدخل", "Income"), value: money(f.income, cur), color: colors.success }),
-                h(Kpi, { label: tl("المصروف", "Spending"), value: money(f.expense, cur), color: colors.danger }),
-                h(Kpi, { label: tl("الصافي", "Net"), value: money(f.net, cur), color: f.net < 0 ? colors.danger : colors.text }),
-                h(Kpi, { label: tl("نسبة الادّخار", "Savings rate"), value: pct(f.savingsRateBp), sub: tl("من الدخل", "of income") })),
-            top.length > 0 && h(Card, null,
-                h("div", { style: { display: "flex", alignItems: "center", marginBottom: 10 } }, h("b", { style: { flex: 1, fontSize: 14 } }, tl("الميزانيّات", "Budgets")),
-                    h("button", { type: "button", onClick: onGoBudgets, style: { border: 0, background: "none", color: TEAL, fontWeight: 700, fontSize: 13, minHeight: 36, cursor: "pointer" } }, tl("الكلّ", "All"))),
-                top.map((b) => h("div", { key: b.categoryId, style: { marginBottom: 10 } },
-                    h("div", { style: { display: "flex", fontSize: 13, marginBottom: 5 } }, h("span", { style: { flex: 1, fontWeight: 600 } }, budgetName(b.categoryId, cats)),
-                        h("span", { style: { color: colors.textMuted } }, ofLimit(b.spent, b.limit, cur))),
+        const al = topAlerts(alerts || []);
+        const needs = al.length > 0 || suggestedCount > 0 || f.ratePending > 0;
+        const row = (key, text, onClick, tone) => h("button", { key, type: "button", onClick, style: { display: "flex", alignItems: "center", gap: 8, width: "100%", minHeight: 44, padding: "6px 0",
+            border: 0, background: "none", color: tone || colors.text, fontSize: T.body, textAlign: "start", cursor: onClick ? "pointer" : "default" } },
+            h("span", { dir: "auto", style: { flex: 1, lineHeight: 1.5, textAlign: ar() ? "right" : "left" } }, text),
+            onClick && h(ar() ? ChevronLeft : ChevronRight, { size: 16, color: colors.textMuted }));
+        // The only container on the page: things waiting for the user.
+        const needsYou = needs && h("section", { "aria-label": tl("يحتاجك", "Needs you"), style: { marginTop: 18, padding: "10px 14px 6px", backgroundColor: colors.card,
+            borderInlineStart: "4px solid " + colors.warning, borderRadius: 4, boxShadow: "inset 0 0 0 1px " + colors.border } },
+            h("div", { style: { display: "flex", alignItems: "center" } },
+                h("h3", { style: { flex: 1, margin: 0, fontSize: T.h2, fontWeight: 800, color: colors.text } }, tl("يحتاجك", "Needs you")),
+                al.length > 0 && linkBtn(tl("إخفاء التنبيهات", "Clear alerts"), onDismissAlerts)),
+            al.slice(0, 3).map((a) => row(a.id, alertLine(a, cats, cur), onGoBudgets, a.bp >= 10000 || a.spent > a.limit ? colors.danger : colors.text)),
+            suggestedCount > 0 && row("sg", tl(`${suggestedCount} ${suggestedCount === 1 ? "حركة متكرّرة" : "حركات متكرّرة"} للتأكيد`, `${suggestedCount} recurring ${suggestedCount === 1 ? "entry" : "entries"} to confirm`), onGoSuggested),
+            f.ratePending > 0 && row("rp", tl(`${f.ratePending} ${f.ratePending === 1 ? "حركة تحتاج" : "حركات تحتاج"} سعر صرف لتدخل المجاميع`, `${f.ratePending} ${f.ratePending === 1 ? "entry needs" : "entries need"} an exchange rate to count`), onGoLedger));
+        if (!f.txCount) return h("div", null, needsYou, h("div", { style: { marginTop: 18 } }, h(Empty, { onAdd })));
+        return h("div", null,
+            h(Headline, { f, cur, past, monthLabel: monthName(f.month) }),
+            ruler && h(DayRuler, ruler),
+            needsYou,
+            top.length > 0 && h(Section, { title: tl("الميزانيّات", "Budgets"), action: linkBtn(tl("كلّ الميزانيّات", "All budgets"), onGoBudgets) },
+                top.map((b) => h("div", { key: b.categoryId, style: { marginBottom: 12 } },
+                    h("div", { style: { display: "flex", fontSize: T.small, marginBottom: 6 } }, h("span", { style: { flex: 1, fontWeight: 600 } }, budgetName(b.categoryId, cats)),
+                        h("span", { style: { color: b.remaining < 0 ? colors.danger : colors.textMuted } }, ofLimit(b.spent, b.limit, cur))),
                     h(Meter, { usedBp: b.usedBp, colors })))),
-            h(CashFlow, { days: f.days, cur, month: f.month }),
             h(Categories, { rows: f.byCategory, cats, cur, onPick: onPickCat }),
+            h(CashFlow, { days: f.days, cur, month: f.month }),
             h(Trend, { months: data.months, cur }));
     }
     function Loading() { const { colors } = useTheme(); return h("div", { role: "status", style: { padding: 32, textAlign: "center", color: colors.textMuted, fontSize: 13 } }, tl("جارٍ التحميل…", "Loading…")); }
@@ -559,7 +600,10 @@ const AccountantScreen = (function () {
                 tab === "overview"
                     ? h(Overview, { data: summary, cats, cur, onAdd: () => setSheet({}), onPickCat: (id) => { setFilter(id); setTab("ledger"); },
                         alerts: boot.month === month ? boot.alerts : [], suggestedCount: boot.suggestedCount, budgets: budgets && budgets.budgets,
-                        onDismissAlerts: dismissAlerts, onGoSuggested: goSuggested, onGoBudgets: () => setTab("budgets") })
+                        onDismissAlerts: dismissAlerts, onGoSuggested: goSuggested, onGoBudgets: () => setTab("budgets"), onGoLedger: () => setTab("ledger"),
+                        ruler: (() => { const per = periodOf(month, s.monthStartDay), past = month < boot.month;
+                            const t = Date.parse(boot.today + "T00:00:00Z"); const el = past ? per.days : Math.min(per.days, Math.max(0, Math.round((t - per.start) / 86400000) + 1));
+                            return month > boot.month ? null : { days: per.days, elapsed: el, past }; })() })
                     : tab === "ledger"
                     ? h(Ledger, { list, cats, base: cur, filter, onClearFilter: () => setFilter(null), onOpen: (t) => setSheet({ tx: t }), onAdd: () => setSheet({}),
                         onConfirm: confirmTx, onSkip: skipTx, recurringCount: (boot.recurring || []).length, rulesCount: (boot.rules || []).length,
