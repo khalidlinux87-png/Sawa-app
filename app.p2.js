@@ -538,7 +538,11 @@ function FamAvatar({ name, photo, size = 46, radius, gray, ring, className, styl
     if (photo) return React.createElement("div", { className: "relative overflow-hidden " + (className || ""), style: Object.assign({}, base, { backgroundImage: `url(${photo})`, backgroundSize: "cover", backgroundPosition: "center", filter: gray ? "grayscale(1)" : undefined }) }, children || null);
     return React.createElement("div", { className: "relative flex items-center justify-center font-extrabold text-white " + (className || ""), style: Object.assign({}, base, { background: gray ? "linear-gradient(135deg,#94a3b8,#6b7280)" : famAvGrad(name), fontSize: Math.round(size * 0.4) }) }, letter, children || null);
 }
-function FamHeader({ title, subtitle, onBack, actions, children, compact }) {
+// C271: اسمٌ كاملٌ بأجياله يلتفّ على أسطر ولا يُقصّ (بلا «…» ولا قصّ الحاوية) — ملفّ الشخص وواجهة «تركيز»
+function FULL_NAME_STYLE(color, align) {
+    return { color, display: "block", whiteSpace: "normal", overflowWrap: "anywhere", wordBreak: "normal", textAlign: align || "center", lineHeight: 1.35, unicodeBidi: "plaintext", overflow: "visible", textOverflow: "clip" };
+}
+function FamHeader({ title, subtitle, onBack, actions, children, compact, wrapTitle }) {
     const { colors } = useTheme();
     return (React.createElement("div", { className: "shrink-0 relative", style: { background: famGrad(colors), borderBottomLeftRadius: 26, borderBottomRightRadius: 26, padding: `${compact ? 40 : 44}px 18px ${children ? 16 : 18}px` } },
         // C146: «رجوع» في جهة البداية (يمين العربيّة) والأزرار في الطرف الآخر
@@ -546,7 +550,7 @@ function FamHeader({ title, subtitle, onBack, actions, children, compact }) {
             onBack && React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: "rgba(255,255,255,0.18)" } },
                 React.createElement(isRTL() ? ChevronRight : ChevronLeft, { color: "#fff", size: 20 })),
             React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
-                React.createElement("h1", { className: "text-white font-extrabold truncate", style: { fontSize: compact ? 17 : 21, lineHeight: 1.25 } }, title),
+                React.createElement("h1", { className: "text-white font-extrabold" + (wrapTitle ? "" : " truncate"), style: Object.assign({ fontSize: compact ? 17 : 21, lineHeight: 1.25 }, wrapTitle ? { whiteSpace: "normal", overflowWrap: "anywhere" } : {}) }, title),   // C271: wrapTitle ⇒ الاسم الطويل كاملاً
                 subtitle && React.createElement("p", { className: "text-[12px] mt-0.5 truncate", style: { color: "rgba(255,255,255,0.85)" } }, subtitle)),
             actions && React.createElement("div", { className: "shrink-0 flex flex-row items-center gap-1.5" }, actions)),
         children && React.createElement("div", { className: "mt-4" }, children)));
@@ -1756,19 +1760,147 @@ function hasNoProximityPerson(p) { return !!p && hasNoProximity(p.kinship); } //
 function isSelfPerson(p) {
     return !!p && p.kinship === SELF_KINSHIP;
 }
+// ============================================================
+// C271: قاعدة «الحيّ» — ملفّ صاحب الحساب لا يُسجَّل متوفّى.
+// «ملفّي» = صلته «نفسي» (محسوبةً لي أو مخزَّنةً لصاحب الشجرة) · أو حسابي مربوطٌ به (acctMe) · أو اخترته «هذا أنا» (myId).
+// حارسٌ واحد لكلّ المسارات: نموذج الشخص · «هل هو على قيد الحياة؟» · حدث «وفاة» · addPerson/editPerson · والخادم (person.set).
+// ============================================================
+function isOwnProfilePerson(p, myId) {
+    return !!p && (p.kinship === SELF_KINSHIP || p.kinStored === SELF_KINSHIP || !!p.acctMe || (!!myId && p.id === myId));
+}
+// يعيد سبب الرفض (نصّاً) أو null. before = الشخص قبل التعديل (أو null لشخصٍ جديد) · patch = الحقول الجديدة
+function selfDeceasedBlock(before, patch, myId) {
+    const after = Object.assign({}, before || {}, patch || {});
+    if (after.alive !== false) return null;
+    if (!isOwnProfilePerson(after, myId) && !isOwnProfilePerson(before, myId)) return null;
+    const mine = !!(after.acctMe || (myId && after.id === myId) || after.kinship === SELF_KINSHIP);
+    return mine ? tl("لا يمكن تسجيلك «متوفّى» — هذا ملفّك أنت.", "You can't mark yourself as deceased — this is your own profile.")
+        : tl("صاحب الشجرة صاحب حسابٍ في سوا — لا يُسجَّل «متوفّى».", "The tree owner has a Sawa account — they can't be marked deceased.");
+}
 function daysSinceContact_(ts) { return ts ? Math.floor((Date.now() - ts) / 86400000) : 9999; }
 function isContactOverdue(person) {
     // صاحب الشجرة لا يُذكَّر بالتواصل مع نفسه. البوّابة هنا لأنها المخنق
     // الذي تمرّ منه كل عدّادات التأخّر وشاراتها وبطاقة التذكير.
     if (isSelfPerson(person) || isExSpousePerson(person))
         return false;
-    if (!person.alive || !person.proximity)
+    // C271: بدرجةٍ أو بمدّةٍ اختارها المستخدم لهذا القريب
+    if (!person.alive || !hasContactSchedule(person))
         return false;
-    const limit = proximityContactDays[person.proximity] || 30;
+    const limit = contactEveryDays(person);
     if (!contactRef(person))
         return false;   // لا مرجع (بياناتٌ قديمة) ⇒ لا نحكم بالتأخّر
     const days = daysSinceRef(person);
     return days >= limit;
+}
+// ============================================================
+// C271: مواعيد صلة الرحم المرنة
+// ------------------------------------------------------------
+// كانت المدّة ثابتةً لكلّ درجة (proximityContactDays). الآن ثلاث طبقات، الأقرب يغلب:
+//   ١) مدّةٌ لكلّ قريب (p.contactEvery بالأيّام، 1–365) — على هذا الجهاز وحده مثل lastContactDate (عادةٌ شخصيّة لا تُفرض على العائلة)
+//   ٢) مدّةٌ لكلّ درجة يضبطها المستخدم (kinRemindSettings().byDegree)
+//   ٣) الافتراض القديم لكلّ درجة.
+// والإشعار: الخادم يرسل ملخّصاً واحداً في اليوم على الأكثر في الساعة المختارة (kin.remind.set ⇐ Worker v126 kinReminders)،
+// وعلى هذا الجهاز تنبيهٌ احتياطيّ حين لا يصل الخادم (kinRemindLocalTick).
+// ============================================================
+const KIN_FREQ_PRESETS = [1, 2, 3, 7, 10, 14, 30];
+const KIN_REMIND_KEY = "sawa:kinRemind";
+let KIN_REMIND = null;
+function kinRemindSettings() {
+    if (!KIN_REMIND) {
+        let saved = null;
+        try { saved = JSON.parse(localStorage.getItem(KIN_REMIND_KEY) || "null"); } catch (e) { }
+        KIN_REMIND = Object.assign({ on: true, hour: 18, byDegree: {} }, saved && typeof saved === "object" ? saved : {});
+        if (!KIN_REMIND.byDegree || typeof KIN_REMIND.byDegree !== "object") KIN_REMIND.byDegree = {};
+    }
+    return KIN_REMIND;
+}
+function setKinRemindSettings(patch) {
+    KIN_REMIND = Object.assign({}, kinRemindSettings(), patch || {});
+    try { localStorage.setItem(KIN_REMIND_KEY, JSON.stringify(KIN_REMIND)); } catch (e) { }
+    try { window.dispatchEvent(new Event("sawa-kinremind")); } catch (e) { }
+    return KIN_REMIND;
+}
+function kinClampDays(n) {
+    if (n === null || n === undefined || n === "") return null;
+    const d = Math.round(Number(n));
+    return d >= 1 && d <= 365 ? d : null;
+}
+function kinClampHour(h) { const x = Math.round(Number(h)); return x >= 0 && x <= 23 ? x : 18; }
+// المدّة الافتراضيّة لدرجة (بعد ضبط المستخدم)
+function degreeContactDays(prox) {
+    return kinClampDays((kinRemindSettings().byDegree || {})[prox]) || proximityContactDays[prox] || 30;
+}
+// المدّة الفعليّة لقريب
+function contactEveryDays(p) {
+    return kinClampDays(p && p.contactEvery) || (p && p.proximity ? degreeContactDays(p.proximity) : 30);
+}
+// هل لهذا القريب موعدُ تواصل؟ (له درجة، أو اختار له المستخدم مدّة)
+function hasContactSchedule(p) {
+    if (!p || isSelfPerson(p) || isExSpousePerson(p) || p.alive === false) return false;
+    return !!kinClampDays(p.contactEvery) || (!!p.proximity && !hasNoProximityPerson(p));
+}
+// «يوميّاً» · «كل يومين» · «كل 3 أيام» · «أسبوعيّاً» · «كل 10 أيام» · «كل 45 يوماً»
+function kinFreqLabel(d) {
+    d = kinClampDays(d) || 30;
+    if (d === 1) return tl("يوميّاً", "Daily");
+    if (d === 2) return tl("كل يومين", "Every 2 days");
+    if (d === 7) return tl("أسبوعيّاً", "Weekly");
+    if (d === 14) return tl("كل أسبوعين", "Every 2 weeks");
+    if (d === 30) return tl("شهريّاً", "Monthly");
+    return tl(d <= 10 ? "كل " + d + " أيام" : "كل " + d + " يوماً", "Every " + d + " days");
+}
+function kinHourLabel(h) {
+    const d = new Date(2020, 0, 1, kinClampHour(h), 0);
+    try { return d.toLocaleTimeString(isRTL() ? "ar" : "en", { hour: "numeric", minute: "2-digit", numberingSystem: "latn" }); } catch (e) { return kinClampHour(h) + ":00"; }
+}
+// خطّة الإشعار التي تُرسَل إلى الخادم: لكلّ قريبٍ بموعد ⇒ { id, n: الاسم الأوّل, e: المدّة, l: مرجع آخر تواصل }
+// (النسخة الجسر عند الأصهار تُسقط إن وُجد أصلها، كما في getOverduePersons)
+function kinRemindPlan(groupPersons) {
+    const all = Object.keys(groupPersons || {}).flatMap((gid) => (groupPersons[gid] || []).map((p) => ({ gid, p })));
+    const ids = new Set(all.map((x) => x.p.id));
+    const items = [];
+    all.forEach(({ gid, p }) => {
+        const target = p.linkedTo && p.linkedTo.personId;
+        if (target && ids.has(target)) return;
+        if (!hasContactSchedule(p)) return;
+        const ref = contactRef(p);
+        if (!ref) return;
+        items.push({ id: String(gid + ":" + p.id).slice(0, 80), n: String(p.local_name || "").split(" ")[0].slice(0, 40), e: contactEveryDays(p), l: Number(ref) || 0 });
+    });
+    items.sort((a, b) => a.e - b.e || a.l - b.l);
+    return items.slice(0, 300);
+}
+// من يحين التواصل معه الآن (للتنبيه المحلّيّ ونصّه)
+function kinDueNow(groupPersons) {
+    return kinRemindPlan(groupPersons).filter((x) => Date.now() >= x.l + x.e * 86400000);
+}
+function kinDueText(list) {
+    const names = list.map((x) => x.n).filter(Boolean);
+    if (!names.length) return "";
+    if (names.length === 1) return tl("حان موعد التواصل مع " + names[0], "Time to reach out to " + names[0]);
+    if (names.length === 2) return tl("حان موعد التواصل مع " + names[0] + " و" + names[1], "Time to reach out to " + names[0] + " and " + names[1]);
+    return tl("حان موعد التواصل مع " + names.slice(0, 2).join("، ") + " و" + (names.length - 2) + " غيرهما", "Time to reach out to " + names.slice(0, 2).join(", ") + " and " + (names.length - 2) + " more");
+}
+// تنبيهٌ محلّيّ احتياطيّ: مرّةً في اليوم على الأكثر، بعد الساعة المختارة، والإذن ممنوح، والخادم لم يؤكّد خطّةً خلال يومين
+function kinRemindLocalTick(groupPersons) {
+    try {
+        const s = kinRemindSettings();
+        if (!s.on || typeof Notification === "undefined" || Notification.permission !== "granted") return false;
+        const now = new Date();
+        if (now.getHours() < kinClampHour(s.hour)) return false;
+        const day = now.getFullYear() + "-" + (now.getMonth() + 1) + "-" + now.getDate();
+        if (localStorage.getItem("sawa:kinRemindLocal") === day) return false;
+        const srv = Number(localStorage.getItem("sawa:kinRemindSrv") || 0);
+        if (srv && Date.now() - srv < 2 * 86400000) return false;   // الخادم يتولّى الإشعار
+        const due = kinDueNow(groupPersons);
+        if (!due.length) return false;
+        localStorage.setItem("sawa:kinRemindLocal", day);
+        const body = kinDueText(due), title = tl("صلة الرحم", "Family ties");
+        const show = (reg) => reg && reg.showNotification ? reg.showNotification(title, { body, tag: "sawa-kin", dir: "auto", lang: isRTL() ? "ar" : "en", icon: "./icons/icon-192.png", badge: "./icons/icon-192.png", data: { t: "kin" } }) : new Notification(title, { body, tag: "sawa-kin" });
+        if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) navigator.serviceWorker.getRegistration().then(show).catch(() => { try { new Notification(title, { body, tag: "sawa-kin" }); } catch (e) { } });
+        else show(null);
+        return true;
+    } catch (e) { return false; }
 }
 // احصل على كل الأشخاص الذين تأخر التواصل معهم
 function getOverduePersons(groupPersons) {

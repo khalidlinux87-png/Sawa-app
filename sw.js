@@ -4,11 +4,11 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v454';
+const VERSION = 'sawa-v455';
 // C197: سجلّ منظَّم داخل عامل الخدمة (لا SawaLog هنا).
 function slog(lvl, ev, f) { try { (console[lvl] || console.log)('[sw] ' + ev, Object.assign({ v: VERSION }, f || {})); } catch (e) {} }
 // C83: «ما الجديد» — يظهر لكلّ مستخدم في «حسابي ← تحديث التطبيق». سطرٌ واحد بلا علامة ' (‎\n‎ لسطرٍ جديد). يُحدَّث مع كلّ نسخة.
-const NOTES = '• واجهة «تركيز» في الشجرة: اسحب في كلّ الاتّجاهات — لا يُقصّ الأجداد ولا الإخوة عند أطراف الشاشة\n• تبدأ عند الشخص المختار ووالديه';
+const NOTES = '• الاسم الكامل بأجياله يظهر في واجهة «تركيز» وملفّ القريب بلا قصّ\n• البحث يتجاهل اختلاف الإملاء: أحمد/احمد · فاطمة/فاطمه/فاطمت · يحيى/يحيي · هناء/هنا · عبدالله/عبد الله\n• مواعيد صلة الرحم المرنة: يوميّاً، كل يومين، أسبوعيّاً، أو أيّ مدّة لكلّ قريب، مع إشعار\n• لا يمكن تسجيل ملفّك أنت «متوفّى»';
 // P2: على العناوين القديمة/البديلة (Netlify · sawaap.pages.dev · sawaaap.com بلا www) يصير عامل الخدمة «مُخلياً»:
 //     يمسح المخزون، يحوّل الصفحات المفتوحة إلى العنوان الرسميّ، ثمّ يلغي نفسه. على www.sawaaap.com يعمل كالمعتاد.
 //     (لا يُحذف هذا قبل أن ينتقل كلّ المستخدمين.)
@@ -193,7 +193,7 @@ self.addEventListener('push', (e) => {
     if (vis && d.t !== 'test') { vis.postMessage({ type: 'sawa-push', data: d }); return; }
     if (vis) vis.postMessage({ type: 'sawa-push', data: d });
     return self.registration.showNotification(d.title || 'سوا', {
-      body: d.body || '', tag: d.cid || (d.call ? 'call-' + d.call : d.sid ? 'sched-' + d.sid : d.t === 'req' ? 'req-' + (d.uf || d.from || '') : d.t === 'moment' && d.pid ? 'mom-' + d.pid : 'sawa'), renotify: true, dir: 'auto', lang: 'ar',
+      body: d.body || '', tag: d.cid || (d.call ? 'call-' + d.call : d.sid ? 'sched-' + d.sid : d.t === 'req' ? 'req-' + (d.uf || d.from || '') : d.t === 'moment' && d.pid ? 'mom-' + d.pid : d.t === 'kin' ? 'sawa-kin' : 'sawa'), renotify: true, dir: 'auto', lang: 'ar',
       icon: './icons/icon-192.png', badge: './icons/icon-192.png', data: d,
       requireInteraction: d.t === 'call', silent: false, vibrate: d.t === 'call' ? [300, 150, 300, 150, 300] : [120],
     });
@@ -208,7 +208,7 @@ self.addEventListener('notificationclick', (e) => {
     return;
   }
   e.notification.close();
-  const url = d.t === 'req' ? './?requests=1' : d.t === 'moment' && d.pid ? './?moment=' + encodeURIComponent(d.pid) + (d.cm ? '&cm=' + encodeURIComponent(d.cm) : '') : d.room ? './?room=' + encodeURIComponent(d.room) : './?' + (d.cid ? 'chat=' + encodeURIComponent(d.cid) : '') + (d.call ? '&call=' + encodeURIComponent(d.call) : '');
+  const url = d.t === 'kin' ? './?kin=1' : d.t === 'req' ? './?requests=1' : d.t === 'moment' && d.pid ? './?moment=' + encodeURIComponent(d.pid) + (d.cm ? '&cm=' + encodeURIComponent(d.cm) : '') : d.room ? './?room=' + encodeURIComponent(d.room) : './?' + (d.cid ? 'chat=' + encodeURIComponent(d.cid) : '') + (d.call ? '&call=' + encodeURIComponent(d.call) : '');
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
     for (const c of cs) { if ('focus' in c) { c.postMessage({ type: 'sawa-open', data: d }); return c.focus(); } }
     return self.clients.openWindow(url);
