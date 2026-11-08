@@ -129,7 +129,7 @@ const AccountantScreen = (function () {
         const primary = kind !== "ghost" && kind !== "danger";
         return h("button", { type: "button", onClick, disabled, "aria-label": label, style: Object.assign({
             minHeight: 44, padding: "10px 16px", borderRadius: 12, border: primary ? 0 : "1px solid " + (kind === "danger" ? colors.danger : colors.border),
-            backgroundColor: primary ? TEAL : "transparent", color: primary ? "#fff" : kind === "danger" ? colors.danger : colors.text,
+            backgroundColor: primary ? colors.primary : "transparent", color: primary ? "#fff" : kind === "danger" ? colors.danger : colors.text,
             fontWeight: 700, fontSize: 14, opacity: disabled ? 0.5 : 1, cursor: disabled ? "default" : "pointer" }, style) }, children);
     }
     // A <label> wrapping several buttons would name (and click) only the first one, so groups get role="group".
@@ -603,7 +603,7 @@ const AccountantScreen = (function () {
     function Badge({ status }) {
         const { colors } = useTheme();
         const [label, tone] = STATUS[status] || [[status, status]];
-        const c = tone ? colors[tone] : TEAL;
+        const c = tone ? colors[tone] : colors.primary;
         return h("span", { style: { fontSize: T.tiny, fontWeight: 700, color: c, border: "1px solid " + c, borderRadius: 999, padding: "1px 8px", whiteSpace: "nowrap" } }, tl(label[0], label[1]));
     }
     const minorToText = (m, cur) => (m == null ? "" : String(m / Math.pow(10, expOf(cur))));
@@ -618,7 +618,7 @@ const AccountantScreen = (function () {
         const items = f === "all" ? data.items : data.items.filter((i) => i.status === f);
         const owed = data.outstanding;
         return h("div", null,
-            !biz.biz.name && h("section", { style: { padding: "10px 14px", marginBottom: 16, backgroundColor: colors.card, borderInlineStart: "4px solid " + colors.warning, borderRadius: 4, boxShadow: "inset 0 0 0 1px " + colors.border } },
+            !biz.biz.name && h("section", { style: { padding: "12px 0", marginBottom: 16, borderTop: "1px solid " + colors.border } },
                 h("p", { style: { margin: "0 0 8px", fontSize: T.body, lineHeight: 1.6 } }, tl("أضف اسم نشاطك وحسابات الاستلام لتظهر على فواتيرك.", "Add your business name and receiving accounts to show on your invoices.")),
                 h(Btn, { onClick: onBiz }, tl("بيانات النشاط", "Business details"))),
             h("h2", { style: { margin: 0, fontSize: T.h1, lineHeight: 1.35, fontWeight: 800 } },
@@ -635,7 +635,7 @@ const AccountantScreen = (function () {
                 ["all", "draft", "sent", "overdue", "paid", "cancelled"].map((k) => { const on = f === k, n = k === "all" ? data.items.length : data.items.filter((i) => i.status === k).length;
                     if (k !== "all" && !n) return null;
                     return h("button", { key: k, role: "tab", "aria-selected": on, type: "button", onClick: () => setF(k), style: { flexShrink: 0, minHeight: 36, padding: "4px 12px", borderRadius: 18,
-                        border: "1.5px solid " + (on ? TEAL : colors.border), backgroundColor: on ? TEAL + "1f" : "transparent", color: colors.text, fontWeight: 700, fontSize: T.small, cursor: "pointer" } },
+                        border: "1.5px solid " + (on ? colors.primary : colors.border), backgroundColor: on ? colors.primary + "1f" : "transparent", color: colors.text, fontWeight: 700, fontSize: T.small, cursor: "pointer" } },
                         (k === "all" ? tl("الكلّ", "All") : tl(STATUS[k][0][0], STATUS[k][0][1])) + " " + n); })),
             !data.items.length ? h("p", { style: { color: colors.textMuted, fontSize: T.body, lineHeight: 1.6 } }, tl("لم تُصدر فواتير بعد. أنشئ أوّل فاتورة لعميلك، وستظهر هنا مع حالتها.", "No invoices yet. Create your first one and it shows here with its status."))
             : h(Card, { style: { padding: 0 } }, items.map((i, n) => h("button", { key: i.id, type: "button", onClick: () => onOpen(i.id), style: { display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 14px",
@@ -723,7 +723,7 @@ const AccountantScreen = (function () {
             h(Field, { label: tl("يدفع لك العميل في", "The client pays you into"), group: true, hint: accounts.length ? null : tl("لا حسابات بهذه العملة — أضفها في بيانات النشاط، أو اترك الفاتورة للدفع نقداً.", "No accounts in this currency — add them in business details, or leave it for cash payment.") },
                 h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } }, accounts.map((a) => { const on = accts.indexOf(a.id) >= 0;
                     return h("button", { key: a.id, type: "button", "aria-pressed": on, onClick: () => setAccts(on ? accts.filter((x) => x !== a.id) : accts.concat(a.id)), style: { minHeight: 38, padding: "6px 12px", borderRadius: 19,
-                        border: "1.5px solid " + (on ? TEAL : colors.border), backgroundColor: on ? TEAL + "1f" : "transparent", color: colors.text, fontSize: T.small, fontWeight: 600, cursor: "pointer" } },
+                        border: "1.5px solid " + (on ? colors.primary : colors.border), backgroundColor: on ? colors.primary + "1f" : "transparent", color: colors.text, fontSize: T.small, fontWeight: 600, cursor: "pointer" } },
                         (a.bankName || a.provider || a.label) + " ", h("bdi", null, a.number)); }))),
             h(Check, { checked: partial, onChange: setPartial }, tl("يجوز للعميل الدفع على دفعات", "The client may pay in parts")),
             h(Field, { label: tl("ملاحظات على الفاتورة (اختياريّ)", "Notes on the invoice (optional)") }, h("textarea", { dir: "auto", value: notes, maxLength: 1000, rows: 2, onChange: (e) => setNotes(e.target.value), style: Object.assign(inputStyle(colors), { resize: "vertical" }) })),
@@ -777,7 +777,7 @@ const AccountantScreen = (function () {
         const doShare = () => { const text = shareText(inv, (biz && biz.biz.name) || "");
             if (navigator.share) navigator.share({ title: inv.number, text }).catch(() => {});
             else if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => setMsg(tl("نُسخ نصّ الفاتورة — الصقه في المحادثة", "Invoice text copied — paste it in a chat")), () => {}); };
-        const payForm = pay && h("section", { "aria-label": tl("تسجيل دفعة", "Record a payment"), style: { padding: "10px 14px", margin: "12px 0", backgroundColor: colors.card, borderInlineStart: "4px solid " + TEAL, borderRadius: 4, boxShadow: "inset 0 0 0 1px " + colors.border } },
+        const payForm = pay && h("section", { "aria-label": tl("تسجيل دفعة", "Record a payment"), style: { padding: "12px 0", margin: "12px 0", borderTop: "1px solid " + colors.border } },
             h(Field, { label: tl("المبلغ المستلم", "Amount received") + " (" + cur + ")" }, h("input", { dir: "ltr", inputMode: "decimal", value: pay.amount, onChange: (e) => setPay(Object.assign({}, pay, { amount: e.target.value.replace(/[^0-9.٠-٩٫]/g, "") })), style: inputStyle(colors) })),
             h(Field, { label: tl("كيف وصلك", "How it arrived") }, h("select", { value: pay.method, onChange: (e) => setPay(Object.assign({}, pay, { method: e.target.value })), style: inputStyle(colors) },
                 [["bank_transfer", "تحويل بنكيّ", "Bank transfer"], ["mobile_money", "محفظة جوّال", "Mobile money"], ["cash", "نقداً", "Cash"], ["other", "أخرى", "Other"]].map(([v, a, b]) => h("option", { key: v, value: v }, tl(a, b))))),
@@ -793,7 +793,7 @@ const AccountantScreen = (function () {
         return h(Sheet, { title: inv.number || tl("مسوّدة فاتورة", "Draft invoice"), onClose },
             h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6 } }, h(Badge, { status: st }),
                 st !== "draft" && st !== "cancelled" && h("span", { style: { fontSize: T.small, color: st === "overdue" ? colors.danger : colors.textMuted } }, tl("يستحقّ ", "Due ") + dayLabel(inv.dueDate))),
-            h("h2", { style: { margin: "6px 0 2px", fontSize: T.h1, fontWeight: 800, lineHeight: 1.35 } },
+            h("h2", { style: { margin: "6px 0 2px", fontSize: 32, fontWeight: 800, lineHeight: 1.2, fontVariantNumeric: "tabular-nums" } },
                 st === "paid" ? [tl("دُفعت كاملةً: ", "Paid in full: "), fig(t0.total, cur)] : st === "cancelled" ? tl("ملغاة", "Cancelled")
                     : t0.amountPaid > 0 ? [fig(t0.amountDue, cur), tl(" متبقٍّ من ", " left of "), fig(t0.total, cur)] : fig(t0.total, cur)),
             h("p", { dir: "auto", style: { margin: "0 0 12px", color: colors.textMuted, fontSize: T.body, textAlign: ar() ? "right" : "left" } }, tl("إلى ", "To ") + inv.client.name),
@@ -801,7 +801,7 @@ const AccountantScreen = (function () {
                 inv.items.map((it, i) => h("div", { key: i, style: { display: "flex", gap: 8 } }, h("span", { dir: "auto", style: { flex: 1 } }, it.description, " ", h("bdi", { style: { color: colors.textMuted } }, "× " + it.qty)), fig(t0.lines[i].amount, cur))),
                 t0.taxTotal > 0 && h("div", { style: { display: "flex", color: colors.textMuted } }, h("span", { style: { flex: 1 } }, inv.taxLabel || tl("الضريبة", "Tax")), fig(t0.taxTotal, cur))),
             (inv.payments || []).filter((p) => p.state === "claimed").map((p) => { const acct = (inv.payoutAccounts || []).find((a) => a.id === p.payoutAccountId);
-                return h("section", { key: p.id, "aria-label": tl("بلاغ دفع", "Payment report"), style: { padding: "10px 14px", margin: "14px 0 0", backgroundColor: colors.card, borderInlineStart: "4px solid " + colors.warning, borderRadius: 4, boxShadow: "inset 0 0 0 1px " + colors.border } },
+                return h("section", { key: p.id, "aria-label": tl("بلاغ دفع", "Payment report"), style: { padding: "12px 0 0", margin: "14px 0 0", borderTop: "1px solid " + colors.border } },
                     h("div", { style: { fontWeight: 800, fontSize: T.body } }, h("bdi", null, p.payer && p.payer.name), tl(" يقول إنّه دفع ", " says they paid "), fig(p.amount, cur)),
                     h("div", { style: { fontSize: T.small, color: colors.textMuted, marginTop: 4, lineHeight: 1.6 } },
                         dayLabel(p.at), acct ? [tl("، إلى ", ", to "), h("bdi", { key: "a", style: { whiteSpace: "nowrap" } }, (acct.bankName || acct.provider || acct.label) + " " + (acct.number || "").slice(-4))] : null,
@@ -819,7 +819,7 @@ const AccountantScreen = (function () {
                     h("span", { style: { flex: 1 } }, dayLabel(p.at), " · ", tl({ cash: "نقداً", bank_transfer: "تحويل بنكيّ", mobile_money: "محفظة جوّال", other: "أخرى" }[p.method] || p.method, { cash: "Cash", bank_transfer: "Bank transfer", mobile_money: "Mobile money", other: "Other" }[p.method] || p.method)),
                     fig(p.amount, cur)))),
             payForm,
-            msg && h("div", { role: "status", style: { color: TEAL, fontSize: T.small, margin: "8px 0" } }, msg),
+            msg && h("div", { role: "status", style: { color: colors.primary, fontSize: T.small, margin: "8px 0" } }, msg),
             err && h("div", { role: "alert", style: { color: colors.danger, fontSize: T.small, margin: "8px 0" } }, err),
             h("div", { style: { display: "grid", gap: 8, marginTop: 16 } },
                 st === "draft" && [
