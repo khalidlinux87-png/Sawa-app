@@ -2599,3 +2599,11 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - OMR keeps 3 decimals (CLDR); the others use 2.
 - ⚠️ Existing data: any entry, account, invoice or rate saved in another currency will fail validation once this ships. Check for such rows before deploying.
 - Upload: Worker (`pfm/pfm-core.mjs` and `worker-3.js` via wrangler), then `app.p9.js` ← `sw.js` (v452) last.
+
+## 📎 C269 — Personal Accountant P5: receipt photos and CSV export · KWD and JPY · app.p9 · sw v453 · Worker (pfm/)
+- **Receipt photo on an entry:** in the entry form, «صورة الإيصال (اختياريّ)» → pick a photo; the phone shrinks it to ≤ 1280 px JPEG on white (≤ 400 KB) and uploads it after the entry is saved. View, replace, remove. Rows with a photo show a clip in the ledger. Stored **encrypted**; deleting the entry deletes the photo.
+- **CSV export:** Ledger → «تصدير» → this month / last 3 / last 12 months or any range (≤ 24 months) → «تنزيل CSV». Booked entries only (suggested ones left out); Arabic or English headers; opens in Excel, Google Sheets, Numbers. Saved through `saveFileOut` (Android bridge, iOS share sheet, browser download).
+- **Currencies:** now twelve — KWD (3 decimals) and JPY (no decimals) added to the ten from C268.
+- **Fixed on the way:** the encryption helper overflowed on large input (found by the 400 KB receipt test).
+- **Tests:** `pfm-core` ✓ 29/29 · `pfm-worker` ✓ 42/42 · `ui-check.mjs` ✓ P1–P5 (photo picked, shrunk and sealed; clip shown; photo opens; CSV downloads with the right header and rows). The UI check's seed used EUR, which C268 refused; it now uses GBP.
+- **Upload:** no new secret, no Firestore rules. (1) **Worker** via GitHub/wrangler: `worker-3.js` (622,415) + `pfm/pfm-worker.mjs` (93,365) + `pfm/pfm-core.mjs` (35,954) (2) `app.p9.js` (136,930) ← `sw.js` (v453, 16,630) **last**.

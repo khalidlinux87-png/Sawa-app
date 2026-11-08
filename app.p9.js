@@ -42,6 +42,9 @@ const AccountantScreen = (function () {
         bad_prefix: ["البادئة حروف إنجليزيّة كبيرة أو أرقام، حتّى 8", "The prefix is up to 8 capital letters or digits"],
         bad_rate: ["النسبة بين 0 و100", "Rates are between 0 and 100"],
         bad_date: ["تاريخ الاستحقاق قبل تاريخ الإصدار", "The due date is before the issue date"],
+        bad_receipt: ["الإيصال يجب أن يكون صورة (JPEG أو PNG أو WebP) حتّى 400 كيلوبايت", "The receipt must be a JPEG, PNG or WebP photo up to 400 KB"],
+        range_too_long: ["الفترة أطول من 24 شهراً", "Pick 24 months or fewer"],
+        bad_month: ["بداية الفترة بعد نهايتها", "The start month is after the end month"],
     };
     const errText = (e) => { const m = String((e && e.message) || e || ""); const k = m.split(":")[0]; return ERR[k] ? tl(ERR[k][0], ERR[k][1]) : m; };
 
@@ -62,14 +65,14 @@ const AccountantScreen = (function () {
     const newKey = () => { try { return crypto.randomUUID(); } catch (e) { return "k" + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); } };
     const catName = (c) => (c ? (ar() ? c.nameAr || c.name : c.name) : tl("بلا فئة", "Uncategorised"));
 
-    // ── currencies: the ten Sawa accepts (the Worker enforces the same list) ──
-    const CURS = ["SDG", "USD", "CNY", "QAR", "SAR", "AED", "GBP", "CAD", "OMR", "EGP"];
+    // ── currencies: the twelve Sawa accepts (the Worker enforces the same list: pfm-core.mjs ALLOWED_CURRENCIES) ──
+    const CURS = ["SDG", "USD", "CNY", "QAR", "SAR", "AED", "GBP", "CAD", "OMR", "EGP", "KWD", "JPY"];
     function currencyList() {
         let names = null; try { names = new Intl.DisplayNames([ar() ? "ar" : "en"], { type: "currency" }); } catch (e) {}
         return CURS.map((c) => ({ code: c, label: c + (names ? " — " + names.of(c) : "") }));
     }
     // a suggestion only: the user always confirms the currency
-    const REGION_CUR = { US: "USD", GB: "GBP", SA: "SAR", AE: "AED", EG: "EGP", SD: "SDG", QA: "QAR", OM: "OMR", CN: "CNY", CA: "CAD" };
+    const REGION_CUR = { US: "USD", GB: "GBP", SA: "SAR", AE: "AED", EG: "EGP", SD: "SDG", QA: "QAR", OM: "OMR", CN: "CNY", CA: "CAD", KW: "KWD", JP: "JPY" };
     function guessCurrency() {
         try { const r = new Intl.Locale(navigator.language).maximize().region; if (REGION_CUR[r]) return REGION_CUR[r]; } catch (e) {}
         return "USD";
@@ -339,12 +342,12 @@ const AccountantScreen = (function () {
     }
 
     // ── ledger ──
-    function Ledger({ list, cats, base, filter, onClearFilter, onOpen, onAdd, onConfirm, onSkip, recurringCount, rulesCount, onRecurring, onRules }) {
+    function Ledger({ list, cats, base, filter, onClearFilter, onOpen, onAdd, onConfirm, onSkip, recurringCount, rulesCount, onRecurring, onRules, onExport }) {
         const { colors } = useTheme();
         if (!list) return h(Loading);
         const items = filter ? list.items.filter((t) => t.categoryId === filter) : list.items;
         const tools = h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
-            [[Repeat, tl("المتكرّرة", "Recurring"), recurringCount, onRecurring], [SlidersHorizontal, tl("القواعد", "Rules"), rulesCount, onRules]].map(([I, label, n, fn], i) =>
+            [[Repeat, tl("المتكرّرة", "Recurring"), recurringCount, onRecurring], [SlidersHorizontal, tl("القواعد", "Rules"), rulesCount, onRules], [Download, tl("تصدير", "Export"), 0, onExport]].map(([I, label, n, fn], i) =>
                 h("button", { key: i, type: "button", onClick: fn, style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 40, borderRadius: 12,
                     border: "1px solid " + colors.border, backgroundColor: colors.card, color: colors.text, fontWeight: 700, fontSize: 13, cursor: "pointer" } },
                     h(I, { size: 15, color: TEAL }), label, n > 0 && h("span", { style: { fontSize: 11, color: colors.textMuted } }, "(" + n + ")"))));
@@ -363,7 +366,9 @@ const AccountantScreen = (function () {
                         h("span", { style: { width: 36, height: 36, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: ((c && c.color) || TEAL) + "22", flexShrink: 0 } }, h(I, { size: 17, color: (c && c.color) || TEAL })),
                         h("span", { style: { flex: 1, minWidth: 0 } },
                             h("div", { dir: "auto", style: { fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: ar() ? "right" : "left" } }, t.counterparty || catName(c)),   // Latin names in Arabic stay on the start side
-                            h("div", { dir: "auto", style: { fontSize: 12, color: colors.textMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: ar() ? "right" : "left" } }, t.counterparty ? catName(c) + (t.note ? " · " + t.note : "") : t.note || "")),
+                            h("div", { dir: "auto", style: { fontSize: 12, color: colors.textMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: ar() ? "right" : "left" } },
+                                t.hasReceipt && h(Paperclip, { size: 11, "aria-label": tl("عليها إيصال", "Has a receipt"), style: { display: "inline-block", verticalAlign: "-1px", marginInlineEnd: 4 } }),
+                                t.counterparty ? catName(c) + (t.note ? " · " + t.note : "") : t.note || "")),
                         h("span", { style: { textAlign: "end", flexShrink: 0 } },
                             h("div", { dir: "ltr", style: { fontWeight: 800, fontSize: 14, color: inc ? colors.success : colors.text } }, (inc ? "+" : "−") + money(t.amount, t.currency)),
                             t.currency !== base && h("div", { dir: "ltr", style: { fontSize: 11, color: t.baseAmount == null ? colors.warning : colors.textMuted } },
@@ -395,6 +400,13 @@ const AccountantScreen = (function () {
         const [autoRule, setAutoRule] = useState(null), [remember, setRemember] = useState(false);
         const [repeat, setRepeat] = useState("none"), [autoBook, setAutoBook] = useState(false);
         const suggested = !!(tx && tx.status === "suggested");
+        // receipt photo: a new one is uploaded after the entry is saved; removing waits for Save too
+        const [photo, setPhoto] = useState(null), [dropReceipt, setDropReceipt] = useState(false), [view, setView] = useState(null);
+        const fileRef = useRef(null);
+        const hasReceipt = editing && tx.hasReceipt && !dropReceipt;
+        const pickPhoto = (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; setErr("");
+            shrinkImage(f, 1280, true).then((d) => { setPhoto(d); setDropReceipt(false); }, () => setErr(errText(new Error("bad_receipt")))); };
+        const showReceipt = () => call("pfm.tx.receipt.get", { id: tx.id }).then((r) => (r.data ? setView(r.data) : setErr(tl("لا إيصال لهذه الحركة", "No receipt on this entry"))), (e) => setErr(errText(e)));
         // A rule picks the category while the user types the payee, unless they chose one themselves.
         useEffect(() => {
             if (editing) return;
@@ -422,6 +434,9 @@ const AccountantScreen = (function () {
                 const after = [];
                 if (remember && who.trim()) after.push(call("pfm.rule.upsert", { contains: who.trim(), categoryId: catId, kind }));
                 if (!editing && repeat !== "none") after.push(call("pfm.recurring.upsert", Object.assign({}, p, { rule: ruleFromDate(repeat, date), startDate: date, after: true, mode: autoBook ? "auto" : "suggest" })));
+                const txId = (r && r.tx && r.tx.id) || (tx && tx.id);
+                if (photo && txId) after.push(call("pfm.tx.receipt.set", { id: txId, data: photo }));
+                else if (dropReceipt && txId) after.push(call("pfm.tx.receipt.delete", { id: txId }));
                 return Promise.all(after).then(() => onSaved(r.tx), (e) => { setErr(tl("حُفظت الحركة، لكن: ", "Entry saved, but: ") + errText(e)); setBusy(false); });
             }, (e) => { setErr(errText(e)); setBusy(false); });
         };
@@ -467,6 +482,16 @@ const AccountantScreen = (function () {
             showRemember && h(Check, { checked: remember, onChange: setRemember }, tl(`استعمل «${catName(cats[catId])}» دائماً لـ«${who.trim()}»`, `Always use “${catName(cats[catId])}” for “${who.trim()}”`)),
             h(Field, { label: tl("ملاحظة (اختياريّ)", "Note (optional)"), hint: tl("الملاحظات والأسماء تُحفظ مشفّرة", "Notes and names are stored encrypted") },
                 h("input", { dir: "auto", value: note, maxLength: 300, onChange: (e) => setNote(e.target.value), style: inputStyle(colors) })),
+            !suggested && h(Field, { label: tl("صورة الإيصال (اختياريّ)", "Receipt photo (optional)"), group: true, hint: tl("تُحفظ مشفّرة، وتُحذف مع الحركة", "Stored encrypted, and deleted with the entry") },
+                h("input", { ref: fileRef, type: "file", accept: "image/jpeg,image/png,image/webp,image/*", onChange: pickPhoto, style: { display: "none" } }),
+                h("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                    photo && h("button", { type: "button", onClick: () => setView(photo), "aria-label": tl("عرض الإيصال الجديد", "View the new receipt"), style: { padding: 0, border: "1px solid " + colors.border, borderRadius: 8, background: "none", cursor: "pointer", lineHeight: 0 } },
+                        h("img", { src: photo, alt: "", style: { width: 52, height: 52, objectFit: "cover", borderRadius: 8 } })),
+                    hasReceipt && !photo && h(Btn, { kind: "ghost", onClick: showReceipt, style: { display: "inline-flex", alignItems: "center", gap: 6, minHeight: 38, padding: "6px 12px", fontSize: 13 } }, h(Paperclip, { size: 14 }), tl("عرض الإيصال", "View receipt")),
+                    h(Btn, { kind: "ghost", onClick: () => fileRef.current && fileRef.current.click(), style: { display: "inline-flex", alignItems: "center", gap: 6, minHeight: 38, padding: "6px 12px", fontSize: 13 } },
+                        h(Camera, { size: 14 }), photo || hasReceipt ? tl("استبدال", "Replace") : tl("إضافة صورة", "Add photo")),
+                    (photo || hasReceipt) && linkBtn(tl("إزالة", "Remove"), () => { setPhoto(null); if (editing && tx.hasReceipt) setDropReceipt(true); }))),
+            view && h(PhotoView, { src: view, onClose: () => setView(null) }),
             !editing && h(Field, { label: tl("التكرار", "Repeat"), hint: repeat !== "none" ? tl("تظهر الحركة القادمة مقترحةً في موعدها لتؤكّدها", "The next one appears as a suggestion on its date, for you to confirm") : undefined },
                 h("select", { value: repeat, onChange: (e) => setRepeat(e.target.value), style: inputStyle(colors) },
                     h("option", { value: "none" }, tl("لا تتكرّر", "Doesn't repeat")),
@@ -810,17 +835,60 @@ const AccountantScreen = (function () {
                 (st === "sent" || st === "overdue") && !(t0.amountPaid > 0) && h(Btn, { kind: "danger", disabled: busy, onClick: () => { const r = window.prompt(tl("سبب الإلغاء (اختياريّ)", "Reason for cancelling (optional)"), ""); if (r !== null) run(call("inv.cancel", { id, reason: r })); } }, tl("إلغاء الفاتورة", "Cancel invoice"))));
     }
 
+    // CSV of the ledger (booked entries) for a range of budget months, saved as a file. The server builds the file.
+    function ExportSheet({ month, latest, onClose }) {
+        const { colors } = useTheme();
+        const [to, setTo] = useState(month), [from, setFrom] = useState(shiftMonth(month, -11));
+        const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [msg, setMsg] = useState("");
+        const preset = (n) => { setTo(latest); setFrom(shiftMonth(latest, -n)); setMsg(""); };
+        const go = () => {
+            setBusy(true); setErr(""); setMsg("");
+            call("pfm.export", { from, to, lang: ar() ? "ar" : "en" }).then((r) => {
+                setBusy(false);
+                if (!r.rows) { setMsg(tl("لا حركات في هذه الفترة", "No entries in this period")); return; }
+                saveFileOut(new Blob([r.csv], { type: "text/csv;charset=utf-8" }), r.filename, "text/csv");
+                setMsg(tl(`صُدِّرت ${r.rows} حركة في ${r.filename}`, `Exported ${r.rows} ${r.rows === 1 ? "entry" : "entries"} to ${r.filename}`) +
+                    (r.truncated ? tl(" — الملفّ ناقص (أكثر من 5000 حركة)؛ اختر فترةً أقصر", " — the file is incomplete (over 5,000 entries); pick a shorter range") : ""));
+            }, (e) => { setErr(errText(e)); setBusy(false); });
+        };
+        const monthInput = (value, set, label) => h(Field, { label }, h("input", { type: "month", dir: "ltr", value, max: latest, onChange: (e) => { if (e.target.value) { set(e.target.value); setMsg(""); } }, style: inputStyle(colors) }));
+        return h(Sheet, { title: tl("تصدير السجلّ", "Export the ledger"), onClose },
+            h("p", { style: { margin: "0 0 12px", fontSize: T.small, color: colors.textMuted, lineHeight: 1.6 } },
+                tl("ملفّ CSV يفتح في Excel أو Google Sheets أو Numbers: التاريخ، النوع، الفئة، المبلغ وعملته، وقيمته بعملة التقارير، والطرف والملاحظة. الحركات المقترحة غير المؤكّدة لا تدخل.",
+                    "A CSV file for Excel, Google Sheets or Numbers: date, type, category, amount and currency, the amount in your reporting currency, payee and note. Suggested entries you haven't confirmed are left out.")),
+            h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 } },
+                [[tl("هذا الشهر", "This month"), 0], [tl("آخر 3 أشهر", "Last 3 months"), 2], [tl("آخر 12 شهراً", "Last 12 months"), 11]].map(([label, n]) =>
+                    h(Btn, { key: n, kind: from === shiftMonth(latest, -n) && to === latest ? undefined : "ghost", onClick: () => preset(n), style: { minHeight: 36, padding: "6px 12px", fontSize: 13 } }, label))),
+            h("div", { style: { display: "flex", gap: 8 } },
+                h("div", { style: { flex: 1 } }, monthInput(from, setFrom, tl("من", "From"))),
+                h("div", { style: { flex: 1 } }, monthInput(to, setTo, tl("إلى", "To")))),
+            err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13, marginBottom: 10 } }, err),
+            msg && h("div", { role: "status", style: { color: colors.textMuted, fontSize: 13, marginBottom: 10 } }, msg),
+            h(Btn, { onClick: go, disabled: busy || !from || !to, style: { width: "100%" } }, busy ? tl("جارٍ التجهيز…", "Preparing…") : tl("تنزيل CSV", "Download CSV")));
+    }
+
     // Business details: identity on the invoice, logo, tax, numbering, defaults and receiving accounts.
-    function shrinkImage(file) {
+    // Logo: ≤ 512 px WebP (PNG fallback). Receipt (jpeg = true): ≤ 1280 px JPEG on white, quality stepped down until it fits 400 KB.
+    function shrinkImage(file, max, jpeg) {
+        max = max || 512;
         return new Promise((resolve, reject) => {
             const img = document.createElement("img"), url = URL.createObjectURL(file);   // not new Image(): app.p1 defines Image as an icon component
-            img.onload = () => { const k = Math.min(1, 512 / Math.max(img.width, img.height)), c = document.createElement("canvas");
-                c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
-                let d = c.toDataURL("image/webp", 0.85); if (d.indexOf("data:image/webp") !== 0) d = c.toDataURL("image/png"); resolve(d); };
-            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("bad_logo")); };
+            img.onload = () => { URL.revokeObjectURL(url);
+                const draw = (px) => { const k = Math.min(1, px / Math.max(img.width, img.height)), c = document.createElement("canvas");
+                    c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k)); const g = c.getContext("2d");
+                    if (jpeg) { g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); } g.drawImage(img, 0, 0, c.width, c.height); return c; };
+                if (!jpeg) { const c = draw(max); let d = c.toDataURL("image/webp", 0.85); if (d.indexOf("data:image/webp") !== 0) d = c.toDataURL("image/png"); return resolve(d); }
+                const fits = (d) => (d.length - d.indexOf(",") - 1) * 0.75 <= 400 * 1024;
+                for (const px of [max, 960, 720]) { const c = draw(px); for (const q of [0.82, 0.68, 0.55]) { const d = c.toDataURL("image/jpeg", q); if (fits(d)) return resolve(d); } }
+                reject(new Error("bad_receipt")); };
+            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(jpeg ? "bad_receipt" : "bad_logo")); };
             img.src = url;
         });
     }
+    // Full-screen photo; a tap closes it.
+    const PhotoView = ({ src, onClose }) => h("div", { role: "dialog", "aria-modal": true, "aria-label": tl("الإيصال", "Receipt"), onClick: onClose,
+        style: { position: "fixed", inset: 0, zIndex: 70, backgroundColor: "rgba(0,0,0,.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 } },
+        h("img", { src, alt: tl("صورة الإيصال", "Receipt photo"), style: { maxWidth: "100%", maxHeight: "90vh", objectFit: "contain" } }));
     function BizSheet({ base, onClose, onSaved }) {
         const { colors } = useTheme();
         const [b, setB] = useState(null), [form, setForm] = useState(null), [busy, setBusy] = useState(false), [err, setErr] = useState(""), [acct, setAcct] = useState(null);
@@ -938,7 +1006,7 @@ const AccountantScreen = (function () {
                     : tab === "ledger"
                     ? h(Ledger, { list, cats, base: cur, filter, onClearFilter: () => setFilter(null), onOpen: (t) => setSheet({ tx: t }), onAdd: () => setSheet({}),
                         onConfirm: confirmTx, onSkip: skipTx, recurringCount: (boot.recurring || []).length, rulesCount: (boot.rules || []).length,
-                        onRecurring: () => setSheet({ type: "recurring" }), onRules: () => setSheet({ type: "rules" }) })
+                        onRecurring: () => setSheet({ type: "recurring" }), onRules: () => setSheet({ type: "rules" }), onExport: () => setSheet({ type: "export" }) })
                     : tab === "budgets"
                     ? h(Budgets, { data: budgets, cats, cur, onAdd: () => setSheet({ type: "budget" }), onEdit: (b) => setSheet({ type: "budget", budget: b }) })
                     : h(Invoices, { key: invTick, cur, today: boot.today, onOpen: (id) => setSheet({ type: "invoice", id }), onNew: () => setSheet({ type: "editor" }), onBiz: () => setSheet({ type: "biz" }) }));
@@ -959,6 +1027,7 @@ const AccountantScreen = (function () {
                 sheet && s && sheet.type === "editor" && h(InvoiceEditor, { inv: sheet.inv, base: cur, today: boot.today, onClose: () => setSheet(null),
                     onSaved: (inv) => { invChanged(); setSheet({ type: "invoice", id: inv.id }); } }),
                 sheet && s && sheet.type === "biz" && h(BizSheet, { base: cur, onClose: () => { setSheet(null); invChanged(); }, onSaved: () => { setSheet(null); invChanged(); } }),
+                sheet && s && sheet.type === "export" && h(ExportSheet, { month, latest: boot.month, onClose: () => setSheet(null) }),
                 sheet && s && sheet.type === "rules" && h(RulesSheet, { rules: boot.rules || [], cats, onClose: () => setSheet(null), onChanged: reloadAll })));
     }
     const navBtn = (colors) => ({ width: 40, height: 40, borderRadius: 20, border: "1px solid " + colors.border, backgroundColor: colors.card, color: colors.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" });
