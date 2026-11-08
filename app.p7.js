@@ -2005,6 +2005,8 @@ function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, 
         { id: "fx", label: tl("حسابات العملات", "Currency accounts"), desc: tl("دولار · ريال · درهم · يورو", "USD · SAR · AED · EUR"), Icon: Banknote, bgColor: "#E8F5E9", iconColor: "#1B7A43", onPress: () => { if (fxAccounts.length) { setSelFx(fxAccounts[0].cur); setView("fxAcct"); } else setView("fxAdd"); } },
         { id: "fxconv", label: tl("تحويل العملات", "Convert currency"), desc: tl("بين الجنيه والعملات", "Between SDG and currencies"), Icon: RotateCcw, bgColor: "#E3F2FD", iconColor: "#1565C0", onPress: () => setView("fxConvert") },
         { id: "vcards", label: tl("البطاقات الافتراضيّة", "Virtual cards"), desc: tl("للشراء عبر الإنترنت", "For online purchases"), Icon: CreditCard, bgColor: "#F1E9F7", iconColor: "#5E35B1", onPress: () => setView("cards") });
+    // C263: المحاسب الشخصيّ — أوّل الخدمات، لكلّ المستخدمين (لا يعتمد على رصيد المحفظة)
+    WALLET_SERVICES.unshift({ id: "pfm", label: tl("المحاسب الشخصيّ", "Personal accountant"), desc: tl("الدخل والمصروفات والتحليلات", "Income, spending & insights"), Icon: BarChart3, bgColor: "#E6F4F1", iconColor: "#0f766e", onPress: () => setView("pfm") });
     const [selectedBank, setSelectedBank] = useState(WALLET_BANKS[0]);
     const [transferTo, setTransferTo] = useState("");
     const [transferPhone, setTransferPhone] = useState("");
@@ -2045,6 +2047,7 @@ function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, 
     const limitNearing = spendingLimit && !limitExceeded && monthlySpent >= spendingLimit * 0.8;
     const LOW_BALANCE_THRESHOLD = 2000;
     // ── شاشات الـ view (تُعالَج قبل navTab) ──
+    if (view === "pfm") return React.createElement(AccountantScreen, { onBack: () => setView("home") });   // C263
     if (view === "topup") {
         const TOPUP_AMOUNTS = [5000, 10000, 20000, 50000];
         return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col" },
@@ -2337,6 +2340,13 @@ ${txn.note}
                         React.createElement(ChevronLeft, { size: 14, color: colors.textMuted, className: "shrink-0", style: { transform: isRTL() ? "none" : "scaleX(-1)" } })),
                     kycStatus !== "pending" && React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => onDismissKyc && onDismissKyc(), className: "w-7 h-7 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.bg } },
                         React.createElement(X, { size: 13, color: colors.textMuted })))),
+                // C263: مدخل المحاسب الشخصيّ في الصفحة الرئيسة (وهو أيضاً أوّل الخدمات)
+                React.createElement("button", { onClick: () => setView("pfm"), className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border mt-3`, style: { backgroundColor: colors.card, borderColor: colors.border } },
+                    React.createElement("span", { className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: "#0f766e1f" } }, React.createElement(BarChart3, { size: 18, color: "#0f766e" })),
+                    React.createElement("span", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
+                        React.createElement("span", { className: "block text-sm font-extrabold", style: { color: colors.text } }, tl("المحاسب الشخصيّ", "Personal accountant")),
+                        React.createElement("span", { className: "block text-xs", style: { color: colors.textMuted } }, tl("سجّل دخلك ومصروفاتك وتابع أين يذهب مالك", "Track income and spending, see where your money goes"))),
+                    React.createElement(ChevronLeft, { size: 16, color: colors.textMuted, className: "shrink-0", style: { transform: isRTL() ? "none" : "scaleX(-1)" } })),
                 React.createElement("h4", { className: "text-sm font-extrabold mt-4 mb-2", style: { color: colors.text } }, t("akhr_alhrkat")),
                 transactions.slice(0, 5).map((txn) => (React.createElement("button", { key: txn.id, onClick: () => { setSelectedTransaction(txn); setView("transactionDetail"); }, className: `w-full ${textStart()} block mb-1.5` },
                     // C221: صفّ الحركة كما في «الحركات»: لونٌ بحسب النوع · العنوان سطران على الأكثر لا يلتصق بالمبلغ · المبلغ بإشارته وعملته

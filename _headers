@@ -61,3 +61,15 @@
 
 /icons/*
   Cache-Control: public, max-age=604800
+
+# C267: صفحة الدفع — لا تخزين، لا محرّكات بحث، ولا يتسرّب رمز الرابط في Referer
+/pay.html
+  Cache-Control: public, max-age=0, must-revalidate
+  X-Robots-Tag: noindex, nofollow
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+/pay/*
+  Cache-Control: public, max-age=0, must-revalidate
+  X-Robots-Tag: noindex, nofollow
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
