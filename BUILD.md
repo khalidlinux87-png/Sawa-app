@@ -2607,3 +2607,11 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - **Fixed on the way:** the encryption helper overflowed on large input (found by the 400 KB receipt test).
 - **Tests:** `pfm-core` ✓ 29/29 · `pfm-worker` ✓ 42/42 · `ui-check.mjs` ✓ P1–P5 (photo picked, shrunk and sealed; clip shown; photo opens; CSV downloads with the right header and rows). The UI check's seed used EUR, which C268 refused; it now uses GBP.
 - **Upload:** no new secret, no Firestore rules. (1) **Worker** via GitHub/wrangler: `worker-3.js` (622,415) + `pfm/pfm-worker.mjs` (93,365) + `pfm/pfm-core.mjs` (35,954) (2) `app.p9.js` (136,930) ← `sw.js` (v453, 16,630) **last**.
+
+## 🎨 C270 — لون التطبيق وتصميم شاشة الفواتير · pay.html + app.p9 · sw v454
+- **اللون:** صفحة الدفع صارت بلون التطبيق الأزرق (#2774BA، وفي الداكن #5AA9E6) بدل الأخضر المزرقّ. في شاشة الفواتير وأزرار المحاسب الشخصيّ صار اللون من سمة المستخدم (`colors.primary`) بدل ثابتٍ مكتوب، فيتبع اختياره للون.
+- **بلا صناديق بحافة ملوّنة:** ملاحظة صفحة الدفع، وتنبيه «أضف اسم نشاطك»، وقسما «تسجيل دفعة» و«بلاغ دفع» في تفاصيل الفاتورة صارت أسطراً مسطّرة بخطٍّ رفيع، لا صناديق بحافة ملوّنة.
+- **التفاصيل:** المبلغ المستحقّ أكبر (32 px) وبأرقامٍ ثابتة العرض، وهو اللحظة البصريّة الوحيدة في الشاشة.
+- **لم يتغيّر:** النصوص والسلوك والإعداد؛ لا تغيير في الـWorker ولا في قواعد Firestore.
+- **الرفع:** `pay.html` و`app.p9.js` ثمّ `sw.js` (v454) **أخيراً**.
+- **الاختبار:** فحص نحوي لـ`app.p9.js` ✓. لم تُجرَ مراجعة بصريّة على الجوّال بعد، وتحتاج جلسةً مسجّلة تعرض فاتورة.
