@@ -1,2 +1,4 @@
 # Cloudflare Pages: يقدّم ملفّ ربط تطبيق أندرويد من مجلّد well-known (بلا نقطة) على المسار الذي يطلبه Google
 /.well-known/assetlinks.json /well-known/assetlinks.json 200
+# C267: صفحة الدفع العامّة للفواتير (بلا تطبيق ولا دخول)
+/pay/*  /pay.html  200

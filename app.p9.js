@@ -299,13 +299,13 @@ const AccountantScreen = (function () {
                         v > 0 && h("rect", { x: i * bw + bw * 0.2, y: pos ? H / 2 - v : H / 2, width: bw * 0.6, height: v, rx: 3, fill: pos ? colors.success : colors.textMuted }),
                         h("text", { x: i * bw + bw / 2, y: H + 13, fontSize: 9.5, fill: colors.textMuted, textAnchor: "middle" }, monthShort(m.month))); })));
     }
-    function Overview({ data, cats, cur, onPickCat, onAdd, alerts, suggestedCount, budgets, onDismissAlerts, onGoSuggested, onGoBudgets, onGoLedger, ruler }) {
+    function Overview({ data, cats, cur, onPickCat, onAdd, alerts, suggestedCount, budgets, onDismissAlerts, onGoSuggested, onGoBudgets, onGoLedger, ruler, claimsCount, onGoInvoices }) {
         const { colors } = useTheme();
         if (!data) return h(Loading);
         const f = data.focus, past = f.month < data.currentMonth;
         const top = (budgets || []).slice().sort((a, b) => b.usedBp - a.usedBp).slice(0, 3);
         const al = topAlerts(alerts || []);
-        const needs = al.length > 0 || suggestedCount > 0 || f.ratePending > 0;
+        const needs = al.length > 0 || suggestedCount > 0 || f.ratePending > 0 || claimsCount > 0;
         const row = (key, text, onClick, tone) => h("button", { key, type: "button", onClick, style: { display: "flex", alignItems: "center", gap: 8, width: "100%", minHeight: 44, padding: "6px 0",
             border: 0, background: "none", color: tone || colors.text, fontSize: T.body, textAlign: "start", cursor: onClick ? "pointer" : "default" } },
             h("span", { dir: "auto", style: { flex: 1, lineHeight: 1.5, textAlign: ar() ? "right" : "left" } }, text),
@@ -316,6 +316,7 @@ const AccountantScreen = (function () {
             h("div", { style: { display: "flex", alignItems: "center" } },
                 h("h3", { style: { flex: 1, margin: 0, fontSize: T.h2, fontWeight: 800, color: colors.text } }, tl("يحتاجك", "Needs you")),
                 al.length > 0 && linkBtn(tl("إخفاء التنبيهات", "Clear alerts"), onDismissAlerts)),
+            claimsCount > 0 && row("cl", tl(`${claimsCount} ${claimsCount === 1 ? "بلاغ دفع" : "بلاغات دفع"} من عملائك — تحقّق وأكّد`, `${claimsCount} payment ${claimsCount === 1 ? "report" : "reports"} from clients to check`), onGoInvoices),
             al.slice(0, 3).map((a) => row(a.id, alertLine(a, cats, cur), onGoBudgets, a.bp >= 10000 || a.spent > a.limit ? colors.danger : colors.text)),
             suggestedCount > 0 && row("sg", tl(`${suggestedCount} ${suggestedCount === 1 ? "حركة متكرّرة" : "حركات متكرّرة"} للتأكيد`, `${suggestedCount} recurring ${suggestedCount === 1 ? "entry" : "entries"} to confirm`), onGoSuggested),
             f.ratePending > 0 && row("rp", tl(`${f.ratePending} ${f.ratePending === 1 ? "حركة تحتاج" : "حركات تحتاج"} سعر صرف لتدخل المجاميع`, `${f.ratePending} ${f.ratePending === 1 ? "entry needs" : "entries need"} an exchange rate to count`), onGoLedger));
@@ -604,6 +605,8 @@ const AccountantScreen = (function () {
             h("h2", { style: { margin: 0, fontSize: T.h1, lineHeight: 1.35, fontWeight: 800 } },
                 owed.length ? [tl("لك ", "Clients owe you "), owed.map((o, i) => [i ? tl(" و", " and ") : "", h("bdi", { key: o.currency }, money(o.amount, o.currency))]), tl(" عند عملائك", "")]
                     : tl("لا مبالغ مستحقّة لك الآن", "Nothing is owed to you right now")),
+            data.claims > 0 && h("p", { style: { margin: "6px 0 0", color: colors.warning, fontSize: T.body, fontWeight: 700 } },
+                tl(`${data.claims} ${data.claims === 1 ? "بلاغ دفع ينتظر" : "بلاغات دفع تنتظر"} تحقّقك`, `${data.claims} payment ${data.claims === 1 ? "report" : "reports"} waiting for you`)),
             data.overdue > 0 && h("p", { style: { margin: "6px 0 0", color: colors.danger, fontSize: T.body } },
                 tl(`${data.overdue} ${data.overdue === 1 ? "فاتورة متأخّرة" : "فواتير متأخّرة"}`, `${data.overdue} overdue`)),
             h("div", { style: { display: "flex", gap: 8, margin: "16px 0 12px" } },
@@ -620,7 +623,8 @@ const AccountantScreen = (function () {
                 border: 0, borderTop: n ? "1px solid " + colors.border : 0, background: "none", color: colors.text, textAlign: "start", cursor: "pointer", minHeight: 60 } },
                 h("span", { style: { flex: 1, minWidth: 0 } },
                     h("div", { dir: "auto", style: { fontWeight: 700, fontSize: T.body, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: ar() ? "right" : "left" } }, i.clientName || "—"),
-                    h("div", { style: { fontSize: T.tiny, color: colors.textMuted, marginTop: 2 } }, h("bdi", null, i.number || tl("بلا رقم", "No number")), "  ", i.status === "draft" ? "" : tl("يستحقّ ", "due ") + dayLabel(i.dueDate))),
+                    h("div", { style: { fontSize: T.tiny, color: colors.textMuted, marginTop: 2 } }, h("bdi", null, i.number || tl("بلا رقم", "No number")), "  ", i.status === "draft" ? "" : tl("يستحقّ ", "due ") + dayLabel(i.dueDate)),
+                    i.openClaims > 0 && h("div", { style: { fontSize: T.tiny, color: colors.warning, fontWeight: 700, marginTop: 2 } }, tl("أبلغ العميل عن دفع", "Client reported a payment"))),
                 h("span", { style: { textAlign: "end", flexShrink: 0 } },
                     h("div", { style: { fontWeight: 800, fontSize: T.body } }, fig(i.status === "paid" || i.status === "cancelled" || i.status === "draft" ? i.total : i.amountDue, i.currency)),
                     h("div", { style: { marginTop: 4 } }, h(Badge, { status: i.status })))))));
@@ -727,6 +731,7 @@ const AccountantScreen = (function () {
         f.onload = () => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) {} setTimeout(() => f.remove(), 60000); };
         f.srcdoc = html;
     }
+    const payLink = (inv) => "https://www.sawaaap.com/pay/" + inv.payLinkToken;
     function shareText(inv, bizName) {
         const L2 = inv.lang === "en" ? (a, b) => b : (a) => a, cur = inv.currency, due = inv.totals.amountDue;
         const lines = [L2(`فاتورة ${inv.number} من ${bizName}`, `Invoice ${inv.number} from ${bizName}`),
@@ -736,13 +741,14 @@ const AccountantScreen = (function () {
             inv.payoutAccounts.forEach((a) => lines.push([a.bankName || a.provider || a.label, a.holderName, a.number, a.branch].filter(Boolean).join(" — ")));
             lines.push(L2(`اكتب ${inv.number} في خانة البيان.`, `Use ${inv.number} as the payment reference.`));
         }
+        if (inv.payLinkToken) lines.push("", L2("الفاتورة، وأبلغ عن دفعك هنا:", "The invoice, and report your payment here:"), payLink(inv));
         return lines.join("\n");
     }
 
     function InvoiceDetail({ id, base, today, onClose, onChanged, onEdit }) {
         const { colors } = useTheme();
         const [inv, setInv] = useState(null), [biz, setBiz] = useState(null), [err, setErr] = useState(""), [busy, setBusy] = useState(false), [msg, setMsg] = useState("");
-        const [pay, setPay] = useState(null);
+        const [pay, setPay] = useState(null), [proof, setProof] = useState(null);
         const load = () => call("inv.get", { id }).then((r) => setInv(r.invoice), (e) => setErr(errText(e)));
         useEffect(() => { load(); call("pfm.biz.get").then(setBiz, () => {}); }, [id]);
         if (!inv) return h(Sheet, { title: tl("فاتورة", "Invoice"), onClose }, err ? h("div", { role: "alert", style: { color: colors.danger } }, err) : h(Loading));
@@ -775,8 +781,22 @@ const AccountantScreen = (function () {
             h("div", { style: { fontSize: T.small, display: "grid", gap: 4, marginBottom: 12 } },
                 inv.items.map((it, i) => h("div", { key: i, style: { display: "flex", gap: 8 } }, h("span", { dir: "auto", style: { flex: 1 } }, it.description, " ", h("bdi", { style: { color: colors.textMuted } }, "× " + it.qty)), fig(t0.lines[i].amount, cur))),
                 t0.taxTotal > 0 && h("div", { style: { display: "flex", color: colors.textMuted } }, h("span", { style: { flex: 1 } }, inv.taxLabel || tl("الضريبة", "Tax")), fig(t0.taxTotal, cur))),
-            (inv.payments || []).length > 0 && h(Section, { title: tl("الدفعات", "Payments") },
-                inv.payments.map((p, i) => h("div", { key: i, style: { display: "flex", fontSize: T.small, padding: "4px 0" } },
+            (inv.payments || []).filter((p) => p.state === "claimed").map((p) => { const acct = (inv.payoutAccounts || []).find((a) => a.id === p.payoutAccountId);
+                return h("section", { key: p.id, "aria-label": tl("بلاغ دفع", "Payment report"), style: { padding: "10px 14px", margin: "14px 0 0", backgroundColor: colors.card, borderInlineStart: "4px solid " + colors.warning, borderRadius: 4, boxShadow: "inset 0 0 0 1px " + colors.border } },
+                    h("div", { style: { fontWeight: 800, fontSize: T.body } }, h("bdi", null, p.payer && p.payer.name), tl(" يقول إنّه دفع ", " says they paid "), fig(p.amount, cur)),
+                    h("div", { style: { fontSize: T.small, color: colors.textMuted, marginTop: 4, lineHeight: 1.6 } },
+                        dayLabel(p.at), acct ? [tl("، إلى ", ", to "), h("bdi", { key: "a", style: { whiteSpace: "nowrap" } }, (acct.bankName || acct.provider || acct.label) + " " + (acct.number || "").slice(-4))] : null,
+                        p.reference ? [tl("، المرجع ", ", reference "), h("bdi", { key: "r", style: { whiteSpace: "nowrap" } }, p.reference)] : null, p.payer && p.payer.phone ? [tl("، هاتفه ", ", phone "), h("bdi", { key: "p", style: { whiteSpace: "nowrap" } }, p.payer.phone)] : null),
+                    h("p", { style: { fontSize: T.tiny, color: colors.textMuted, margin: "6px 0 8px" } }, tl("تأكّد أنّ المبلغ وصل حسابك قبل التأكيد.", "Check the money reached your account before confirming.")),
+                    h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+                        p.hasProof && h(Btn, { kind: "ghost", disabled: busy, onClick: () => call("inv.claim.proof", { id, payId: p.id }).then((r) => setProof(r.data), (e) => setErr(errText(e))), style: { minHeight: 38, padding: "6px 12px", fontSize: T.small } }, tl("الإيصال", "Receipt")),
+                        h(Btn, { kind: "danger", disabled: busy, onClick: () => { const r = window.prompt(tl("سبب الرفض (يراه العميل لاحقاً؛ اختياريّ)", "Why reject (optional)"), ""); if (r !== null) run(call("inv.claim.decide", { id, payId: p.id, decision: "reject", note: r || null })); }, style: { minHeight: 38, padding: "6px 12px", fontSize: T.small } }, tl("لم يصل", "Not received")),
+                        h(Btn, { disabled: busy, onClick: () => { let fx; if (cur !== base) { fx = window.prompt(tl(`سعر الصرف: 1 ${cur} = ? ${base} (اتركه فارغاً لاحقاً)`, `Exchange rate: 1 ${cur} = ? ${base} (leave empty for later)`), ""); if (fx === null) return; }
+                            run(call("inv.claim.decide", { id, payId: p.id, decision: "confirm", fxRate: fx || undefined })); }, style: { flex: 1, minHeight: 38, fontSize: T.small } }, tl("وصل — أكّد", "Received — confirm")))); }),
+            proof && h("div", { role: "dialog", "aria-modal": true, "aria-label": tl("الإيصال", "Receipt"), onClick: () => setProof(null), style: { position: "fixed", inset: 0, zIndex: 70, backgroundColor: "rgba(0,0,0,.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 } },
+                h("img", { src: proof, alt: tl("صورة الإيصال", "Receipt photo"), style: { maxWidth: "100%", maxHeight: "90vh", objectFit: "contain" } })),
+            (inv.payments || []).filter((p) => p.state !== "claimed").length > 0 && h(Section, { title: tl("الدفعات", "Payments") },
+                inv.payments.filter((p) => p.state !== "claimed").map((p, i) => h("div", { key: i, style: { display: "flex", fontSize: T.small, padding: "4px 0", color: p.state === "rejected" ? colors.textMuted : colors.text, textDecoration: p.state === "rejected" ? "line-through" : "none" } },
                     h("span", { style: { flex: 1 } }, dayLabel(p.at), " · ", tl({ cash: "نقداً", bank_transfer: "تحويل بنكيّ", mobile_money: "محفظة جوّال", other: "أخرى" }[p.method] || p.method, { cash: "Cash", bank_transfer: "Bank transfer", mobile_money: "Mobile money", other: "Other" }[p.method] || p.method)),
                     fig(p.amount, cur)))),
             payForm,
@@ -790,6 +810,8 @@ const AccountantScreen = (function () {
                 h("div", { style: { display: "flex", gap: 8 } },
                     h(Btn, { kind: "ghost", disabled: busy, onClick: doPrint, style: { flex: 1 } }, tl("طباعة أو PDF", "Print or PDF")),
                     st !== "draft" && st !== "cancelled" && h(Btn, { kind: "ghost", onClick: doShare, style: { flex: 1 } }, tl("مشاركة", "Share"))),
+                (st === "sent" || st === "overdue") && inv.payLinkToken && h(Btn, { kind: "ghost", onClick: () => { const u = payLink(inv);
+                    (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => setMsg(tl("نُسخ رابط الدفع — يفتحه العميل دون حساب", "Pay link copied — the client opens it without an account")), () => setMsg(u)); } }, tl("نسخ رابط الدفع", "Copy pay link")),
                 st === "draft" && h(Btn, { kind: "danger", disabled: busy, onClick: () => { if (window.confirm(tl("حذف المسوّدة؟", "Delete this draft?"))) run(call("inv.delete", { id }), () => onClose()); } }, tl("حذف المسوّدة", "Delete draft")),
                 (st === "sent" || st === "overdue") && !(t0.amountPaid > 0) && h(Btn, { kind: "danger", disabled: busy, onClick: () => { const r = window.prompt(tl("سبب الإلغاء (اختياريّ)", "Reason for cancelling (optional)"), ""); if (r !== null) run(call("inv.cancel", { id, reason: r })); } }, tl("إلغاء الفاتورة", "Cancel invoice"))));
     }
@@ -915,7 +937,7 @@ const AccountantScreen = (function () {
                 tab === "overview"
                     ? h(Overview, { data: summary, cats, cur, onAdd: () => setSheet({}), onPickCat: (id) => { setFilter(id); setTab("ledger"); },
                         alerts: boot.month === month ? boot.alerts : [], suggestedCount: boot.suggestedCount, budgets: budgets && budgets.budgets,
-                        onDismissAlerts: dismissAlerts, onGoSuggested: goSuggested, onGoBudgets: () => setTab("budgets"), onGoLedger: () => setTab("ledger"),
+                        onDismissAlerts: dismissAlerts, onGoSuggested: goSuggested, onGoBudgets: () => setTab("budgets"), onGoLedger: () => setTab("ledger"), claimsCount: boot.claimsCount || 0, onGoInvoices: () => setTab("invoices"),
                         ruler: (() => { const per = periodOf(month, s.monthStartDay), past = month < boot.month;
                             const t = Date.parse(boot.today + "T00:00:00Z"); const el = past ? per.days : Math.min(per.days, Math.max(0, Math.round((t - per.start) / 86400000) + 1));
                             return month > boot.month ? null : { days: per.days, elapsed: el, past }; })() })
