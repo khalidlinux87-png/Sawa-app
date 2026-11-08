@@ -62,20 +62,14 @@ const AccountantScreen = (function () {
     const newKey = () => { try { return crypto.randomUUID(); } catch (e) { return "k" + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); } };
     const catName = (c) => (c ? (ar() ? c.nameAr || c.name : c.name) : tl("بلا فئة", "Uncategorised"));
 
-    // ── currencies: common ones first, then every currency the browser knows ──
-    const COMMON = ["USD", "EUR", "GBP", "SAR", "AED", "EGP", "SDG", "QAR", "KWD", "BHD", "OMR", "JOD", "MAD", "TRY", "INR", "PKR", "NGN", "KES", "JPY", "CNY", "CAD", "AUD"];
+    // ── currencies: the ten Sawa accepts (the Worker enforces the same list) ──
+    const CURS = ["SDG", "USD", "CNY", "QAR", "SAR", "AED", "GBP", "CAD", "OMR", "EGP"];
     function currencyList() {
-        let all = COMMON;
-        try { if (Intl.supportedValuesOf) all = Intl.supportedValuesOf("currency"); } catch (e) {}
         let names = null; try { names = new Intl.DisplayNames([ar() ? "ar" : "en"], { type: "currency" }); } catch (e) {}
-        const label = (c) => c + (names ? " — " + names.of(c) : "");
-        const rest = all.filter((c) => COMMON.indexOf(c) < 0);
-        return COMMON.filter((c) => all.indexOf(c) >= 0 || all === COMMON).concat(rest).map((c) => ({ code: c, label: label(c) }));
+        return CURS.map((c) => ({ code: c, label: c + (names ? " — " + names.of(c) : "") }));
     }
     // a suggestion only: the user always confirms the currency
-    const REGION_CUR = { US: "USD", GB: "GBP", SA: "SAR", AE: "AED", EG: "EGP", SD: "SDG", QA: "QAR", KW: "KWD", BH: "BHD", OM: "OMR", JO: "JOD", MA: "MAD",
-        TR: "TRY", IN: "INR", PK: "PKR", NG: "NGN", KE: "KES", JP: "JPY", CN: "CNY", CA: "CAD", AU: "AUD", DE: "EUR", FR: "EUR", IT: "EUR", ES: "EUR", NL: "EUR",
-        IE: "EUR", BE: "EUR", AT: "EUR", PT: "EUR", FI: "EUR", GR: "EUR", IQ: "IQD", LB: "LBP", LY: "LYD", TN: "TND", DZ: "DZD", YE: "YER", SY: "SYP", SS: "SSP", ET: "ETB", ZA: "ZAR", BR: "BRL", MX: "MXN", ID: "IDR", MY: "MYR", SE: "SEK", NO: "NOK", CH: "CHF" };
+    const REGION_CUR = { US: "USD", GB: "GBP", SA: "SAR", AE: "AED", EG: "EGP", SD: "SDG", QA: "QAR", OM: "OMR", CN: "CNY", CA: "CAD" };
     function guessCurrency() {
         try { const r = new Intl.Locale(navigator.language).maximize().region; if (REGION_CUR[r]) return REGION_CUR[r]; } catch (e) {}
         return "USD";

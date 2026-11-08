@@ -2593,3 +2593,9 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - **الخادم:** مسار `POST /pfm/pay` قبل فحص الهويّة في `worker-3.js` يقبل `pay.view` و`pay.claim` فقط؛ العمليّات `inv.claim.decide` · `inv.claim.proof` · `inv.link`. مجموعات: `invoices/{id}/payments/c_…` (state claimed)، `invoices/{id}/proofs/…`. حذف الحساب يشملها.
 - **اختبار:** `pfm-worker.test.mjs` ✓ **39/39** · `pfm-core` ✓ 29/29 · `ui-check.mjs` ✓ P1–P4 (العميل يفتح الرابط في متصفّحٍ جديد، يرى الآيبان والمبلغ، يفتح الفاتورة، يبلّغ بصورة؛ المُصدِر يراه في «يحتاجك»، يفتح الإيصال، يؤكّد؛ الرابط بعدها «مدفوعة كاملةً» بالإنجليزيّة الداكنة) · `marriage` ✓ 9/9.
 - **الرفع:** لا سرّ ولا قواعد جديدة. (١) **Worker** عبر GitHub/wrangler: `worker-3.js` (622,386) + `pfm/pfm-worker.mjs` (86,963) (والمجلّد `pfm/` كما في C266) (٢) `pay.html` (23,352) + `_redirects` (345) + `_headers` (2,017) + `app.p9.js` (129,000) ← `sw.js` (v451، 16,630) **أخيراً**.
+
+## C268 — Personal Accountant: accepted currencies (sw v452 · Worker: pfm-core.mjs)
+- Only ten currencies are accepted: SDG, USD, CNY, QAR, SAR, AED, GBP, CAD, OMR, EGP. The Worker (`pfm/pfm-core.mjs` `ALLOWED_CURRENCIES`) rejects anything else with `bad_currency`; the app's currency pickers list only these.
+- OMR keeps 3 decimals (CLDR); the others use 2.
+- ⚠️ Existing data: any entry, account, invoice or rate saved in another currency will fail validation once this ships. Check for such rows before deploying.
+- Upload: Worker (`pfm/pfm-core.mjs` and `worker-3.js` via wrangler), then `app.p9.js` ← `sw.js` (v452) last.
