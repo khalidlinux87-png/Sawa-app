@@ -551,7 +551,7 @@ function FamLinkSheet({ person, onClose }) {
     const qq = normalizeArabicName(q.trim()).toLowerCase(), qd = q.replace(/\D/g, "");
     const pFirst = normalizeArabicName(String(person.local_name || "").split(" ")[0]).toLowerCase();
     const ranked = people.slice().sort((a, b) => (hay(b).includes(pFirst) ? 1 : 0) - (hay(a).includes(pFirst) ? 1 : 0));
-    const shown = (qq || qd.length >= 3) ? ranked.filter((c) => (qq && hay(c).includes(qq)) || (qd.length >= 3 && (String(c.code || "").includes(qd) || String(c.phone || "").replace(/\D/g, "").includes(qd)))) : ranked.slice(0, 200);
+    const shown = (qq || qd.length >= 3) ? ranked.filter((c) => (qq && arMatch([c.name, c.realName, c.nick].filter(Boolean).join(" "), q)) || (qd.length >= 3 && (String(c.code || "").includes(qd) || String(c.phone || "").replace(/\D/g, "").includes(qd)))) : ranked.slice(0, 200);
     const digits = code.replace(/\D/g, "");
     const errText = famLinkErr;
     const send = (payload, label, key) => {
@@ -3072,7 +3072,7 @@ function UnifiedSearchScreen({ conversations, groups, shipments, taxiTripsHistor
     const [query, setQuery] = useState("");
     const q = query.trim().toLowerCase();
     const matchedContacts = q
-        ? [...conversations.filter((c) => c.name.toLowerCase().includes(q)), ...groups.filter((g) => g.name.toLowerCase().includes(q))]
+        ? [...conversations.filter((c) => arMatch(c.name || "", q)), ...groups.filter((g) => arMatch(g.name || "", q))]   /* C271 */
         : [];
     const matchedShipments = q ? shipments.filter((s) => s.destination.toLowerCase().includes(q) || s.category.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)) : [];
     const matchedTrips = q ? taxiTripsHistory.filter((t) => t.destination.toLowerCase().includes(q)) : [];
@@ -3137,7 +3137,7 @@ function NewConversationScreen({ onCreate, onClose, contacts = null, onPickConta
     const SC = window.SawaChat;
     // C201: شاشةٌ واحدة: بحث + «أدخل رمز شخص» + جهات الاتّصال. حين لا تعمل خدمة المحادثات بعد ⇒ «جارٍ الاتّصال» بدل نموذج
     //   الاسم اليدويّ التجريبيّ («مؤقّتاً للتجربة فقط… يحتاج إلى خدمة إضافية في الخادم») الذي كان يظهر للمستخدم.
-    const list = (contacts || []).filter((c) => !q || normAr(c.name || "").includes(normAr(q)));
+    const list = (contacts || []).filter((c) => !q || arMatch(c.name || "", q));   // C271
     return (React.createElement("div", { className: "absolute inset-0 z-40 flex flex-col", style: { backgroundColor: colors.bg } },
         React.createElement(TopBar, { title: t("mhadtha_jdyda"), onBack: onClose }),
         React.createElement("div", { className: "flex-1 overflow-y-auto" },

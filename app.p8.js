@@ -2984,6 +2984,9 @@ function AppInner() {
         var _a;
         const { relation, linkedTo, ancestorChain, ...personData } = data;
         const newPersonId = `gp-${Date.now()}`;
+        if (personData.local_name != null) personData.local_name = cleanArabicNameInput(personData.local_name);   // C271
+        // C271: «نفسي» جديدٌ لا يُضاف متوفّى
+        { const why = selfDeceasedBlock(null, personData, null); if (why) { showToast(why, "error"); return; } }
         // C203: النموذج يمنع هذا قبل الحفظ؛ وهنا حارسٌ ثانٍ لكلّ مسارٍ آخر يصل إلى addPerson
         if (relation && relation.relatedToId && (relation.relationType === "spouse" || relation.relationType === "ex_spouse")) {
             const why = marriageCheck((groupPersons[groupId] || []).concat([{ ...personData, id: newPersonId }]), kinshipRelations.filter((r) => r.groupId === groupId), newPersonId, relation.relatedToId, relation.relationType);
@@ -3105,9 +3108,26 @@ function AppInner() {
             ? t("adyf_w_mn_aswlh", { local_name: personData.local_name, length: newAncestors.length })
             : `تمت إضافة ${personData.local_name}${(relation === null || relation === void 0 ? void 0 : relation.relatedToId) ? t("ai_wrbtha") : " ✓"}`, "success");
     }
+    // C271: الشخص كما يراه هذا المستخدم (القرابة المحسوبة + kinStored + acctMe) — لحارس «لا تسجّل نفسك متوفّى»
+    function ownViewOf(groupId, personId) {
+        const raw = (groupPersons[groupId] || []).find((p) => p.id === personId) || null;
+        const shown = (famPersons[groupId] || []).find((p) => p.id === personId) || null;
+        if (!raw && !shown) return null;
+        return Object.assign({}, raw || {}, shown ? { kinship: shown.kinship, kinStored: raw ? raw.kinship : shown.kinStored, acctMe: shown.acctMe } : {});
+    }
+    function myPidIn(groupId) {
+        const me = (famPersons[groupId] || []).find((p) => p.kinship === SELF_KINSHIP || p.acctMe);
+        return (me && me.id) || (famMe || {})[groupId] || null;
+    }
     function editPerson(groupId, personId, data) {
         var _a;
         const { linkedTo, motherApplicable, motherId, motherCandidateIds, kinLabel, kinAlso, kinComputed, kinStored, kinSection, ancestorChain, ...personData0 } = data;
+        if (personData0.local_name != null) personData0.local_name = cleanArabicNameInput(personData0.local_name);   // C271: تطويل/محارف خفيّة/مسافات
+        // C271: ملفّ صاحب الحساب لا يُسجَّل متوفّى (النموذج يمنعه؛ هنا حارسٌ لكلّ مسارٍ آخر)
+        if (data.alive === false) {
+            const why = selfDeceasedBlock(ownViewOf(groupId, personId), Object.assign({ alive: false }, data.kinship ? { kinship: data.kinship } : {}), myPidIn(groupId));
+            if (why) { showToast(why, "error"); return; }
+        }
         // C203: تغيير الجنس لا يُنشئ زواجاً بين جنسٍ واحد ولا والدَين من جنسٍ واحد
         {
             const list = groupPersons[groupId] || [], cur = list.find((p) => p.id === personId);
@@ -3705,6 +3725,70 @@ function AppInner() {
         }));
         showToast(t("sjlna_twaslk_alhyn"), "success");
     }
+    // ── C271: مواعيد صلة الرحم المرنة ──
+    // مدّةٌ لقريبٍ بعينه (أيّام) أو null ⇒ مدّة درجته. على هذا الجهاز وحده (عادةٌ شخصيّة، مثل lastContactDate).
+    function setContactEvery(groupId, personId, days) {
+        const d = kinClampDays(days);
+        setGroupPersons((prev) => ({
+            ...prev,
+            [groupId]: (prev[groupId] || []).map((p) => (p.id === personId ? Object.assign({}, p, { contactEvery: d }, p.lastContactDate || p.addedAt ? {} : { addedAt: Date.now() }) : p)),
+        }));
+        const nm = (((groupPersons[groupId] || []).find((p) => p.id === personId)) || {}).local_name || "";
+        showToast(d ? tl("سنذكّرك بـ" + String(nm).split(" ")[0] + ": " + kinFreqLabel(d), "We'll remind you about " + String(nm).split(" ")[0] + ": " + kinFreqLabel(d).toLowerCase())
+            : tl("عادت المدّة إلى درجة القرابة", "Back to the kinship-degree interval"), "success");
+    }
+    const [kinRemindRev, setKinRemindRev] = useState(0);
+    useEffect(() => {
+        const on = () => setKinRemindRev((n) => n + 1);
+        window.addEventListener("sawa-kinremind", on);
+        return () => window.removeEventListener("sawa-kinremind", on);
+    }, []);
+    // الخطّة إلى الخادم (Worker v126 ⇐ kinrem/{uid}): بعد ٤ ثوانٍ من آخر تغيير، وفقط إن تغيّرت فعلاً
+    const kinSentRef = useRef("");
+    useEffect(() => {
+        if (flow !== "app") return;
+        const SS = window.SawaSync;
+        if (!SS || !SS.isReady || !SS.isReady() || !SS.call) return;
+        const s = kinRemindSettings();
+        // ⛔ famPersons لا groupPersons: القرابة محسوبةٌ من منظوري (للعضو: صاحب الشجرة قريبٌ يُذكَّر به، وأنا «نفسي» لا أُذكَّر بنفسي)
+        const payload = { on: !!s.on, hour: kinClampHour(s.hour), tz: new Date().getTimezoneOffset(), lang: isRTL() ? "ar" : "en", items: s.on ? kinRemindPlan(famPersons) : [] };
+        const sig = JSON.stringify(payload);
+        if (sig === kinSentRef.current) return;
+        const tmr = setTimeout(() => {
+            SS.call("kin.remind.set", payload).then((b) => {
+                kinSentRef.current = sig;
+                try { if (b && b.ok !== false) localStorage.setItem("sawa:kinRemindSrv", String(payload.on && payload.items.length ? Date.now() : 0)); } catch (e) { }
+            }).catch(() => { try { localStorage.removeItem("sawa:kinRemindSrv"); } catch (e) { } });   // خادمٌ قديم/بلا شبكة ⇒ التنبيه المحلّيّ يتولّى
+        }, 4000);
+        return () => clearTimeout(tmr);
+    }, [flow, famPersons, kinRemindRev]);
+    // التنبيه المحلّيّ الاحتياطيّ: عند الفتح، وكلّ ٣٠ دقيقة والتطبيق ظاهر
+    const groupPersonsRef = useRef(famPersons);
+    groupPersonsRef.current = famPersons;
+    useEffect(() => {
+        if (flow !== "app") return;
+        const tick = () => { if (!document.hidden) kinRemindLocalTick(groupPersonsRef.current); };
+        const t0 = setTimeout(tick, 8000), iv = setInterval(tick, 30 * 60000);
+        return () => { clearTimeout(t0); clearInterval(iv); };
+    }, [flow]);
+    // فتح «من حان التواصل معه» — من الإشعار (‎?kin=1‎ أو رسالة عامل الخدمة)
+    const openKinDue = () => {
+        const g = familyGroups.find((x) => (famPersons[x.id] || []).some((p) => isContactOverdue(p))) || familyGroups[0];
+        setTab("discover");
+        setDiscoverStack(g ? [{ type: "groups" }, { type: "groupDetail", data: g, filter: "overdue" }] : [{ type: "groups" }]);
+    };
+    const openKinDueRef = useRef(openKinDue);
+    openKinDueRef.current = openKinDue;
+    useEffect(() => {
+        if (flow !== "app") return;
+        try {
+            const u = new URL(window.location.href);
+            if (u.searchParams.get("kin")) { u.searchParams.delete("kin"); history.replaceState(null, "", u.pathname + (u.search && u.search !== "?" ? u.search : "") + u.hash); setTimeout(() => openKinDueRef.current(), 300); }
+        } catch (e) { }
+        const onMsg = (ev) => { const m = ev && ev.data; if (m && (m.type === "sawa-open") && m.data && m.data.t === "kin") openKinDueRef.current(); };
+        try { if (navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", onMsg); } catch (e) { }
+        return () => { try { if (navigator.serviceWorker) navigator.serviceWorker.removeEventListener("message", onMsg); } catch (e) { } };
+    }, [flow]);
     // ── C37: منازل الأقارب وتنبيه القرب ──
     const [proxEnabled, setProxEnabled] = usePersistedState("ui.proxAlerts", false, 50);
     const [proxRadius, setProxRadius] = usePersistedState("ui.proxRadius", 1000, 50);   // C37b: النطاق العامّ لكلّ الأقارب
@@ -3850,6 +3934,8 @@ function AppInner() {
         setEvents((prev) => [{ id: `e-${Date.now()}`, groupId, personId, type, title, desc: desc || "", dateTimestamp: ts }, ...prev]);
         // C75: حدث «وفاة» يُسجّل القريب متوفّى (كانت التذكيرات والمواعيد تستمرّ له)، و«مرض/عملية» تجعل حالته «مريض»
         const target = personId && (groupPersons[groupId] || []).find((p) => p.id === personId);
+        // C271: لا حدث «وفاة» لصاحب الحساب
+        if (target && type === "death") { const why = selfDeceasedBlock(ownViewOf(groupId, personId), { alive: false }, myPidIn(groupId)); if (why) { showToast(why, "error"); return; } }
         if (target && type === "death" && target.alive !== false) {
             const d = new Date(ts), iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
             setGroupPersons((prev) => ({ ...prev, [groupId]: (prev[groupId] || []).map((p) => p.id === personId ? { ...p, alive: false, death_date: p.death_date || iso, status_detail: null } : p) }));
@@ -4019,7 +4105,7 @@ function AppInner() {
                     [gid]: (prev[gid] || []).map((p) => p.id === pid ? { ...p, noChildren: false, neverMarried: false } : p),
                 }));
                 showToast(t("sysal_anh_fy_alaqtrahat"), "info");
-            }, onSimulateProximity: (personId) => simulateProximity(personId, freshPerson.local_name), onMarkContact: (personId) => markContactNow(currentGroupIdForPerson, personId), onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
+            }, onSimulateProximity: (personId) => simulateProximity(personId, freshPerson.local_name), onMarkContact: (personId) => markContactNow(currentGroupIdForPerson, personId), onSetContactEvery: (personId, days) => setContactEvery(currentGroupIdForPerson, personId, days), onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
     }
     else if (discoverTop.type === "tree") {
         const canEditTree = famCanEdit(discoverTop.data);
@@ -4069,6 +4155,7 @@ function AppInner() {
             }, onSetAlive: (personId, alive) => {
                 var _a;
                 const gid = discoverTop.data.id;
+                if (alive === false) { const why = selfDeceasedBlock(ownViewOf(gid, personId), { alive: false }, myPidIn(gid)); if (why) { showToast(why, "error"); return; } }   // C271
                 const nm = ((_a = (groupPersons[gid] || []).find((p) => p.id === personId)) === null || _a === void 0 ? void 0 : _a.local_name) || t("ai_alqryb");
                 setGroupPersons((prev) => ({
                     ...prev,

@@ -288,10 +288,10 @@ const initialCallLog = [];
 const callTypeIcons = { incoming: PhoneIncoming, outgoing: PhoneOutgoing, missed: PhoneMissed };
 const callTypeColors = { incoming: "success", outgoing: "success", missed: "danger" };
 // C129: مطابقة البحث في سجلّ المكالمات — الاسم والمشاركون، بلا حساسيّة لحالة الأحرف وللهمزات/التشكيل العربيّ
-function callNorm(v) { return String(v || "").toLowerCase().replace(/[\u064B-\u0652\u0640]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").trim(); }
+// C271: طبقة التطبيع الموحّدة (arMatch في app.p3) بدل نسخةٍ أضيق هنا
 function callMatch(c, q) {
-    const n = callNorm(q); if (!n) return true;
-    return [c.name].concat((c.participants || []).map((x) => (x && (x.name || x)) || "")).some((x) => callNorm(x).indexOf(n) >= 0);
+    if (!String(q || "").trim()) return true;
+    return arMatchAny([c.name].concat((c.participants || []).map((x) => (x && (x.name || x)) || "")), q);
 }
 function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteContacts, onToggleFavorite, onLogCall, callSettings, onUpdateCallSettings, speedDialContacts, onUpdateSpeedDial, onClearCallLog, scheduledCalls, onAddScheduledCall, onDeleteScheduledCall, onDeleteCallEntry, }) {
     const { colors } = useTheme();
@@ -468,10 +468,9 @@ function contactSubtitle(c, isOnline) {
     if (c.via && c.via.indexOf("link") >= 0) return t("ct_link_contact");
     return c.phone || "";
 }
-// C24: البحث يتجاهل الهمزات والتشكيل والتاء المربوطة/الهاء والأرقام العربيّة
+// C24: البحث يتجاهل الهمزات والتشكيل والتاء المربوطة/الهاء والأرقام العربيّة · C271: من طبقة التطبيع الموحّدة (app.p3)
 function normAr(s) {
-    return String(s || "").toLowerCase().replace(/[ً-ْٰـ]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/ؤ/g, "و").replace(/ئ/g, "ي")
-        .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/\s+/g, " ").trim();
+    return arabicSearchKey(s, false);
 }
 // C24: شاشة جهات الاتّصال — تصفية (الكلّ · متّصلون · محظورون)، بحثٌ أذكى، اختصاراتٌ للإضافة،
 //      وملفّ الشخص: رسالة · اتّصال · فيديو · سرّيّة، ثمّ التسمية والحظر والإزالة والإبلاغ (بتأكيد)
@@ -490,7 +489,7 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
     const reqCount = useSawaRequests();
     const sectionRefs = useRef({});
     const q = normAr(search);
-    const matches = (c) => !q || [c.name, c.realName, c.nick, c.phone, c.tag].some((x) => x && normAr(x).includes(q));
+    const matches = (c) => !q || arMatchAny([c.name, c.realName, c.nick, c.phone, c.tag], search);   // C271
     const onlineCount = contacts.filter(isOn).length, blockedCount = contacts.filter(blockedOf).length;
     const view = filter === "blocked" && !blockedCount ? "all" : filter;
     const filtered = contacts.filter(matches).filter((c) => view === "online" ? isOn(c) : view === "blocked" ? blockedOf(c) : true);
