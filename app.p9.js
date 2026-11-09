@@ -342,12 +342,12 @@ const AccountantScreen = (function () {
     }
 
     // ── ledger ──
-    function Ledger({ list, cats, base, filter, onClearFilter, onOpen, onAdd, onConfirm, onSkip, recurringCount, rulesCount, onRecurring, onRules, onExport }) {
+    function Ledger({ list, cats, base, filter, onClearFilter, onOpen, onAdd, onConfirm, onSkip, recurringCount, rulesCount, onRecurring, onRules, onExport, onImport }) {
         const { colors } = useTheme();
         if (!list) return h(Loading);
         const items = filter ? list.items.filter((t) => t.categoryId === filter) : list.items;
         const tools = h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
-            [[Repeat, tl("المتكرّرة", "Recurring"), recurringCount, onRecurring], [SlidersHorizontal, tl("القواعد", "Rules"), rulesCount, onRules], [Download, tl("تصدير", "Export"), 0, onExport]].map(([I, label, n, fn], i) =>
+            [[Repeat, tl("المتكرّرة", "Recurring"), recurringCount, onRecurring], [SlidersHorizontal, tl("القواعد", "Rules"), rulesCount, onRules], [Download, tl("تصدير", "Export"), 0, onExport], [Upload, tl("استيراد", "Import"), 0, onImport]].map(([I, label, n, fn], i) =>
                 h("button", { key: i, type: "button", onClick: fn, style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 40, borderRadius: 12,
                     border: "1px solid " + colors.border, backgroundColor: colors.card, color: colors.text, fontWeight: 700, fontSize: 13, cursor: "pointer" } },
                     h(I, { size: 15, color: TEAL }), label, n > 0 && h("span", { style: { fontSize: 11, color: colors.textMuted } }, "(" + n + ")"))));
@@ -961,6 +961,200 @@ const AccountantScreen = (function () {
     }
 
     // ── screen ──
+    // ── C273: import receipts (Sawa-deploy-test/pfm/IMPORT-DESIGN.md §4.7) ──
+    // Screenshots are read ON THE PHONE by the Sawa reader (/ocr/v1/, tesseract.js): no service sees them. Each row the user
+    // confirms becomes an ordinary entry (pfm.tx.add) with the screenshot as its sealed receipt. A bank reference makes the
+    // entry id on the server, so the same transfer imported twice is booked once.
+    const OCR_BASE = "/ocr/v1/";
+    let readerLoad = null;
+    const loadReader = () => readerLoad || (readerLoad = new Promise((res, rej) => {
+        if (window.SawaReader) return res(window.SawaReader);
+        const s = document.createElement("script"); s.src = OCR_BASE + "sawa-reader.js";
+        s.onload = () => res(window.SawaReader); s.onerror = () => { readerLoad = null; rej(new Error("ocr_load_failed")); };
+        document.head.appendChild(s);
+    }));
+    const digitsOf = (a) => String(a || "").replace(/\D/g, "");
+    const SERVICE_AR = { fuel: "وقود", logistics: "نقل وترحيل", utility: "خدمات", telecom: "اتصالات", retail: "مشتريات", rent: "إيجار", bank_transfer: "تحويل بنكيّ", other: "أخرى" };
+    // What a flag means for the user, by field (the reader's own reasons are technical English).
+    function flagText(v) {
+        const m = {
+            transaction_id: tl("رقم العمليّة غير ظاهر في الصورة", "No transaction number on the screenshot"),
+            timestamp: tl("التاريخ غير مقروء — أدخله", "Date unreadable — enter it"),
+            amount: tl("المبلغ غير مؤكَّد — اكتبه كما في الإيصال", "Amount not certain — type it as on the receipt"),
+            sender: tl("حساب المرسل غير واضح", "Sender account unclear"),
+            recipient: /name unclear/.test(v.reason) ? tl("الاسم غير واضح — صحّحه إن لزم", "Name unclear — correct it if needed") : tl("حساب المستقبل أو اسمه غير واضح", "Recipient account or name unclear"),
+            kind: /status is/.test(v.reason) ? tl("العمليّة لم تنجح في البنك", "The bank says this transfer did not succeed")
+                : /confirm it is yours/.test(v.reason) ? tl("أكّد أنّ حساب المرسل حسابك (في الأعلى)", "Confirm the sender account is yours (above)")
+                : tl("هل هو دخل أم مصروف؟ اختر", "Income or spending? Choose"),
+        };
+        return m[v.field] || v.field;
+    }
+    function rowFromResult(r, cats) {
+        const kind = r.kind === "income" ? "income" : "expense";
+        const other = kind === "income" ? r.sender : r.recipient;
+        const who = other.name || (other.account_identifier ? tl("حساب ", "Account ") + other.account_identifier : "");
+        const hint = cats[r.category_id] && cats[r.category_id].kind === kind ? r.category_id : kind === "income" ? "c_other_in" : "c_other_out";
+        return { amount: r.amount.value || "", date: r.timestamp ? r.timestamp.slice(0, 10) : "", kind, who, note: r.note || "", catId: cats[hint] ? hint : "",
+            include: r.status === "verified" && (r.kind === "income" || r.kind === "expense") };
+    }
+    function ImportSheet({ cats, onClose, onSaved }) {
+        const { colors } = useTheme();
+        const [rows, setRows] = useState([]), [prefs, setPrefs] = useState(null), [stage, setStage] = useState("");
+        const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [done, setDone] = useState(null), [view, setView] = useState(null);
+        const [noHint, setNoHint] = useState({});
+        const fileRef = useRef(null), ocrRef = useRef(null), rowsRef = useRef(rows);
+        rowsRef.current = rows;
+        useEffect(() => { call("pfm.import.prefs.get").then(setPrefs, () => setPrefs({ accounts: [], names: {} }));
+            return () => { if (ocrRef.current) ocrRef.current.then((o) => o.close()).catch(() => {}); rowsRef.current.forEach((r) => r.url && URL.revokeObjectURL(r.url)); }; }, []);
+        const patch = (key, p) => setRows((rs) => rs.map((r) => (r.key === key ? Object.assign({}, r, typeof p === "function" ? p(r) : p) : r)));
+        const patchEdit = (key, p) => patch(key, (r) => ({ edit: Object.assign({}, r.edit, p) }));
+        const pick = async (e) => {
+            const files = Array.from((e.target.files) || []).slice(0, 50); e.target.value = "";
+            if (!files.length || !prefs) return;
+            setErr(""); setDone(null); setBusy(true);
+            const fresh = files.map((f) => ({ key: newKey(), file: f, url: URL.createObjectURL(f), state: "wait" }));
+            setRows((rs) => rs.concat(fresh));
+            try {
+                const R = await loadReader();
+                if (!ocrRef.current) { setStage(tl("تجهيز القارئ… (نحو 9 ميغابايت، مرّة واحدة فقط)", "Getting the reader ready… (about 9 MB, once only)"));
+                    ocrRef.current = R.makeOcr({ base: OCR_BASE }); }
+                const ocr = await ocrRef.current;
+                const ctx = { myAccounts: prefs.accounts, knownAccounts: prefs.names, source: "image_ocr" };
+                for (let i = 0; i < fresh.length; i++) {
+                    const it = fresh[i];
+                    setStage(tl(`قراءة ${i + 1} من ${fresh.length}…`, `Reading ${i + 1} of ${fresh.length}…`));
+                    patch(it.key, { state: "read" });
+                    try {
+                        const r = await R.readFile(it.file, ocr, ctx);
+                        const photo = await shrinkImage(it.file, 1280, true).catch(() => null);
+                        if (!r) { patch(it.key, { state: "none", photo }); continue; }
+                        // the same transfer twice in this batch: keep the first
+                        const twin = r.transaction_id && rowsRef.current.find((x) => x.key !== it.key && x.r && x.r.transaction_id === r.transaction_id);
+                        patch(it.key, { state: twin ? "twin" : "done", r, photo, edit: Object.assign(rowFromResult(r, cats), twin ? { include: false } : {}) });
+                    } catch (x) { patch(it.key, { state: "error" }); }
+                }
+            } catch (x) { setErr(tl("تعذّر تحميل القارئ — تحقّق من الاتّصال وحاول ثانيةً", "Couldn't load the reader — check your connection and try again")); }
+            setStage(""); setBusy(false);
+        };
+        // A new account seen as the sender on a success screen: one question, then every row is decided again.
+        const hints = {};
+        rows.forEach((r) => { const a = r.r && r.r.own_account_hint; if (a && !noHint[a] && !(prefs && prefs.accounts.indexOf(a) >= 0)) hints[a] = (hints[a] || 0) + 1; });
+        const confirmOwn = (acct) => {
+            const accounts = prefs.accounts.concat([acct]);
+            setPrefs(Object.assign({}, prefs, { accounts }));
+            call("pfm.import.prefs.set", { accounts, names: prefs.names }).catch((e) => setErr(errText(e)));
+            setRows((rs) => rs.map((r) => {
+                if (!r.r) return r;
+                const nr = window.SawaReader.recomputeKind(r.r, accounts), fresh = rowFromResult(nr, cats);
+                // the type may flip (spending → income): category and the other party follow it; amount, date and note stay as edited
+                const keep = fresh.kind === r.edit.kind ? { catId: r.edit.catId, who: r.edit.who } : {};
+                return Object.assign({}, r, { r: nr, edit: Object.assign({}, r.edit, { kind: fresh.kind, catId: fresh.catId, who: fresh.who }, keep,
+                    { include: r.state === "done" && fresh.include }) });
+            }));
+        };
+        const ready = (r) => { const e = r.edit; return e && Number(e.amount) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && e.catId && cats[e.catId] && cats[e.catId].kind === e.kind; };
+        const chosen = rows.filter((r) => r.edit && r.edit.include && !r.saved);
+        const save = async () => {
+            setBusy(true); setErr("");
+            let added = 0, dup = 0, failed = 0;
+            const names = Object.assign({}, prefs.names);
+            for (const row of chosen) {
+                if (!ready(row)) { failed++; continue; }
+                const e = row.edit, r = row.r;
+                const p = { kind: e.kind, amount: e.amount, currency: r.amount.currency || "SDG", categoryId: e.catId, date: e.date, note: e.note.trim() || null, counterparty: e.who.trim() || null };
+                if (r.transaction_id) p.ref = { issuer: r.template.split("@")[0], id: r.transaction_id }; else p.idemKey = newKey();
+                try {
+                    const res = await call("pfm.tx.add", p);
+                    if (res.duplicate) { dup++; patch(row.key, { saved: "dup" }); continue; }
+                    if (row.photo) await call("pfm.tx.receipt.set", { id: res.tx.id, data: row.photo }).catch(() => {});
+                    added++; patch(row.key, { saved: "ok" });
+                    // remember the name the user confirmed for that account (next time it wins over the OCR)
+                    const acct = e.kind === "income" ? r.sender.account_identifier : r.recipient.account_identifier;
+                    if (acct && e.who.trim() && !/^(حساب|Account) /.test(e.who.trim())) names[digitsOf(acct)] = e.who.trim().slice(0, 80);
+                } catch (x) { failed++; patch(row.key, { saved: "error", saveErr: errText(x) }); }
+            }
+            if (added) { setPrefs(Object.assign({}, prefs, { names })); call("pfm.import.prefs.set", { accounts: prefs.accounts, names }).catch(() => {}); }
+            setDone({ added, dup, failed }); setBusy(false);
+            if (added) onSaved();
+        };
+        const chip = (text, color) => h("span", { style: { fontSize: 11, fontWeight: 800, color, border: "1px solid " + color, borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap" } }, text);
+        const small = (style) => Object.assign(inputStyle(colors), { minHeight: 40, padding: "8px 10px", fontSize: 14 }, style);
+        const rowView = (row) => {
+            const r = row.r, e = row.edit;
+            const head = (status) => h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 } },
+                h("button", { type: "button", onClick: () => setView(row.url), "aria-label": tl("عرض الصورة", "View the image"),
+                    style: { width: 44, height: 56, flexShrink: 0, border: "1px solid " + colors.border, borderRadius: 8, padding: 0, background: "none", overflow: "hidden", cursor: "pointer" } },
+                    h("img", { src: row.url, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } })),
+                h("div", { style: { flex: 1, minWidth: 0, fontSize: 12, color: colors.textMuted } },
+                    h("div", { dir: "auto", style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, row.file.name),
+                    r && h("div", { dir: "ltr", style: { textAlign: ar() ? "right" : "left" } }, r.transaction_id ? "#" + r.transaction_id : "")),
+                status);
+            if (row.state === "wait" || row.state === "read") return head(chip(row.state === "read" ? tl("يُقرأ…", "Reading…") : tl("في الانتظار", "Waiting"), colors.textMuted));
+            if (row.state === "none") return head(chip(tl("لم يُتعرَّف عليه", "Not recognised"), colors.warning));
+            if (row.state === "error") return head(chip(tl("تعذّرت القراءة", "Couldn't read"), colors.danger));
+            const flagged = r.verify.length > 0, transfer = r.kind === "transfer";
+            const status = row.saved === "ok" ? chip(tl("أُضيفت", "Added"), colors.success)
+                : row.saved === "dup" ? chip(tl("مسجّلة من قبل", "Already recorded"), colors.textMuted)
+                : row.saved === "error" ? chip(tl("لم تُحفظ", "Not saved"), colors.danger)
+                : row.state === "twin" ? chip(tl("مكرّرة في هذه الدفعة", "Repeated in this batch"), colors.textMuted)
+                : transfer ? chip(tl("بين حساباتك", "Between your accounts"), colors.textMuted)
+                : flagged ? chip(tl("يحتاج مراجعة", "Needs checking"), colors.warning) : chip(tl("جاهز", "Ready"), colors.success);
+            const list = Object.values(cats).filter((c) => c.kind === e.kind && !c.archived).sort((a, b) => a.order - b.order);
+            const locked = !!row.saved;
+            return h("div", null, head(status),
+                flagged && !locked && h("ul", { style: { margin: "0 0 8px", padding: "8px 12px", listStyle: "none", borderRadius: 10, backgroundColor: colors.warning + "18", color: colors.text, fontSize: 12, lineHeight: 1.7 } },
+                    r.verify.map((v, i) => h("li", { key: i, style: { display: "flex", gap: 6, alignItems: "baseline" } }, h(AlertTriangle, { size: 12, color: colors.warning, style: { flexShrink: 0 } }), flagText(v)))),
+                !r.transaction_id && !locked && h("div", { style: { fontSize: 11, color: colors.textMuted, marginBottom: 6 } }, tl("بلا رقم عمليّة: إن أضفتها مرّتين لن يُكتشف التكرار", "No transaction number: adding it twice won't be caught")),
+                transfer && !locked && h("div", { style: { fontSize: 12, color: colors.textMuted, marginBottom: 6 } }, tl("تحويل بين حسابين لك: لا يُعدّ دخلاً ولا مصروفاً، فلا يُضاف إلّا إن اخترت.", "A transfer between two of your accounts is neither income nor spending, so it is added only if you choose.")),
+                h("fieldset", { disabled: locked || busy, style: { border: 0, padding: 0, margin: 0 } },
+                    h("div", { style: { marginBottom: 8 } }, h(Seg, { value: e.kind, onChange: (v) => patchEdit(row.key, { kind: v, catId: v === "income" ? "c_other_in" : "c_other_out" }), options: [
+                        { value: "expense", label: tl("مصروف", "Spending"), color: colors.danger }, { value: "income", label: tl("دخل", "Income"), color: colors.success }] })),
+                    h("div", { style: { display: "flex", gap: 8, marginBottom: 8 } },
+                        h("input", { dir: "ltr", inputMode: "decimal", value: e.amount, "aria-label": tl("المبلغ", "Amount"), placeholder: "0.00",
+                            onChange: (x) => patchEdit(row.key, { amount: x.target.value.replace(/[^0-9.]/g, "") }), style: small({ flex: 2, fontWeight: 800, borderColor: r.verify.some((v) => v.field === "amount") ? colors.warning : colors.border }) }),
+                        h("span", { style: { alignSelf: "center", fontSize: 13, fontWeight: 700, color: colors.textMuted } }, r.amount.currency || "SDG"),
+                        h("input", { type: "date", dir: "ltr", value: e.date, "aria-label": tl("التاريخ", "Date"), onChange: (x) => patchEdit(row.key, { date: x.target.value }),
+                            style: small({ flex: 2, borderColor: r.verify.some((v) => v.field === "timestamp") ? colors.warning : colors.border }) })),
+                    h("input", { dir: "auto", value: e.who, "aria-label": e.kind === "income" ? tl("من", "From") : tl("إلى", "To"), placeholder: e.kind === "income" ? tl("من", "From") : tl("إلى", "To"),
+                        onChange: (x) => patchEdit(row.key, { who: x.target.value }), style: small({ marginBottom: 8 }) }),
+                    h("div", { style: { display: "flex", gap: 8, marginBottom: 8 } },
+                        h("select", { value: e.catId, "aria-label": tl("الفئة", "Category"), onChange: (x) => patchEdit(row.key, { catId: x.target.value }), style: small({ flex: 1 }) },
+                            h("option", { value: "" }, tl("اختر فئة", "Choose a category")), list.map((c) => h("option", { key: c.id, value: c.id }, catName(c)))),
+                        h("input", { dir: "auto", value: e.note, "aria-label": tl("ملاحظة", "Note"), placeholder: tl("ملاحظة", "Note"), onChange: (x) => patchEdit(row.key, { note: x.target.value }), style: small({ flex: 1 }) })),
+                    r.service_type && r.service_type !== "bank_transfer" && h("div", { style: { fontSize: 11, color: colors.textMuted, marginBottom: 6 } }, tl("النوع المقترح: ", "Suggested type: ") + tl(SERVICE_AR[r.service_type] || r.service_type, r.service_type.replace("_", " "))),
+                    h(Check, { checked: e.include, onChange: (v) => patchEdit(row.key, { include: v }) },
+                        flagged ? tl("راجعتُها — أضِفها", "I've checked it — add it") : tl("أضِفها إلى السجلّ", "Add it to the ledger"))),
+                e.include && !locked && !ready(row) && h("div", { style: { color: colors.danger, fontSize: 12 } }, tl("أكمل المبلغ والتاريخ والفئة", "Complete the amount, date and category")),
+                row.saveErr && h("div", { role: "alert", style: { color: colors.danger, fontSize: 12 } }, row.saveErr));
+        };
+        const counts = { ready: rows.filter((r) => r.state === "done" && r.r.verify.length === 0).length, check: rows.filter((r) => r.state === "done" && r.r.verify.length > 0).length };
+        return h(Sheet, { title: tl("استيراد إيصالات", "Import receipts"), onClose },
+            h("p", { style: { margin: "0 0 12px", fontSize: T.small, color: colors.textMuted, lineHeight: 1.6 } },
+                tl("اختر لقطات شاشة من «بنكك» (تفاصيل التحويل أو شاشة النجاح). تُقرأ على هاتفك ولا تُرسَل الصورة إلى أيّ جهة لقراءتها؛ ثمّ تُحفظ مشفّرةً إيصالاً للحركة. راجع كلّ صفّ قبل الإضافة.",
+                    "Pick screenshots from Bankak (transfer details or the success screen). They are read on your phone; no service sees them to read them. Each one is then kept, encrypted, as the entry's receipt. Check every row before adding.")),
+            h("input", { ref: fileRef, type: "file", accept: "image/*", multiple: true, onChange: pick, style: { display: "none" } }),
+            h(Btn, { onClick: () => fileRef.current && fileRef.current.click(), disabled: busy || !prefs, style: { width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12 } },
+                h(Upload, { size: 18 }), rows.length ? tl("إضافة صور أخرى", "Add more images") : tl("اختيار الصور", "Choose images")),
+            stage && h("div", { role: "status", style: { fontSize: 13, color: TEAL, fontWeight: 700, marginBottom: 10 } }, stage),
+            err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13, marginBottom: 10 } }, err),
+            Object.keys(hints).map((a) => h(Card, { key: a, style: { marginBottom: 10, borderColor: TEAL } },
+                h("div", { style: { fontSize: 13, marginBottom: 8, lineHeight: 1.6 } },
+                    tl(`الحساب `, `Account `), h("b", { dir: "ltr", style: { unicodeBidi: "isolate" } }, a),
+                    tl(` أرسل ${hints[a]} من هذه التحويلات. هل هو حسابك؟ (يُسأل مرّة واحدة، وبه يُعرف الدخل من المصروف)`, ` sent ${hints[a]} of these transfers. Is it yours? (Asked once; it tells income from spending)`)),
+                h("div", { style: { display: "flex", gap: 8 } },
+                    h(Btn, { onClick: () => confirmOwn(a), style: { flex: 1, minHeight: 40 } }, tl("نعم، حسابي", "Yes, mine")),
+                    h(Btn, { kind: "ghost", onClick: () => setNoHint(Object.assign({}, noHint, { [a]: true })), style: { flex: 1, minHeight: 40 } }, tl("لا", "No"))))),
+            rows.length > 0 && h("div", { style: { fontSize: 12, color: colors.textMuted, marginBottom: 8 } },
+                tl(`${rows.length} صورة · ${counts.ready} جاهزة · ${counts.check} تحتاج مراجعة`, `${rows.length} images · ${counts.ready} ready · ${counts.check} need checking`)),
+            rows.map((row) => h(Card, { key: row.key, style: { marginBottom: 10, padding: 12, opacity: row.saved === "dup" || row.state === "twin" ? 0.7 : 1 } }, rowView(row))),
+            done && h("div", { role: "status", style: { fontSize: 13, fontWeight: 700, color: done.failed ? colors.warning : colors.success, marginBottom: 10 } },
+                [done.added && tl(`أُضيفت ${done.added}`, `Added ${done.added}`), done.dup && tl(`${done.dup} كانت مسجّلة من قبل فلم تُكرَّر`, `${done.dup} already recorded, not added again`),
+                    done.failed && tl(`${done.failed} لم تُحفظ (أكمل المبلغ والتاريخ والفئة)`, `${done.failed} not saved (complete amount, date and category)`)].filter(Boolean).join(" · ")),
+            rows.length > 0 && h(Btn, { onClick: save, disabled: busy || !chosen.length, style: { width: "100%" } },
+                busy && !stage ? tl("جارٍ الحفظ…", "Saving…") : tl(`إضافة ${chosen.length} إلى السجلّ`, `Add ${chosen.length} to the ledger`)),
+            view && h(PhotoView, { src: view, onClose: () => setView(null) }));
+    }
+
     function Screen({ onBack }) {
         const { colors } = useTheme();
         const [boot, setBoot] = useState(null), [bootErr, setBootErr] = useState("");
@@ -1006,7 +1200,7 @@ const AccountantScreen = (function () {
                     : tab === "ledger"
                     ? h(Ledger, { list, cats, base: cur, filter, onClearFilter: () => setFilter(null), onOpen: (t) => setSheet({ tx: t }), onAdd: () => setSheet({}),
                         onConfirm: confirmTx, onSkip: skipTx, recurringCount: (boot.recurring || []).length, rulesCount: (boot.rules || []).length,
-                        onRecurring: () => setSheet({ type: "recurring" }), onRules: () => setSheet({ type: "rules" }), onExport: () => setSheet({ type: "export" }) })
+                        onRecurring: () => setSheet({ type: "recurring" }), onRules: () => setSheet({ type: "rules" }), onExport: () => setSheet({ type: "export" }), onImport: () => setSheet({ type: "import" }) })
                     : tab === "budgets"
                     ? h(Budgets, { data: budgets, cats, cur, onAdd: () => setSheet({ type: "budget" }), onEdit: (b) => setSheet({ type: "budget", budget: b }) })
                     : h(Invoices, { key: invTick, cur, today: boot.today, onOpen: (id) => setSheet({ type: "invoice", id }), onNew: () => setSheet({ type: "editor" }), onBiz: () => setSheet({ type: "biz" }) }));
@@ -1028,6 +1222,7 @@ const AccountantScreen = (function () {
                     onSaved: (inv) => { invChanged(); setSheet({ type: "invoice", id: inv.id }); } }),
                 sheet && s && sheet.type === "biz" && h(BizSheet, { base: cur, onClose: () => { setSheet(null); invChanged(); }, onSaved: () => { setSheet(null); invChanged(); } }),
                 sheet && s && sheet.type === "export" && h(ExportSheet, { month, latest: boot.month, onClose: () => setSheet(null) }),
+                sheet && s && sheet.type === "import" && h(ImportSheet, { cats, onClose: () => setSheet(null), onSaved: reloadAll }),
                 sheet && s && sheet.type === "rules" && h(RulesSheet, { rules: boot.rules || [], cats, onClose: () => setSheet(null), onChanged: reloadAll })));
     }
     const navBtn = (colors) => ({ width: 40, height: 40, borderRadius: 20, border: "1px solid " + colors.border, backgroundColor: colors.card, color: colors.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" });
