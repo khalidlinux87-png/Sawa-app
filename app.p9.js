@@ -965,11 +965,12 @@ const AccountantScreen = (function () {
     // Screenshots are read ON THE PHONE by the Sawa reader (/ocr/v1/, tesseract.js): no service sees them. Each row the user
     // confirms becomes an ordinary entry (pfm.tx.add) with the screenshot as its sealed receipt. A bank reference makes the
     // entry id on the server, so the same transfer imported twice is booked once.
-    const OCR_BASE = "/ocr/v1/";
+    const OCR_BASE = "/ocr/v1/";                       // the OCR engine (never changes inside v1)
+    const READER_JS = "/ocr/sawa-reader-3.js";         // C274: the reader carries its version in its name (phones cache /ocr/ for good)
     let readerLoad = null;
     const loadReader = () => readerLoad || (readerLoad = new Promise((res, rej) => {
         if (window.SawaReader) return res(window.SawaReader);
-        const s = document.createElement("script"); s.src = OCR_BASE + "sawa-reader.js";
+        const s = document.createElement("script"); s.src = READER_JS;
         s.onload = () => res(window.SawaReader); s.onerror = () => { readerLoad = null; rej(new Error("ocr_load_failed")); };
         document.head.appendChild(s);
     }));
@@ -1130,8 +1131,8 @@ const AccountantScreen = (function () {
         const counts = { ready: rows.filter((r) => r.state === "done" && r.r.verify.length === 0).length, check: rows.filter((r) => r.state === "done" && r.r.verify.length > 0).length };
         return h(Sheet, { title: tl("استيراد إيصالات", "Import receipts"), onClose },
             h("p", { style: { margin: "0 0 12px", fontSize: T.small, color: colors.textMuted, lineHeight: 1.6 } },
-                tl("اختر لقطات شاشة من «بنكك» (تفاصيل التحويل أو شاشة النجاح). تُقرأ على هاتفك ولا تُرسَل الصورة إلى أيّ جهة لقراءتها؛ ثمّ تُحفظ مشفّرةً إيصالاً للحركة. راجع كلّ صفّ قبل الإضافة.",
-                    "Pick screenshots from Bankak (transfer details or the success screen). They are read on your phone; no service sees them to read them. Each one is then kept, encrypted, as the entry's receipt. Check every row before adding.")),
+                tl("اختر لقطات شاشة من «بنكك»: تحويل (تفاصيله أو شاشة النجاح) أو سداد فاتورة. تُقرأ على هاتفك ولا تُرسَل الصورة إلى أيّ جهة لقراءتها؛ ثمّ تُحفظ مشفّرةً إيصالاً للحركة. راجع كلّ صفّ قبل الإضافة.",
+                    "Pick screenshots from Bankak: a transfer (its details or the success screen) or a bill payment. They are read on your phone; no service sees them to read them. Each one is then kept, encrypted, as the entry's receipt. Check every row before adding.")),
             h("input", { ref: fileRef, type: "file", accept: "image/*", multiple: true, onChange: pick, style: { display: "none" } }),
             h(Btn, { onClick: () => fileRef.current && fileRef.current.click(), disabled: busy || !prefs, style: { width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12 } },
                 h(Upload, { size: 18 }), rows.length ? tl("إضافة صور أخرى", "Add more images") : tl("اختيار الصور", "Choose images")),
@@ -1140,7 +1141,7 @@ const AccountantScreen = (function () {
             Object.keys(hints).map((a) => h(Card, { key: a, style: { marginBottom: 10, borderColor: TEAL } },
                 h("div", { style: { fontSize: 13, marginBottom: 8, lineHeight: 1.6 } },
                     tl(`الحساب `, `Account `), h("b", { dir: "ltr", style: { unicodeBidi: "isolate" } }, a),
-                    tl(` أرسل ${hints[a]} من هذه التحويلات. هل هو حسابك؟ (يُسأل مرّة واحدة، وبه يُعرف الدخل من المصروف)`, ` sent ${hints[a]} of these transfers. Is it yours? (Asked once; it tells income from spending)`)),
+                    tl(` دُفع منه ${hints[a]} من هذه العمليّات. هل هو حسابك؟ (يُسأل مرّة واحدة، وبه يُعرف الدخل من المصروف)`, ` paid ${hints[a]} of these. Is it yours? (Asked once; it tells income from spending)`)),
                 h("div", { style: { display: "flex", gap: 8 } },
                     h(Btn, { onClick: () => confirmOwn(a), style: { flex: 1, minHeight: 40 } }, tl("نعم، حسابي", "Yes, mine")),
                     h(Btn, { kind: "ghost", onClick: () => setNoHint(Object.assign({}, noHint, { [a]: true })), style: { flex: 1, minHeight: 40 } }, tl("لا", "No"))))),
