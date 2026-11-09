@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c272";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c274";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -2139,6 +2139,7 @@
   function gJoin(g) {
     var me = myUid(), d = db();
     g.ref = d.ref("gcalls/" + g.gid);
+    preCallAudio();   // C274
     Promise.all([getMedia(g.type), getIce(), g.ref.once("value")]).then(function (r) {
       if (g.done) { stopStream(r[0]); return; }
       g.local = r[0]; g.ice = r[1];
@@ -2889,7 +2890,11 @@
       var check = setInterval(function () { if (closed || r.done) { clearInterval(check); return; } if (ov && !ov.isConnected) { clearInterval(check); reject(Object.assign(new Error("nopin"), { ui: L("لم تدخل رمز الغرفة", "No PIN entered") })); } }, 300);
     });
   }
+  // C274: «وضع المكالمة» والمكبّر قبل فتح الميكروفون — كانا يُضبطان بعد الدخول (الميكروفون مفتوحٌ أصلاً)، وبعض هواتف أندرويد
+  //       تُسكت الالتقاط المفتوح حين يتغيّر الوضع/المسار بعده: الآخرون يُسمَعون وصوتي لا يصل (مضيفاً كنتُ أو مشاركاً). المكالمة الفرديّة تضبطه عند الرنين أصلاً.
+  function preCallAudio() { try { if (NB()) nativeSpk(true, true); } catch (e) {} }
   function rMedia(r) {
+    preCallAudio();
     return getMedia("audio").then(function (st) {
       if (r.done) { stopStream(st); return; }
       r.local = st;
@@ -3780,10 +3785,15 @@
     if (!r.live || r.done || !r.local || r.held || r.healing) { r.micBad = 0; return; }
     var a = r.local.getAudioTracks()[0];
     var bad = !a || a.readyState === "ended" || a.muted;
+    // C274: التقاطٌ «مُسكَت» من النظام يبقى حيّاً غير مكتوم لكنّه أصفارٌ تامّة — الميكروفون الحقيقيّ لا يعطي صمتاً رقميّاً تامّاً أبداً
+    var zero = false;
+    try { var ctx = tone.ctx; if (!bad && r.mic && a && a.enabled && r.an && ctx && ctx.state === "running") { r.an.an.getByteTimeDomainData(r.an.buf); zero = true; for (var i = 0; i < r.an.buf.length; i++) if (r.an.buf[i] !== 128) { zero = false; break; } } } catch (e) {}
+    r.micZero = zero ? (r.micZero || 0) + 1 : 0;
+    if (r.micZero >= 6) { bad = true; r.micBad = 2; r.micZero = 0; }
     r.micBad = bad ? (r.micBad || 0) + 1 : 0;
     if (r.micBad < 3 || (r.healN || 0) >= 5) return;
     r.healing = true; r.micBad = 0; r.healN = (r.healN || 0) + 1;
-    LOG.warn("room.mic.heal", { n: r.healN, st: a ? a.readyState : "none", muted: !!(a && a.muted) });
+    LOG.warn("room.mic.heal", { n: r.healN, st: a ? a.readyState : "none", muted: !!(a && a.muted), zero: !!zero });
     getMedia("audio").then(function (st) {
       r.healing = false;
       var nt = st.getAudioTracks()[0];
