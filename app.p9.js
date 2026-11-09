@@ -342,12 +342,12 @@ const AccountantScreen = (function () {
     }
 
     // ── ledger ──
-    function Ledger({ list, cats, base, filter, onClearFilter, onOpen, onAdd, onConfirm, onSkip, recurringCount, rulesCount, onRecurring, onRules, onExport, onImport }) {
+    function Ledger({ list, cats, base, filter, onClearFilter, onOpen, onAdd, onConfirm, onSkip, recurringCount, rulesCount, onRecurring, onRules, onExport, onImport, importCount }) {
         const { colors } = useTheme();
         if (!list) return h(Loading);
         const items = filter ? list.items.filter((t) => t.categoryId === filter) : list.items;
         const tools = h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
-            [[Repeat, tl("المتكرّرة", "Recurring"), recurringCount, onRecurring], [SlidersHorizontal, tl("القواعد", "Rules"), rulesCount, onRules], [Download, tl("تصدير", "Export"), 0, onExport], [Upload, tl("استيراد", "Import"), 0, onImport]].map(([I, label, n, fn], i) =>
+            [[Repeat, tl("المتكرّرة", "Recurring"), recurringCount, onRecurring], [SlidersHorizontal, tl("القواعد", "Rules"), rulesCount, onRules], [Download, tl("تصدير", "Export"), 0, onExport], [Upload, tl("استيراد", "Import"), importCount || 0, onImport]].map(([I, label, n, fn], i) =>
                 h("button", { key: i, type: "button", onClick: fn, style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 40, borderRadius: 12,
                     border: "1px solid " + colors.border, backgroundColor: colors.card, color: colors.text, fontWeight: 700, fontSize: 13, cursor: "pointer" } },
                     h(I, { size: 15, color: TEAL }), label, n > 0 && h("span", { style: { fontSize: 11, color: colors.textMuted } }, "(" + n + ")"))));
@@ -966,7 +966,7 @@ const AccountantScreen = (function () {
     // confirms becomes an ordinary entry (pfm.tx.add) with the screenshot as its sealed receipt. A bank reference makes the
     // entry id on the server, so the same transfer imported twice is booked once.
     const OCR_BASE = "/ocr/v1/";                       // the OCR engine (never changes inside v1)
-    const READER_JS = "/ocr/sawa-reader-3.js";         // C276: the reader carries its version in its name (phones cache /ocr/ for good)
+    const READER_JS = "/ocr/sawa-reader-4.js";         // C276: the reader carries its version in its name (phones cache /ocr/ for good)
     let readerLoad = null;
     const loadReader = () => readerLoad || (readerLoad = new Promise((res, rej) => {
         if (window.SawaReader) return res(window.SawaReader);
@@ -983,7 +983,7 @@ const AccountantScreen = (function () {
         if (!ocrShared) {
             const t0 = Date.now();
             ocrShared = loadReader().then((R) => R.makeOcr({ base: OCR_BASE, onProgress: (st, pr) => ocrProgress && ocrProgress(st, pr) }))
-                .then((o) => o.warm().then(() => { ocrStat.ms = Date.now() - t0; o.warm(["ara"]).catch(() => {}); return o; }));   // Arabic names: the third engine, started in the background
+                .then((o) => o.warm().then(() => { ocrStat.ms = Date.now() - t0; return o; }));   // C279: all three engines (each image uses them at once)
             ocrShared.catch(() => { ocrShared = null; });
         }
         return ocrShared;
@@ -1017,19 +1017,39 @@ const AccountantScreen = (function () {
         return { amount: r.amount.value || "", date: r.timestamp ? r.timestamp.slice(0, 10) : "", kind, who, note: r.note || "", catId: cats[hint] ? hint : "",
             include: r.status === "verified" && (r.kind === "income" || r.kind === "expense") };
     }
-    function ImportSheet({ cats, onClose, onSaved }) {
+    // C280: the import batch lives here, outside the sheet, for the whole app session: closing the sheet or leaving the
+    // accountant screen does not stop the reading or lose the rows. The sheet and the screen's banner show it.
+    const imp = { rows: [], prefs: null, stage: "", busy: false, err: "", done: null, noHint: {}, open: false, onSaved: null };
+    const impSubs = new Set();
+    const impSet = (p) => { Object.assign(imp, typeof p === "function" ? p(imp) : p); impSubs.forEach((f) => f()); };
+    function useImport() {
+        const [, tick] = useState(0);
+        useEffect(() => { const f = () => tick((n) => n + 1); impSubs.add(f); return () => { impSubs.delete(f); }; }, []);
+        return imp;
+    }
+    // rows still being read, or read and not yet added (a row the user left unticked counts until the batch is cleared)
+    const impWaiting = () => imp.rows.filter((r) => !r.saved && (r.state === "wait" || r.state === "read" || r.state === "done")).length;
+    function impClear() {
+        if (imp.busy) return;
+        imp.rows.forEach((r) => r.url && URL.revokeObjectURL(r.url));
+        impSet({ rows: [], stage: "", err: "", done: null, noHint: {} });
+    }
+    function ImportSheet({ cats, onClose }) {
         const { colors } = useTheme();
-        const [rows, setRows] = useState([]), [prefs, setPrefs] = useState(null), [stage, setStage] = useState("");
-        const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [done, setDone] = useState(null), [view, setView] = useState(null);
-        const [noHint, setNoHint] = useState({});
+        const { rows, prefs, stage, busy, err, done, noHint } = useImport();
+        const setPrefs = (v) => impSet({ prefs: v }), setErr = (v) => impSet({ err: v }), setDone = (v) => impSet({ done: v }), setBusy = (v) => impSet({ busy: v });
+        const setStage = (v) => impSet({ stage: v }), setNoHint = (v) => impSet({ noHint: v });
+        const setRows = (f) => impSet((st) => ({ rows: f(st.rows) }));
+        const [view, setView] = useState(null);
         const [engine, setEngine] = useState({ state: "starting", pct: null });
-        const fileRef = useRef(null), rowsRef = useRef(rows);
-        rowsRef.current = rows;
-        useEffect(() => { call("pfm.import.prefs.get").then(setPrefs, () => setPrefs({ accounts: [], names: {} }));
+        const fileRef = useRef(null);
+        useEffect(() => { impSet({ open: true });
+            if (!imp.prefs) call("pfm.import.prefs.get").then(setPrefs, () => setPrefs({ accounts: [], names: {} }));
             // start the engines now, while the user picks images
             ocrProgress = (st, pr) => { if (/traineddata/.test(st || "") && pr != null) setEngine((e) => (e.state === "ready" ? e : { state: "starting", pct: Math.round(pr * 100) })); };
             startOcr().then(() => setEngine({ state: "ready", ms: ocrStat.ms }), () => setEngine({ state: "error" }));
-            return () => { ocrProgress = null; releaseOcr(); rowsRef.current.forEach((r) => r.url && URL.revokeObjectURL(r.url)); }; }, []);
+            // closing does not cancel: a batch still reading keeps the engines until it ends; nothing left to do ⇒ cleared
+            return () => { ocrProgress = null; impSet({ open: false }); if (!imp.busy) { releaseOcr(); if (!impWaiting()) impClear(); } }; }, []);
         const patch = (key, p) => setRows((rs) => rs.map((r) => (r.key === key ? Object.assign({}, r, typeof p === "function" ? p(r) : p) : r)));
         const patchEdit = (key, p) => patch(key, (r) => ({ edit: Object.assign({}, r.edit, p) }));
         const pick = async (e) => {
@@ -1053,12 +1073,13 @@ const AccountantScreen = (function () {
                         const photo = await shrinkImage(it.file, 1280, true).catch(() => null);
                         if (!r) { patch(it.key, { state: "none", photo, ms }); continue; }
                         // the same transfer twice in this batch: keep the first
-                        const twin = r.transaction_id && rowsRef.current.find((x) => x.key !== it.key && x.r && x.r.transaction_id === r.transaction_id);
+                        const twin = r.transaction_id && imp.rows.find((x) => x.key !== it.key && x.r && x.r.transaction_id === r.transaction_id);
                         patch(it.key, { state: twin ? "twin" : "done", r, photo, ms, edit: Object.assign(rowFromResult(r, cats), twin ? { include: false } : {}) });
                     } catch (x) { patch(it.key, { state: "error" }); }
                 }
             } catch (x) { setErr(tl("تعذّر تحميل القارئ — تحقّق من الاتّصال وحاول ثانيةً", "Couldn't load the reader — check your connection and try again")); }
-            setStage(""); setBusy(false);
+            impSet({ stage: "", busy: false });
+            if (!imp.open) releaseOcr();   // read while the sheet was closed: the engines rest now
         };
         // A new account seen as the sender on a success screen: one question, then every row is decided again.
         const hints = {};
@@ -1098,8 +1119,8 @@ const AccountantScreen = (function () {
                 } catch (x) { failed++; patch(row.key, { saved: "error", saveErr: errText(x) }); }
             }
             if (added) { setPrefs(Object.assign({}, prefs, { names })); call("pfm.import.prefs.set", { accounts: prefs.accounts, names }).catch(() => {}); }
-            setDone({ added, dup, failed }); setBusy(false);
-            if (added) onSaved();
+            impSet({ done: { added, dup, failed }, busy: false });
+            if (added && imp.onSaved) imp.onSaved();
         };
         const chip = (text, color) => h("span", { style: { fontSize: 11, fontWeight: 800, color, border: "1px solid " + color, borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap" } }, text);
         const small = (style) => Object.assign(inputStyle(colors), { minHeight: 40, padding: "8px 10px", fontSize: 14 }, style);
@@ -1183,6 +1204,10 @@ const AccountantScreen = (function () {
                     done.failed && tl(`${done.failed} لم تُحفظ (أكمل المبلغ والتاريخ والفئة)`, `${done.failed} not saved (complete amount, date and category)`)].filter(Boolean).join(" · ")),
             rows.length > 0 && h(Btn, { onClick: save, disabled: busy || !chosen.length, style: { width: "100%" } },
                 busy && !stage ? tl("جارٍ الحفظ…", "Saving…") : tl(`إضافة ${chosen.length} إلى السجلّ`, `Add ${chosen.length} to the ledger`)),
+            rows.length > 0 && h(Btn, { kind: "ghost", onClick: impClear, disabled: busy, style: { width: "100%", marginTop: 8 } }, tl("إنهاء الدفعة ومسح القائمة", "Finish this batch and clear the list")),
+            rows.length > 0 && h("div", { style: { fontSize: 11, color: colors.textMuted, marginTop: 8, textAlign: "center", lineHeight: 1.6 } },
+                tl("يمكنك إغلاق هذه الشاشة: القراءة تستمرّ، وتعود إليها من شريط «الاستيراد» في المحاسب. (إعادة تشغيل التطبيق تمسحها.)",
+                    "You can close this screen: reading goes on, and the «Import» bar in the accountant brings you back. (Restarting the app clears it.)")),
             view && h(PhotoView, { src: view, onClose: () => setView(null) }));
     }
 
@@ -1193,6 +1218,7 @@ const AccountantScreen = (function () {
         const [month, setMonth] = useState(null);
         const [summary, setSummary] = useState(null), [list, setList] = useState(null), [budgets, setBudgets] = useState(null);
         const [sheet, setSheet] = useState(null), [filter, setFilter] = useState(null), [invTick, setInvTick] = useState(0);
+        const job = useImport(), jobWaiting = impWaiting();
         const invChanged = () => { setInvTick((n) => n + 1); refresh(); };
         const load = () => { setBootErr(""); call("pfm.get").then((r) => { setBoot(r); if (r.settings) setMonth((m) => m || r.month); }, (e) => setBootErr(errText(e))); };
         useEffect(load, []);
@@ -1204,6 +1230,8 @@ const AccountantScreen = (function () {
             call("pfm.budget.list", { month }).then(setBudgets, () => setBudgets({ budgets: [] }));
         }, [month]);
         const reloadAll = () => { load(); refresh(); };
+        imp.onSaved = reloadAll;   // a batch saved while this screen is open refreshes it (a screen opened later loads anyway)
+        useEffect(() => () => { imp.onSaved = null; }, []);
         const confirmTx = (t) => call("pfm.tx.confirm", { id: t.id, rev: t.rev }).then(reloadAll, (e) => setBootErr(errText(e)));
         const skipTx = (t) => call("pfm.tx.delete", { id: t.id, rev: t.rev }).then(reloadAll, (e) => setBootErr(errText(e)));
         const dismissAlerts = () => { const ids = ((boot && boot.alerts) || []).map((a) => a.id); setBoot(Object.assign({}, boot, { alerts: [] })); call("pfm.alerts.read", { ids }).catch(() => {}); };
@@ -1216,6 +1244,13 @@ const AccountantScreen = (function () {
             : !boot ? h(Loading)
             : !s ? h(Onboarding, { onDone: (r) => { setBoot(r); setMonth(r.month); } })
             : h("div", { style: { padding: 16, paddingBottom: 96 } },
+                (job.busy || jobWaiting > 0) && !(sheet && sheet.type === "import") && h("button", { type: "button", onClick: () => setSheet({ type: "import" }),
+                    style: { width: "100%", display: "flex", alignItems: "center", gap: 10, marginBottom: 12, padding: "10px 14px", borderRadius: 12, border: "1px solid " + TEAL,
+                        backgroundColor: TEAL + "14", color: colors.text, fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "start" } },
+                    h(Upload, { size: 18, color: TEAL, style: { flexShrink: 0 } }),
+                    h("span", { "aria-live": "polite", style: { flex: 1 } }, job.busy && job.stage ? tl("استيراد الإيصالات: ", "Importing receipts: ") + job.stage
+                        : tl(`استيراد الإيصالات: ${jobWaiting} بانتظار المراجعة والإضافة`, `Importing receipts: ${jobWaiting} waiting for review`)),
+                    h("span", { style: { color: TEAL, whiteSpace: "nowrap" } }, tl("فتح", "Open"))),
                 h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 } },
                     h("button", { type: "button", "aria-label": tl("الشهر السابق", "Previous month"), onClick: () => setMonth(shiftMonth(month, -1)), style: navBtn(colors) }, h(ar() ? ChevronRight : ChevronLeft, { size: 20 })),
                     h("div", { style: { flex: 1, textAlign: "center", fontWeight: 800, fontSize: 16 } }, monthName(month)),
@@ -1231,7 +1266,7 @@ const AccountantScreen = (function () {
                     : tab === "ledger"
                     ? h(Ledger, { list, cats, base: cur, filter, onClearFilter: () => setFilter(null), onOpen: (t) => setSheet({ tx: t }), onAdd: () => setSheet({}),
                         onConfirm: confirmTx, onSkip: skipTx, recurringCount: (boot.recurring || []).length, rulesCount: (boot.rules || []).length,
-                        onRecurring: () => setSheet({ type: "recurring" }), onRules: () => setSheet({ type: "rules" }), onExport: () => setSheet({ type: "export" }), onImport: () => setSheet({ type: "import" }) })
+                        onRecurring: () => setSheet({ type: "recurring" }), onRules: () => setSheet({ type: "rules" }), onExport: () => setSheet({ type: "export" }), onImport: () => setSheet({ type: "import" }), importCount: jobWaiting })
                     : tab === "budgets"
                     ? h(Budgets, { data: budgets, cats, cur, onAdd: () => setSheet({ type: "budget" }), onEdit: (b) => setSheet({ type: "budget", budget: b }) })
                     : h(Invoices, { key: invTick, cur, today: boot.today, onOpen: (id) => setSheet({ type: "invoice", id }), onNew: () => setSheet({ type: "editor" }), onBiz: () => setSheet({ type: "biz" }) }));
@@ -1253,7 +1288,7 @@ const AccountantScreen = (function () {
                     onSaved: (inv) => { invChanged(); setSheet({ type: "invoice", id: inv.id }); } }),
                 sheet && s && sheet.type === "biz" && h(BizSheet, { base: cur, onClose: () => { setSheet(null); invChanged(); }, onSaved: () => { setSheet(null); invChanged(); } }),
                 sheet && s && sheet.type === "export" && h(ExportSheet, { month, latest: boot.month, onClose: () => setSheet(null) }),
-                sheet && s && sheet.type === "import" && h(ImportSheet, { cats, onClose: () => setSheet(null), onSaved: reloadAll }),
+                sheet && s && sheet.type === "import" && h(ImportSheet, { cats, onClose: () => setSheet(null) }),
                 sheet && s && sheet.type === "rules" && h(RulesSheet, { rules: boot.rules || [], cats, onClose: () => setSheet(null), onChanged: reloadAll })));
     }
     const navBtn = (colors) => ({ width: 40, height: 40, borderRadius: 20, border: "1px solid " + colors.border, backgroundColor: colors.card, color: colors.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" });
