@@ -966,7 +966,7 @@ const AccountantScreen = (function () {
     // confirms becomes an ordinary entry (pfm.tx.add) with the screenshot as its sealed receipt. A bank reference makes the
     // entry id on the server, so the same transfer imported twice is booked once.
     const OCR_BASE = "/ocr/v1/";                       // the OCR engine (never changes inside v1)
-    const READER_JS = "/ocr/sawa-reader-3.js";         // C276: the reader carries its version in its name (phones cache /ocr/ for good)
+    const READER_JS = "/ocr/sawa-reader-4.js";         // C276: the reader carries its version in its name (phones cache /ocr/ for good)
     let readerLoad = null;
     const loadReader = () => readerLoad || (readerLoad = new Promise((res, rej) => {
         if (window.SawaReader) return res(window.SawaReader);
@@ -983,7 +983,7 @@ const AccountantScreen = (function () {
         if (!ocrShared) {
             const t0 = Date.now();
             ocrShared = loadReader().then((R) => R.makeOcr({ base: OCR_BASE, onProgress: (st, pr) => ocrProgress && ocrProgress(st, pr) }))
-                .then((o) => o.warm().then(() => { ocrStat.ms = Date.now() - t0; o.warm(["ara"]).catch(() => {}); return o; }));   // Arabic names: the third engine, started in the background
+                .then((o) => o.warm().then(() => { ocrStat.ms = Date.now() - t0; return o; }));   // C279: all three engines (each image uses them at once)
             ocrShared.catch(() => { ocrShared = null; });
         }
         return ocrShared;
