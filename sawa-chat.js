@@ -5256,6 +5256,7 @@
       try { if (global.indexedDB) indexedDB.deleteDatabase("firebaseLocalStorageDb"); } catch (e) {}
       try { if (global.indexedDB) indexedDB.deleteDatabase("sawa-media"); } catch (e) {}   // C14: الصور والصوتيّات المنزّلة أيضاً (كما تعد نافذة الحذف)
       try { if (global.indexedDB) indexedDB.deleteDatabase("sawa-e2e"); } catch (e) {}   // C23: مفاتيح المحادثات السرّيّة
+      try { if (global.indexedDB) indexedDB.deleteDatabase("sawa-import"); } catch (e) {}   // C281: إيصالات الاستيراد المحفوظة
       // C58: ذاكرة Firestore المحلّيّة (C53) وأيّ مخزنٍ آخر — حتى لا تبقى محادثات الحساب السابق على الجهاز
       try { if (global.indexedDB && indexedDB.databases) indexedDB.databases().then(function (l) { (l || []).forEach(function (d) { if (d && d.name) try { indexedDB.deleteDatabase(d.name); } catch (e) {} }); }).catch(function () {}); } catch (e) {}
       try { if (global.indexedDB) indexedDB.deleteDatabase("firestore/[DEFAULT]/sawa-test-9770f/main"); } catch (e) {}
@@ -5934,7 +5935,7 @@
     if (c && c.uid === uid) { state.me = c.me; state.people = c.people || []; publish(); }
     else { state.me = null; try { if (app && app.setMyProfile) app.setMyProfile(null); if (app && app.setPeople) app.setPeople([]); } catch (e) {}
       // C14: حسابٌ آخر على هذا الجهاز ⇒ وسائط الحساب السابق المنزّلة تُمسح
-      if (c && c.uid) { try { idbP = null; if (global.indexedDB) indexedDB.deleteDatabase("sawa-media"); } catch (e) {} } }
+      if (c && c.uid) { try { idbP = null; if (global.indexedDB) { indexedDB.deleteDatabase("sawa-media"); indexedDB.deleteDatabase("sawa-import"); } } catch (e) {} } }   // C281: وإيصالات الاستيراد
     state.cachedUid = null;
     startMyPresence(uid);
     // C57: اسمٌ كُتب في شاشة البداية قبل أن تجهز الهويّة

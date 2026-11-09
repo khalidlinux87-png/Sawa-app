@@ -1019,9 +1019,90 @@ const AccountantScreen = (function () {
     }
     // C280: the import batch lives here, outside the sheet, for the whole app session: closing the sheet or leaving the
     // accountant screen does not stop the reading or lose the rows. The sheet and the screen's banner show it.
-    const imp = { rows: [], prefs: null, stage: "", busy: false, err: "", done: null, noHint: {}, open: false, onSaved: null };
+    const imp = { rows: [], prefs: null, stage: "", busy: false, err: "", done: null, noHint: {}, open: false, onSaved: null, cats: null };
     const impSubs = new Set();
-    const impSet = (p) => { Object.assign(imp, typeof p === "function" ? p(imp) : p); impSubs.forEach((f) => f()); };
+    const impSet = (p) => { Object.assign(imp, typeof p === "function" ? p(imp) : p); impSubs.forEach((f) => f()); impLater(); };
+    const impPatch = (key, p) => impSet((st) => ({ rows: st.rows.map((r) => (r.key === key ? Object.assign({}, r, typeof p === "function" ? p(r) : p) : r)) }));
+    // C281: the batch is also kept on the phone (IndexedDB «sawa-import»), so it survives an app restart: each image until
+    // it is read, then its reading, the user's edits and the shrunk receipt. Unread images are read again on the next start.
+    // Signing out wipes it (sawa-chat wipeLocal), and so does another account signing in on this phone.
+    let impDbP = null, impSaved = new Map(), impT = null, impRestoreP = null, impReady = false;
+    const impDb = () => impDbP || (impDbP = new Promise((res, rej) => {
+        const q = indexedDB.open("sawa-import", 1);
+        q.onupgradeneeded = () => q.result.createObjectStore("rows", { keyPath: "key" });
+        q.onsuccess = () => { const db = q.result; db.onversionchange = () => { db.close(); impDbP = null; }; res(db); };
+        q.onerror = () => { impDbP = null; rej(q.error); };
+    }));
+    const impTx = (mode, fn) => impDb().then((db) => new Promise((res, rej) => {
+        const tx = db.transaction("rows", mode), q = fn(tx.objectStore("rows"));
+        tx.oncomplete = () => res(q && q.result); tx.onerror = tx.onabort = () => rej(tx.error);
+    }));
+    const impRec = (r, order) => ({ key: r.key, order, name: r.name || (r.file && r.file.name) || "",
+        file: r.state === "wait" || r.state === "read" ? r.file : null,       // read ⇒ the shrunk receipt (photo) is enough
+        state: r.state === "read" ? "wait" : r.state, r: r.r || null, edit: r.edit || null, ms: r.ms == null ? null : r.ms,
+        photo: r.photo || null, saved: r.saved || null, saveErr: r.saveErr || null });
+    function impLater() {
+        if (!impReady) return;
+        if (imp.rows.some((r) => !impSaved.has(r.key))) { clearTimeout(impT); impFlush(); }   // new images: written at once
+        else if (!impT) impT = setTimeout(impFlush, 300);                                        // edits: a moment later
+    }
+    try { window.addEventListener("pagehide", () => { if (impReady) { clearTimeout(impT); impFlush(); } }); } catch (e) {}
+    function impFlush() {
+        impT = null;
+        const now = new Map(imp.rows.map((r) => [r.key, r]));
+        const put = imp.rows.map((r, i) => [r, i]).filter(([r]) => impSaved.get(r.key) !== r), del = [...impSaved.keys()].filter((k) => !now.has(k));
+        if (!put.length && !del.length) return;
+        impSaved = now;
+        impTx("readwrite", (st) => { put.forEach(([r, i]) => st.put(impRec(r, i))); del.forEach((k) => st.delete(k)); }).catch(() => {});
+    }
+    function impRestore() {
+        if (impRestoreP) return impRestoreP;
+        const load = window.indexedDB ? impTx("readonly", (st) => st.getAll()).catch(() => []) : Promise.resolve([]);
+        return (impRestoreP = load.then((recs) => {
+            const rows = (recs || []).sort((a, b) => a.order - b.order).map((x) => Object.assign({}, x, {
+                state: x.state === "wait" && !x.file ? "error" : x.state, url: x.file ? URL.createObjectURL(x.file) : x.photo || "" }));
+            rows.forEach((r) => impSaved.set(r.key, r));
+            impReady = true;
+            impSet({ rows: rows.concat(imp.rows) });
+            const todo = rows.filter((r) => r.state === "wait");
+            if (todo.length) impRun(todo);
+        }));
+    }
+    // The reading loop, outside the sheet. Images picked while it runs join its queue.
+    let impQ = [], impN = 0, impI = 0;
+    async function impRun(items) {
+        impQ = impQ.concat(items); impN += items.length;
+        if (imp.busy) return;
+        impSet({ busy: true, err: "", done: null });
+        try {
+            if (!imp.prefs) imp.prefs = await call("pfm.import.prefs.get").catch(() => ({ accounts: [], names: {} }));
+            const R = await loadReader();
+            const ocr = await startOcr();
+            while (impQ.length) {
+                const it = impQ.shift(); impI++;
+                if (!imp.rows.some((r) => r.key === it.key)) continue;   // cleared meanwhile
+                const ctx = { myAccounts: imp.prefs.accounts, knownAccounts: imp.prefs.names, source: "image_ocr" }, cats = imp.cats || {};
+                impSet({ stage: tl(`قراءة ${impI} من ${impN}…`, `Reading ${impI} of ${impN}…`) });
+                impPatch(it.key, { state: "read" });
+                try {
+                    const t0 = Date.now();
+                    const r = await R.readFile(it.file, ocr, ctx);
+                    const ms = Date.now() - t0;
+                    const photo = await shrinkImage(it.file, 1280, true).catch(() => null);
+                    if (!r) { impPatch(it.key, { state: "none", photo, ms }); continue; }
+                    // the same transfer twice in this batch: keep the first
+                    const twin = r.transaction_id && imp.rows.find((x) => x.key !== it.key && x.r && x.r.transaction_id === r.transaction_id);
+                    impPatch(it.key, { state: twin ? "twin" : "done", r, photo, ms, edit: Object.assign(rowFromResult(r, cats), twin ? { include: false } : {}) });
+                } catch (x) { impPatch(it.key, { state: "error" }); }
+            }
+        } catch (x) {
+            impQ.forEach((it) => impPatch(it.key, { state: "error" })); impQ = [];
+            impSet({ err: tl("تعذّر تحميل القارئ — تحقّق من الاتّصال وحاول ثانيةً", "Couldn't load the reader — check your connection and try again") });
+        }
+        impN = 0; impI = 0;
+        impSet({ stage: "", busy: false });
+        if (!imp.open) releaseOcr();   // read while the sheet was closed: the engines rest now
+    }
     function useImport() {
         const [, tick] = useState(0);
         useEffect(() => { const f = () => tick((n) => n + 1); impSubs.add(f); return () => { impSubs.delete(f); }; }, []);
@@ -1031,8 +1112,9 @@ const AccountantScreen = (function () {
     const impWaiting = () => imp.rows.filter((r) => !r.saved && (r.state === "wait" || r.state === "read" || r.state === "done")).length;
     function impClear() {
         if (imp.busy) return;
-        imp.rows.forEach((r) => r.url && URL.revokeObjectURL(r.url));
+        imp.rows.forEach((r) => r.url && /^blob:/.test(r.url) && URL.revokeObjectURL(r.url));
         impSet({ rows: [], stage: "", err: "", done: null, noHint: {} });
+        if (window.indexedDB) impTx("readwrite", (st) => st.clear()).catch(() => {});
     }
     function ImportSheet({ cats, onClose }) {
         const { colors } = useTheme();
@@ -1052,34 +1134,12 @@ const AccountantScreen = (function () {
             return () => { ocrProgress = null; impSet({ open: false }); if (!imp.busy) { releaseOcr(); if (!impWaiting()) impClear(); } }; }, []);
         const patch = (key, p) => setRows((rs) => rs.map((r) => (r.key === key ? Object.assign({}, r, typeof p === "function" ? p(r) : p) : r)));
         const patchEdit = (key, p) => patch(key, (r) => ({ edit: Object.assign({}, r.edit, p) }));
-        const pick = async (e) => {
+        const pick = (e) => {
             const files = Array.from((e.target.files) || []).slice(0, 50); e.target.value = "";
             if (!files.length || !prefs) return;
-            setErr(""); setDone(null); setBusy(true);
-            const fresh = files.map((f) => ({ key: newKey(), file: f, url: URL.createObjectURL(f), state: "wait" }));
+            const fresh = files.map((f) => ({ key: newKey(), file: f, name: f.name, url: URL.createObjectURL(f), state: "wait" }));
             setRows((rs) => rs.concat(fresh));
-            try {
-                const R = await loadReader();
-                const ocr = await startOcr();
-                const ctx = { myAccounts: prefs.accounts, knownAccounts: prefs.names, source: "image_ocr" };
-                for (let i = 0; i < fresh.length; i++) {
-                    const it = fresh[i];
-                    setStage(tl(`قراءة ${i + 1} من ${fresh.length}…`, `Reading ${i + 1} of ${fresh.length}…`));
-                    patch(it.key, { state: "read" });
-                    try {
-                        const t0 = Date.now();
-                        const r = await R.readFile(it.file, ocr, ctx);
-                        const ms = Date.now() - t0;
-                        const photo = await shrinkImage(it.file, 1280, true).catch(() => null);
-                        if (!r) { patch(it.key, { state: "none", photo, ms }); continue; }
-                        // the same transfer twice in this batch: keep the first
-                        const twin = r.transaction_id && imp.rows.find((x) => x.key !== it.key && x.r && x.r.transaction_id === r.transaction_id);
-                        patch(it.key, { state: twin ? "twin" : "done", r, photo, ms, edit: Object.assign(rowFromResult(r, cats), twin ? { include: false } : {}) });
-                    } catch (x) { patch(it.key, { state: "error" }); }
-                }
-            } catch (x) { setErr(tl("تعذّر تحميل القارئ — تحقّق من الاتّصال وحاول ثانيةً", "Couldn't load the reader — check your connection and try again")); }
-            impSet({ stage: "", busy: false });
-            if (!imp.open) releaseOcr();   // read while the sheet was closed: the engines rest now
+            impRun(fresh);
         };
         // A new account seen as the sender on a success screen: one question, then every row is decided again.
         const hints = {};
@@ -1131,7 +1191,7 @@ const AccountantScreen = (function () {
                     style: { width: 44, height: 56, flexShrink: 0, border: "1px solid " + colors.border, borderRadius: 8, padding: 0, background: "none", overflow: "hidden", cursor: "pointer" } },
                     h("img", { src: row.url, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } })),
                 h("div", { style: { flex: 1, minWidth: 0, fontSize: 12, color: colors.textMuted } },
-                    h("div", { dir: "auto", style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, row.file.name),
+                    h("div", { dir: "auto", style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, row.name || (row.file && row.file.name) || ""),
                     r && h("div", { dir: "ltr", style: { textAlign: ar() ? "right" : "left" } }, r.transaction_id ? "#" + r.transaction_id : ""),
                     row.ms != null && h("div", null, tl(`قُرئت في ${secs(row.ms)} ث`, `Read in ${secs(row.ms)} s`))),
                 status);
@@ -1206,8 +1266,8 @@ const AccountantScreen = (function () {
                 busy && !stage ? tl("جارٍ الحفظ…", "Saving…") : tl(`إضافة ${chosen.length} إلى السجلّ`, `Add ${chosen.length} to the ledger`)),
             rows.length > 0 && h(Btn, { kind: "ghost", onClick: impClear, disabled: busy, style: { width: "100%", marginTop: 8 } }, tl("إنهاء الدفعة ومسح القائمة", "Finish this batch and clear the list")),
             rows.length > 0 && h("div", { style: { fontSize: 11, color: colors.textMuted, marginTop: 8, textAlign: "center", lineHeight: 1.6 } },
-                tl("يمكنك إغلاق هذه الشاشة: القراءة تستمرّ، وتعود إليها من شريط «الاستيراد» في المحاسب. (إعادة تشغيل التطبيق تمسحها.)",
-                    "You can close this screen: reading goes on, and the «Import» bar in the accountant brings you back. (Restarting the app clears it.)")),
+                tl("يمكنك إغلاق هذه الشاشة: القراءة تستمرّ، وتعود إليها من شريط «الاستيراد» في المحاسب. القائمة محفوظة على هاتفك حتى بعد إعادة تشغيل التطبيق.",
+                    "You can close this screen: reading goes on, and the «Import» bar in the accountant brings you back. The list is kept on your phone, even after the app restarts.")),
             view && h(PhotoView, { src: view, onClose: () => setView(null) }));
     }
 
@@ -1239,6 +1299,8 @@ const AccountantScreen = (function () {
         useEffect(refresh, [refresh]);
         const cats = useMemo(() => { const m = {}; ((boot && boot.categories) || []).forEach((c) => { m[c.id] = c; }); return m; }, [boot]);
         const s = boot && boot.settings;
+        imp.cats = cats;
+        useEffect(() => { if (s) impRestore(); }, [!!s]);   // C281: a batch kept from before the app restarted
         const cur = s && s.baseCurrency;
         const body = bootErr ? h(Card, { style: { margin: 16 } }, h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, marginBottom: 10 } }, bootErr), h(Btn, { onClick: () => { load(); refresh(); } }, tl("إعادة المحاولة", "Try again")))
             : !boot ? h(Loading)
