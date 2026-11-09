@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c274";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c275";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -1545,6 +1545,9 @@
       paint(c);
     }
     var g = gc || rm;   // الجماعيّة والغرف: الميكروفون فقط
+    // C275: تطبيق أندرويد القديم (قبل c272) يعلّق عند أيّ فقدٍ لـ«تركيز الصوت» — ومشغّل صوت المشاركين في سوا نفسها يأخذه
+    //       حين ينضمّ أحد ⇒ كان ميكروفوني في الغرفة يُكتم بلا إشارة. الجديد (فيه audioResume) يتحقّق من مكالمةٍ أخرى فعلاً.
+    var nb = NB(); if (on && nb && !nb.audioResume) g = null;
     if (g && g.local && !g.done && (g.live || g.joinedAt || !on) && !!g.held !== on) {
       g.held = on;
       var micOn = g === rm ? !!g.mic : !g.muted;   // الغرف: mic = مفتوح · الجماعيّة: muted = مكتوم
@@ -3805,6 +3808,10 @@
       try { if (r.an && r.an.src) r.an.src.disconnect(); r.an = null; rLevelWatch(r, "__me", r.local); } catch (e) {}
     }).catch(function (e) { r.healing = false; LOG.warn("room.mic.heal.fail", { err: e && (e.name || e.message) }); });
   }
+  // C275: صوت المشاركين يتوقّف حين ينضمّ ثالث — النظام/WebView يوقف مشغّلات الصوت عند تنازع «تركيز الصوت» ولا يعيدها
+  function rResumeAudio() {
+    try { if (!rui.audios) return; [].forEach.call(rui.audios.querySelectorAll("audio"), function (a) { if (a.srcObject && a.paused) { LOG.info("room.audio.resume"); a.play().catch(function () {}); } }); } catch (e) {}
+  }
   function rTick(r) {
     if (r.done) return;
     // C64: حارس — لا تبقى الغرفة عالقةً في «جارٍ العودة»: الصوت يتدفّق ⇒ حيّة · عودةٌ معلّقة أكثر من 20 ث (طلبٌ لم يرجع أثناء الانقطاع) ⇒ محاولةٌ جديدة
@@ -3835,6 +3842,7 @@
     // C65: عضوٌ حاضر ولا اتّصال معه (عرضٌ ضاع: كُتب حين غاب أحدنا لحظةً فرفضته القواعد، أو حُذف مع sig) ⇒ نعيد المحاولة — كان لا يُعاد أبداً فيبقى كلٌّ وحده
     r.tickN = (r.tickN || 0) + 1;
     rMicHeal(r);   // C272
+    if (r.live && !r.held) rResumeAudio();   // C275
     if (r.live && !r.rejoining && !rBig(r) && r.state === "live" && r.tickN % 4 === 0) {
       var me = myUid(), nowT = Date.now(); r.noPeer = r.noPeer || {};
       Object.keys(r.members || {}).forEach(function (u) {
