@@ -97,22 +97,32 @@ server.listen(0, "127.0.0.1", async () => {
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
     check(!(await page.evaluate(() => !!document.querySelector("[data-photo-viewer]"))), "Esc يغلق العارض");
     // ── ٤) معلومات المجموعة: مراسلة عضوٍ على الخاصّ + المعرض ──
-    const gi = await page.evaluate(([ms]) => new Promise((resolve) => {
+    const gi = await page.evaluate(([ms, photo]) => new Promise((resolve) => {
       const calls = []; window.__sawaFamContact = (uid, name, kind) => calls.push([uid, name, kind]);
       const host = document.createElement("div"); host.style.cssText = "position:fixed;inset:0;z-index:99999;background:#fff;display:flex"; document.body.appendChild(host);
-      const group = { id: "grp_t", name: "الأسرة", cloud: true, members: [{ id: "me", uid: "me", name: "أنا", role: "admin" }, { id: "u2", uid: "u2", name: "هدى" }] };
+      const group = { id: "grp_t", name: "الأسرة", cloud: true, members: [{ id: "me", uid: "me", name: "أنا", role: "admin" }, { id: "u2", uid: "u2", name: "هدى", photo: photo }] };
       const theme = { isDark: false, colors: Object.assign({}, lightColors, { primary: "#2774BA", primaryDark: "#1E3A63", primaryInk: "#1E3A63", primaryLight: "#E3EEF8", btnFill: "#E7ECF2" }) };
       const el = React.createElement(ThemeContext.Provider, { value: theme }, React.createElement(ToastProvider, null, React.createElement(GroupInfoScreen, { group, myUserId: "me", messages: ms, onMessageMember: (m) => window.__sawaFamContact(m.uid, m.name, "msg"), onRename() {}, onAddMembers() {}, onRemoveMember() {}, onToggleAdmin() {}, onLeave() {}, onBack() {} })));
       const root = ReactDOM.createRoot ? ReactDOM.createRoot(host) : null; if (root) root.render(el); else ReactDOM.render(el, host);
       setTimeout(() => {
         const b = host.querySelector("[data-member-dm='u2']"); if (b) b.click();
         const meBtn = host.querySelector("[data-member-dm='me']");
-        resolve({ calls, meDisabled: !!(meBtn && meBtn.disabled), gallery: !!host.querySelector("[data-media-gallery]") });
-        try { root ? root.unmount() : ReactDOM.unmountComponentAtNode(host); } catch (e) {} host.remove();
+        // C272: صورة العضو تُفتح كبيرةً
+        const pb = [...host.querySelectorAll("button")].find((x) => /هدى/.test(x.getAttribute("aria-label") || "") && !x.hasAttribute("data-member-dm"));
+        if (pb) pb.click();
+        setTimeout(() => {
+          const pv = document.querySelector("[data-photo-viewer]"), r = pv && pv.getBoundingClientRect();
+          const hit = r ? document.elementFromPoint(innerWidth / 2, innerHeight / 2) : null;
+          resolve({ calls, meDisabled: !!(meBtn && meBtn.disabled), gallery: !!host.querySelector("[data-media-gallery]"), photoBtn: !!pb,
+            viewer: !!pv, viewerOnTop: !!(pv && hit && pv.contains(hit)), viewerTitle: pv ? pv.innerText.slice(0, 30) : null });
+          try { root ? root.unmount() : ReactDOM.unmountComponentAtNode(host); } catch (e) {} host.remove();
+        }, 400);
       }, 400);
-    }), [MSGS]);
+    }), [MSGS, WIDE_PNG]);
     check(gi.calls.length === 1 && gi.calls[0][0] === "u2" && gi.calls[0][2] === "msg", "الضغط على «هدى» يفتح محادثةً خاصّة معها", gi);
     check(gi.meDisabled && gi.gallery, "لا مراسلة للنفس · المعرض في معلومات المجموعة", gi);
+    check(gi.photoBtn && gi.viewer && gi.viewerOnTop, "صورة العضو في معلومات المجموعة تُفتح كبيرةً فوق كلّ شيء", gi);
+    check(gi.viewerTitle && /هدى/.test(gi.viewerTitle), "عارض صورة العضو يحمل اسمه", gi);
     if (errors.length) { failN++; console.error("✗ استثناءات في الصفحة:\n  " + errors.join("\n  ")); }
     console.log((failN ? "✗" : "✓") + " chat C204: " + pass + " passed, " + failN + " failed");
     process.exitCode = failN ? 1 : 0;

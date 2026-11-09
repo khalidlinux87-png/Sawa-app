@@ -298,6 +298,18 @@ function GroupInfoScreen({ messages = [], onMessageMember = null, group, myUserI
     const [newMemberName, setNewMemberName] = useState("");
     const me = group.members.find((m) => m.id === myUserId);
     const isAdmin = !!me && me.role === "admin";
+    // C272: صورة العضو تُفتح كبيرةً — كانت لا تُفتح إن لم تصل مصغّرته بعد (تفتح محادثةً خاصّة بدلها)، والعارض بلا اسمه ولا نسخته العالية
+    const [photoBusy, setPhotoBusy] = useState(false);
+    const openMemberPhoto = (m) => {
+        const SC = window.SawaChat, uid = m.uid || (group.cloud ? m.id : null);
+        const thumb = m.photo || (uid && SC && SC.photoOf ? SC.photoOf(uid) : null);
+        const title = m.id === myUserId ? tl("أنت", "You") : m.name;
+        if (thumb) { setViewPhoto({ photo: thumb, hdId: uid, title }); return; }
+        const fallback = () => { if (onMessageMember && m.id !== myUserId) onMessageMember(m); };
+        if (!uid || !SC || !SC.photoHd || photoBusy) { fallback(); return; }
+        setPhotoBusy(true);
+        Promise.resolve(SC.photoHd(uid)).then((hd) => { setPhotoBusy(false); if (hd) setViewPhoto({ photo: hd, hdId: uid, title }); else fallback(); }, () => { setPhotoBusy(false); fallback(); });
+    };
     const admins = group.members.filter((m) => m.role === "admin").length;
     // C3: محادثة العائلة تتبع أعضاء العائلة — لا إضافة ولا إزالة ولا مغادرة من هنا
     const isFamily = group.kind === "family";
@@ -335,7 +347,7 @@ function GroupInfoScreen({ messages = [], onMessageMember = null, group, myUserI
                         React.createElement(Pic, { photo: group.photo || null, letter: null, size: 96, bg: colors.primaryLight, color: colors.primary }, group.photo ? null : React.createElement(UsersRound, { size: 40, color: colors.primary })),
                         canPhoto && React.createElement("span", { className: "absolute bottom-0 rounded-full flex items-center justify-center", style: { insetInlineEnd: 0, width: 30, height: 30, backgroundColor: colors.primary, border: "2px solid " + colors.card } }, React.createElement(Camera, { size: 15, color: "#fff" })));
                 })(),
-                viewPhoto && React.createElement(PhotoViewer, { photo: viewPhoto, onClose: () => setViewPhoto(null) }),
+                viewPhoto && React.createElement(PhotoViewer, typeof viewPhoto === "string" ? { photo: viewPhoto, title: group.name, onClose: () => setViewPhoto(null) } : { photo: viewPhoto.photo, hdId: viewPhoto.hdId || null, title: viewPhoto.title || "", onClose: () => setViewPhoto(null) }),
                 editingName
                     ? React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 w-full` },
                         React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: nameDraft, autoFocus: true, onChange: (e) => setNameDraft(e.target.value), className: `flex-1 rounded-xl border px-3 py-2 text-sm ${textStart()}`, style: { borderColor: colors.primary, color: colors.text, backgroundColor: colors.bg } }),
@@ -365,7 +377,7 @@ function GroupInfoScreen({ messages = [], onMessageMember = null, group, myUserI
                     // المشرف لا يدير نفسه من هنا — الخروج له زر مستقل بالأسفل
                     isAdmin && !isFamily && m.id !== myUserId && React.createElement("button", { "aria-label": t("gi_khyarat"), onClick: () => setMemberMenu(m), className: "w-7 h-7 flex items-center justify-center shrink-0" },
                         React.createElement(MoreVertical, { size: 15, color: colors.textMuted })),
-                    React.createElement("button", { "aria-label": tl("صورة ", "Photo of ") + m.name, onClick: () => m.photo ? setViewPhoto(m.photo) : (onMessageMember && m.id !== myUserId && onMessageMember(m)), className: "shrink-0 rounded-full" },
+                    React.createElement("button", { "aria-label": tl("صورة ", "Photo of ") + m.name, onClick: () => openMemberPhoto(m), className: "shrink-0 rounded-full" },
                         React.createElement(Pic, { photo: m.photo || null, letter: (m.name || "?").charAt(0), size: 40, bg: colors.primaryLight, color: colors.primary }))))),
             // C204: معرض الوسائط والملفّات
             React.createElement("div", { className: "mt-3 px-4 py-3", style: { backgroundColor: colors.card } },
@@ -2456,6 +2468,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
     const [staged, setStaged] = useState(null);   // C193       // C3: ردٌّ حقيقيّ (معرّف الرسالة)
     const [gDel, setGDel] = useState(null);           // C3: تأكيد الحذف (عندي/للجميع)
     const [showGroupInfo, setShowGroupInfo] = useState(false);
+    const [viewSender, setViewSender] = useState(null);   // C272: صورة المرسِل كبيرةً
     const [voiceChatActive, setVoiceChatActive] = useState(false);
     const [voiceChatJoined, setVoiceChatJoined] = useState(false);
     const [voiceChatParticipants, setVoiceChatParticipants] = useState([]);
@@ -2653,6 +2666,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                 "\u2022 ",
                 a,
                 t("gc_slahya_mshrf"))))))),
+        viewSender && React.createElement(PhotoViewer, { photo: viewSender.photo, hdId: viewSender.hdId, title: viewSender.title, onClose: () => setViewSender(null) }),
         !online && React.createElement(OfflineBar, null),
         React.createElement(PinnedBar, { ids: pinIdsOf(group), messages, win, colors }),   // C227
         React.createElement("div", { style: { position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } },   // C174: لزرّ «إلى آخر المحادثة»
@@ -2783,7 +2797,10 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                     t("rsala_mwjha"))),
                 // C164: الصورة والاسم مع أوّل رسالةٍ في سلسلة رسائل المرسِل فقط (كواتساب) — لا تتكرّر مع كلّ رسالة
                 !mine && (() => { const pv = win.shown[mi - 1]; return !pv || pv.senderId !== m.senderId || pv.type === "system" || ["billSplit", "fundraiser", "taskList", "poll"].includes(pv.type) || (m.createdAt || 0) - (pv.createdAt || 0) > 300000; })() && React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-0.5 mt-1` },
-                    React.createElement(SenderAvatar, { name: (sender && sender.name) || t("gc_swal"), size: 20, photo: sender && sender.photo }),
+                    sender && sender.photo
+                        ? React.createElement("button", { "aria-label": tl("صورة ", "Photo of ") + sender.name, onClick: (e) => { e.stopPropagation(); setViewSender({ photo: sender.photo, hdId: sender.uid || null, title: sender.name }); }, style: { background: "none", border: 0, padding: 0, borderRadius: 999 } },   // C272
+                            React.createElement(SenderAvatar, { name: sender.name || t("gc_swal"), size: 20, photo: sender.photo }))
+                        : React.createElement(SenderAvatar, { name: (sender && sender.name) || t("gc_swal"), size: 20, photo: sender && sender.photo }),
                     React.createElement("button", { onClick: () => { if (sender && sender.uid && window.SawaChat && window.SawaChat.renameContact) window.SawaChat.renameContact(sender.uid); }, className: "text-[11px] font-bold", style: { color: senderColor((sender && sender.name) || t("gc_swal")), background: "none", border: 0, padding: 0 } }, sender === null || sender === void 0 ? void 0 : sender.name, sender && sender.unnamed ? React.createElement("span", { style: { marginInlineStart: 6, fontSize: 10, color: "#B45309", fontWeight: 800 } }, tl("＋ اسم", "+ name")) : null)),
                 m.replyToText && React.createElement("div", { role: "button", onClick: () => jumpToMessage(m.replyTo && (m.replyTo.id || m.replyTo), win, showToast), className: "max-w-[78%] text-[10px] px-2 py-1 mb-0.5 rounded-lg flex items-center gap-2 " + (isRTL() ? "border-r-2" : "border-l-2"), style: { backgroundColor: colors.card, borderColor: colors.accent, color: colors.textMuted, cursor: "pointer" } }, React.createElement("span", { className: "flex-1 min-w-0 truncate" }, "↩ " + m.replyToText), m.replyThumb && React.createElement("img", { src: m.replyThumb, alt: "", style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover", flexShrink: 0 } })),
                 React.createElement("div", { className: `max-w-[78%] rounded-2xl border ${["image", "video", "sticker"].includes(m.type) ? "" : "px-3 py-2"}`, style: { backgroundColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : mine ? colors.primary : colors.card, borderColor: ["image", "video", "sticker"].includes(m.type) ? "transparent" : colors.border, cursor: "pointer" }, ...(sel ? {} : longPress(() => setGroupMsgMenu({ id: m.id, text: m.text, mine: mine, senderId: m.senderId, senderName: (sender && sender.name) || "", type: m.type, thumb: (m.extra && m.extra.thumb) || null, viewOnce: !!m.viewOnce, deleted: !!m.deleted, starred: !!m.starred, pinned: pinIdsOf(group).indexOf(m.id) >= 0 }))) }, m.type === "image" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "sticker" ? (React.createElement("span", { className: "text-4xl" }, m.text)) : m.type === "video" ? React.createElement(MediaBubble, { m, onView: setViewingImage }) : m.type === "file" ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2`, onClick: () => { if (m.cloudMid && window.SawaChat) window.SawaChat.openFile(m); }, style: { cursor: m.cloudMid ? "pointer" : "default" } },
