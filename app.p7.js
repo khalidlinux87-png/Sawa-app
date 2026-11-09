@@ -2581,10 +2581,14 @@ function isWalletSecret(rec) {
     return !!rec && typeof rec === "object" && rec.v === 1 && typeof rec.salt === "string" && typeof rec.hash === "string" && Array.isArray(rec.codes);
 }
 // يُرجع { record, codes } — codes نصّاً للعرض مرّةً واحدة فقط
-function makeWalletSecret(pin) {
+// C283: السجلّ نفسه لرمز قفل التطبيق (sawa:appLock) — makeSecretRecord برموزٍ جاهزة
+function makeSecretRecord(pin, codes) {
     const salt = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+    return { v: 1, salt, hash: walletHashSecret(salt, String(pin)), codes: (codes || []).map((c) => walletHashSecret(salt, normalizeWalletCode(c))) };
+}
+function makeWalletSecret(pin) {
     const codes = generateRecoveryCodes();
-    return { record: { v: 1, salt, hash: walletHashSecret(salt, String(pin)), codes: codes.map((c) => walletHashSecret(salt, normalizeWalletCode(c))) }, codes };
+    return { record: makeSecretRecord(pin, codes), codes };
 }
 let walletPinMatchCache = { key: "", ok: false };
 function walletPinMatches(rec, pin) {
@@ -2602,19 +2606,21 @@ function walletCodeIndex(rec, code) {
 }
 // حدّ المحاولات الخاطئة (رمز المحفظة ورموز الاسترداد معاً) — يبقى بعد إعادة التشغيل
 const WALLET_LOCKOUT_KEY = SAWA_STORE_PREFIX + "walletLockout";
-function walletLockoutGet() {
-    try { const o = JSON.parse(localStorage.getItem(WALLET_LOCKOUT_KEY) || "null"); return o && typeof o.fails === "number" ? o : { fails: 0, until: 0 }; }
+const APP_LOCKOUT_KEY = SAWA_STORE_PREFIX + "appLockout"; // C283: قفل التطبيق — العدّاد نفسه بمفتاحٍ منفصل
+function walletLockoutGet(key = WALLET_LOCKOUT_KEY) {
+    try { const o = JSON.parse(localStorage.getItem(key) || "null"); return o && typeof o.fails === "number" ? o : { fails: 0, until: 0 }; }
     catch (e) { return { fails: 0, until: 0 }; }
 }
-function walletLockoutFail() {
-    const o = walletLockoutGet();
+function walletLockoutFail(key = WALLET_LOCKOUT_KEY) {
+    const o = walletLockoutGet(key);
     const fails = o.fails + 1;
     // 5 محاولات ⇒ 5 دقائق، ثمّ تتضاعف مع كلّ خطأ بعدها (حتى ساعة)
     const until = fails >= 5 ? Date.now() + Math.min(60, 5 * Math.pow(2, fails - 5)) * 60000 : 0;
-    try { localStorage.setItem(WALLET_LOCKOUT_KEY, JSON.stringify({ fails, until })); } catch (e) { }
+    try { localStorage.setItem(key, JSON.stringify({ fails, until })); } catch (e) { }
     return { fails, until };
 }
-function walletLockoutReset() { try { localStorage.removeItem(WALLET_LOCKOUT_KEY); } catch (e) { } }
+function walletLockoutReset(key = WALLET_LOCKOUT_KEY) { try { localStorage.removeItem(key); } catch (e) { } }
+function lockoutMsg(ms) { return tl("محاولات خاطئة كثيرة — حاول بعد " + Math.ceil(ms / 60000) + " دقيقة", "Too many wrong tries — try again in " + Math.ceil(ms / 60000) + " min"); }
 function WalletLockScreen({ onUnlock, onBack, walletPasskeyId, onPasskeyRegistered, walletPin, onSetWalletPin, appPin }) {
     const { colors } = useTheme();
     const [webauthnStatus, setWebauthnStatus] = useState("");
@@ -2634,9 +2640,7 @@ function WalletLockScreen({ onUnlock, onBack, walletPasskeyId, onPasskeyRegister
         const id = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(id);
     }, [lockedFor > 0]);
-    const lockMsg = lockedFor > 0
-        ? tl("محاولات خاطئة كثيرة — حاول بعد " + Math.ceil(lockedFor / 60000) + " دقيقة", "Too many wrong tries — try again in " + Math.ceil(lockedFor / 60000) + " min")
-        : "";
+    const lockMsg = lockedFor > 0 ? lockoutMsg(lockedFor) : "";
     function fail(msg) {
         const o = walletLockoutFail();
         setLockout(o);
@@ -2730,7 +2734,7 @@ function WalletLockScreen({ onUnlock, onBack, walletPasskeyId, onPasskeyRegister
             opts.push(React.createElement("p", { key: "apl", className: "text-xs mb-2 text-center", style: { color: colors.textMuted } }, tl("رمز قفل التطبيق (6 أرقام)", "App lock PIN (6 digits)")));
             opts.push(React.createElement(React.Fragment, { key: "apf" }, pinField(appPinInput, setAppPinInput, "••••••", tl("رمز قفل التطبيق", "App lock PIN"))));
             opts.push(React.createElement(Button, { key: "apb", label: tl("تحقّق", "Verify"), disabled: blocked || appPinInput.length < 6, onPress: () => {
-                    if (appPinInput === appPin) { succeed(); setAppPinInput(""); setMode("newPin"); }
+                    if (walletPinMatches(appPin, appPinInput)) { succeed(); setAppPinInput(""); setMode("newPin"); }
                     else { setAppPinInput(""); fail(tl("رمز قفل التطبيق غير صحيح", "Incorrect app lock PIN")); }
                 }, style: { width: 240 } }));
         }

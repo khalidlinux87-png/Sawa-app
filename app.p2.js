@@ -789,7 +789,7 @@ function generateRecoveryCodes() {
 // ============================================================================
 // شاشة إعداد PIN
 // ============================================================================
-function SetupPinScreen({ onDone }) {
+function SetupPinScreen({ onDone, onCancel }) {
     const { colors } = useTheme();
     const [step, setStep] = useState("enter");
     const [firstPin, setFirstPin] = useState("");
@@ -833,6 +833,7 @@ function SetupPinScreen({ onDone }) {
                 React.createElement(Button, { label: t("mtabaa"), onPress: () => onDone(firstPin, codes), disabled: !confirmed }))));
     }
     return (React.createElement("div", { className: "flex-1 flex flex-col overflow-y-auto", style: { backgroundColor: colors.bg } },
+        onCancel && React.createElement("button", { "aria-label": t("ighlaq"), onClick: onCancel, className: "m-4 mb-0 self-start" }, React.createElement(X, { size: 20, color: colors.textMuted })),
         React.createElement("div", { className: "flex flex-col items-center justify-center py-4" },
             React.createElement(Lock, { size: 30, color: colors.primary }),
             React.createElement("h2", { className: "text-base font-extrabold mt-3", style: { color: colors.text } }, step === "enter" ? "أنشئ رمز قفل التطبيق" : "أكّد الرمز"),
@@ -844,69 +845,82 @@ function SetupPinScreen({ onDone }) {
 // ============================================================================
 // شاشة القفل
 // ============================================================================
-function LockScreen({ onUnlock, onForgot, correctPin, biometricEnabled }) {
+// C283: الرمز محفوظٌ مُجزّأً (walletPinMatches) · حدّ محاولاتٍ حقيقيّ يبقى بعد إعادة التشغيل · البصمة عبر WebAuthn (onBiometric)
+function LockScreen({ onUnlock, onForgot, correctPin, biometricEnabled, onBiometric }) {
     const { colors } = useTheme();
     const [pin, setPin] = useState("");
     const [error, setError] = useState(false);
-    const [attempts, setAttempts] = useState(0);
-    const [lockMsg, setLockMsg] = useState("");
+    const [lockout, setLockout] = useState(() => walletLockoutGet(APP_LOCKOUT_KEY));
+    const [now, setNow] = useState(Date.now());
+    const [bioMsg, setBioMsg] = useState("");
+    const lockedFor = Math.max(0, lockout.until - now);
+    useEffect(() => {
+        if (!lockedFor) return;
+        const id = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(id);
+    }, [lockedFor > 0]);
     function handleDigit(d) {
-        if (pin.length >= 6)
+        if (pin.length >= 6 || lockedFor > 0)
             return;
         const next = pin + d;
         setPin(next);
         if (next.length === 6) {
-            if (next === correctPin) {
+            if (walletPinMatches(correctPin, next)) {
+                walletLockoutReset(APP_LOCKOUT_KEY);
                 onUnlock();
             }
             else {
-                const a = attempts + 1;
-                setAttempts(a);
+                setLockout(walletLockoutFail(APP_LOCKOUT_KEY));
+                setNow(Date.now());
                 setError(true);
-                if (a === 4)
-                    setLockMsg("محاولات كثيرة — انتظر 30 ثانية (محاكاة)");
-                else if (a >= 5)
-                    setLockMsg("محاولات كثيرة — انتظر 5 دقائق (محاكاة)");
                 setTimeout(() => { setPin(""); setError(false); }, 500);
             }
         }
     }
+    async function bio() {
+        if (!onBiometric) return;
+        setBioMsg("");
+        const r = await onBiometric();
+        if (r && r.ok) { walletLockoutReset(APP_LOCKOUT_KEY); onUnlock(); }
+        else if (r && r.error) setBioMsg(r.error);
+    }
+    const left = 5 - lockout.fails;
+    const msg = lockedFor > 0 ? lockoutMsg(lockedFor) : (lockout.fails >= 3 && left > 0 ? tl("بقيت " + left + " محاولات", left + " tries left") : bioMsg);
     return (React.createElement("div", { className: "flex-1 flex flex-col overflow-y-auto", style: { backgroundColor: colors.bg } },
         React.createElement("div", { className: "flex flex-col items-center justify-center py-4" },
             React.createElement("div", { className: "w-16 h-16 rounded-full flex items-center justify-center mb-3", style: { backgroundColor: colors.primary } },
                 React.createElement("span", { className: "text-white text-xl font-extrabold" }, appName())),
             React.createElement("h2", { className: "text-sm font-bold", style: { color: colors.text } }, t("adkhl_rmz_alqfl")),
             React.createElement(PinDots, { filled: pin.length, error: error }),
-            lockMsg && React.createElement("p", { className: "text-xs font-bold text-center px-8", style: { color: colors.danger } }, lockMsg),
+            msg && React.createElement("p", { className: "text-xs font-bold text-center px-8", style: { color: colors.danger } }, msg),
             React.createElement("button", { onClick: onForgot, className: "mt-3 text-xs font-bold", style: { color: colors.primary } }, t("nsyt_alrmz"))),
-        React.createElement(PinKeypad, { onDigit: handleDigit, onBackspace: () => setPin((p) => p.slice(0, -1)), onBiometric: onUnlock, showBiometric: biometricEnabled })));
+        React.createElement(PinKeypad, { onDigit: handleDigit, onBackspace: () => setPin((p) => p.slice(0, -1)), onBiometric: bio, showBiometric: biometricEnabled && !!onBiometric })));
 }
 // ============================================================================
 // شاشة نسيت الرمز
 // ============================================================================
-function ForgotPinScreen({ onBack, onRecovered, validCodes }) {
+// C283: checkCode يتحقّق من الرمز المُجزّأ ويستهلكه · أُزيل «رمز التحقّق عبر البريد» (كان 123456 ثابتاً — يتجاوز أيّ رمزٍ محفوظ)
+function ForgotPinScreen({ onBack, onRecovered, checkCode }) {
     const { colors } = useTheme();
     const [step, setStep] = useState("choose");
     const [codeInput, setCodeInput] = useState("");
-    const [otpInput, setOtpInput] = useState("");
     const [error, setError] = useState("");
     const [pin, setPin] = useState("");
     const [firstPin, setFirstPin] = useState("");
     const [newPinStep, setNewPinStep] = useState("enter");
     const [mismatch, setMismatch] = useState(false);
     function verifyCode() {
-        if (validCodes.includes(codeInput.trim().toUpperCase())) {
+        const lo = walletLockoutGet(APP_LOCKOUT_KEY);
+        if (lo.until > Date.now()) { setError(lockoutMsg(lo.until - Date.now())); return; }
+        if (checkCode && checkCode(codeInput)) {
+            walletLockoutReset(APP_LOCKOUT_KEY);
             setStep("newPin");
         }
         else {
-            setError(t("alrmz_ghyr_shyh_aw"));
+            const o = walletLockoutFail(APP_LOCKOUT_KEY);
+            setCodeInput("");
+            setError(o.until > Date.now() ? lockoutMsg(o.until - Date.now()) : t("alrmz_ghyr_shyh_aw"));
         }
-    }
-    function verifyOtp() {
-        if (otpInput === "123456")
-            setStep("newPin");
-        else
-            setError(t("rmz_althqq_ghyr_shyh"));
     }
     function handleNewPinDigit(d) {
         if (pin.length >= 6)
@@ -947,11 +961,6 @@ function ForgotPinScreen({ onBack, onRecovered, validCodes }) {
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
                     React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, t("rmz_astrjaa_ahtyaty")),
                     React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted } }, t("adkhl_ahd_alrmwz_alty")))),
-            React.createElement("button", { onClick: () => setStep("otp"), className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border mb-3`, style: { borderColor: colors.border, backgroundColor: colors.card } },
-                React.createElement(Mail, { size: 20, color: colors.primary }),
-                React.createElement("div", { className: `flex-1 ${textStart()}` },
-                    React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, t("rmz_thqq_abr_albryd")),
-                    React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted } }, t("nrsl_rmza_ila_alqnaa")))),
             React.createElement("button", { onClick: () => setStep("reset"), className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border`, style: { borderColor: colors.danger, backgroundColor: colors.card } },
                 React.createElement(AlertTriangle, { size: 20, color: colors.danger }),
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
@@ -962,16 +971,10 @@ function ForgotPinScreen({ onBack, onRecovered, validCodes }) {
             React.createElement("input", { dir: "ltr", value: codeInput, onChange: (e) => setCodeInput(e.target.value.toUpperCase()), placeholder: "XXXX-XXXX", className: "w-full border rounded-xl px-3 py-3 text-center tracking-widest mb-3", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
             error && React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.danger } }, error),
             React.createElement(Button, { label: t("thqq"), onPress: verifyCode }))),
-        step === "otp" && (React.createElement(React.Fragment, null,
-            React.createElement("h2", { className: "text-lg font-extrabold mb-1", style: { color: colors.text } }, t("adkhl_rmz_althqq")),
-            React.createElement("p", { className: "text-xs mb-4", style: { color: colors.textMuted } }, t("jrb_123456_mhakaa")),
-            React.createElement("input", { dir: "ltr", value: otpInput, onChange: (e) => setOtpInput(e.target.value), placeholder: "000000", maxLength: 6, className: "w-full border rounded-xl px-3 py-3 text-center tracking-widest mb-3", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
-            error && React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.danger } }, error),
-            React.createElement(Button, { label: t("thqq"), onPress: verifyOtp }))),
         step === "reset" && (React.createElement(React.Fragment, null,
             React.createElement(AlertTriangle, { size: 32, color: colors.danger, className: "mx-auto mb-3" }),
             React.createElement("h2", { className: "text-base font-extrabold text-center mb-2", style: { color: colors.text } }, t("mtakd_mn_almsh_alkaml")),
-            React.createElement("p", { className: "text-xs text-center mb-4 px-4", style: { color: colors.textMuted } }, t("hdha_ymsh_rmz_alqfl")),
+            React.createElement("p", { className: "text-xs text-center mb-4 px-4", style: { color: colors.textMuted } }, t("hdha_ymsh_rmz_alqfl") + " " + tl("وتُسجَّل خارج حسابك — إن كان حسابك «ضيفاً» غير مربوط فلن تعود إليه.", "You'll also be signed out — a guest account that isn't linked can't be recovered.")),
             React.createElement(Button, { label: t("amsh_kl_shy"), variant: "filled", onPress: () => onRecovered(null, null, true), className: "mb-2", style: { backgroundColor: colors.danger } }),
             React.createElement(Button, { label: t("ilgha"), variant: "outline", onPress: () => setStep("choose") })))));
 }
@@ -1422,13 +1425,13 @@ function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiome
                     React.createElement("span", { className: "text-sm font-bold block mb-1", style: { color: colors.text } }, t("twfyr_albyanat")),
                     React.createElement("p", { className: "text-[10px]", style: { color: colors.textMuted } }, t("la_thml_alswr_walfydyw"))),
                 React.createElement(Download, { size: 16, color: colors.textMuted, className: "shrink-0 mt-0.5" })),
-            !RELEASE_UI && React.createElement(Card, { className: `flex ${rowEnd()} items-center gap-2.5` },
+            React.createElement(Card, { className: `flex ${rowEnd()} items-center gap-2.5` },
                 React.createElement("button", { onClick: () => setPinLockEnabled(!pinLockEnabled), className: "w-11 h-6 rounded-full relative", style: { backgroundColor: pinLockEnabled ? colors.primary : colors.border } },
                     React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [pinLockEnabled ? "right" : "left"]: 2 } })),
                 React.createElement("span", { className: `text-sm font-bold flex-1 ${textStart()}`, style: { color: colors.text } }, t("qfl_alttbyq_brmz_pin")),
                 React.createElement(Lock, { size: 16, color: colors.textMuted })),
-            !RELEASE_UI && pinLockEnabled && (React.createElement(Card, null,
-                React.createElement("div", { className: `flex ${rowEnd()} items-center gap-2.5 mb-2` },
+            pinLockEnabled && (React.createElement(Card, null,
+                !!window.PublicKeyCredential && React.createElement("div", { className: `flex ${rowEnd()} items-center gap-2.5 mb-2` },
                     React.createElement("button", { onClick: () => setBiometricEnabled(!biometricEnabled), className: "w-11 h-6 rounded-full relative", style: { backgroundColor: biometricEnabled ? colors.primary : colors.border } },
                         React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [biometricEnabled ? "right" : "left"]: 2 } })),
                     React.createElement("span", { className: `text-sm font-bold flex-1 ${textStart()}`, style: { color: colors.text } }, t("fth_balbsma_face_id"))),
@@ -1437,7 +1440,7 @@ function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiome
                 React.createElement("button", { onClick: onChangePin, className: `w-full flex ${rowStart()} items-center gap-2 py-2 border-t`, style: { borderColor: colors.border } },
                     React.createElement(Key, { size: 15, color: colors.primary }),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.primary } }, t("tghyyr_rmz_alqfl"))),
-                !IS_RAHIM && React.createElement("button", { onClick: onOpenSessions, className: `w-full flex ${rowStart()} items-center gap-2 py-2 border-t`, style: { borderColor: colors.border } },
+                !RELEASE_UI && !IS_RAHIM && React.createElement("button", { onClick: onOpenSessions, /* C283: أجهزةٌ تجريبيّة — تبقى مخفيّة في الإصدار */ className: `w-full flex ${rowStart()} items-center gap-2 py-2 border-t`, style: { borderColor: colors.border } },
                     React.createElement(Smartphone, { size: 15, color: colors.primary }),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.primary } }, t("alajhza_almsjla_alsyrfr"))),
                 React.createElement("p", { className: `text-[11px] ${textStart()} pt-1`, style: { color: colors.textMuted } },

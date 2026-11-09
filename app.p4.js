@@ -1472,7 +1472,7 @@ function LockedChatsScreen({ conversations, lockedConversationIds, correctPin, o
     function handleSubmit() {
         if (isRateLocked)
             return;
-        if (enteredPin === correctPin) {
+        if (walletPinMatches(correctPin, enteredPin)) { // C283: الرمز مُجزّأ
             setUnlocked(true);
             setError(false);
             setFailedAttempts(0);

@@ -1003,9 +1003,14 @@ function AppInner() {
     const [showHelp, setShowHelp] = useState(false);
     function markTooltipSeen(key) { setSeenTooltips(function(p){return Object.assign({},p,{[key]:true});}); }
     function resetTooltips() { setSeenTooltips({}); } // onboarding | setup | locked | forgot | postRecoveryCodes | app
-    const [pin, setPin] = useState(null);
-    const [recoveryCodes, setRecoveryCodes] = useState([]);
-    const [biometricEnabled, setBiometricEnabled] = useState(false);
+    // C283: رمز قفل التطبيق محفوظٌ على الجهاز سجلّاً مُجزّأً { v, salt, hash, codes } (كرمز المحفظة) — لا نصّاً
+    const [appLockRaw, setAppLock] = usePersistedState("appLock", null);
+    const pin = isWalletSecret(appLockRaw) ? appLockRaw : null;
+    const [recoveryCodes, setRecoveryCodes] = useState([]); // نصّاً للعرض مرّةً واحدة فقط (لا يُحفظ)
+    const [appLockPasskeyId, setAppLockPasskeyId] = usePersistedState("appLockPasskeyId", null); // البصمة: WebAuthn حقيقيّ
+    const biometricEnabled = !!appLockPasskeyId;
+    // القفل مفعّلٌ ⇒ يبدأ التطبيق مقفولاً. غطاءٌ فوق التطبيق (لا تغيير flow) فلا تضيع حالة الشاشات ولا تنقطع مكالمة
+    const [lockView, setLockView] = useState(() => (isWalletSecret(loadPersisted("appLock", null)) && loadPersisted("appLockOn", false) === true ? "locked" : null)); // null | locked | forgot | codes
     const [statusOption, setStatusOption] = usePersistedState("statusOption", "online");
     const [customStatusMessage, setCustomStatusMessage] = useState("");
     const [profilePhoto, setProfilePhoto] = usePersistedState("profilePhoto", null);
@@ -1020,7 +1025,7 @@ function AppInner() {
     // setLocale يكتب في window، وReact لا يراه. المفتاح على الغلاف
     // يجبر إعادة بناء الشجرة كاملة فتُقرأ الاتجاهات والنصوص من جديد.
     React.useEffect(() => { setLocale(interfaceLanguage); }, [interfaceLanguage]);
-    const [pinLockEnabled, setPinLockEnabled] = useState(true);
+    const [pinLockEnabled, setPinLockEnabled] = usePersistedState("appLockOn", false); // C283: معطّلٌ حتى يفعّله المستخدم
     const [browserNotifEnabled, setBrowserNotifEnabled] = useState(false);
     const [blockUnsolicited, setBlockUnsolicited] = useState(true);
     const [identityVerified, setIdentityVerified] = useState(false);
@@ -1078,7 +1083,46 @@ function AppInner() {
                 showToast(t("ma_wafqt_ala_idhn"), "error");
         });
     }
-    const [autoLockDelay, setAutoLockDelay] = useState(0);
+    const [autoLockDelay, setAutoLockDelay] = usePersistedState("autoLockDelay", 60); // C283: ثوانٍ في الخلفيّة قبل القفل
+    const lockActive = pinLockEnabled && !!pin;
+    // C283: القفل التلقائيّ — يُقفل عند العودة إن بقي التطبيق في الخلفيّة autoLockDelay ثانيةً أو أكثر
+    const hiddenAtRef = useRef(0);
+    useEffect(() => {
+        if (!lockActive) return;
+        const onVis = () => {
+            if (document.visibilityState === "hidden") { hiddenAtRef.current = Date.now(); return; }
+            const at = hiddenAtRef.current; hiddenAtRef.current = 0;
+            if (at && Date.now() - at >= (Number(autoLockDelay) || 0) * 1000) setLockView((v) => v || "locked");
+        };
+        document.addEventListener("visibilitychange", onVis);
+        return () => document.removeEventListener("visibilitychange", onVis);
+    }, [lockActive, autoLockDelay]);
+    function saveAppPin(newPin, codes) {
+        setAppLock(makeSecretRecord(newPin, codes));
+        walletLockoutReset(APP_LOCKOUT_KEY);
+    }
+    function toggleAppLock() {
+        if (pinLockEnabled) {
+            // الإيقاف يمسح الرمز والبصمة — لا رمزٌ منسيٌّ يبقى في الخلفيّة
+            setPinLockEnabled(false); setAppLock(null); setAppLockPasskeyId(null); setRecoveryCodes([]);
+            walletLockoutReset(APP_LOCKOUT_KEY);
+            return;
+        }
+        if (pin) { setPinLockEnabled(true); return; }
+        setFlow("setup"); // يُفعَّل بعد تعيين الرمز
+    }
+    async function toggleAppLockBiometric() {
+        if (appLockPasskeyId) { setAppLockPasskeyId(null); return; }
+        const r = await registerWalletPasskey();
+        if (r.ok && r.credentialId) { setAppLockPasskeyId(r.credentialId); showToast(tl("فُعّل الفتح بالبصمة", "Biometric unlock is on"), "success"); }
+        else showToast(t("tadhr_altsjyl", { error: r.error || "" }), "error");
+    }
+    function fullLocalReset() {
+        // آخر حلّ في «نسيت الرمز»: خروجٌ من الحساب ومسحُ كلّ ما على الجهاز (كحذف الحساب محلّيّاً)
+        try { if (window.SawaChat && window.SawaChat.wipeLocal) { window.SawaChat.wipeLocal(); return; } } catch (e) { }
+        try { localStorage.clear(); } catch (e) { }
+        try { location.replace(location.pathname); } catch (e) { }
+    }
     const [tab, setTab] = useState(IS_RAHIM ? "discover" : "chats");   // C13e: التطبيق يفتح على المحادثات
     const [stack, setStack] = useState([]); // 'security' | 'demo' | 'sessions' | 'wallet' | 'stats' | 'notifications'
     const [notes, setNotes] = useState([]);
@@ -2452,14 +2496,13 @@ function AppInner() {
         if (window.confirm(t("tsjyl_alkhrwj_sthtaj_ila"))) {
             setStack([]);
             setTab("me");
-            setFlow("locked");
+            if (lockActive) setLockView("locked");
         }
     }
     function deleteEncryptionKeys() {
         // إصلاح: الرسالة تدّعي مسح "كل البيانات المحلية" — قبل كانت تمسح رمز
         // القفل والملاحظات بس، تاركة صلة الرحم والمحفظة وسجل النشاط كما هي.
-        // الآن تمسح فعلياً كل حالة محلية لتطابق الادّعاء بصدق
-        setPin(null);
+        // الآن تمسح فعلياً كل حالة محلية لتطابق الادّعاء بصدق (رمز القفل يُمسح أدناه — C283)
         setNotes([]);
         setGroupPersons({});
         setKinshipRelations([]);
@@ -2479,9 +2522,14 @@ function AppInner() {
         setWalletPasskeyId(null);
         setWalletUnlocked(false);
         walletLockoutReset();
+        setAppLock(null);
+        setAppLockPasskeyId(null);
+        setPinLockEnabled(false);
+        setRecoveryCodes([]);
+        walletLockoutReset(APP_LOCKOUT_KEY);
         setRedeemedReferralCode(null);
         setStack([]);
-        setFlow("setup");
+        setFlow("app"); // C283: قفل التطبيق اختياريّ — لا نفرض رمزاً جديداً
         showToast(t("tm_hdhf_mfatyh_altshfyr"), "success");
     }
     function addPaymentMethod(data) {
@@ -4208,25 +4256,31 @@ function AppInner() {
     }
     return (React.createElement(PhoneFrame, { dir: interfaceLanguage === "en" ? "ltr" : "rtl" },
         flow === "onboarding" && React.createElement(OnboardingScreen, { onDone: () => setFlow("setup") }),
-        flow === "setup" && (React.createElement(SetupPinScreen, { onDone: (newPin, newCodes) => {
-                setPin(newPin);
-                setRecoveryCodes(newCodes);
+        flow === "setup" && (React.createElement(SetupPinScreen, { onCancel: () => setFlow("app"), onDone: (newPin, newCodes) => {
+                saveAppPin(newPin, newCodes);
+                setPinLockEnabled(true);
+                setRecoveryCodes([]);
                 setFlow(backendLinked || backendSkipped ? "app" : "connectBackend");
             } })),
         flow === "connectBackend" && (React.createElement(ConnectBackendScreen, { onDone: () => { setBackendLinked(true); setFlow("app"); }, onSkip: () => { setBackendSkipped(true); setFlow("app"); } })),
-        flow === "locked" && (React.createElement(LockScreen, { correctPin: pin, biometricEnabled: biometricEnabled, onUnlock: () => setFlow("app"), onForgot: () => setFlow("forgot") })),
-        flow === "forgot" && (React.createElement(ForgotPinScreen, { validCodes: recoveryCodes, onBack: () => setFlow("locked"), onRecovered: (newPin, newCodes, wipe) => {
-                if (wipe) {
-                    setPin(null);
-                    setNotes([]);
-                    setFlow("setup");
-                    return;
-                }
-                setPin(newPin);
-                setRecoveryCodes(newCodes);
-                setFlow("postRecoveryCodes");
-            } })),
-        flow === "postRecoveryCodes" && (React.createElement(PostRecoveryCodesScreen, { codes: recoveryCodes, onDone: () => setFlow("app") })),
+        // C283: شاشة القفل غطاءٌ فوق كلّ شيء (حتى نوافذ SawaChat) — التطبيق تحتها يبقى كما هو
+        lockActive && lockView && React.createElement("div", { role: "dialog", "aria-modal": "true", "aria-label": t("adkhl_rmz_alqfl"), className: "flex flex-col", style: { position: "fixed", inset: 0, zIndex: 2147483000, backgroundColor: colors.bg } },
+            React.createElement("div", { className: "flex-1 min-h-0 flex flex-col", dir: interfaceLanguage === "en" ? "ltr" : "rtl" },
+                lockView === "locked" && React.createElement(LockScreen, { correctPin: pin, biometricEnabled: biometricEnabled, onBiometric: () => authenticateWalletPasskey(appLockPasskeyId), onUnlock: () => setLockView(null), onForgot: () => setLockView("forgot") }),
+                lockView === "forgot" && React.createElement(ForgotPinScreen, { onBack: () => setLockView("locked"),
+                    checkCode: (code) => {
+                        const i = walletCodeIndex(pin, code);
+                        if (i < 0) return false;
+                        setAppLock(Object.assign({}, pin, { codes: pin.codes.filter((_, j) => j !== i) })); // يُستهلك فوراً
+                        return true;
+                    },
+                    onRecovered: (newPin, newCodes, wipe) => {
+                        if (wipe) { fullLocalReset(); return; }
+                        saveAppPin(newPin, newCodes);
+                        setRecoveryCodes(newCodes);
+                        setLockView("codes");
+                    } }),
+                lockView === "codes" && React.createElement(PostRecoveryCodesScreen, { codes: recoveryCodes, onDone: () => { setRecoveryCodes([]); setLockView(null); } }))),
         flow === "app" && proxAlert && React.createElement(ProximitySheet, { alert: proxAlert, onClose: () => setProxAlert(null),
             onVisit: () => { markContactNow(proxAlert.gid, proxAlert.person.id); logActivity(proxAlert.gid, tl("زيارة " + proxAlert.person.local_name, "Visited " + proxAlert.person.local_name)); setProxAlert(null); },
             onCall: (phone) => { const a = proxAlert; setProxAlert(null); markContactNow(a.gid, a.person.id); if (phone) { try { location.href = "tel:" + phone.replace(/[^\d+]/g, ""); } catch (e) { } } else showToast(tl("لا رقم مسجَّلاً له — أضفه من ملفّه", "No phone saved — add it in their profile"), "error"); },
@@ -4273,7 +4327,7 @@ function AppInner() {
         flow === "app" && !activeRoom && !showLinkedDevices && !showWrapped && (React.createElement("div", { className: "flex-1 flex flex-col overflow-hidden" },
         showHelp && React.createElement("div", { className: "absolute inset-0 z-50 flex flex-col", style: { backgroundColor: "white" } }, React.createElement(HelpScreen, { onBack: function(){setShowHelp(false);}, onRestartTour: function(){resetTooltips();setShowHelp(false);} })),
         isDemoMode && React.createElement("div", { className: "flex items-center justify-between px-3 py-1.5", style: { backgroundColor: "#F59E0B", flexShrink: 0 } }, React.createElement("span", { className: "text-[10px] font-bold text-white" }, tl("⚠️ عرض توضيحي — البيانات وهمية", "⚠️ Demo — data is not real")), React.createElement("button", { onClick: function(){ setFamilyGroups([{id:"g-main",name:"عائلتي",description:"",role:"owner",ownerPersonId:null}]); setGroupPersons({"g-main":[]}); setIsDemoMode(false); }, className: "text-[10px] font-extrabold text-white underline" }, tl("ابدأ من صفر", "Start from scratch"))),
-            React.createElement("div", { className: "flex-1 overflow-hidden flex flex-col" }, stack[stack.length - 1] === "security" ? (React.createElement(ProfileSettingsScreen, { onBack: () => setStack([]), onChangePin: () => setFlow("setup"), biometricEnabled: biometricEnabled, setBiometricEnabled: setBiometricEnabled, autoLockDelay: autoLockDelay, setAutoLockDelay: setAutoLockDelay, remainingCodes: recoveryCodes.length, onLockNow: () => setFlow("locked"), onOpenSessions: () => setStack(["security", "sessions"]), profilePhoto: profilePhoto, setProfilePhoto: setProfilePhoto, interfaceLanguage: interfaceLanguage, setInterfaceLanguage: setInterfaceLanguage, pinLockEnabled: pinLockEnabled, setPinLockEnabled: setPinLockEnabled, browserNotifEnabled: browserNotifEnabled, onToggleBrowserNotif: toggleBrowserNotif, statusOption: statusOption, setStatusOption: setStatusOption, customStatusMessage: customStatusMessage, setCustomStatusMessage: setCustomStatusMessage, redeemedReferralCode: redeemedReferralCode, onRedeemReferral: redeemReferral, blockUnsolicited: blockUnsolicited, setBlockUnsolicited: setBlockUnsolicited, identityVerified: identityVerified, chatBackupEnabled: chatBackupEnabled, setChatBackupEnabled: setChatBackupEnabled, onDeleteKeys: deleteEncryptionKeys, backendLinked: backendLinked, onUnlink: () => setBackendLinked(false) })) : stack[stack.length - 1] === "sessions" ? (React.createElement(SessionsScreen, { sessions: sessions, onRevoke: revokeSession, onRevokeAll: revokeAllSessions, onBack: () => setStack(["security"]) })) : stack[0] === "wallet" && !walletUnlocked ? (React.createElement(ServiceTheme, { color: SERVICE_COLORS.wallet }, React.createElement(WalletLockScreen, { onUnlock: () => setWalletUnlocked(true), onBack: () => setStack([]), walletPasskeyId: walletPasskeyId, onPasskeyRegistered: setWalletPasskeyId, walletPin: walletPin, onSetWalletPin: setWalletPin, appPin: pin }))) : stack[0] === "wallet" && walletUnlocked ? (React.createElement(ServiceTheme, { color: SERVICE_COLORS.wallet }, React.createElement(WalletScreen, { balance: walletBalance, transactions: walletTransactions, cardNumber: walletCardNumber, walletPinForConfirm: walletPin, kycStatus: kycStatus, kycDismissed: kycDismissed, onDismissKyc: () => setKycDismissed(true), onSubmitKyc: submitKyc, onTopUp: topUpWallet, onTransfer: transferWallet, onScanPay: scanPay, canIntl: canIntl, intlHistory: intlHistory, onIntlTransfer: intlTransfer, kycMeta: kycMeta, fxAccounts: fxAccounts, onOpenFx: openFx, onExchange: fxExchange, cards: vCards, onCardsChange: setVCards, holder: (myProfile && (myProfile.name || myProfile.googleName)) || "", onBack: () => { setStack([]); setWalletUnlocked(false); }, linkedMethods: linkedPaymentMethods, onAddPaymentMethod: addPaymentMethod, onRemovePaymentMethod: removePaymentMethod, spendingLimit: spendingLimit, onSetSpendingLimit: setSpendingLimit, jamiyaList: jamiyaList, onPayJamiya: payJamiya, onCreateJamiya: createJamiya, CURRENT_USER_ID: CURRENT_USER_ID }))) : stack[0] === "stats" ? (React.createElement(StatsScreen, { transactions: walletTransactions, onBack: () => setStack([]) })) : stack[0] === "notifications" ? (React.createElement(NotificationCenterScreen, { notifications: notifications, onMarkRead: markNotificationRead, onBack: () => setStack([]) })) : stack[stack.length - 1] === "demo" ? (React.createElement(EncryptedNotesDemoScreen, { onBack: () => setStack([]), notes: notes, onAdd: (text) => setNotes((prev) => [{ id: Date.now(), text }, ...prev]), onDelete: (id) => setNotes((prev) => prev.filter((n) => n.id !== id)) })) : (React.createElement(React.Fragment, null,
+            React.createElement("div", { className: "flex-1 overflow-hidden flex flex-col" }, stack[stack.length - 1] === "security" ? (React.createElement(ProfileSettingsScreen, { onBack: () => setStack([]), onChangePin: () => setFlow("setup"), biometricEnabled: biometricEnabled, setBiometricEnabled: toggleAppLockBiometric, autoLockDelay: autoLockDelay, setAutoLockDelay: setAutoLockDelay, remainingCodes: pin ? pin.codes.length : 0, onLockNow: () => lockActive && setLockView("locked"), onOpenSessions: () => setStack(["security", "sessions"]), profilePhoto: profilePhoto, setProfilePhoto: setProfilePhoto, interfaceLanguage: interfaceLanguage, setInterfaceLanguage: setInterfaceLanguage, pinLockEnabled: lockActive, setPinLockEnabled: toggleAppLock, browserNotifEnabled: browserNotifEnabled, onToggleBrowserNotif: toggleBrowserNotif, statusOption: statusOption, setStatusOption: setStatusOption, customStatusMessage: customStatusMessage, setCustomStatusMessage: setCustomStatusMessage, redeemedReferralCode: redeemedReferralCode, onRedeemReferral: redeemReferral, blockUnsolicited: blockUnsolicited, setBlockUnsolicited: setBlockUnsolicited, identityVerified: identityVerified, chatBackupEnabled: chatBackupEnabled, setChatBackupEnabled: setChatBackupEnabled, onDeleteKeys: deleteEncryptionKeys, backendLinked: backendLinked, onUnlink: () => setBackendLinked(false) })) : stack[stack.length - 1] === "sessions" ? (React.createElement(SessionsScreen, { sessions: sessions, onRevoke: revokeSession, onRevokeAll: revokeAllSessions, onBack: () => setStack(["security"]) })) : stack[0] === "wallet" && !walletUnlocked ? (React.createElement(ServiceTheme, { color: SERVICE_COLORS.wallet }, React.createElement(WalletLockScreen, { onUnlock: () => setWalletUnlocked(true), onBack: () => setStack([]), walletPasskeyId: walletPasskeyId, onPasskeyRegistered: setWalletPasskeyId, walletPin: walletPin, onSetWalletPin: setWalletPin, appPin: pin }))) : stack[0] === "wallet" && walletUnlocked ? (React.createElement(ServiceTheme, { color: SERVICE_COLORS.wallet }, React.createElement(WalletScreen, { balance: walletBalance, transactions: walletTransactions, cardNumber: walletCardNumber, walletPinForConfirm: walletPin, kycStatus: kycStatus, kycDismissed: kycDismissed, onDismissKyc: () => setKycDismissed(true), onSubmitKyc: submitKyc, onTopUp: topUpWallet, onTransfer: transferWallet, onScanPay: scanPay, canIntl: canIntl, intlHistory: intlHistory, onIntlTransfer: intlTransfer, kycMeta: kycMeta, fxAccounts: fxAccounts, onOpenFx: openFx, onExchange: fxExchange, cards: vCards, onCardsChange: setVCards, holder: (myProfile && (myProfile.name || myProfile.googleName)) || "", onBack: () => { setStack([]); setWalletUnlocked(false); }, linkedMethods: linkedPaymentMethods, onAddPaymentMethod: addPaymentMethod, onRemovePaymentMethod: removePaymentMethod, spendingLimit: spendingLimit, onSetSpendingLimit: setSpendingLimit, jamiyaList: jamiyaList, onPayJamiya: payJamiya, onCreateJamiya: createJamiya, CURRENT_USER_ID: CURRENT_USER_ID }))) : stack[0] === "stats" ? (React.createElement(StatsScreen, { transactions: walletTransactions, onBack: () => setStack([]) })) : stack[0] === "notifications" ? (React.createElement(NotificationCenterScreen, { notifications: notifications, onMarkRead: markNotificationRead, onBack: () => setStack([]) })) : stack[stack.length - 1] === "demo" ? (React.createElement(EncryptedNotesDemoScreen, { onBack: () => setStack([]), notes: notes, onAdd: (text) => setNotes((prev) => [{ id: Date.now(), text }, ...prev]), onDelete: (id) => setNotes((prev) => prev.filter((n) => n.id !== id)) })) : (React.createElement(React.Fragment, null,
                 tab === "chats" && (() => {
                     const chatsTop = chatsStack[chatsStack.length - 1];
                     if (!backendLinked) {
@@ -4301,7 +4355,7 @@ function AppInner() {
                             }, onBack: () => setChatsStack([]) }));
                     }
                     if (chatsTop.type === "lockedChats") {
-                        return (React.createElement(LockedChatsScreen, { conversations: conversations, lockedConversationIds: lockedConversationIds, correctPin: pin, onOpenChat: (c) => setChatsStack([{ type: "chat", data: c }]), onClose: () => setChatsStack([]), onForgot: () => { setChatsStack([]); setFlow("forgot"); } }));
+                        return (React.createElement(LockedChatsScreen, { conversations: conversations, lockedConversationIds: lockedConversationIds, correctPin: pin, onOpenChat: (c) => setChatsStack([{ type: "chat", data: c }]), onClose: () => setChatsStack([]), onForgot: () => { setChatsStack([]); if (lockActive) setLockView("forgot"); } }));
                     }
                     if (chatsTop.type === "starredMessages") {
                         return (React.createElement(StarredMessagesScreen, { starredMessages: starredMessages, onOpenConversation: (conversationId) => {

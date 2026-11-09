@@ -6498,6 +6498,7 @@
     retryFailed: retryFailed, discardFailed: discardFailed, failedSheet: failedSheet,   // C14
     retryMedia: retryMedia,   // C18
     scanAny: scanAny, routeScanned: routeScanned, signOutSheet: signOutSheet,   // C20
+    wipeLocal: wipeLocal,   // C283: «إعادة تعيين كاملة» من «نسيت رمز القفل»
     e2eSupported: function () { return e2e.ok(); }, e2eStartDm: e2eStartDm, e2eNewSheet: e2eNewSheet, e2eAct: e2eAct, e2eSafety: e2eSafety,   // C23
     adminCached: adminCached, checkAdmin: checkAdmin, adminReports: adminReports, voipTest: voipTest,   // C24
     adminRole: adminRoleCached, adminAtLeast: adminAtLeast, adminTeam: adminTeamSheet,   // C195
