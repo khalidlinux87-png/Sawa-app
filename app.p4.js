@@ -68,7 +68,7 @@ function FamilySuggestionsScreen({ groupId, persons, relations, events, dismisse
                 suggestions.push({
                     id: `sugg-contact-${p.id}`,
                     title: p.lastContactDate ? t("ma_twaslt_ma_mn", { local_name: p.local_name, daysSinceContact }) : tl("لم تسجّل تواصلاً مع " + p.local_name + " بعد", "No contact recorded with " + p.local_name + " yet"),
-                    reason: t("fs_tjawzt_almda", { level: proxLabel(p.proximity), days: proximityContactDays[p.proximity] || 30 }),
+                    reason: t("fs_tjawzt_almda", { level: proxLabel(p.proximity), days: contactEveryDays(p) }),   // C271
                 });
             }
         }
@@ -131,7 +131,7 @@ function FamilySuggestionsScreen({ groupId, persons, relations, events, dismisse
             // C33: لا نسأل عن نفسي ولا عن إخوتي ولا عن أبنائي/أحفادي ولا عمّن يُعدّ من جيلي أو بعدي (كان يسأل «الغالب أنّك متوفّى؟»)
             const skipGen = p.kinship === "نفسي" || /^(الأخ|الأخت|الابن|البنت|الحفيد|الحفيدة|ابن |بنت |زوج|الزوج)/.test(p.kinship || "") || (p.birthYear && new Date().getFullYear() - Number(p.birthYear) < 60);
             // C75: لا نفترض وفاة الوالدين («الغالب أنه متوفّى» عن أبيك قاسٍ وبلا أساس) — السؤال المحايد أدناه يكفي
-            if (p.alive && !skipGen && !/^(الوالد|الوالدة)$/.test(p.kinship || "")) {
+            if (p.alive && !skipGen && !isOwnProfilePerson(p) && !/^(الوالد|الوالدة)$/.test(p.kinship || "")) {
                 gapQuestions.push({ id: `gap-alive-${p.id}`, personId: p.id, kind: "alive", presumeDeceased: true,
                     question: t("fs_alghalb_mtwfa", { name, w: she ? t("fs_mtwfya") : t("fs_mtwfa") }) });
             }
@@ -191,7 +191,7 @@ function FamilySuggestionsScreen({ groupId, persons, relations, events, dismisse
             gapQuestions.push({ id: `gap-children-${p.id}`, personId: p.id, kind: "children",
                 question: t("hl_and_abna", { name }) });
         }
-        if (!p.status_detail && !isSelfPerson(p)) {   // C75: لا نسأل المستخدم «هل أنت على قيد الحياة؟»
+        if (!p.status_detail && !isOwnProfilePerson(p)) {   // C271: ولا عن ملفّك المربوط · C75: لا نسأل المستخدم «هل أنت على قيد الحياة؟»
             gapQuestions.push({ id: `gap-alive-${p.id}`, personId: p.id, kind: "alive",
                 question: t("fs_hl_ala_qyd", { name, w: she ? t("fs_mtwfya_rhmha") : t("fs_mtwfa_rhmh") }) });
             gapQuestions.push({ id: `gap-status-${p.id}`, personId: p.id, kind: "status",
@@ -477,7 +477,7 @@ function MemberPersonPicker({ groupId, member, persons, onClose }) {
     const [err, setErr] = useState("");
     const qq = normalizeArabicName(q.trim()).toLowerCase();
     const free = (persons || []).filter((p) => p && !p.acctUid && p.alive !== false && p.id !== "__vself__");
-    const shown = (qq ? free.filter((p) => normalizeArabicName(String(p.local_name || "")).toLowerCase().includes(qq)) : free).slice(0, 200);
+    const shown = (qq ? free.filter((p) => arMatch(String(p.local_name || ""), q)) : free).slice(0, 200);   // C271
     const pick = (p) => {
         if (busy) return;
         setErr(""); setBusy(p.id);
@@ -669,7 +669,7 @@ function HomePickerSheet({ coords, label, groups, groupPersons, onPick, onClose 
     const { colors } = useTheme();
     const [q, setQ] = useState("");
     const all = useMemo(() => groups.flatMap((g) => (groupPersons[g.id] || []).filter((p) => p.alive !== false).map((p) => ({ p, g }))), [groups, groupPersons]);
-    const list = all.filter(({ p }) => !q.trim() || normalizeArabicName(p.local_name).includes(normalizeArabicName(q)));
+    const list = all.filter(({ p }) => !q.trim() || arMatch(p.local_name, q));   // C271
     return React.createElement(FamSheet, { title: tl("منزل مَن هذا؟", "Whose home is this?"), subtitle: label || (coords.lat.toFixed(4) + ", " + coords.lng.toFixed(4)), onClose: onClose, maxHeight: "80%", z: 60 },
         React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: q, onChange: (e) => setQ(e.target.value), placeholder: t("bhth_balasm_aw_sla"), className: "fam-in w-full px-3.5 py-3 text-sm mb-3", style: famInput(colors) }),
         list.length === 0 && React.createElement("p", { className: "text-xs text-center py-6", style: { color: colors.textMuted } }, t("la_twjd_ntayj_mtabqa")),
@@ -1008,7 +1008,8 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
     const [photo, setPhoto] = useState((person === null || person === void 0 ? void 0 : person.photo) || null);
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [contactImportError, setContactImportError] = useState(false);
-    const [isDeceased, setIsDeceased] = useState(person ? !person.alive : false);
+    // C271: ملفّك أنت لا يُسجَّل متوفّى — المفتاح لا يظهر، وما سُجّل خطأً قديماً يُصحَّح عند الحفظ
+    const [isDeceased, setIsDeceased] = useState(person && !isOwnProfilePerson(person) ? !person.alive : false);
     const [deathDate, setDeathDate] = useState((person === null || person === void 0 ? void 0 : person.death_date) || "");
     // ربط العلاقة مدمج هنا مباشرة — بدل ما يكون خطوة منفصلة بشاشة الشجرة، وهذا
     // بالضبط سبب شكوى "القريب ما ينزل بالشجرة" — كان ممكن يتوصف بس بدون ربط فعلي
@@ -1026,7 +1027,8 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
     // كل المتشابهين بالاسم — نعرضهم بنسبهم ليختار المستخدم بوعي.
     // (المطابقة هنا للتحذير فقط، لا للدمج التلقائي)
     const duplicateMatches = !isEdit && localName.trim()
-        ? existingPersons.filter((p) => p.local_name.trim().toLowerCase() === (hasChain ? chainParts[0] : localName).trim().toLowerCase())
+        // C271: بالتطبيع الواسع — «احمد/أحمد»، «فاطمه/فاطمة»، «عبدالله/عبد الله» تُنبّه (كانت مقارنةً حرفيّة)
+        ? existingPersons.filter((p) => { const a = arabicSearchKey(p.local_name, true), b = arabicSearchKey((hasChain ? chainParts[0] : localName), true); return !!b && (a === b || a.replace(/ /g, "") === b.replace(/ /g, "")); })
         : [];
     const duplicateMatch = duplicateMatches[0] || null;
     const { distinctLabel: dupLineage } = buildLineageHelpers(existingPersons, relations);
@@ -1063,6 +1065,8 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
         return null;
     })();
     const needDupAck = !isEdit && duplicateMatches.length > 0 && !dupAck;
+    const ownProfile = kinship === SELF_KINSHIP || (!!person && isOwnProfilePerson(person));   // C271
+    const deceasedEff = isDeceased && !ownProfile;
     const blockers = [
         !localName.trim() && tl("اكتب الاسم", "Enter the name"),
         !kinship && tl("اختر صلة القرابة", "Choose the relationship"),
@@ -1094,8 +1098,8 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
             photo,
             // C37: منزله — موقعٌ واحد (الأوّل) يُستعمل لتنبيه القرب، ويُزامَن مع العائلة
             locations: home && geoValid(Number(home.lat), Number(home.lng)) ? [{ type: "home", lat: Number(home.lat), lng: Number(home.lng), radius_meters: Number(home.radius_meters) > 0 ? Number(home.radius_meters) : 0, address_text: String(home.address_text || "").slice(0, 120) }] : [],
-            alive: !isDeceased,
-            death_date: isDeceased ? (deathDate || null) : null,
+            alive: !deceasedEff,   // C271: لا «متوفّى» لملفّك أنت
+            death_date: deceasedEff ? (deathDate || null) : null,
             relation: !isEdit && linkEnabled && relatedToId ? Object.assign({ relatedToId, relationType }, relationType === "sibling" && sibHalf ? { half: sibHalf } : {}) : null,
             linkedTo: crossLinkEnabled && crossLinkGroupId && crossLinkPersonId ? { groupId: crossLinkGroupId, personId: crossLinkPersonId } : null,
         });
@@ -1247,7 +1251,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                 React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.primary } },
                     proxLabel(proximityForKinship(kinship))),   // C74: لا رموز داخليّة (A**) أمام المستخدم
                 React.createElement("span", { className: `text-[10px] flex-1 ${textEnd()}`, style: { color: colors.textMuted } },
-                    tl(arCountFix("تذكير كل " + proximityContactDays[proximityForKinship(kinship)] + " يوم"), t("pf_tdhkyr_kl") + proximityContactDays[proximityForKinship(kinship)] + t("pf_ywm"))))),
+                    tl("تذكير: " + kinFreqLabel(person && kinClampDays(person.contactEvery) || degreeContactDays(proximityForKinship(kinship))), "Reminder: " + kinFreqLabel(person && kinClampDays(person.contactEvery) || degreeContactDays(proximityForKinship(kinship))))))),   // C271
             motherApplicable && (React.createElement("div", { className: "mb-4" },
                 React.createElement("label", { className: "text-xs font-bold mb-1 block", style: { color: colors.text } }, t("pf_alom")),
                 React.createElement("p", { className: `text-[10px] mb-2 ${textStart()}`, style: { color: colors.textMuted } }, t("pf_alom_hint")),
@@ -1256,7 +1260,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                     React.createElement(Chip, { label: t("pf_alom_unset"), active: !motherId, onPress: () => setMotherId(null) })))),
             React.createElement("label", { className: `text-[11.5px] font-bold mb-1.5 block ${textStart()}`, style: { color: colors.textMuted } }, t("rqm_alhatf_akhtyary")),
             React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: phone, onChange: (e) => setPhone(e.target.value), placeholder: "09XXXXXXXX", className: "fam-in outline-none w-full rounded-2xl px-3.5 py-3 text-sm mb-4", style: { backgroundColor: colors.bg, color: colors.text, border: "1.5px solid transparent" } }),
-            !isDeceased && kinship !== SELF_KINSHIP && React.createElement(HomeEditor, { value: home, onChange: setHome, personName: localName }),
+            !deceasedEff && kinship !== SELF_KINSHIP && React.createElement(HomeEditor, { value: home, onChange: setHome, personName: localName }),
             kinship === SELF_KINSHIP && React.createElement("div", { className: "mb-4" },
                 React.createElement(HomeEditor, { value: home, onChange: setHome, personName: localName }),
                 React.createElement("p", { className: `text-[10.5px] -mt-2 ${textStart()}`, style: { color: colors.textMuted } }, tl("منزلك أنت: لن تُنبَّه لجيرانك من الأقارب وأنت في بيتك.", "Your own home: no alerts for relatives nearby while you're at home."))),
@@ -1268,9 +1272,13 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
             React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mb-4` },
                 React.createElement(Chip, { label: t("la_ywjd"), active: !statusDetail, onPress: () => setStatusDetail("") }),
                 Object.entries(statusLabels).map(([key, label]) => (React.createElement(Chip, { key: key, label: label, active: statusDetail === key, onPress: () => setStatusDetail(key) })))),
+            // C271: ملفّك أنت — سطرٌ يشرح بدل المفتاح (كان يسمح بتسجيل صاحب الحساب «متوفّى»)
+            ownProfile ? React.createElement("div", { "data-self-alive": "1", className: `mb-4 px-3.5 py-2.5 rounded-2xl flex ${rowStart()} items-center gap-2`, style: { backgroundColor: colors.primary + "0a" } },
+                React.createElement(Flower2, { size: 14, color: colors.textMuted }),
+                React.createElement("span", { className: `text-[11px] font-bold flex-1 ${textStart()}`, style: { color: colors.textMuted } }, tl("هذا ملفّك أنت — لا يُسجَّل «متوفّى».", "This is your own profile — it can't be marked deceased."))) :
             React.createElement(FamCard, { className: "mb-4" },
                 React.createElement("div", { className: `flex ${rowEnd()} items-center gap-2.5` },
-                    React.createElement("button", { onClick: () => setIsDeceased(!isDeceased), className: "w-11 h-6 rounded-full relative", style: { backgroundColor: isDeceased ? colors.danger : colors.border } },
+                    React.createElement("button", { "data-deceased-toggle": "1", role: "switch", "aria-checked": isDeceased, "aria-label": t("mtwfa_rhmh_allh"), onClick: () => setIsDeceased(!isDeceased), className: "w-11 h-6 rounded-full relative", style: { backgroundColor: isDeceased ? colors.danger : colors.border } },
                         React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [isDeceased ? "right" : "left"]: 2 } })),
                     React.createElement("span", { className: `text-sm font-bold flex-1 ${textStart()}`, style: { color: colors.text } }, t("mtwfa_rhmh_allh")),
                     React.createElement(Flower2, { size: 16, color: colors.textMuted })),
@@ -1296,7 +1304,7 @@ function FamilyPersonFormSheet({ person, persons = [], relations = [], otherGrou
                     React.createElement("div", { className: "mb-2", style: { maxHeight: 190, overflowY: "auto" } }, (() => {
                         const qn = normalizeArabicName(relSearch || "");
                         // من يبدأ اسمه بالبحث أوّلاً، ثمّ من في اسمه، ثمّ من في نسبه
-                        const rank = (p) => { const n = normalizeArabicName(p.local_name); return n.startsWith(qn) ? 0 : n.includes(qn) ? 1 : normalizeArabicName(lineageLabel(p)).includes(qn) ? 2 : 9; };
+                        const rank = (p) => { const r = arMatchRank(p.local_name, relSearch); return r < 9 ? r : arMatch(lineageLabel(p), relSearch) ? 2 : 9; };   // C271
                         const list = !qn ? lineageSorted : lineageSorted.filter((p) => rank(p) < 9).sort((a, b) => rank(a) - rank(b));
                         // المختار يبقى ظاهراً وإن لم يطابق البحث
                         const sel = relatedToId && !list.some((p) => p.id === relatedToId) ? lineageSorted.filter((p) => p.id === relatedToId) : [];
@@ -1758,7 +1766,7 @@ const FamilyReminderCard = React.memo(function FamilyReminderCard({ onOpenPerson
     const urgentPerson = overdue[0];
     const days = urgentPerson ? daysSinceRef(urgentPerson) : 0;
     const neverLogged = !!urgentPerson && !urgentPerson.lastContactDate;
-    const limit = urgentPerson ? (proximityContactDays[urgentPerson.proximity] || 30) : 0;
+    const limit = urgentPerson ? contactEveryDays(urgentPerson) : 0;   // C271
     const isVeryLate = days > limit * 1.5;
     function handleChat(person) {
         // C74: كانت تفتح محادثةً وهميّة محلّيّة لقريبٍ بلا حساب في سوا (تبدو مُرسَلة ولا تصل أحداً).
@@ -1912,7 +1920,7 @@ function PhoneContactsPane({ colors, onPick }) {
     };
     useEffect(() => { if (kind === "list") run(); }, []);
     const nq = normAr(q), qd = q.replace(/\D/g, "");
-    const shown = st === "list" ? list.filter((c) => !q || normAr(c.n || "").includes(nq) || (qd.length >= 3 && c.tels.some((t) => t.replace(/\D/g, "").includes(qd)))) : [];
+    const shown = st === "list" ? list.filter((c) => !q || arMatch(c.n || "", q) || (qd.length >= 3 && c.tels.some((t) => t.replace(/\D/g, "").includes(qd)))) : [];
     const manualOk = mp.replace(/\D/g, "").length >= 6;
     const inp = { backgroundColor: colors.bg, border: `1px solid ${colors.border}`, color: colors.text };
     return React.createElement(React.Fragment, null,
@@ -1970,7 +1978,7 @@ function ShareContactPicker({ colors, onPick }) {
     const [picked, setPicked] = useState([]);   // C92: عدّة جهات اتّصال دفعةً واحدة
     const all = (SC && SC.contacts ? SC.contacts() : []).filter((c) => c && c.uid);
     const nq = normAr(q);
-    const list = all.filter((c) => !nq || [c.name, c.realName, c.nick, c.code].some((x) => x && normAr(String(x)).includes(nq)));
+    const list = all.filter((c) => !nq || arMatchAny([c.name, c.realName, c.nick, c.code], q));   // C271
     const card = (c) => ({ n: c.realName || c.name, uid: c.uid, code: c.code || null });   // C184: بطاقةٌ غنيّة (النصّ الاحتياطيّ يُبنى في SawaChat)
     return React.createElement(React.Fragment, null,
         React.createElement("div", { className: "px-3 pb-2 shrink-0" },

@@ -4,7 +4,7 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v455';
+const VERSION = 'sawa-v457';
 // C197: سجلّ منظَّم داخل عامل الخدمة (لا SawaLog هنا).
 function slog(lvl, ev, f) { try { (console[lvl] || console.log)('[sw] ' + ev, Object.assign({ v: VERSION }, f || {})); } catch (e) {} }
 // C83: «ما الجديد» — يظهر لكلّ مستخدم في «حسابي ← تحديث التطبيق». سطرٌ واحد بلا علامة ' (‎\n‎ لسطرٍ جديد). يُحدَّث مع كلّ نسخة.
@@ -15,7 +15,7 @@ const NOTES = '• المحاسب الشخصيّ: «استيراد» إيصال�
 const MOVED_TO = 'https://www.sawaaap.com';
 const MOVED = /\.netlify\.app$/i.test(self.location.hostname) || /^sawaap\.pages\.dev$/i.test(self.location.hostname) || /^sawaaap\.com$/i.test(self.location.hostname);
 // C139: الحجم المتوقَّع (بالبايت) للملفّات المرفوعة مع هذه النسخة — إن اختلف على الخادم (لم يُرفع، أو رُفع ناقصاً) يُسجَّل ويُنبَّه المستخدم
-const EXPECT = { './sawa-rtc.js': 439864, './sawa-chat.js': 577058 };
+const EXPECT = { './sawa-rtc.js': 441964, './sawa-chat.js': 577058 };
 const REPORT = [];
 const ASSETS = [
   './',
@@ -177,7 +177,7 @@ self.addEventListener('fetch', (e) => {
   if (sameOrigin && req.mode === 'navigate' && (url.pathname === '/' || url.pathname === '/index.html')) { e.respondWith(cacheFirst(req, './')); return; }
   // صفحاتٌ أخرى (diag…) قد يحوّلها Pages: الشبكة مباشرةً
   if (sameOrigin && req.mode === 'navigate') { e.respondWith(networkFirst(req)); return; }
-  // C271: قارئ الإيصالات (‎/ocr/v1/…‎ نحو 9 م.ب) في مخزونٍ منفصل لا يبدأ بـ«sawa-» فلا يُمسح مع كلّ نسخة.
+  // C273: قارئ الإيصالات (‎/ocr/v1/…‎ نحو 9 م.ب) في مخزونٍ منفصل لا يبدأ بـ«sawa-» فلا يُمسح مع كلّ نسخة.
   //       الملفّات في مجلّدٍ برقم (v1، v2…): قارئٌ جديد = مجلّدٌ جديد، فلا تختلط نسخة قديمة بجديدة.
   if (sameOrigin && url.pathname.indexOf('/ocr/') === 0) { e.respondWith(ocrCache(req)); return; }
   // C161: ملفٌّ من ملفّات التطبيق بأيّ ‎?v=…‎ ⇒ النسخة المخزّنة مع هذا الإصدار (كان ‎?v=‎ يفوّت المخزون فيأتي من مخزون المتصفّح القديم)
@@ -201,7 +201,7 @@ self.addEventListener('push', (e) => {
     if (vis && d.t !== 'test') { vis.postMessage({ type: 'sawa-push', data: d }); return; }
     if (vis) vis.postMessage({ type: 'sawa-push', data: d });
     return self.registration.showNotification(d.title || 'سوا', {
-      body: d.body || '', tag: d.cid || (d.call ? 'call-' + d.call : d.sid ? 'sched-' + d.sid : d.t === 'req' ? 'req-' + (d.uf || d.from || '') : d.t === 'moment' && d.pid ? 'mom-' + d.pid : 'sawa'), renotify: true, dir: 'auto', lang: 'ar',
+      body: d.body || '', tag: d.cid || (d.call ? 'call-' + d.call : d.sid ? 'sched-' + d.sid : d.t === 'req' ? 'req-' + (d.uf || d.from || '') : d.t === 'moment' && d.pid ? 'mom-' + d.pid : d.t === 'kin' ? 'sawa-kin' : 'sawa'), renotify: true, dir: 'auto', lang: 'ar',
       icon: './icons/icon-192.png', badge: './icons/icon-192.png', data: d,
       requireInteraction: d.t === 'call', silent: false, vibrate: d.t === 'call' ? [300, 150, 300, 150, 300] : [120],
     });
@@ -216,7 +216,7 @@ self.addEventListener('notificationclick', (e) => {
     return;
   }
   e.notification.close();
-  const url = d.t === 'req' ? './?requests=1' : d.t === 'moment' && d.pid ? './?moment=' + encodeURIComponent(d.pid) + (d.cm ? '&cm=' + encodeURIComponent(d.cm) : '') : d.room ? './?room=' + encodeURIComponent(d.room) : './?' + (d.cid ? 'chat=' + encodeURIComponent(d.cid) : '') + (d.call ? '&call=' + encodeURIComponent(d.call) : '');
+  const url = d.t === 'kin' ? './?kin=1' : d.t === 'req' ? './?requests=1' : d.t === 'moment' && d.pid ? './?moment=' + encodeURIComponent(d.pid) + (d.cm ? '&cm=' + encodeURIComponent(d.cm) : '') : d.room ? './?room=' + encodeURIComponent(d.room) : './?' + (d.cid ? 'chat=' + encodeURIComponent(d.cid) : '') + (d.call ? '&call=' + encodeURIComponent(d.call) : '');
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
     for (const c of cs) { if ('focus' in c) { c.postMessage({ type: 'sawa-open', data: d }); return c.focus(); } }
     return self.clients.openWindow(url);

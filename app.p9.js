@@ -961,7 +961,7 @@ const AccountantScreen = (function () {
     }
 
     // ── screen ──
-    // ── C271: import receipts (Sawa-deploy-test/pfm/IMPORT-DESIGN.md §4.7) ──
+    // ── C273: import receipts (Sawa-deploy-test/pfm/IMPORT-DESIGN.md §4.7) ──
     // Screenshots are read ON THE PHONE by the Sawa reader (/ocr/v1/, tesseract.js): no service sees them. Each row the user
     // confirms becomes an ordinary entry (pfm.tx.add) with the screenshot as its sealed receipt. A bank reference makes the
     // entry id on the server, so the same transfer imported twice is booked once.
