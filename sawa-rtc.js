@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c272";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c275";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -1545,6 +1545,9 @@
       paint(c);
     }
     var g = gc || rm;   // الجماعيّة والغرف: الميكروفون فقط
+    // C275: تطبيق أندرويد القديم (قبل c272) يعلّق عند أيّ فقدٍ لـ«تركيز الصوت» — ومشغّل صوت المشاركين في سوا نفسها يأخذه
+    //       حين ينضمّ أحد ⇒ كان ميكروفوني في الغرفة يُكتم بلا إشارة. الجديد (فيه audioResume) يتحقّق من مكالمةٍ أخرى فعلاً.
+    var nb = NB(); if (on && nb && !nb.audioResume) g = null;
     if (g && g.local && !g.done && (g.live || g.joinedAt || !on) && !!g.held !== on) {
       g.held = on;
       var micOn = g === rm ? !!g.mic : !g.muted;   // الغرف: mic = مفتوح · الجماعيّة: muted = مكتوم
@@ -2139,6 +2142,7 @@
   function gJoin(g) {
     var me = myUid(), d = db();
     g.ref = d.ref("gcalls/" + g.gid);
+    preCallAudio();   // C274
     Promise.all([getMedia(g.type), getIce(), g.ref.once("value")]).then(function (r) {
       if (g.done) { stopStream(r[0]); return; }
       g.local = r[0]; g.ice = r[1];
@@ -2889,7 +2893,11 @@
       var check = setInterval(function () { if (closed || r.done) { clearInterval(check); return; } if (ov && !ov.isConnected) { clearInterval(check); reject(Object.assign(new Error("nopin"), { ui: L("لم تدخل رمز الغرفة", "No PIN entered") })); } }, 300);
     });
   }
+  // C274: «وضع المكالمة» والمكبّر قبل فتح الميكروفون — كانا يُضبطان بعد الدخول (الميكروفون مفتوحٌ أصلاً)، وبعض هواتف أندرويد
+  //       تُسكت الالتقاط المفتوح حين يتغيّر الوضع/المسار بعده: الآخرون يُسمَعون وصوتي لا يصل (مضيفاً كنتُ أو مشاركاً). المكالمة الفرديّة تضبطه عند الرنين أصلاً.
+  function preCallAudio() { try { if (NB()) nativeSpk(true, true); } catch (e) {} }
   function rMedia(r) {
+    preCallAudio();
     return getMedia("audio").then(function (st) {
       if (r.done) { stopStream(st); return; }
       r.local = st;
@@ -3780,10 +3788,15 @@
     if (!r.live || r.done || !r.local || r.held || r.healing) { r.micBad = 0; return; }
     var a = r.local.getAudioTracks()[0];
     var bad = !a || a.readyState === "ended" || a.muted;
+    // C274: التقاطٌ «مُسكَت» من النظام يبقى حيّاً غير مكتوم لكنّه أصفارٌ تامّة — الميكروفون الحقيقيّ لا يعطي صمتاً رقميّاً تامّاً أبداً
+    var zero = false;
+    try { var ctx = tone.ctx; if (!bad && r.mic && a && a.enabled && r.an && ctx && ctx.state === "running") { r.an.an.getByteTimeDomainData(r.an.buf); zero = true; for (var i = 0; i < r.an.buf.length; i++) if (r.an.buf[i] !== 128) { zero = false; break; } } } catch (e) {}
+    r.micZero = zero ? (r.micZero || 0) + 1 : 0;
+    if (r.micZero >= 6) { bad = true; r.micBad = 2; r.micZero = 0; }
     r.micBad = bad ? (r.micBad || 0) + 1 : 0;
     if (r.micBad < 3 || (r.healN || 0) >= 5) return;
     r.healing = true; r.micBad = 0; r.healN = (r.healN || 0) + 1;
-    LOG.warn("room.mic.heal", { n: r.healN, st: a ? a.readyState : "none", muted: !!(a && a.muted) });
+    LOG.warn("room.mic.heal", { n: r.healN, st: a ? a.readyState : "none", muted: !!(a && a.muted), zero: !!zero });
     getMedia("audio").then(function (st) {
       r.healing = false;
       var nt = st.getAudioTracks()[0];
@@ -3794,6 +3807,10 @@
       try { if (r.sfu && r.sfu.atx) r.sfu.atx.sender.replaceTrack(nt).catch(function () {}); } catch (e) {}
       try { if (r.an && r.an.src) r.an.src.disconnect(); r.an = null; rLevelWatch(r, "__me", r.local); } catch (e) {}
     }).catch(function (e) { r.healing = false; LOG.warn("room.mic.heal.fail", { err: e && (e.name || e.message) }); });
+  }
+  // C275: صوت المشاركين يتوقّف حين ينضمّ ثالث — النظام/WebView يوقف مشغّلات الصوت عند تنازع «تركيز الصوت» ولا يعيدها
+  function rResumeAudio() {
+    try { if (!rui.audios) return; [].forEach.call(rui.audios.querySelectorAll("audio"), function (a) { if (a.srcObject && a.paused) { LOG.info("room.audio.resume"); a.play().catch(function () {}); } }); } catch (e) {}
   }
   function rTick(r) {
     if (r.done) return;
@@ -3825,6 +3842,7 @@
     // C65: عضوٌ حاضر ولا اتّصال معه (عرضٌ ضاع: كُتب حين غاب أحدنا لحظةً فرفضته القواعد، أو حُذف مع sig) ⇒ نعيد المحاولة — كان لا يُعاد أبداً فيبقى كلٌّ وحده
     r.tickN = (r.tickN || 0) + 1;
     rMicHeal(r);   // C272
+    if (r.live && !r.held) rResumeAudio();   // C275
     if (r.live && !r.rejoining && !rBig(r) && r.state === "live" && r.tickN % 4 === 0) {
       var me = myUid(), nowT = Date.now(); r.noPeer = r.noPeer || {};
       Object.keys(r.members || {}).forEach(function (u) {

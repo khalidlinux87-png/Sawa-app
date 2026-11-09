@@ -966,7 +966,7 @@ const AccountantScreen = (function () {
     // confirms becomes an ordinary entry (pfm.tx.add) with the screenshot as its sealed receipt. A bank reference makes the
     // entry id on the server, so the same transfer imported twice is booked once.
     const OCR_BASE = "/ocr/v1/";                       // the OCR engine (never changes inside v1)
-    const READER_JS = "/ocr/sawa-reader-3.js";         // C274: the reader carries its version in its name (phones cache /ocr/ for good)
+    const READER_JS = "/ocr/sawa-reader-3.js";         // C276: the reader carries its version in its name (phones cache /ocr/ for good)
     let readerLoad = null;
     const loadReader = () => readerLoad || (readerLoad = new Promise((res, rej) => {
         if (window.SawaReader) return res(window.SawaReader);
@@ -974,7 +974,7 @@ const AccountantScreen = (function () {
         s.onload = () => res(window.SawaReader); s.onerror = () => { readerLoad = null; rej(new Error("ocr_load_failed")); };
         document.head.appendChild(s);
     }));
-    // C275: one set of OCR engines for the whole app session. Started when the Import sheet opens (while the user picks
+    // C276: one set of OCR engines for the whole app session. Started when the Import sheet opens (while the user picks
     // images), kept for 3 minutes after it closes, so reopening does not start them again (each start compiles a 4 MB engine).
     let ocrShared = null, ocrIdle = null, ocrProgress = null;
     const ocrStat = { ms: null };
