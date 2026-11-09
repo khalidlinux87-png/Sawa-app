@@ -2752,10 +2752,16 @@ function WalletLockScreen({ onUnlock, onBack, walletPasskeyId, onPasskeyRegister
                     setMode("newPin");
                 }, style: { width: 240 } }));
         }
+        // C284: التحقّق بحساب سوا (البريد أو Google) — يظهر دائماً (للضيف: تلميحٌ بربط الحساب)
+        const acctOk = !!(window.SawaSync && window.SawaSync.recoveryAccount && window.SawaSync.recoveryAccount());
+        if (opts.length && acctOk) opts.push(or("o3"));
+        opts.push(React.createElement("div", { key: "acct", className: "w-full max-w-[300px] mt-1" },
+            React.createElement(AccountRecoveryOption, { lockoutKey: WALLET_LOCKOUT_KEY, onVerified: () => { succeed(); setMode("newPin"); } })));
+        const anyMethod = !!walletPasskeyId || !!appPin || hasCodes || acctOk;
         return page(tl("نسيت رمز المحفظة", "Forgot wallet PIN"), () => { setWebauthnStatus(""); setMode("unlock"); }, [
             React.createElement(Key, { size: 36, color: colors.primary }),
             React.createElement("h3", { className: "text-base font-extrabold mt-3 mb-1", style: { color: colors.text } }, tl("أثبت أنّها محفظتك", "Prove it's your wallet")),
-            React.createElement("p", { className: "text-xs mb-4 text-center max-w-[280px]", style: { color: colors.textMuted } }, opts.length
+            React.createElement("p", { className: "text-xs mb-4 text-center max-w-[280px]", style: { color: colors.textMuted } }, anyMethod
                 ? tl("لا يمكن عرض الرمز القديم — بعد التحقّق تعيّن رمزاً جديداً، ويبقى رصيدك كما هو.", "The old PIN can't be shown — after verifying you set a new one. Your balance stays as it is.")
                 : tl("لا توجد طريقة استرداد على هذا الجهاز (لا بصمة مسجّلة ولا رموز استرداد متبقّية). تواصل مع الدعم من «حسابي».", "No recovery method on this device (no registered biometrics and no recovery codes left). Contact support from the Me tab.")),
             ...opts,

@@ -897,10 +897,78 @@ function LockScreen({ onUnlock, onForgot, correctPin, biometricEnabled, onBiomet
         React.createElement(PinKeypad, { onDigit: handleDigit, onBackspace: () => setPin((p) => p.slice(0, -1)), onBiometric: bio, showBiometric: biometricEnabled && !!onBiometric })));
 }
 // ============================================================================
+// C284: «تحقّق بحسابك» — يثبت ملكيّة حساب سوا (البريد وكلمة المرور، أو Google) بإعادة المصادقة على Firebase.
+// لا رموز ثابتة: كلمة المرور تُفحص على الخادم، و«نسيت كلمة المرور» يرسل رابطاً حقيقيّاً إلى البريد.
+// مستعمَل في «نسيت رمز القفل» و«نسيت رمز المحفظة».
+// ============================================================================
+function AccountRecoveryOption({ onVerified, lockoutKey }) {
+    const { colors } = useTheme();
+    const S = window.SawaSync;
+    const acct = S && S.recoveryAccount ? S.recoveryAccount() : null;
+    const [mode, setMode] = useState(null); // null | password
+    const [pass, setPass] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [msg, setMsg] = useState("");
+    const [info, setInfo] = useState("");
+    const cardCls = `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border mb-3`;
+    const cardStyle = { borderColor: colors.border, backgroundColor: colors.card };
+    const card = (key, Icon, title, sub, onClick) => React.createElement("button", { key, onClick, disabled: busy, className: cardCls, style: cardStyle },
+        React.createElement(Icon, { size: 20, color: colors.primary }),
+        React.createElement("div", { className: `flex-1 ${textStart()}` },
+            React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, title),
+            React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted }, dir: "auto" }, sub)));
+    if (!acct) {
+        return React.createElement("p", { className: `text-[11px] mb-3 ${textStart()}`, style: { color: colors.textMuted } },
+            tl("لاستردادٍ بالبريد أو Google: اربط حسابك من «حسابي» (حسابك الآن «ضيف»).", "To recover with email or Google, link your account from the Account tab (it's a guest account now)."));
+    }
+    async function run(kind) {
+        const lo = walletLockoutGet(lockoutKey);
+        if (lo.until > Date.now()) { setMsg(lockoutMsg(lo.until - Date.now())); return; }
+        setBusy(true); setMsg(""); setInfo("");
+        try {
+            await S.reauthAccount(kind, pass);
+            walletLockoutReset(lockoutKey);
+            setPass("");
+            onVerified();
+        }
+        catch (e) {
+            const code = (e && e.code) || "";
+            let m = S.reauthError ? S.reauthError(e) : String(code || e);
+            if (/wrong-password|invalid-credential|invalid-login|user-mismatch/.test(code)) {
+                const o = walletLockoutFail(lockoutKey);
+                if (o.until > Date.now()) m = lockoutMsg(o.until - Date.now());
+                setPass("");
+            }
+            setMsg(m);
+        }
+        setBusy(false);
+    }
+    function sendReset() {
+        setBusy(true); setMsg(""); setInfo("");
+        S.resetPassword(acct.email).then(() => setInfo(tl("أرسلنا رابط تغيير كلمة المرور إلى " + acct.email + " — غيّرها من البريد ثمّ عد وأدخل الجديدة هنا.", "We sent a password reset link to " + acct.email + ". Change it from the email, then come back and enter the new one here.")),
+            (e) => setMsg(S.reauthError ? S.reauthError(e) : String((e && e.code) || e))).then(() => setBusy(false));
+    }
+    if (mode === "password") {
+        return React.createElement("div", { className: "w-full mb-3" },
+            React.createElement("p", { className: `text-xs font-bold mb-1 ${textStart()}`, style: { color: colors.text } }, tl("كلمة مرور حسابك", "Your account password")),
+            React.createElement("p", { className: `text-[11px] mb-2 ${textStart()}`, style: { color: colors.textMuted }, dir: "auto" }, acct.email),
+            React.createElement("input", { type: "password", value: pass, onChange: (e) => setPass(e.target.value), autoComplete: "current-password", "aria-label": tl("كلمة المرور", "Password"), className: "w-full border rounded-xl px-3 py-3 text-sm mb-2", dir: "ltr", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
+            msg && React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.danger } }, msg),
+            info && React.createElement("p", { className: "text-xs text-center mb-2", style: { color: colors.success || colors.primary } }, info),
+            React.createElement(Button, { label: busy ? "…" : t("thqq"), disabled: busy || !pass, onPress: () => run("password"), style: { width: "100%" } }),
+            React.createElement("button", { onClick: sendReset, disabled: busy, className: "w-full mt-2 text-xs font-bold", style: { color: colors.primary } }, tl("نسيت كلمة المرور؟ أرسل رابطاً إلى بريدي", "Forgot password? Email me a reset link")),
+            React.createElement("button", { onClick: () => { setMode(null); setMsg(""); setInfo(""); setPass(""); }, className: "w-full mt-2 text-xs", style: { color: colors.textMuted } }, tl("طريقة أخرى", "Another way")));
+    }
+    return React.createElement(React.Fragment, null,
+        acct.password && card("pw", Mail, tl("تحقّق بالبريد الإلكتروني", "Verify with your email account"), acct.email, () => { setMode("password"); setMsg(""); }),
+        acct.google && card("g", Globe, tl("تحقّق بحساب Google", "Verify with Google"), acct.email || "Google", () => run("google")),
+        msg && React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.danger } }, msg));
+}
+// ============================================================================
 // شاشة نسيت الرمز
 // ============================================================================
 // C283: checkCode يتحقّق من الرمز المُجزّأ ويستهلكه · أُزيل «رمز التحقّق عبر البريد» (كان 123456 ثابتاً — يتجاوز أيّ رمزٍ محفوظ)
-function ForgotPinScreen({ onBack, onRecovered, checkCode }) {
+function ForgotPinScreen({ onBack, onRecovered, checkCode, onBiometric }) {
     const { colors } = useTheme();
     const [step, setStep] = useState("choose");
     const [codeInput, setCodeInput] = useState("");
@@ -956,11 +1024,19 @@ function ForgotPinScreen({ onBack, onRecovered, checkCode }) {
         step === "choose" && (React.createElement(React.Fragment, null,
             React.createElement("h2", { className: "text-lg font-extrabold mb-1", style: { color: colors.text } }, t("astrjaa_alwswl")),
             React.createElement("p", { className: "text-xs mb-4", style: { color: colors.textMuted } }, t("akhtr_tryqa_alastrjaa")),
-            React.createElement("button", { onClick: () => setStep("code"), className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border mb-3`, style: { borderColor: colors.border, backgroundColor: colors.card } },
+            React.createElement("button", { onClick: () => { setError(""); setStep("code"); }, className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border mb-3`, style: { borderColor: colors.border, backgroundColor: colors.card } },
                 React.createElement(Key, { size: 20, color: colors.primary }),
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
                     React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, t("rmz_astrjaa_ahtyaty")),
                     React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted } }, t("adkhl_ahd_alrmwz_alty")))),
+            // C284: بصمة الجهاز (إن سُجّلت) · حساب سوا (البريد أو Google)
+            onBiometric && React.createElement("button", { onClick: async () => { setError(""); const r = await onBiometric(); if (r && r.ok) { walletLockoutReset(APP_LOCKOUT_KEY); setStep("newPin"); } else if (r && r.error) setError(r.error); }, className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border mb-3`, style: { borderColor: colors.border, backgroundColor: colors.card } },
+                React.createElement(Fingerprint, { size: 20, color: colors.primary }),
+                React.createElement("div", { className: `flex-1 ${textStart()}` },
+                    React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, tl("بصمة الجهاز", "Device fingerprint")),
+                    React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted } }, tl("البصمة أو الوجه المسجَّل لفتح سوا", "The fingerprint or face registered to unlock Sawa")))),
+            React.createElement(AccountRecoveryOption, { lockoutKey: APP_LOCKOUT_KEY, onVerified: () => setStep("newPin") }),
+            error && React.createElement("p", { className: "text-xs font-bold text-center mb-3", style: { color: colors.danger } }, error),
             React.createElement("button", { onClick: () => setStep("reset"), className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border`, style: { borderColor: colors.danger, backgroundColor: colors.card } },
                 React.createElement(AlertTriangle, { size: 20, color: colors.danger }),
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
