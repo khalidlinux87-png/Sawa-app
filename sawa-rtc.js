@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c275";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c278";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -468,12 +468,17 @@
     } catch (e) {}
     return st;
   }
-  function getMedia(type, facing) {
-    return getMedia0(type, facing).then(ensureAec);
+  function getMedia(type, facing, plain) {
+    return getMedia0(type, facing, plain).then(ensureAec);
   }
-  function getMedia0(type, facing) {
+  // C278: بعض الهواتف (Honor) تُسكت التقاط WebView بنمط «المكالمات» (إلغاء الصدى ⇒ مصدر VOICE_COMMUNICATION) فلا يصل صوتي في الغرف
+  //       ولا تظهر علامة التحدّث. حين يثبت ذلك (صمتٌ رقميّ بعد إعادة فتح الميكروفون) نفتحه بنمط الميكروفون العاديّ ونتذكّره لهذا الجهاز.
+  var MICK = "sawa-mic-mode";
+  function micPlain() { try { return localStorage.getItem(MICK) === "plain"; } catch (e) { return false; } }
+  function micAudio(plain) { return plain || micPlain() ? { echoCancellation: false, noiseSuppression: true, autoGainControl: true } : { echoCancellation: true, noiseSuppression: true, autoGainControl: true }; }
+  function getMedia0(type, facing, plain) {
     var md = navigator.mediaDevices;
-    var audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    var audio = micAudio(plain);
     if (type !== "video") return md.getUserMedia({ audio: audio, video: false });
     // 640×480 كافية وخفيفة على الشبكات الضعيفة
     // الكاميرا مشغولة (تبويبٌ آخر/تطبيق) أو مرفوضة وحدها ⇒ نكمل بالصوت بدل أن تفشل المكالمة
@@ -1550,6 +1555,7 @@
     var nb = NB(); if (on && nb && !nb.audioResume) g = null;
     if (g && g.local && !g.done && (g.live || g.joinedAt || !on) && !!g.held !== on) {
       g.held = on;
+      LOG.info("room.hold", { on: on });   // C277
       var micOn = g === rm ? !!g.mic : !g.muted;   // الغرف: mic = مفتوح · الجماعيّة: muted = مكتوم
       try { g.local.getAudioTracks().forEach(function (t) { t.enabled = !on && micOn; }); } catch (e) {}
     }
@@ -3789,15 +3795,18 @@
     var a = r.local.getAudioTracks()[0];
     var bad = !a || a.readyState === "ended" || a.muted;
     // C274: التقاطٌ «مُسكَت» من النظام يبقى حيّاً غير مكتوم لكنّه أصفارٌ تامّة — الميكروفون الحقيقيّ لا يعطي صمتاً رقميّاً تامّاً أبداً
-    var zero = false;
-    try { var ctx = tone.ctx; if (!bad && r.mic && a && a.enabled && r.an && ctx && ctx.state === "running") { r.an.an.getByteTimeDomainData(r.an.buf); zero = true; for (var i = 0; i < r.an.buf.length; i++) if (r.an.buf[i] !== 128) { zero = false; break; } } } catch (e) {}
+    var zero = false, measured = false;
+    try { var ctx = tone.ctx; if (!bad && r.mic && a && a.enabled && r.an && ctx && ctx.state === "running") { r.an.an.getByteTimeDomainData(r.an.buf); measured = true; zero = true; for (var i = 0; i < r.an.buf.length; i++) if (r.an.buf[i] !== 128) { zero = false; break; } } } catch (e) {}
     r.micZero = zero ? (r.micZero || 0) + 1 : 0;
-    if (r.micZero >= 6) { bad = true; r.micBad = 2; r.micZero = 0; }
+    if (r.plainCheck && measured && !zero) { r.plainCheck = false; if (!micPlain()) { try { localStorage.setItem(MICK, "plain"); } catch (e) {} LOG.warn("mic.plain.ok"); if (isAdm()) toast(L("🎙 ميكروفونٌ بديل لهذا الهاتف — صار يعمل", "🎙 Fallback mic mode for this phone — working")); } }   // C278
+    if (r.micZero >= 4) { bad = true; r.micBad = 2; r.micZero = 0; r.zeroN = (r.zeroN || 0) + 1; }
     r.micBad = bad ? (r.micBad || 0) + 1 : 0;
     if (r.micBad < 3 || (r.healN || 0) >= 5) return;
     r.healing = true; r.micBad = 0; r.healN = (r.healN || 0) + 1;
     LOG.warn("room.mic.heal", { n: r.healN, st: a ? a.readyState : "none", muted: !!(a && a.muted), zero: !!zero });
-    getMedia("audio").then(function (st) {
+    var plain = !!zero && (r.zeroN || 0) >= 2 && !micPlain();   // C278: الإعادة العاديّة لم تكفِ ⇒ نمط الميكروفون العاديّ
+    if (plain) { r.plainCheck = true; LOG.warn("mic.plain.try"); }
+    getMedia("audio", null, plain).then(function (st) {
       r.healing = false;
       var nt = st.getAudioTracks()[0];
       if (r.done || !r.local || !nt) { stopStream(st); return; }
@@ -4303,7 +4312,7 @@
     var r = rm; if (!r) return;
     var me = myUid(), sh = function (x) { return String(x || "—").slice(-4); };
     var nm = function (u) { return u === me ? L("أنا", "me") : rName(r, u); };
-    var lines = [], body0 = null;
+    var lines = [], body0 = null, aud = { cap: null, capE: null, out: {}, inn: {} };   // C277
     var paint = function (srv, routes) {
       if (!body0) return; body0.innerHTML = "";
       var row = function (k, v, bad) { var d = el("div", "display:flex;justify-content:space-between;gap:10px;padding:7px 16px;border-top:1px solid " + LINE + ";font:600 12px var(--sawa-font,system-ui)"); d.appendChild(el("span", "color:" + MUTED, k)); d.appendChild(el("span", "color:" + (bad ? "#f87171" : "#e2e8f0") + ";text-align:left;direction:ltr", v)); body0.appendChild(d); lines.push(k + ": " + v); };
@@ -4332,6 +4341,22 @@
         row(L("يصلني من ", "From ") + nm(u), "📷 " + (vi.cam || "—") + (p && p.sct ? " · 🖥 " + (vi.scr || "—") : ""), m.scr && !(vi.scr && !/^0×/.test(vi.scr)) && !(m.scrCam || !p || !p.sct));
         row(L("أرسل إلى ", "To ") + nm(u), "📷 " + (vo.cam || "—") + (p && p.sct ? " · 🖥 " + (vo.scr || "—") : ""));
       });
+      // C277: الصوت — هل يلتقط ميكروفوني صوتاً؟ هل يُرسَل؟ ماذا يفعل أندرويد بالصوت؟ (لتشخيص «صوتي لا يصل» على هاتفٍ بعينه)
+      var a0 = r.local && r.local.getAudioTracks()[0];
+      row(L("ميكروفوني", "My mic"), a0 ? a0.readyState + (a0.muted ? " · muted(sys)" : "") + (a0.enabled ? "" : " · off") : L("لا يوجد", "none"), !a0 || a0.readyState !== "live" || a0.muted || (r.mic && !a0.enabled));
+      row(L("حالة الصوت", "Audio state"), "mic=" + (r.mic ? 1 : 0) + " held=" + (r.held ? 1 : 0) + " heal=" + (r.healN || 0) + "/" + (r.zeroN || 0) + (micPlain() ? " mic=plain" : "") + " aec=" + (lastAec && lastAec.aec) + " lvl=" + (r.levels && r.levels[me] != null ? r.levels[me].toFixed(3) : "—") + " ctx=" + (tone.ctx ? tone.ctx.state : "—"), !!r.held);
+      if (aud.cap != null) row(L("مستوى الالتقاط", "Capture level"), aud.cap.toFixed(3) + (aud.capE != null ? " · E=" + aud.capE.toFixed(2) : ""), aud.cap === 0);
+      Object.keys(aud.out).forEach(function (u) { var o = aud.out[u]; row(L("صوتي إلى ", "My audio to ") + nm(u), o.kb + "KB · " + o.pk + "pk" + (o.d != null ? " · +" + o.d + "pk/2s" : ""), o.d === 0); });
+      Object.keys(aud.inn).forEach(function (u) { var o = aud.inn[u]; row(L("صوتٌ من ", "Audio from ") + nm(u), o.kb + "KB · lvl " + o.lv + (o.paused ? " · ⏸" : ""), !!o.paused); });
+      var nb = NB(), nat = "";
+      try { if (nb) { nat = (nb.platform ? nb.platform() : "android") + (nb.audioResume ? "" : " (old native)") + " · " + (nb.audioRoute ? nb.audioRoute() : ""); } else if (IOSB()) nat = "iOS"; } catch (e) {}
+      if (nat) row(L("التطبيق/المسار", "App/route"), nat);
+      var nlog = ""; try { if (nb && nb.audioLog) nlog = String(nb.audioLog() || ""); } catch (e) {}
+      var jlog = ""; try { jlog = SawaLog.recent(300).filter(function (x) { return /hold|heal|audio|room\.|mic|route|focus/.test(x.ev); }).slice(-25).map(function (x) { var o = []; for (var k in x) if (k !== "ts" && k !== "lvl" && k !== "mod" && k !== "ev") o.push(k + "=" + x[k]); return Math.round((x.ts - (r.t0 || x.ts)) / 1000) + "s " + x.ev + (o.length ? " " + o.join(" ") : ""); }).join("\n"); } catch (e) {}
+      lines.push("--- js log ---", jlog || "—");
+      if (nb) lines.push("--- android audio ---", nlog || "(no audioLog: old native)");
+      var pre = el("pre", "margin:8px 16px;padding:8px;max-height:180px;overflow:auto;background:#0006;border-radius:10px;color:#cbd5e1;font:500 10px/1.4 ui-monospace,monospace;white-space:pre-wrap;direction:ltr;text-align:left", (jlog || "—") + (nb ? "\n--- android ---\n" + (nlog || "(old native)") : ""));
+      body0.appendChild(pre);
       row(L("محاولات الحارس", "Watchdog retries"), String(r.retries || 0) + " · " + L("عودات", "rejoins") + " " + (r.rejoins || 0) + "/" + (r.softRejoins || 0));
       var bt = el("div", "display:flex;gap:8px;padding:12px 16px");
       var cp = el("button", "flex:1;padding:10px;border:0;border-radius:12px;background:" + LINE + ";color:#fff;font:800 12px var(--sawa-font,system-ui)", L("نسخ التقرير", "Copy report"));
@@ -4339,6 +4364,8 @@
       var rj = el("button", "flex:1;padding:10px;border:0;border-radius:12px;background:" + PRI + ";color:#fff;font:800 12px var(--sawa-font,system-ui)", L("إعادة الاتّصال", "Reconnect"));
       rj.onclick = function () { r.rejoining = false; Object.keys(r.peers).forEach(function (u) { rDrop(r, u); }); rRejoin(r); toast(L("جارٍ إعادة الاتّصال…", "Reconnecting…")); };
       bt.appendChild(cp); bt.appendChild(rj); body0.appendChild(bt);
+      if (micPlain()) { var rs = el("button", "margin:0 16px 12px;width:calc(100% - 32px);padding:9px;border:0;border-radius:12px;background:" + LINE + ";color:#fff;font:800 12px var(--sawa-font,system-ui)", L("إعادة الميكروفون إلى النمط الافتراضيّ (إلغاء الصدى)", "Reset mic to default (echo cancellation)"));   // C278
+        rs.onclick = function () { try { localStorage.removeItem(MICK); } catch (e) {} toast(L("سيُستعمل النمط الافتراضيّ من الغرفة القادمة", "Default mode from the next room")); rs.remove(); }; body0.appendChild(rs); }
     };
     sheet(L("تشخيص الاتّصال", "Connection diagnostics"), function (body) { body0 = el("div", ""); body.appendChild(body0); paint(null, null); });
     var routes = {}, vin = {}, vout = {};
@@ -4348,11 +4375,23 @@
       return p.pc.getStats().then(function (rep) { var pair = null; rep.forEach(function (x) { if (x.type === "candidate-pair" && x.state === "succeeded" && (x.nominated || x.selected)) pair = pair || x;
           // C122: ما يصل من صورٍ فعلاً (الكاميرا/الشاشة) — لتشخيص «يبدأ العرض ولا أرى شيئاً»
           if (x.type === "inbound-rtp" && x.kind === "video") { var k = p.sct && x.mid === p.sct.mid ? "scr" : "cam"; vin[u] = vin[u] || {}; vin[u][k] = (x.frameWidth || 0) + "×" + (x.frameHeight || 0) + " · " + Math.round(x.framesPerSecond || 0) + "fps · " + (x.framesDecoded || 0) + "f"; }
+          if (x.type === "media-source" && x.kind === "audio" && typeof x.audioLevel === "number") { aud.cap = x.audioLevel; aud.capE = x.totalAudioEnergy; }   // C277: ما يلتقطه ميكروفوني فعلاً
+          if (x.type === "outbound-rtp" && x.kind === "audio") { aud.out[u] = { kb: Math.round((x.bytesSent || 0) / 1024), pk: x.packetsSent || 0, d: null }; }
+          if (x.type === "inbound-rtp" && x.kind === "audio") { var at = rui.tiles && rui.tiles[u] && rui.tiles[u].a; aud.inn[u] = { kb: Math.round((x.bytesReceived || 0) / 1024), lv: typeof x.audioLevel === "number" ? x.audioLevel.toFixed(3) : "—", paused: !!(at && at.paused) }; }
           if (x.type === "outbound-rtp" && x.kind === "video") { var k2 = p.sct && x.mid === p.sct.mid ? "scr" : "cam"; vout[u] = vout[u] || {}; vout[u][k2] = (x.frameWidth || 0) + "×" + (x.frameHeight || 0) + " · " + Math.round((x.targetBitrate || 0) / 1000) + "k"; }
         });
         if (pair) { var lc = rep.get(pair.localCandidateId), rc = rep.get(pair.remoteCandidateId); routes[u] = (lc && lc.candidateType === "relay") || (rc && rc.candidateType === "relay") ? L("عبر وسيط", "relay") : L("مباشر", "direct"); } }).catch(function () {});
     }));
-    Promise.all([srvP, rtP]).then(function (x) { paint(x[0], routes); });
+    Promise.all([srvP, rtP]).then(function (x) {
+      paint(x[0], routes);
+      // C277: بعد ثانيتين — هل ما زال صوتي يُرسَل؟ (عدد الحزم يزيد)
+      setTimeout(function () {
+        if (r.done || !body0 || !body0.isConnected) return;
+        Promise.all(Object.keys(aud.out).map(function (u) { var p = r.peers[u]; if (!p || !p.pc) return null;
+          return p.pc.getStats().then(function (rep) { rep.forEach(function (y) { if (y.type === "outbound-rtp" && y.kind === "audio" && aud.out[u]) aud.out[u].d = (y.packetsSent || 0) - aud.out[u].pk; }); }).catch(function () {}); }))
+          .then(function () { paint(x[0], routes); });
+      }, 2000);
+    });
   }
   function rMore() {
     var r = rm; if (!r) return;
