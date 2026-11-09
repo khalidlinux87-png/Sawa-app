@@ -1439,7 +1439,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
     const total = ERSAL_BASE_PRICE + weightFee + city.fee + type.surcharge + handlingSurcharge + insuranceFee;
     const needsDriverConfirm = paymentMethod === "cash" || paymentMethod === "bank";
     const walletShort = total > (Number(walletBalance) || 0);
-    const walletPinOk = !!walletPin && walletPinIn === walletPin;
+    const walletPinOk = walletPinMatches(walletPin, walletPinIn);
     const walletReady = paymentMethod !== "wallet" || (!walletShort && walletPinOk);
     // C225: بلاطةٌ مدمجة (أيقونة · اسم · رسم) — اختيارٌ واحد للنوع، ومتعدّد للحالة (علامة صحّ)
     const erTile = (o, active, onPress, multi) => React.createElement("button", { key: o.key, onClick: onPress, "aria-pressed": active, className: `relative flex ${rowStart()} items-center gap-2 rounded-xl border-2 p-2.5 ${textStart()}`, style: { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primaryLight : colors.card, minWidth: 0 } },
