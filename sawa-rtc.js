@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c233";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c272";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -1380,7 +1380,7 @@
         if (ckOn()) setTimeout(function () { if (cur === c && c.state === "incoming" && !ckRing[id] && !wantAnswer[id]) playTone("ring"); }, 1500);   // C151: النظام يرنّ (CallKit)
         else playTone("ring");
       }
-      if (wantAnswer[id]) { delete wantAnswer[id]; c.fromSys = true; setTimeout(function () { if (cur === c && c.state === "incoming") accept(false); }, 250); }
+      if (wantAnswer[id]) { delete wantAnswer[id]; c.fromSys = true; setTimeout(function () { if (cur === c && c.state === "incoming") accept(false); }, 0); }   // C272: كان ٢٥٠ مث
       listen(c, ref, "value", function (s) { onCalleeValue(c, s.val()); }, function () { finish(c, "remote", { remote: true }); });
       c.timers.ring = setTimeout(function () { if (c.state === "incoming") finish(c, "missed", { remote: true }); }, RING_MS + 5000);
       getIce();   // تجهيزٌ مسبق
@@ -1570,7 +1570,7 @@
     }).catch(function (e) { LOG.warn("resume.media", { err: e && (e.name || e.message) }); });
   }
   // C234: «استئناف» يدويّ — المستخدم أنهى المكالمة الأخرى (والنظام لم يبلغ بانتهاء المقاطعة)
-  function resumeHold() { try { if (IOSB()) IOSB().call("audioResume", {}).catch(function () {}); } catch (e) {} setHold(false); }
+  function resumeHold() { try { if (IOSB()) IOSB().call("audioResume", {}).catch(function () {}); var n = NB(); if (n && n.audioResume) n.audioResume(); } catch (e) {} setHold(false); }   // C272: أندرويد أيضاً
   global.__sawaAudioHold = function (on) { try { setHold(on); } catch (e) { LOG.warn("hold", { err: e && e.message }); } };
   function toggleCam() {
     var c = cur; if (!c || !c.local) return;
@@ -3773,6 +3773,28 @@
     if (rui.root) { if (rui.min) rMinimize(false); rPaint(r); }
     setTimeout(function () { if (!rm) rHide(); }, 2600);
   }
+  // C272: صوت المضيف كان يختفي بعد ثوانٍ من بدء الغرفة — النظام يوقف التقاط الميكروفون حين يتغيّر «وضع الاتّصال»/المسار بعد فتحه
+  //       (الغرفة تفتح الميكروفون أوّلاً ثمّ توجّه الصوت إلى المكبّر)، والمسار يبقى «حيّاً» في الواجهة بلا صوت.
+  //       ميكروفونٌ منتهٍ أو مكتومٌ من النظام ٣ ثوانٍ (ونحن غير معلّقين بمكالمةٍ أخرى) ⇒ نلتقطه من جديد ونستبدله عند كلّ طرف بلا إعادة تفاوض
+  function rMicHeal(r) {
+    if (!r.live || r.done || !r.local || r.held || r.healing) { r.micBad = 0; return; }
+    var a = r.local.getAudioTracks()[0];
+    var bad = !a || a.readyState === "ended" || a.muted;
+    r.micBad = bad ? (r.micBad || 0) + 1 : 0;
+    if (r.micBad < 3 || (r.healN || 0) >= 5) return;
+    r.healing = true; r.micBad = 0; r.healN = (r.healN || 0) + 1;
+    LOG.warn("room.mic.heal", { n: r.healN, st: a ? a.readyState : "none", muted: !!(a && a.muted) });
+    getMedia("audio").then(function (st) {
+      r.healing = false;
+      var nt = st.getAudioTracks()[0];
+      if (r.done || !r.local || !nt) { stopStream(st); return; }
+      nt.enabled = !!r.mic && !r.held;
+      try { if (a) { r.local.removeTrack(a); a.stop(); } r.local.addTrack(nt); } catch (e) {}
+      Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); });
+      try { if (r.sfu && r.sfu.atx) r.sfu.atx.sender.replaceTrack(nt).catch(function () {}); } catch (e) {}
+      try { if (r.an && r.an.src) r.an.src.disconnect(); r.an = null; rLevelWatch(r, "__me", r.local); } catch (e) {}
+    }).catch(function (e) { r.healing = false; LOG.warn("room.mic.heal.fail", { err: e && (e.name || e.message) }); });
+  }
   function rTick(r) {
     if (r.done) return;
     // C64: حارس — لا تبقى الغرفة عالقةً في «جارٍ العودة»: الصوت يتدفّق ⇒ حيّة · عودةٌ معلّقة أكثر من 20 ث (طلبٌ لم يرجع أثناء الانقطاع) ⇒ محاولةٌ جديدة
@@ -3802,6 +3824,7 @@
     }
     // C65: عضوٌ حاضر ولا اتّصال معه (عرضٌ ضاع: كُتب حين غاب أحدنا لحظةً فرفضته القواعد، أو حُذف مع sig) ⇒ نعيد المحاولة — كان لا يُعاد أبداً فيبقى كلٌّ وحده
     r.tickN = (r.tickN || 0) + 1;
+    rMicHeal(r);   // C272
     if (r.live && !r.rejoining && !rBig(r) && r.state === "live" && r.tickN % 4 === 0) {
       var me = myUid(), nowT = Date.now(); r.noPeer = r.noPeer || {};
       Object.keys(r.members || {}).forEach(function (u) {
@@ -4853,7 +4876,7 @@
     if (!id) return;
     try { if (new URLSearchParams(global.location.search).get("answer") === "1") wantAnswer[id] = 1; } catch (e) {}   // C72: «ردّ» من شاشة الهاتف
     try { var u = new URL(global.location.href); u.searchParams.delete("call"); u.searchParams.delete("answer"); global.history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + u.hash); } catch (e) {}
-    whenUid(function () { setTimeout(function () { if (/^[gs]/.test(id)) groupIncoming(id); else incoming(id); }, 300); });
+    whenUid(function () { setTimeout(function () { if (/^[gs]/.test(id)) groupIncoming(id); else incoming(id); }, wantAnswer[id] ? 0 : 300); });   // C272: «ردّ» ⇒ بلا انتظار
   }
   try {
     if (global.navigator && navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", function (ev) {
