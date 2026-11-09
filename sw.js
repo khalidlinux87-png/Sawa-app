@@ -4,11 +4,11 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v454';
+const VERSION = 'sawa-v455';
 // C197: سجلّ منظَّم داخل عامل الخدمة (لا SawaLog هنا).
 function slog(lvl, ev, f) { try { (console[lvl] || console.log)('[sw] ' + ev, Object.assign({ v: VERSION }, f || {})); } catch (e) {} }
 // C83: «ما الجديد» — يظهر لكلّ مستخدم في «حسابي ← تحديث التطبيق». سطرٌ واحد بلا علامة ' (‎\n‎ لسطرٍ جديد). يُحدَّث مع كلّ نسخة.
-const NOTES = '• واجهة «تركيز» في الشجرة: اسحب في كلّ الاتّجاهات — لا يُقصّ الأجداد ولا الإخوة عند أطراف الشاشة\n• تبدأ عند الشخص المختار ووالديه';
+const NOTES = '• المحاسب الشخصيّ: «استيراد» إيصالات بنكك من لقطات الشاشة — تُقرأ على هاتفك وتراجعها قبل الإضافة\n• التحويل نفسه لا يُسجَّل مرّتين';
 // P2: على العناوين القديمة/البديلة (Netlify · sawaap.pages.dev · sawaaap.com بلا www) يصير عامل الخدمة «مُخلياً»:
 //     يمسح المخزون، يحوّل الصفحات المفتوحة إلى العنوان الرسميّ، ثمّ يلغي نفسه. على www.sawaaap.com يعمل كالمعتاد.
 //     (لا يُحذف هذا قبل أن ينتقل كلّ المستخدمين.)
@@ -155,6 +155,11 @@ function cacheFirst(req, key) {
   })).then(clean);
 }
 
+const OCR_CACHE = 'ocr-reader-1';
+function ocrCache(req) {
+  return caches.open(OCR_CACHE).then((c) => c.match(req).then((hit) => hit || fetch(req).then((res) => { if (res.ok) c.put(req, res.clone()).catch(() => {}); return res; })));
+}
+
 self.addEventListener('fetch', (e) => {
   if (MOVED) return;
   const req = e.request;
@@ -172,6 +177,9 @@ self.addEventListener('fetch', (e) => {
   if (sameOrigin && req.mode === 'navigate' && (url.pathname === '/' || url.pathname === '/index.html')) { e.respondWith(cacheFirst(req, './')); return; }
   // صفحاتٌ أخرى (diag…) قد يحوّلها Pages: الشبكة مباشرةً
   if (sameOrigin && req.mode === 'navigate') { e.respondWith(networkFirst(req)); return; }
+  // C271: قارئ الإيصالات (‎/ocr/v1/…‎ نحو 9 م.ب) في مخزونٍ منفصل لا يبدأ بـ«sawa-» فلا يُمسح مع كلّ نسخة.
+  //       الملفّات في مجلّدٍ برقم (v1، v2…): قارئٌ جديد = مجلّدٌ جديد، فلا تختلط نسخة قديمة بجديدة.
+  if (sameOrigin && url.pathname.indexOf('/ocr/') === 0) { e.respondWith(ocrCache(req)); return; }
   // C161: ملفٌّ من ملفّات التطبيق بأيّ ‎?v=…‎ ⇒ النسخة المخزّنة مع هذا الإصدار (كان ‎?v=‎ يفوّت المخزون فيأتي من مخزون المتصفّح القديم)
   if (sameOrigin && url.search && ASSETS.indexOf('.' + url.pathname) >= 0) { e.respondWith(cacheFirst(req, '.' + url.pathname)); return; }
   e.respondWith(cacheFirst(req));
