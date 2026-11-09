@@ -45,6 +45,40 @@ const AccountantScreen = (function () {
         bad_receipt: ["الإيصال يجب أن يكون صورة (JPEG أو PNG أو WebP) حتّى 400 كيلوبايت", "The receipt must be a JPEG, PNG or WebP photo up to 400 KB"],
         range_too_long: ["الفترة أطول من 24 شهراً", "Pick 24 months or fewer"],
         bad_month: ["بداية الفترة بعد نهايتها", "The start month is after the end month"],
+        pfm_not_initialised: ["أعدّ المحاسب الشخصيّ أوّلاً", "Set up the personal accountant first"],
+        forbidden: ["ليس لديك صلاحيّة لهذا الإجراء", "You don't have permission for this"],
+        not_found: ["غير متاح — ربما أُزيل من المشروع", "Not available — you may have been removed from it"],
+        bad_name: ["اكتب اسم المشروع", "Enter the project name"],
+        bad_budget: ["الميزانيّة يجب أن تكون أكبر من صفر", "The budget must be more than zero"],
+        bad_dates: ["تاريخ النهاية قبل البداية", "The end date is before the start date"],
+        bad_template: ["اختر نوع المشروع", "Choose the project type"],
+        currency_locked: ["لا يمكن تغيير عملة المشروع بعد إنشائه", "The project currency can't change after it's created"],
+        bad_transition: ["لا يمكن الانتقال إلى هذه الحالة", "The project can't move to that status"],
+        bad_line: ["هذا البند ليس في التقدير المعتمد", "That line isn't in the approved estimate"],
+        line_on_non_expense: ["البند يُربط بالمصروف فقط", "A line can only be set on an expense"],
+        fx_rate_required: ["أدخل سعر الصرف للعملة المختلفة", "Enter the exchange rate for the other currency"],
+        copy_expense_only: ["يُنسخ المصروف فقط إلى محاسبك الشخصي", "Only expenses can be copied to your personal accountant"],
+        draft_exists: ["أنهِ المراجعة المفتوحة أوّلاً", "Finish the open revision first"],
+        reason_required: ["اكتب سبب المراجعة", "Enter the reason for the change"],
+        baseline_locked: ["التقدير المعتمد لا يُعدَّل — أنشئ مراجعة جديدة", "The approved estimate can't be edited — start a new revision"],
+        empty_estimate: ["أضف بنداً واحداً على الأقلّ", "Add at least one item"],
+        dup_line_key: ["بند مكرّر", "Duplicate item"],
+        too_many_lines: ["عدد البنود أكثر من 400", "More than 400 items"],
+        no_baseline: ["لا يوجد تقدير معتمد بعد", "There is no approved estimate yet"],
+        bad_project_status: ["لا يمكن تعديل التقدير في هذه الحالة", "The estimate can't change in this status"],
+        linked_project_entry: ["هذه الحركة مرتبطة بمشروع — عدّلها من المشروع", "This entry belongs to a project — edit it there"],
+        owner_cannot_leave: ["المالك لا يغادر مشروعه — احذفه إن أردت", "The owner can't leave — delete the project instead"],
+        owner_role_fixed: ["لا يمكن تغيير دور المالك", "The owner's role can't change"],
+        invite_used: ["استُخدمت هذه الدعوة كلّها", "This invite has no uses left"],
+        invite_expired: ["انتهت صلاحيّة الدعوة", "This invite has expired"],
+        bad_invite: ["رمز الدعوة غير صحيح", "That invite code isn't valid"],
+        bad_role: ["الدور غير مسموح", "That role isn't allowed"],
+        bad_max_uses: ["عدد الاستخدامات من 1 إلى 10", "Uses must be from 1 to 10"],
+        bad_days: ["مدّة الصلاحيّة من 1 إلى 30 يوماً", "Validity must be from 1 to 30 days"],
+        confirm_required: ["تأكيد الحذف غير مكتمل", "The deletion wasn't confirmed"],
+        bad_idem_key: ["أعد المحاولة", "Try again"],
+        bad_qty: ["الكمّيّة يجب أن تكون أكبر من صفر", "The quantity must be more than zero"],
+        bad_category: ["اختر فئة", "Choose a category"],
     };
     const errText = (e) => { const m = String((e && e.message) || e || ""); const k = m.split(":")[0]; return ERR[k] ? tl(ERR[k][0], ERR[k][1]) : m; };
 
@@ -960,6 +994,380 @@ const AccountantScreen = (function () {
                             call("pfm.account.upsert", Object.assign({}, acct, { label: acct.label || acct.bankName || acct.provider || tl("حساب", "Account") })).then(() => { setAcct(null); setBusy(false); return load(); }, (e) => { setErr(errText(e)); setBusy(false); }); } }, tl("إضافة الحساب", "Add account"))))));
     }
 
+    // ── P6c: المشاريع (PROJECTS.md). Shared projects: list, create, join by invite, estimate, ledger, charts, people.
+    // Every number comes from pfm.proj.* on the server; the screen only shows it and sends inputs.
+    const PJ_TEMPLATES = [["house_construction", "بناء منزل", "House construction"], ["event", "فعالية", "Event"], ["small_business", "نشاط تجاري صغير", "Small business"], ["agri_season", "موسم زراعي", "Agricultural season"], ["custom", "مخصّص", "Custom"]];
+    const PJ_BOQ = [["raw_materials", "مواد خام", "Raw materials"], ["labor", "عمالة", "Labour"], ["equipment_rental", "تأجير معدّات", "Equipment rental"], ["permits", "تصاريح", "Permits"], ["other", "أخرى", "Other"]];
+    const PJ_KINDS = [["expense", "مصروف", "Expense"], ["revenue", "إيراد", "Revenue"], ["capital_injection", "رأس مال", "Capital"], ["partner_contribution", "مساهمة شريك", "Partner"], ["grant", "منحة", "Grant"], ["loan_draw", "قرض مستلم", "Loan received"], ["loan_repayment", "سداد قرض", "Loan repayment"]];
+    const PJ_INFLOW = ["revenue", "capital_injection", "partner_contribution", "grant", "loan_draw"];
+    const PJ_STATUS = [["planning", "قيد التخطيط", "Planning"], ["active", "نشط", "Active"], ["on_hold", "متوقّف", "On hold"], ["completed", "مكتمل", "Completed"], ["archived", "مؤرشف", "Archived"]];
+    const PJ_HEALTH = { green: ["#15803d", "ضمن الميزانيّة", "On budget"], amber: ["#b45309", "يقترب من الحدّ", "Approaching budget"], red: ["#b91c1c", "تجاوز الميزانيّة", "Over budget"] };
+    const PJ_LINE = { on_budget: ["#15803d", "ضمن التقدير", "On estimate"], warning: ["#b45309", "فوق التقدير", "Above estimate"], over_budget: ["#b91c1c", "تجاوز التسامح", "Over tolerance"], not_started: ["#64748b", "لم يبدأ", "Not started"] };
+    const pjName = (list, v) => { const r = list.find((x) => x[0] === v); return r ? tl(r[1], r[2]) : v; };
+    const pjHealthText = (st) => { const t = PJ_HEALTH[st] || PJ_HEALTH.green; return tl(t[1], t[2]); };
+    const pjBarFill = (bp) => Math.max(0, Math.min(100, bp / 100));
+    const pjPeople = { owner: ["المالك", "Owner"], editor: ["محرّر", "Editor"], viewer: ["مشاهد", "Viewer"] };
+    const pjLineKey = () => "l" + newKey().replace(/-/g, "").slice(0, 14);
+    const pjMinor = (m, cur) => (m == null ? "" : String(m / Math.pow(10, expOf(cur))));
+
+    function PjBar({ bp, color }) {
+        const { colors } = useTheme();
+        return h("div", { role: "progressbar", "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": Math.round(pjBarFill(bp)), style: { height: 8, borderRadius: 4, backgroundColor: colors.border, overflow: "hidden" } },
+            h("div", { style: { width: pjBarFill(bp) + "%", height: "100%", backgroundColor: color } }));
+    }
+    function PjPill({ st }) {
+        const t = PJ_HEALTH[st] || PJ_HEALTH.green;
+        return h("span", { style: { display: "inline-block", padding: "2px 10px", borderRadius: 999, fontSize: 12, fontWeight: 800, color: "#fff", backgroundColor: t[0] } }, pjHealthText(st));
+    }
+    const pjSelect = (colors, value, onChange, options, label) => h("select", { "aria-label": label, value, onChange: (e) => onChange(e.target.value), style: inputStyle(colors) },
+        options.map((o) => h("option", { key: o[0], value: o[0] }, o[1])));
+
+    // ── list, create, join ──
+    function ProjectsView({ base, today, cats }) {
+        const { colors } = useTheme();
+        const [items, setItems] = useState(null), [err, setErr] = useState(""), [mode, setMode] = useState({ k: "list" });
+        const load = useCallback(() => { setErr(""); call("pfm.proj.list").then((r) => setItems(r.items), (e) => setErr(errText(e))); }, []);
+        useEffect(load, [load]);
+        const back = () => { setMode({ k: "list" }); load(); };
+        if (mode.k === "new") return h(ProjectNew, { base, today, onDone: (pid) => setMode({ k: "detail", pid }), onBack: back });
+        if (mode.k === "join") return h(ProjectJoin, { onDone: (pid) => setMode({ k: "detail", pid }), onBack: back });
+        if (mode.k === "detail") return h(ProjectDetail, { key: mode.pid, pid: mode.pid, today, cats, base, onBack: back });
+        return h("div", { style: { padding: 16, paddingBottom: 96 } },
+            h("div", { style: { display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" } },
+                h(Btn, { onClick: () => setMode({ k: "new" }) }, tl("مشروع جديد", "New project")),
+                h(Btn, { kind: "ghost", onClick: () => setMode({ k: "join" }) }, tl("انضمام بدعوة", "Join with invite"))),
+            err && h(Card, { style: { marginBottom: 12 } }, h("div", { role: "alert", style: { color: colors.danger, fontSize: 14 } }, err), h(Btn, { kind: "ghost", onClick: load, style: { marginTop: 8 } }, tl("إعادة المحاولة", "Try again"))),
+            !items && !err && h(Loading),
+            items && items.length === 0 && h(Card, null, h("div", { style: { color: colors.textMuted, fontSize: 14, textAlign: "center", padding: 12 } },
+                tl("لا توجد مشاريع بعد. أنشئ مشروعاً أو انضمّ بدعوة.", "No projects yet. Create one or join with an invite."))),
+            items && items.map((p) => {
+                const spent = p.health ? p.health.actualSpend : 0, target = p.targetBudget;
+                return h("button", { key: p.id, type: "button", onClick: () => setMode({ k: "detail", pid: p.id }), style: { display: "block", width: "100%", textAlign: "start", cursor: "pointer",
+                    backgroundColor: colors.card, color: colors.text, border: "1px solid " + colors.border, borderRadius: 16, padding: 14, marginBottom: 10 } },
+                    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6 } },
+                        h("div", { style: { fontWeight: 800, fontSize: 16 } }, p.name),
+                        p.health && h(PjPill, { st: p.health.status })),
+                    h("div", { style: { fontSize: 12, color: colors.textMuted, marginBottom: 8 } }, tl("دورك: ", "Your role: ") + (pjPeople[p.role] ? tl(pjPeople[p.role][0], pjPeople[p.role][1]) : p.role)),
+                    p.health && h(PjBar, { bp: p.health.utilizationBp, color: (PJ_HEALTH[p.health.status] || PJ_HEALTH.green)[0] }),
+                    h("div", { style: { fontSize: 13, marginTop: 6 } }, money(spent, p.currency) + " / " + money(target, p.currency)));
+            }));
+    }
+
+    function ProjectNew({ base, today, onDone, onBack }) {
+        const { colors } = useTheme();
+        const [f, setF] = useState({ name: "", template: "house_construction", currency: base || "SDG", targetBudget: "", startDate: today || "", endDate: "", description: "", displayName: "" });
+        const [busy, setBusy] = useState(false), [err, setErr] = useState("");
+        const key = useRef(newKey());
+        const set = (k) => (v) => setF((x) => Object.assign({}, x, { [k]: v }));
+        const save = () => {
+            if (busy) return;
+            setBusy(true); setErr("");
+            const body = Object.assign({ idemKey: key.current }, f);
+            ["endDate", "startDate", "description", "displayName"].forEach((k) => { if (!body[k]) delete body[k]; });
+            call("pfm.proj.create", body).then((r) => onDone(r.project.id), (e) => { setErr(errText(e)); setBusy(false); });
+        };
+        return h("div", { style: { padding: 16, paddingBottom: 96 } },
+            h(Card, null,
+                h(Field, { label: tl("اسم المشروع", "Project name") }, h("input", { value: f.name, maxLength: 120, onChange: (e) => set("name")(e.target.value), style: inputStyle(colors) })),
+                h(Field, { label: tl("النوع", "Type") }, pjSelect(colors, f.template, set("template"), PJ_TEMPLATES.map((t) => [t[0], tl(t[1], t[2])]), tl("النوع", "Type"))),
+                h(Field, { label: tl("العملة (ثابتة بعد الإنشاء)", "Currency (fixed once created)") }, pjSelect(colors, f.currency, set("currency"), CURS.map((c) => [c, c]), tl("العملة", "Currency"))),
+                h(Field, { label: tl("الميزانيّة المستهدفة", "Target budget") }, h("input", { inputMode: "decimal", value: f.targetBudget, onChange: (e) => set("targetBudget")(e.target.value), style: inputStyle(colors) })),
+                h(Field, { label: tl("تاريخ البداية", "Start date") }, h("input", { type: "date", value: f.startDate, onChange: (e) => set("startDate")(e.target.value), style: inputStyle(colors) })),
+                h(Field, { label: tl("تاريخ النهاية (اختياري)", "End date (optional)") }, h("input", { type: "date", value: f.endDate, onChange: (e) => set("endDate")(e.target.value), style: inputStyle(colors) })),
+                h(Field, { label: tl("وصف (اختياري)", "Description (optional)") }, h("input", { value: f.description, maxLength: 500, onChange: (e) => set("description")(e.target.value), style: inputStyle(colors) })),
+                h(Field, { label: tl("اسمك في المشروع (اختياري)", "Your name on the project (optional)") }, h("input", { value: f.displayName, maxLength: 40, onChange: (e) => set("displayName")(e.target.value), style: inputStyle(colors) }))),
+            err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, margin: "12px 0" } }, err),
+            h("div", { style: { display: "flex", gap: 8, marginTop: 12 } },
+                h(Btn, { kind: "ghost", onClick: onBack }, tl("إلغاء", "Cancel")),
+                h(Btn, { onClick: save, disabled: busy || !f.name.trim() || !f.targetBudget.trim() }, tl("إنشاء المشروع", "Create project"))));
+    }
+
+    function ProjectJoin({ onDone, onBack }) {
+        const { colors } = useTheme();
+        const [token, setToken] = useState(""), [name, setName] = useState(""), [busy, setBusy] = useState(false), [err, setErr] = useState("");
+        const join = () => {
+            if (busy) return;
+            setBusy(true); setErr("");
+            call("pfm.proj.invite.accept", { token: token.trim(), displayName: name.trim() || undefined }).then((r) => onDone(r.project.id), (e) => { setErr(errText(e)); setBusy(false); });
+        };
+        return h("div", { style: { padding: 16 } },
+            h(Card, null,
+                h(Field, { label: tl("رمز الدعوة", "Invite code") }, h("input", { value: token, autoCapitalize: "none", onChange: (e) => setToken(e.target.value), style: inputStyle(colors) })),
+                h(Field, { label: tl("اسمك في المشروع (اختياري)", "Your name on the project (optional)") }, h("input", { value: name, maxLength: 40, onChange: (e) => setName(e.target.value), style: inputStyle(colors) }))),
+            err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, margin: "12px 0" } }, err),
+            h("div", { style: { display: "flex", gap: 8, marginTop: 12 } },
+                h(Btn, { kind: "ghost", onClick: onBack }, tl("إلغاء", "Cancel")),
+                h(Btn, { onClick: join, disabled: busy || !token.trim() }, tl("انضمام", "Join"))));
+    }
+
+    // ── one project: overview (budget, charts, alerts), estimate, ledger, people ──
+    function ProjectDetail({ pid, today, cats, base, onBack }) {
+        const { colors } = useTheme();
+        const [g, setG] = useState(null), [ch, setCh] = useState(null), [base0, setBase0] = useState(null), [al, setAl] = useState([]), [mem, setMem] = useState(null), [txs, setTxs] = useState(null);
+        const [tab, setTab] = useState("overview"), [err, setErr] = useState(""), [sheet, setSheet] = useState(null), [busy, setBusy] = useState(false);
+        const reload = useCallback(() => {
+            setErr("");
+            call("pfm.proj.get", { pid }).then(setG, (e) => setErr(errText(e)));
+            call("pfm.proj.charts", { pid }).then(setCh, () => {});
+            call("pfm.proj.variance", { pid }).then(setBase0, () => setBase0({ lines: [] }));
+            call("pfm.proj.alerts.list", { pid, unacknowledged: true }).then((r) => setAl(r.items), () => setAl([]));
+            call("pfm.proj.members.list", { pid }).then((r) => setMem(r.items), () => setMem([]));
+            call("pfm.proj.tx.list", { pid }).then((r) => setTxs(r.items), () => setTxs([]));
+        }, [pid]);
+        useEffect(reload, [reload]);
+        const act = (p) => { if (busy) return Promise.resolve(); setBusy(true); setErr(""); return p.then(() => { setBusy(false); reload(); }, (e) => { setBusy(false); setErr(errText(e)); }); };
+
+        if (err && !g) return h("div", { style: { padding: 16 } }, h(Card, null, h("div", { role: "alert", style: { color: colors.danger, fontSize: 14 } }, err)), h(Btn, { kind: "ghost", onClick: onBack, style: { marginTop: 12 } }, tl("رجوع", "Back")));
+        if (!g) return h(Loading);
+        const p = g.project, role = g.role, canEdit = role !== "viewer", isOwner = role === "owner";
+        const cur = p.currency, hl = g.health || {}, st = hl.status || "green";
+        const title = (k) => h("div", { style: { fontWeight: 800, fontSize: 14, margin: "18px 0 8px" } }, k);
+        const linesOfBase = (base0 && base0.lines) || [];
+
+        const overview = h("div", null,
+            h(Card, null,
+                h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 } },
+                    h("div", { style: { fontWeight: 800, fontSize: 16 } }, tl("الميزانيّة", "Budget")), h(PjPill, { st })),
+                h(PjBar, { bp: hl.utilizationBp || 0, color: (PJ_HEALTH[st] || PJ_HEALTH.green)[0] }),
+                h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10, fontSize: 13 } },
+                    h("div", null, tl("صُرف", "Spent"), h("div", { style: { fontWeight: 800 } }, money(hl.actualSpend || 0, cur))),
+                    h("div", null, tl("المستهدف", "Target"), h("div", { style: { fontWeight: 800 } }, money(p.targetBudget, cur))),
+                    h("div", null, tl("التوقّع عند الإتمام", "Forecast at completion"), h("div", { style: { fontWeight: 800 } }, money(hl.forecastAtCompletion || 0, cur))),
+                    h("div", null, tl("الفرق عن الميزانيّة", "Versus budget"), h("div", { style: { fontWeight: 800, color: (hl.forecastVsBudget || 0) > 0 ? colors.danger : colors.text } }, money(hl.forecastVsBudget || 0, cur))),
+                    h("div", null, tl("الرصيد النقدي", "Cash position"), h("div", { style: { fontWeight: 800 } }, money(hl.cashPosition || 0, cur))),
+                    h("div", null, tl("الهامش", "Margin"), h("div", { style: { fontWeight: 800 } }, hl.marginBp == null ? "—" : pct(hl.marginBp))))),
+            canEdit && h(Card, { style: { marginTop: 12 } },
+                h(Field, { label: tl("الحالة", "Status") }, pjSelect(colors, p.status, (to) => act(call("pfm.proj.status", { pid, rev: p.rev, to })), PJ_STATUS.map((s) => [s[0], tl(s[1], s[2])]), tl("الحالة", "Status")))),
+            title(tl("تصدير", "Export")),
+            h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+                h(Btn, { kind: "ghost", onClick: () => call("pfm.proj.report", { pid, lang: ar() ? "ar" : "en" }).then((r) => saveFileOut(new Blob([r.html], { type: "text/html;charset=utf-8" }), r.filename, "text/html"), (e) => setErr(errText(e))) },
+                    tl("تقرير للطباعة", "Printable report")),
+                h(Btn, { kind: "ghost", onClick: () => call("pfm.proj.export", { pid, lang: ar() ? "ar" : "en" }).then((r) => saveFileOut(new Blob([r.csv], { type: "text/csv;charset=utf-8" }), r.filename, "text/csv"), (e) => setErr(errText(e))) },
+                    tl("جدول CSV", "CSV spreadsheet"))),
+            h("div", { style: { fontSize: 12, color: colors.textMuted, marginTop: 6 } }, tl("التقرير يُفتح في المتصفّح ثم تطبعه أو تحفظه PDF. ملفّ CSV يفتح في Excel وGoogle Sheets.", "Open the report in the browser, then print it or save it as PDF. The CSV opens in Excel and Google Sheets.")),
+            title(tl("الرسوم البيانية", "Charts")),
+            ch && h(Card, null,
+                h("div", { style: { fontWeight: 700, fontSize: 13, marginBottom: 8 } }, tl("التقدير مقابل الفعلي لكل فئة", "Estimate vs actual by category")),
+                ch.byCategory.filter((c) => c.estimated || c.actual).map((c) => {
+                    const max = Math.max(1, ...ch.byCategory.map((x) => Math.max(x.estimated, x.actual)));
+                    return h("div", { key: c.category, style: { marginBottom: 10 } },
+                        h("div", { style: { fontSize: 12, marginBottom: 4 } }, pjName(PJ_BOQ, c.category)),
+                        h("div", { style: { height: 8, borderRadius: 4, backgroundColor: colors.border, marginBottom: 3 } }, h("div", { title: tl("التقدير", "Estimate"), style: { width: (c.estimated / max * 100) + "%", height: "100%", borderRadius: 4, backgroundColor: "#94a3b8" } })),
+                        h("div", { style: { height: 8, borderRadius: 4, backgroundColor: colors.border } }, h("div", { title: tl("الفعلي", "Actual"), style: { width: (c.actual / max * 100) + "%", height: "100%", borderRadius: 4, backgroundColor: c.actual > c.estimated ? "#b91c1c" : colors.primary } })),
+                        h("div", { style: { fontSize: 11, color: colors.textMuted, marginTop: 2 } }, money(c.actual, cur) + " / " + money(c.estimated, cur)));
+                }),
+                h("div", { style: { display: "flex", gap: 12, fontSize: 11, color: colors.textMuted, marginTop: 4 } }, h("span", null, "■ ", tl("التقدير", "Estimate")), h("span", { style: { color: colors.primary } }, "■ ", tl("الفعلي", "Actual")))),
+            ch && ch.byMonth.length > 0 && h(Card, { style: { marginTop: 12 } },
+                h("div", { style: { fontWeight: 700, fontSize: 13, marginBottom: 8 } }, tl("المصروف والدخل شهراً بشهر", "Spend and inflows by month")),
+                (() => { const max = Math.max(1, ...ch.byMonth.map((m) => Math.max(m.actual, m.inflow)));
+                    return ch.byMonth.map((m) => h("div", { key: m.month, style: { display: "grid", gridTemplateColumns: "72px 1fr", gap: 8, alignItems: "center", marginBottom: 6, fontSize: 12 } },
+                        h("div", { style: { color: colors.textMuted } }, m.month),
+                        h("div", null,
+                            h("div", { style: { height: 8, borderRadius: 4, backgroundColor: colors.border, marginBottom: 3 } }, h("div", { style: { width: (m.inflow / max * 100) + "%", height: "100%", borderRadius: 4, backgroundColor: "#15803d" } })),
+                            h("div", { style: { height: 8, borderRadius: 4, backgroundColor: colors.border } }, h("div", { style: { width: (m.actual / max * 100) + "%", height: "100%", borderRadius: 4, backgroundColor: "#b91c1c" } })))));
+                })()),
+            ch && ch.daily.length > 1 && h(Card, { style: { marginTop: 12 } },
+                h("div", { style: { fontWeight: 700, fontSize: 13, marginBottom: 8 } }, tl("الرصيد التراكمي يوماً بيوم", "Running balance by day")),
+                (() => { const bs = ch.daily.map((d) => d.balance), lo = Math.min(...bs), hi = Math.max(...bs), W = 300, H = 110, span = hi - lo || 1;
+                    const pts = ch.daily.map((d, i) => [(i / (ch.daily.length - 1)) * W, H - ((d.balance - lo) / span) * H].join(",")).join(" ");
+                    return h("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": tl("مخطّط الرصيد", "Balance chart"), style: { width: "100%", height: 130 } },
+                        h("polyline", { points: pts, fill: "none", stroke: colors.primary, strokeWidth: 2.5, strokeLinejoin: "round" })); })(),
+                h("div", { style: { fontSize: 11, color: colors.textMuted, marginTop: 4 } }, ch.daily[0].date + " → " + ch.daily[ch.daily.length - 1].date)),
+            title(tl("التنبيهات", "Alerts")),
+            al.length === 0 && h("div", { style: { fontSize: 13, color: colors.textMuted } }, tl("لا تنبيهات مفتوحة", "No open alerts")),
+            al.map((a) => h(Card, { key: a.id, style: { marginBottom: 8 } },
+                h("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" } },
+                    h("div", { style: { fontSize: 13, fontWeight: 700, color: a.severity === "critical" ? colors.danger : colors.text } },
+                        a.rule === "budget_threshold" ? tl("بلغ " + a.thresholdPct + "٪ من الميزانيّة", "Reached " + a.thresholdPct + "% of budget")
+                            : a.rule === "forecast_overrun" ? tl("التوقّع يتجاوز الميزانيّة", "Forecast is over budget")
+                            : tl("بند تجاوز تقديره", "A line is over its estimate")),
+                    canEdit && h(Btn, { kind: "ghost", onClick: () => act(call("pfm.proj.alerts.ack", { pid, key: a.id })) }, tl("تمّ", "Done"))))));
+
+        const draft = (g.estimates || []).find((e) => e.status === "draft");
+        const estimate = h("div", null,
+            title(tl("التقدير", "Estimate")),
+            (g.estimates || []).map((e) => h("div", { key: e.id, style: { fontSize: 13, marginBottom: 6 } },
+                tl("مراجعة ", "Revision ") + e.revision + " — " + ({ draft: tl("مسوّدة", "Draft"), baseline: tl("معتمد", "Approved"), superseded: tl("مستبدل", "Superseded") })[e.status] +
+                " · " + (e.lineCount || 0) + " " + tl("بند", "lines") + " · " + money(e.total || 0, cur) + (e.reason ? " · " + e.reason : ""))),
+            !draft && canEdit && h(EstimateStart, { hasBaseline: !!p.baselineEstimateId, pid, onStarted: reload, call, act }),
+            draft && canEdit && h(EstimateEditor, { key: draft.id, pid, draft, cur, cats, onChanged: reload, call, act }),
+            draft && !canEdit && h("div", { style: { fontSize: 13, color: colors.textMuted } }, tl("المسوّدة مفتوحة للتحرير من المحرّرين فقط.", "The draft is open to editors only.")),
+            title(tl("البنود المعتمدة والفعلي", "Approved lines and actual")),
+            linesOfBase.length === 0 && h("div", { style: { fontSize: 13, color: colors.textMuted } }, tl("لم يُعتمد تقدير بعد.", "No approved estimate yet.")),
+            linesOfBase.map((l) => h(Card, { key: l.lineKey, style: { marginBottom: 8 } },
+                h("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" } },
+                    h("div", { style: { fontWeight: 700, fontSize: 14 } }, l.name),
+                    h("span", { style: { fontSize: 11, fontWeight: 800, color: (PJ_LINE[l.status] || PJ_LINE.not_started)[0] } }, tl(PJ_LINE[l.status][1], PJ_LINE[l.status][2]))),
+                h("div", { style: { fontSize: 12, color: colors.textMuted, marginTop: 4 } }, l.estQty + " " + (l.unit || "") + " × " + money(l.estUnitPrice, cur) + " = " + money(l.estTotal, cur)),
+                h("div", { style: { fontSize: 12, marginTop: 2 } }, tl("الفعلي: ", "Actual: ") + l.actualQty + " · " + money(l.actualCost, cur) + " · " + tl("انحراف ", "variance ") + money(l.totalVariance, cur)))));
+
+        const ledger = h("div", null,
+            canEdit && h(Btn, { onClick: () => setSheet({ k: "entry" }), style: { marginBottom: 12 } }, tl("حركة جديدة", "New entry")),
+            !txs && h(Loading),
+            txs && txs.length === 0 && h("div", { style: { fontSize: 13, color: colors.textMuted } }, tl("لا حركات بعد.", "No entries yet.")),
+            txs && txs.map((t) => {
+                const inflow = PJ_INFLOW.includes(t.kind), voided = t.status === "voided";
+                return h(Card, { key: t.id, style: { marginBottom: 8, opacity: voided ? 0.55 : 1 } },
+                    h("div", { style: { display: "flex", justifyContent: "space-between", gap: 8 } },
+                        h("div", { style: { fontWeight: 700, fontSize: 14, textDecoration: voided ? "line-through" : "none" } }, t.description || pjName(PJ_KINDS, t.kind)),
+                        h("div", { style: { fontWeight: 800, fontSize: 14, color: inflow ? "#15803d" : colors.text, whiteSpace: "nowrap" } }, (inflow ? "+" : "−") + money(t.amount, cur))),
+                    h("div", { style: { fontSize: 12, color: colors.textMuted, marginTop: 4 } },
+                        t.occurredOn + " · " + pjName(PJ_KINDS, t.kind) + (t.lineKey ? " · " + ((linesOfBase.find((l) => l.lineKey === t.lineKey) || {}).name || "") : t.category ? " · " + pjName(PJ_BOQ, t.category) : "") +
+                        (t.originalCurrency && t.originalCurrency !== cur ? " · " + t.originalAmount / Math.pow(10, expOf(t.originalCurrency)) + " " + t.originalCurrency : "") +
+                        (t.counterparty ? " · " + t.counterparty : "")),
+                    voided ? h("div", { style: { fontSize: 12, color: colors.danger, marginTop: 4 } }, tl("ملغاة: ", "Voided: ") + (t.voidReason || ""))
+                        : canEdit && h(Btn, { kind: "ghost", style: { marginTop: 8 }, onClick: () => { const r = window.prompt(tl("سبب الإلغاء", "Reason for voiding")); if (r && r.trim()) act(call("pfm.proj.tx.void", { pid, txId: t.id, reason: r.trim() })); } }, tl("إلغاء الحركة", "Void entry")));
+            }),
+            sheet && sheet.k === "entry" && h(ProjectEntrySheet, { pid, cur, base, cats, lines: linesOfBase, today,
+                onClose: () => setSheet(null), onSaved: () => { setSheet(null); reload(); } }));
+
+        const people = h("div", null,
+            title(tl("الأعضاء", "Members")),
+            !mem && h(Loading),
+            mem && mem.map((m) => h(Card, { key: m.uid, style: { marginBottom: 8 } },
+                h("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" } },
+                    h("div", { style: { fontWeight: 700 } }, m.displayName || (m.uid === p.ownerUid ? tl("المالك", "Owner") : tl("عضو", "Member"))),
+                    m.role === "owner" || !isOwner
+                        ? h("span", { style: { fontSize: 12, color: colors.textMuted } }, tl(pjPeople[m.role][0], pjPeople[m.role][1]))
+                        : h("div", { style: { display: "flex", gap: 6, alignItems: "center" } },
+                            h("select", { "aria-label": tl("الدور", "Role"), value: m.role, onChange: (e) => act(call("pfm.proj.members.role", { pid, uid: m.uid, role: e.target.value })), style: Object.assign({}, inputStyle(colors), { minHeight: 36, width: "auto" }) },
+                                ["editor", "viewer"].map((r) => h("option", { key: r, value: r }, tl(pjPeople[r][0], pjPeople[r][1])))),
+                            h(Btn, { kind: "danger", onClick: () => { if (window.confirm(tl("إزالة هذا العضو؟", "Remove this member?"))) act(call("pfm.proj.members.remove", { pid, uid: m.uid })); } }, tl("إزالة", "Remove")))))),
+            isOwner && h(InviteBox, { pid, call, colors }),
+            !isOwner && h(Btn, { kind: "danger", style: { marginTop: 12 }, onClick: () => { if (window.confirm(tl("مغادرة المشروع؟", "Leave this project?"))) call("pfm.proj.members.remove", { pid }).then(onBack, (e) => setErr(errText(e))); } }, tl("مغادرة المشروع", "Leave project")),
+            isOwner && h(DeleteBox, { pid, call, onDeleted: onBack, colors }));
+
+        const tabs = [["overview", tl("الملخّص", "Summary")], ["estimate", tl("التقدير", "Estimate")], ["ledger", tl("الحركات", "Ledger")], ["people", tl("الأعضاء", "People")]];
+        return h("div", { style: { paddingBottom: 96 } },
+            h("div", { style: { padding: "12px 16px 0", display: "flex", alignItems: "center", gap: 8 } },
+                h(Btn, { kind: "ghost", onClick: onBack }, tl("رجوع", "Back")),
+                h("div", { style: { fontWeight: 800, fontSize: 16, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, p.name)),
+            h("div", { style: { padding: 16 } },
+                err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, marginBottom: 12 } }, err),
+                h("div", { style: { marginBottom: 14 } }, h(Seg, { value: tab, onChange: setTab, options: tabs.map((t) => ({ value: t[0], label: t[1] })) })),
+                tab === "overview" ? overview : tab === "estimate" ? estimate : tab === "ledger" ? ledger : people));
+    }
+
+    // ── estimate: start a revision, edit the draft, approve ──
+    function EstimateStart({ hasBaseline, pid, act }) {
+        const { colors } = useTheme();
+        const [reason, setReason] = useState(""), key = useRef(newKey());
+        return h("div", { style: { marginBottom: 12 } },
+            hasBaseline && h(Field, { label: tl("سبب المراجعة (أمر تغيير)", "Reason for the change order") }, h("input", { value: reason, maxLength: 200, onChange: (e) => setReason(e.target.value), style: inputStyle(colors) })),
+            h(Btn, { disabled: hasBaseline && !reason.trim(), onClick: () => act(call("pfm.proj.estimate.create", { pid, idemKey: key.current, fromBaseline: hasBaseline, reason: reason.trim() || undefined })) },
+                hasBaseline ? tl("مراجعة جديدة من التقدير المعتمد", "New revision from the approved estimate") : tl("إنشاء تقدير", "Create estimate")));
+    }
+
+    function EstimateEditor({ pid, draft, cur, act }) {
+        const { colors } = useTheme();
+        const [rows, setRows] = useState(null), [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+        useEffect(() => {
+            call("pfm.proj.variance", { pid, estimateId: draft.id }).then((r) => setRows(r.lines.map((l) => ({ k: l.lineKey, name: l.name || "", category: l.category || "other", unit: l.unit || "", qty: l.estQty, price: pjMinor(l.estUnitPrice, cur) }))), (e) => setErr(errText(e)));
+        }, [draft.id, draft.rev]);
+        const upd = (i, k, v) => setRows((rs) => rs.map((r, j) => (j === i ? Object.assign({}, r, { [k]: v }) : r)));
+        const save = () => {
+            if (busy || !rows) return;
+            if (rows.some((r) => !r.name.trim() || !r.qty.trim() || !r.price.trim())) { setErr(tl("أكمل اسم كلّ بند وكمّيته وسعره", "Give every line a name, quantity and price")); return; }
+            setBusy(true); setErr("");
+            act(call("pfm.proj.estimate.lines", { pid, eid: draft.id, rev: draft.rev, lines: rows.map((r) => ({ lineKey: r.k, category: r.category, name: r.name.trim(), unit: r.unit.trim(), estQty: r.qty.trim(), estUnitPrice: r.price.trim() })) }))
+                .then(() => setBusy(false), () => setBusy(false));
+        };
+        if (!rows) return err ? h("div", { role: "alert", style: { color: colors.danger, fontSize: 14 } }, err) : h(Loading);
+        return h("div", null,
+            rows.map((r, i) => h(Card, { key: r.k, style: { marginBottom: 8 } },
+                h(Field, { label: tl("البند", "Item") }, h("input", { value: r.name, maxLength: 160, onChange: (e) => upd(i, "name", e.target.value), style: inputStyle(colors) })),
+                h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
+                    h(Field, { label: tl("الفئة", "Category") }, pjSelect(colors, r.category, (v) => upd(i, "category", v), PJ_BOQ.map((c) => [c[0], tl(c[1], c[2])]), tl("الفئة", "Category"))),
+                    h(Field, { label: tl("الوحدة", "Unit") }, h("input", { value: r.unit, maxLength: 16, onChange: (e) => upd(i, "unit", e.target.value), style: inputStyle(colors) }))),
+                h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
+                    h(Field, { label: tl("الكمّيّة", "Quantity") }, h("input", { inputMode: "decimal", value: r.qty, onChange: (e) => upd(i, "qty", e.target.value), style: inputStyle(colors) })),
+                    h(Field, { label: tl("سعر الوحدة", "Unit price") }, h("input", { inputMode: "decimal", value: r.price, onChange: (e) => upd(i, "price", e.target.value), style: inputStyle(colors) }))),
+                h(Btn, { kind: "ghost", onClick: () => setRows((rs) => rs.filter((_, j) => j !== i)) }, tl("حذف البند", "Remove item")))),
+            h(Btn, { kind: "ghost", onClick: () => setRows((rs) => rs.concat([{ k: pjLineKey(), name: "", category: "other", unit: "", qty: "", price: "" }])), style: { marginBottom: 12 } }, tl("إضافة بند", "Add item")),
+            err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, marginBottom: 10 } }, err),
+            h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+                h(Btn, { onClick: save, disabled: busy }, tl("حفظ المسوّدة", "Save draft")),
+                h(Btn, { kind: "ghost", disabled: busy, onClick: () => { if (window.confirm(tl("اعتماد هذا التقدير؟ يصبح الأساس ولا يُعدَّل إلّا بمراجعة جديدة.", "Approve this estimate? It becomes the baseline and changes only through a new revision."))) act(call("pfm.proj.estimate.approve", { pid, eid: draft.id, rev: draft.rev })); } }, tl("اعتماد التقدير", "Approve estimate"))));
+    }
+
+    // ── a ledger entry: expense on a line or unbudgeted, optional copy to the personal ledger ──
+    function ProjectEntrySheet({ pid, cur, base, cats, lines, today, onClose, onSaved }) {
+        const { colors } = useTheme();
+        const [f, setF] = useState({ kind: "expense", amount: "", currency: cur, fxRate: "", occurredOn: today || "", description: "", counterparty: "", lineKey: "", category: "other", quantity: "", unit: "", copy: false, personalCat: "", personalFxRate: "" });
+        const [busy, setBusy] = useState(false), [err, setErr] = useState(""), key = useRef(newKey());
+        const set = (k) => (v) => setF((x) => Object.assign({}, x, { [k]: v }));
+        const isExp = f.kind === "expense", curDiff = f.currency !== cur, notBase = f.currency !== base;
+        const personalCats = Object.values(cats || {}).filter((c) => c.kind === "expense" && !c.archived);
+        const save = () => {
+            if (busy) return; setBusy(true); setErr("");
+            const b = { pid, idemKey: key.current, kind: f.kind, amount: f.amount.trim(), occurredOn: f.occurredOn, description: f.description.trim() };
+            if (f.counterparty.trim()) b.counterparty = f.counterparty.trim();
+            if (curDiff) { b.currency = f.currency; b.fxRate = f.fxRate.trim(); }
+            if (isExp) {
+                if (f.lineKey) b.lineKey = f.lineKey; else b.category = f.category;
+                if (f.quantity.trim()) { b.quantity = f.quantity.trim(); b.unit = f.unit.trim(); }
+                if (f.copy) { b.copyToPersonal = { categoryId: f.personalCat || (personalCats[0] && personalCats[0].id) }; if (notBase) b.personalFxRate = f.personalFxRate.trim(); }
+            }
+            call("pfm.proj.tx.add", b).then(onSaved, (e) => { setErr(errText(e)); setBusy(false); });
+        };
+        const need = !f.amount.trim() || !f.description.trim() || !f.occurredOn;
+        return h(Sheet, { title: tl("حركة في المشروع", "Project entry"), onClose },
+            h(Field, { label: tl("النوع", "Type") }, pjSelect(colors, f.kind, set("kind"), PJ_KINDS.map((k) => [k[0], tl(k[1], k[2])]), tl("النوع", "Type"))),
+            h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
+                h(Field, { label: tl("المبلغ", "Amount") }, h("input", { inputMode: "decimal", value: f.amount, onChange: (e) => set("amount")(e.target.value), style: inputStyle(colors) })),
+                h(Field, { label: tl("العملة", "Currency") }, pjSelect(colors, f.currency, set("currency"), CURS.map((c) => [c, c]), tl("العملة", "Currency")))),
+            curDiff && h(Field, { label: tl("سعر الصرف: 1 " + f.currency + " = ? " + cur, "Exchange rate: 1 " + f.currency + " = ? " + cur) }, h("input", { inputMode: "decimal", value: f.fxRate, onChange: (e) => set("fxRate")(e.target.value), style: inputStyle(colors) })),
+            h(Field, { label: tl("التاريخ", "Date") }, h("input", { type: "date", value: f.occurredOn, onChange: (e) => set("occurredOn")(e.target.value), style: inputStyle(colors) })),
+            h(Field, { label: tl("الوصف", "Description") }, h("input", { value: f.description, maxLength: 200, onChange: (e) => set("description")(e.target.value), style: inputStyle(colors) })),
+            h(Field, { label: tl("الطرف الآخر (اختياري)", "Counterparty (optional)") }, h("input", { value: f.counterparty, maxLength: 120, onChange: (e) => set("counterparty")(e.target.value), style: inputStyle(colors) })),
+            isExp && h(Field, { label: tl("البند", "Line") }, pjSelect(colors, f.lineKey, set("lineKey"), [["", tl("بدون بند (مصروف غير مخطّط)", "No line (unbudgeted)")]].concat(lines.map((l) => [l.lineKey, l.name])), tl("البند", "Line"))),
+            isExp && !f.lineKey && h(Field, { label: tl("الفئة", "Category") }, pjSelect(colors, f.category, set("category"), PJ_BOQ.map((c) => [c[0], tl(c[1], c[2])]), tl("الفئة", "Category"))),
+            isExp && h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
+                h(Field, { label: tl("الكمّيّة (اختياري)", "Quantity (optional)") }, h("input", { inputMode: "decimal", value: f.quantity, onChange: (e) => set("quantity")(e.target.value), style: inputStyle(colors) })),
+                h(Field, { label: tl("الوحدة", "Unit") }, h("input", { value: f.unit, maxLength: 16, onChange: (e) => set("unit")(e.target.value), style: inputStyle(colors) }))),
+            isExp && h("label", { style: { display: "flex", gap: 8, alignItems: "center", margin: "6px 0 12px", fontSize: 14 } },
+                h("input", { type: "checkbox", checked: f.copy, onChange: (e) => set("copy")(e.target.checked) }),
+                tl("نسخ المصروف إلى محاسبي الشخصي", "Also record in my personal accountant")),
+            isExp && f.copy && h(Field, { label: tl("فئة المحاسب الشخصي", "Personal category") }, pjSelect(colors, f.personalCat || (personalCats[0] && personalCats[0].id) || "", set("personalCat"), personalCats.map((c) => [c.id, tl(c.nameAr || c.name, c.name)]), tl("فئة المحاسب الشخصي", "Personal category"))),
+            isExp && f.copy && notBase && h(Field, { label: tl("سعر الصرف إلى عملة محاسبك", "Rate to your personal currency") }, h("input", { inputMode: "decimal", value: f.personalFxRate, onChange: (e) => set("personalFxRate")(e.target.value), style: inputStyle(colors) })),
+            err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, marginBottom: 10 } }, err),
+            h("div", { style: { display: "flex", gap: 8, justifyContent: "flex-end" } },
+                h(Btn, { kind: "ghost", onClick: onClose }, tl("إلغاء", "Cancel")),
+                h(Btn, { onClick: save, disabled: busy || need }, tl("حفظ", "Save"))));
+    }
+
+    // ── people: invite codes (owner) and the delete action (owner) ──
+    function InviteBox({ pid, colors }) {
+        const [role, setRole] = useState("viewer"), [maxUses, setMaxUses] = useState(1), [days, setDays] = useState(7);
+        const [res, setRes] = useState(null), [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+        const make = () => {
+            if (busy) return; setBusy(true); setErr("");
+            call("pfm.proj.invite.create", { pid, role, maxUses, days }).then((r) => { setRes(r.invite); setBusy(false); }, (e) => { setErr(errText(e)); setBusy(false); });
+        };
+        const num = (v, set, opts) => h("select", { "aria-label": tl("عدد", "Count"), value: String(v), onChange: (e) => set(Number(e.target.value)), style: inputStyle(colors) }, opts.map((o) => h("option", { key: o, value: String(o) }, String(o))));
+        return h(Card, { style: { marginTop: 12 } },
+            h("div", { style: { fontWeight: 800, marginBottom: 8 } }, tl("دعوة شخص", "Invite someone")),
+            h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 } },
+                h(Field, { label: tl("الدور", "Role") }, pjSelect(colors, role, setRole, [["viewer", tl("مشاهد", "Viewer")], ["editor", tl("محرّر", "Editor")]], tl("الدور", "Role"))),
+                h(Field, { label: tl("مرّات الاستخدام", "Uses") }, num(maxUses, setMaxUses, [1, 2, 3, 5, 10])),
+                h(Field, { label: tl("أيّام الصلاحيّة", "Days valid") }, num(days, setDays, [1, 3, 7, 14, 30]))),
+            res && h("div", { style: { border: "1px dashed " + colors.border, borderRadius: 12, padding: 10, marginBottom: 10 } },
+                h("div", { style: { fontSize: 13, marginBottom: 6 } }, tl("انسخ الرمز الآن. لن يُعرض مرّة أخرى.", "Copy the code now. It won't be shown again.")),
+                h("code", { style: { display: "block", wordBreak: "break-all", userSelect: "all", fontSize: 14 } }, res.token),
+                h("div", { style: { fontSize: 12, color: colors.textMuted, marginTop: 6 } }, tl("ينتهي: ", "Expires: ") + new Date(res.expiresAt).toLocaleString(locale()))),
+            err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, marginBottom: 8 } }, err),
+            h(Btn, { onClick: make, disabled: busy }, tl("إنشاء رمز دعوة", "Create invite code")));
+    }
+    function DeleteBox({ pid, onDeleted, colors }) {
+        const [arm, setArm] = useState(false), [err, setErr] = useState("");
+        const del = () => call("pfm.proj.delete", { pid, confirm: pid }).then(onDeleted, (e) => setErr(errText(e)));
+        return h("div", { style: { marginTop: 18 } },
+            err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, marginBottom: 8 } }, err),
+            h(Btn, { kind: "danger", onClick: () => (arm ? del() : setArm(true)) }, arm ? tl("اضغط مرّة أخرى للحذف النهائي", "Tap again to delete permanently") : tl("حذف المشروع", "Delete project")),
+            arm && h("div", { style: { fontSize: 12, color: colors.textMuted, marginTop: 6 } }, tl("يُحذف للجميع: التقديرات والحركات والأعضاء.", "Deletes it for everyone: estimates, entries and members.")));
+    }
+
+
     // ── screen ──
     // ── C273: import receipts (Sawa-deploy-test/pfm/IMPORT-DESIGN.md §4.7) ──
     // Screenshots are read ON THE PHONE by the Sawa reader (/ocr/v1/, tesseract.js): no service sees them. Each row the user
@@ -1317,7 +1725,7 @@ const AccountantScreen = (function () {
                     h("button", { type: "button", "aria-label": tl("الشهر السابق", "Previous month"), onClick: () => setMonth(shiftMonth(month, -1)), style: navBtn(colors) }, h(ar() ? ChevronRight : ChevronLeft, { size: 20 })),
                     h("div", { style: { flex: 1, textAlign: "center", fontWeight: 800, fontSize: 16 } }, monthName(month)),
                     h("button", { type: "button", "aria-label": tl("الشهر التالي", "Next month"), disabled: month >= boot.month, onClick: () => setMonth(shiftMonth(month, 1)), style: Object.assign(navBtn(colors), { opacity: month >= boot.month ? 0.35 : 1 }) }, h(ar() ? ChevronLeft : ChevronRight, { size: 20 }))),
-                h("div", { style: { marginBottom: 14 } }, h(Seg, { value: tab, onChange: setTab, options: [{ value: "overview", label: tl("نظرة عامّة", "Overview") }, { value: "ledger", label: tl("السجلّ", "Ledger") }, { value: "budgets", label: tl("الميزانيّات", "Budgets") }, { value: "invoices", label: tl("الفواتير", "Invoices") }] })),
+                h("div", { style: { marginBottom: 14 } }, h(Seg, { value: tab, onChange: setTab, options: [{ value: "overview", label: tl("نظرة عامّة", "Overview") }, { value: "ledger", label: tl("السجلّ", "Ledger") }, { value: "budgets", label: tl("الميزانيّات", "Budgets") }, { value: "invoices", label: tl("الفواتير", "Invoices") }, { value: "projects", label: tl("المشاريع", "Projects") }] })),
                 tab === "overview"
                     ? h(Overview, { data: summary, cats, cur, onAdd: () => setSheet({}), onPickCat: (id) => { setFilter(id); setTab("ledger"); },
                         alerts: boot.month === month ? boot.alerts : [], suggestedCount: boot.suggestedCount, budgets: budgets && budgets.budgets,
@@ -1331,12 +1739,14 @@ const AccountantScreen = (function () {
                         onRecurring: () => setSheet({ type: "recurring" }), onRules: () => setSheet({ type: "rules" }), onExport: () => setSheet({ type: "export" }), onImport: () => setSheet({ type: "import" }), importCount: jobWaiting })
                     : tab === "budgets"
                     ? h(Budgets, { data: budgets, cats, cur, onAdd: () => setSheet({ type: "budget" }), onEdit: (b) => setSheet({ type: "budget", budget: b }) })
+                    : tab === "projects"
+                    ? h(ProjectsView, { base: cur, today: boot.today, cats })
                     : h(Invoices, { key: invTick, cur, today: boot.today, onOpen: (id) => setSheet({ type: "invoice", id }), onNew: () => setSheet({ type: "editor" }), onBiz: () => setSheet({ type: "biz" }) }));
         return h(ServiceTheme, { color: TEAL },
             h("div", { dir: ar() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col", style: { color: colors.text } },
                 h(TopBar, { title: tl("المحاسب الشخصيّ", "Personal accountant"), subtitle: cur ? tl("المجاميع بـ", "Totals in ") + cur : undefined, onBack }),
                 h("div", { className: "flex-1 overflow-y-auto", style: { backgroundColor: colors.bg } }, body),
-                s && tab !== "budgets" && tab !== "invoices" && h("button", { type: "button", "aria-label": tl("حركة جديدة", "New entry"), onClick: () => setSheet({}),
+                s && tab !== "budgets" && tab !== "invoices" && tab !== "projects" && h("button", { type: "button", "aria-label": tl("حركة جديدة", "New entry"), onClick: () => setSheet({}),
                     style: { position: "fixed", insetInlineEnd: 20, bottom: "calc(env(safe-area-inset-bottom,0px) + 24px)", width: 56, height: 56, borderRadius: 28, border: 0,
                         backgroundColor: TEAL, color: "#fff", boxShadow: "0 6px 16px rgba(15,118,110,.35)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 40 } }, h(Plus, { size: 26 })),
                 sheet && s && !sheet.type && h(TxSheet, { tx: sheet.tx, settings: s, cats, today: boot.today, rules: boot.rules, onClose: () => setSheet(null),
