@@ -965,14 +965,34 @@ const AccountantScreen = (function () {
     // Screenshots are read ON THE PHONE by the Sawa reader (/ocr/v1/, tesseract.js): no service sees them. Each row the user
     // confirms becomes an ordinary entry (pfm.tx.add) with the screenshot as its sealed receipt. A bank reference makes the
     // entry id on the server, so the same transfer imported twice is booked once.
-    const OCR_BASE = "/ocr/v1/";
+    const OCR_BASE = "/ocr/v1/";                       // the OCR engine (never changes inside v1)
+    const READER_JS = "/ocr/sawa-reader-3.js";         // C276: the reader carries its version in its name (phones cache /ocr/ for good)
     let readerLoad = null;
     const loadReader = () => readerLoad || (readerLoad = new Promise((res, rej) => {
         if (window.SawaReader) return res(window.SawaReader);
-        const s = document.createElement("script"); s.src = OCR_BASE + "sawa-reader.js";
+        const s = document.createElement("script"); s.src = READER_JS;
         s.onload = () => res(window.SawaReader); s.onerror = () => { readerLoad = null; rej(new Error("ocr_load_failed")); };
         document.head.appendChild(s);
     }));
+    // C276: one set of OCR engines for the whole app session. Started when the Import sheet opens (while the user picks
+    // images), kept for 3 minutes after it closes, so reopening does not start them again (each start compiles a 4 MB engine).
+    let ocrShared = null, ocrIdle = null, ocrProgress = null;
+    const ocrStat = { ms: null };
+    function startOcr() {
+        if (ocrIdle) { clearTimeout(ocrIdle); ocrIdle = null; }
+        if (!ocrShared) {
+            const t0 = Date.now();
+            ocrShared = loadReader().then((R) => R.makeOcr({ base: OCR_BASE, onProgress: (st, pr) => ocrProgress && ocrProgress(st, pr) }))
+                .then((o) => o.warm().then(() => { ocrStat.ms = Date.now() - t0; o.warm(["ara"]).catch(() => {}); return o; }));   // Arabic names: the third engine, started in the background
+            ocrShared.catch(() => { ocrShared = null; });
+        }
+        return ocrShared;
+    }
+    function releaseOcr() {
+        if (!ocrShared || ocrIdle) return;
+        ocrIdle = setTimeout(() => { const p = ocrShared; ocrShared = null; ocrIdle = null; if (p) p.then((o) => o.close()).catch(() => {}); }, 180000);
+    }
+    const secs = (ms) => (ms / 1000).toFixed(ms < 10000 ? 1 : 0);
     const digitsOf = (a) => String(a || "").replace(/\D/g, "");
     const SERVICE_AR = { fuel: "وقود", logistics: "نقل وترحيل", utility: "خدمات", telecom: "اتصالات", retail: "مشتريات", rent: "إيجار", bank_transfer: "تحويل بنكيّ", other: "أخرى" };
     // What a flag means for the user, by field (the reader's own reasons are technical English).
@@ -1002,10 +1022,14 @@ const AccountantScreen = (function () {
         const [rows, setRows] = useState([]), [prefs, setPrefs] = useState(null), [stage, setStage] = useState("");
         const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [done, setDone] = useState(null), [view, setView] = useState(null);
         const [noHint, setNoHint] = useState({});
-        const fileRef = useRef(null), ocrRef = useRef(null), rowsRef = useRef(rows);
+        const [engine, setEngine] = useState({ state: "starting", pct: null });
+        const fileRef = useRef(null), rowsRef = useRef(rows);
         rowsRef.current = rows;
         useEffect(() => { call("pfm.import.prefs.get").then(setPrefs, () => setPrefs({ accounts: [], names: {} }));
-            return () => { if (ocrRef.current) ocrRef.current.then((o) => o.close()).catch(() => {}); rowsRef.current.forEach((r) => r.url && URL.revokeObjectURL(r.url)); }; }, []);
+            // start the engines now, while the user picks images
+            ocrProgress = (st, pr) => { if (/traineddata/.test(st || "") && pr != null) setEngine((e) => (e.state === "ready" ? e : { state: "starting", pct: Math.round(pr * 100) })); };
+            startOcr().then(() => setEngine({ state: "ready", ms: ocrStat.ms }), () => setEngine({ state: "error" }));
+            return () => { ocrProgress = null; releaseOcr(); rowsRef.current.forEach((r) => r.url && URL.revokeObjectURL(r.url)); }; }, []);
         const patch = (key, p) => setRows((rs) => rs.map((r) => (r.key === key ? Object.assign({}, r, typeof p === "function" ? p(r) : p) : r)));
         const patchEdit = (key, p) => patch(key, (r) => ({ edit: Object.assign({}, r.edit, p) }));
         const pick = async (e) => {
@@ -1016,21 +1040,21 @@ const AccountantScreen = (function () {
             setRows((rs) => rs.concat(fresh));
             try {
                 const R = await loadReader();
-                if (!ocrRef.current) { setStage(tl("تجهيز القارئ… (نحو 9 ميغابايت، مرّة واحدة فقط)", "Getting the reader ready… (about 9 MB, once only)"));
-                    ocrRef.current = R.makeOcr({ base: OCR_BASE }); }
-                const ocr = await ocrRef.current;
+                const ocr = await startOcr();
                 const ctx = { myAccounts: prefs.accounts, knownAccounts: prefs.names, source: "image_ocr" };
                 for (let i = 0; i < fresh.length; i++) {
                     const it = fresh[i];
                     setStage(tl(`قراءة ${i + 1} من ${fresh.length}…`, `Reading ${i + 1} of ${fresh.length}…`));
                     patch(it.key, { state: "read" });
                     try {
+                        const t0 = Date.now();
                         const r = await R.readFile(it.file, ocr, ctx);
+                        const ms = Date.now() - t0;
                         const photo = await shrinkImage(it.file, 1280, true).catch(() => null);
-                        if (!r) { patch(it.key, { state: "none", photo }); continue; }
+                        if (!r) { patch(it.key, { state: "none", photo, ms }); continue; }
                         // the same transfer twice in this batch: keep the first
                         const twin = r.transaction_id && rowsRef.current.find((x) => x.key !== it.key && x.r && x.r.transaction_id === r.transaction_id);
-                        patch(it.key, { state: twin ? "twin" : "done", r, photo, edit: Object.assign(rowFromResult(r, cats), twin ? { include: false } : {}) });
+                        patch(it.key, { state: twin ? "twin" : "done", r, photo, ms, edit: Object.assign(rowFromResult(r, cats), twin ? { include: false } : {}) });
                     } catch (x) { patch(it.key, { state: "error" }); }
                 }
             } catch (x) { setErr(tl("تعذّر تحميل القارئ — تحقّق من الاتّصال وحاول ثانيةً", "Couldn't load the reader — check your connection and try again")); }
@@ -1087,7 +1111,8 @@ const AccountantScreen = (function () {
                     h("img", { src: row.url, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } })),
                 h("div", { style: { flex: 1, minWidth: 0, fontSize: 12, color: colors.textMuted } },
                     h("div", { dir: "auto", style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, row.file.name),
-                    r && h("div", { dir: "ltr", style: { textAlign: ar() ? "right" : "left" } }, r.transaction_id ? "#" + r.transaction_id : "")),
+                    r && h("div", { dir: "ltr", style: { textAlign: ar() ? "right" : "left" } }, r.transaction_id ? "#" + r.transaction_id : ""),
+                    row.ms != null && h("div", null, tl(`قُرئت في ${secs(row.ms)} ث`, `Read in ${secs(row.ms)} s`))),
                 status);
             if (row.state === "wait" || row.state === "read") return head(chip(row.state === "read" ? tl("يُقرأ…", "Reading…") : tl("في الانتظار", "Waiting"), colors.textMuted));
             if (row.state === "none") return head(chip(tl("لم يُتعرَّف عليه", "Not recognised"), colors.warning));
@@ -1130,17 +1155,23 @@ const AccountantScreen = (function () {
         const counts = { ready: rows.filter((r) => r.state === "done" && r.r.verify.length === 0).length, check: rows.filter((r) => r.state === "done" && r.r.verify.length > 0).length };
         return h(Sheet, { title: tl("استيراد إيصالات", "Import receipts"), onClose },
             h("p", { style: { margin: "0 0 12px", fontSize: T.small, color: colors.textMuted, lineHeight: 1.6 } },
-                tl("اختر لقطات شاشة من «بنكك» (تفاصيل التحويل أو شاشة النجاح). تُقرأ على هاتفك ولا تُرسَل الصورة إلى أيّ جهة لقراءتها؛ ثمّ تُحفظ مشفّرةً إيصالاً للحركة. راجع كلّ صفّ قبل الإضافة.",
-                    "Pick screenshots from Bankak (transfer details or the success screen). They are read on your phone; no service sees them to read them. Each one is then kept, encrypted, as the entry's receipt. Check every row before adding.")),
+                tl("اختر لقطات شاشة من «بنكك»: تحويل (تفاصيله أو شاشة النجاح) أو سداد فاتورة. تُقرأ على هاتفك ولا تُرسَل الصورة إلى أيّ جهة لقراءتها؛ ثمّ تُحفظ مشفّرةً إيصالاً للحركة. راجع كلّ صفّ قبل الإضافة.",
+                    "Pick screenshots from Bankak: a transfer (its details or the success screen) or a bill payment. They are read on your phone; no service sees them to read them. Each one is then kept, encrypted, as the entry's receipt. Check every row before adding.")),
             h("input", { ref: fileRef, type: "file", accept: "image/*", multiple: true, onChange: pick, style: { display: "none" } }),
             h(Btn, { onClick: () => fileRef.current && fileRef.current.click(), disabled: busy || !prefs, style: { width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12 } },
                 h(Upload, { size: 18 }), rows.length ? tl("إضافة صور أخرى", "Add more images") : tl("اختيار الصور", "Choose images")),
-            stage && h("div", { role: "status", style: { fontSize: 13, color: TEAL, fontWeight: 700, marginBottom: 10 } }, stage),
+            engine.state === "starting" && h("div", { role: "status", style: { fontSize: 13, color: TEAL, fontWeight: 700, marginBottom: 10 } },
+                tl("تجهيز القارئ…", "Getting the reader ready…") + (engine.pct != null ? ` ${engine.pct}%` : "") +
+                tl(" (أوّل مرّة فقط: تنزيل نحو 9 ميغابايت)", " (first time only: about 9 MB to download)")),
+            engine.state === "ready" && engine.ms != null && h("div", { style: { fontSize: 12, color: colors.textMuted, marginBottom: 10 } },
+                tl(`القارئ جاهز (${secs(engine.ms)} ث)`, `Reader ready (${secs(engine.ms)} s)`)),
+            engine.state === "error" && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13, marginBottom: 10 } }, tl("تعذّر تجهيز القارئ — تحقّق من الاتّصال", "Couldn't get the reader ready — check your connection")),
+            stage && engine.state !== "starting" && h("div", { role: "status", style: { fontSize: 13, color: TEAL, fontWeight: 700, marginBottom: 10 } }, stage),
             err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13, marginBottom: 10 } }, err),
             Object.keys(hints).map((a) => h(Card, { key: a, style: { marginBottom: 10, borderColor: TEAL } },
                 h("div", { style: { fontSize: 13, marginBottom: 8, lineHeight: 1.6 } },
                     tl(`الحساب `, `Account `), h("b", { dir: "ltr", style: { unicodeBidi: "isolate" } }, a),
-                    tl(` أرسل ${hints[a]} من هذه التحويلات. هل هو حسابك؟ (يُسأل مرّة واحدة، وبه يُعرف الدخل من المصروف)`, ` sent ${hints[a]} of these transfers. Is it yours? (Asked once; it tells income from spending)`)),
+                    tl(` دُفع منه ${hints[a]} من هذه العمليّات. هل هو حسابك؟ (يُسأل مرّة واحدة، وبه يُعرف الدخل من المصروف)`, ` paid ${hints[a]} of these. Is it yours? (Asked once; it tells income from spending)`)),
                 h("div", { style: { display: "flex", gap: 8 } },
                     h(Btn, { onClick: () => confirmOwn(a), style: { flex: 1, minHeight: 40 } }, tl("نعم، حسابي", "Yes, mine")),
                     h(Btn, { kind: "ghost", onClick: () => setNoHint(Object.assign({}, noHint, { [a]: true })), style: { flex: 1, minHeight: 40 } }, tl("لا", "No"))))),
