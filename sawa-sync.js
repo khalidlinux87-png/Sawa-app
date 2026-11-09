@@ -1239,6 +1239,51 @@
     if (!hasFirebase()) return Promise.reject({ code: "sawa/no-server" });
     return firebase.auth().sendPasswordResetEmail(String(email || "").trim().toLowerCase());
   }
+  // C284: استرداد رمز القفل/المحفظة بإثبات ملكيّة الحساب — إعادة المصادقة (لا دخولٌ جديد): Firebase يرفض حساباً آخر (auth/user-mismatch)
+  function recoveryAccount() {
+    try {
+      var u = hasFirebase() && firebase.auth().currentUser; if (!u || u.isAnonymous) return null;
+      var ids = (u.providerData || []).map(function (p) { return p && p.providerId; });
+      var r = { email: u.email || null, password: ids.indexOf("password") >= 0 && !!u.email, google: ids.indexOf("google.com") >= 0 && hasGoogle() };
+      return r.password || r.google ? r : null;
+    } catch (e) { return null; }
+  }
+  function nativeGoogleToken() {
+    return new Promise(function (res, rej) {
+      var id = "gr" + (++natSeq) + "_" + Date.now();
+      var to = setTimeout(function () { delete natCbs[id]; rej(new Error("timeout")); }, 120000);
+      natCbs[id] = function (r) { clearTimeout(to); if (r.ok && r.idToken) res(r.idToken); else rej(new Error(r.error || "cancelled")); };
+      if (IOSB()) { IOSB().call("googleSignIn").then(natCbs[id]); return; }
+      try { NB().googleSignIn(id); } catch (e) { clearTimeout(to); delete natCbs[id]; rej(e); }
+    });
+  }
+  // kind: "password" (مع كلمة المرور) | "google" — يعيد Promise يُحلّ عند النجاح
+  function reauthAccount(kind, pass) {
+    if (!hasFirebase()) return Promise.reject({ code: "sawa/no-server" });
+    var u = firebase.auth().currentUser;
+    if (!u || u.isAnonymous) return Promise.reject({ code: "sawa/no-account" });
+    if (kind === "password") {
+      if (!u.email) return Promise.reject({ code: "sawa/no-email" });
+      return u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email, String(pass || "")));
+    }
+    if (NB() || IOSB()) {
+      return nativeGoogleToken().then(function (tok) { return u.reauthenticateWithCredential(firebase.auth.GoogleAuthProvider.credential(tok)); });
+    }
+    var provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account", login_hint: u.email || "" });
+    return u.reauthenticateWithPopup(provider);
+  }
+  // رسالةٌ مفهومة لأخطاء إعادة المصادقة
+  function reauthError(e) {
+    var c = (e && e.code) || String((e && e.message) || e || "");
+    if (c === "auth/wrong-password" || c === "auth/invalid-credential" || c === "auth/invalid-login-credentials") return L("كلمة المرور غير صحيحة", "Wrong password");
+    if (c === "auth/user-mismatch") return L("هذا حسابٌ آخر — اختر الحساب المسجَّل به في سوا", "That's a different account — choose the one you use in Sawa");
+    if (c === "auth/too-many-requests") return L("محاولات كثيرة — انتظر قليلاً ثمّ أعد المحاولة", "Too many attempts — wait a bit and try again");
+    if (c === "auth/network-request-failed" || c === "sawa/no-server") return L("لا اتّصال بالخادم — تحقّق من الإنترنت", "Can't reach the server — check your internet");
+    if (c === "auth/popup-closed-by-user" || c === "auth/cancelled-popup-request" || /cancel/i.test(c)) return "";
+    if (c === "auth/popup-blocked" || c === "auth/operation-not-supported-in-this-environment") return L("تعذّر فتح نافذة Google هنا — استعمل طريقةً أخرى", "Couldn't open the Google window here — use another way");
+    return L("تعذّر التحقّق: ", "Couldn't verify: ") + c;
+  }
   function authInfo() {
     try { var u = firebase.auth().currentUser; if (!u) return null;
       return { uid: u.uid, anon: !!u.isAnonymous, email: u.email || null, name: u.displayName || null,
@@ -1810,7 +1855,7 @@
   global.SawaSync = {
     connect: connect, onReady: onReady, getToken: getToken,
     push: push, observe: observe, bindApp: bindApp,
-    uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, linkApple: linkApple, hasApple: hasApple, hasGoogle: hasGoogle, isIOSApp: function () { return !!IOSB(); }, renderGoogleButton: renderGoogleButton, googleCredential: googleCredential, gisPrompt: gisPrompt, loadGsi: loadGsi, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, syncAuthName: syncAuthName, shareLink: shareLink,
+    uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, linkApple: linkApple, hasApple: hasApple, hasGoogle: hasGoogle, isIOSApp: function () { return !!IOSB(); }, renderGoogleButton: renderGoogleButton, googleCredential: googleCredential, gisPrompt: gisPrompt, loadGsi: loadGsi, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, recoveryAccount: recoveryAccount, reauthAccount: reauthAccount, reauthError: reauthError,   /* C284 */  syncAuthName: syncAuthName, shareLink: shareLink,
     watchGroup: watchGroup, serverGid: serverGid,
     // C106: «هذا أنا» على الخادم — يربط حسابي بشخصٍ في الشجرة (أو يفكّه بـ null)
     inviteFor: inviteFor, adoptGroup: adoptGroup,   // C107
