@@ -95,7 +95,7 @@
       errs: { overpay: "المبلغ أكبر من المتبقّي بعد البلاغات السابقة.", partial_not_allowed: "هذه الفاتورة تُدفع كاملةً دفعةً واحدة.", claim_pending: "هناك بلاغاتٌ سابقة لم يُردّ عليها بعد. انتظر رداً من المُصدِر.",
         rate_limited: "محاولاتٌ كثيرة. انتظر قليلاً ثمّ أعد المحاولة.", bad_payer: "اكتب اسمك.", bad_amount: "اكتب المبلغ.", too_precise: "عدد الخانات العشريّة أكثر من المسموح.", bad_proof: "الصورة يجب أن تكون JPEG أو PNG أو WebP.",
         not_payable: "لم تعد هذه الفاتورة تقبل الدفع.", bad_account: "اختر الحساب الذي حوّلت إليه.",
-        partial_is_full: "هذا هو المبلغ كاملاً — اختر «المبلغ كاملاً».", bad_pay_type: "اختر: المبلغ كاملاً أو دفعة جزئيّة.", proof_big: "ملفّ PDF أكبر من 600 كيلوبايت. أرسل صورة للإيصال بدلاً منه.", proof_type: "الإيصال صورة أو ملفّ PDF فقط." },
+        partial_is_full: "هذا هو المبلغ كاملاً — اختر «المبلغ كاملاً».", bad_pay_type: "اختر: المبلغ كاملاً أو دفعة جزئيّة.", proof_big: "ملفّ PDF أكبر من 600 كيلوبايت. أرسل صورة للإيصال بدلاً منه.", proof_type: "الإيصال صورة أو ملفّ PDF فقط.", server_busy: "الخادم مشغول الآن. انتظر دقيقة ثم أعد المحاولة." },
       footer: "فواتير عبر سوا.", privacy: "الخصوصيّة", lang: "English" },
     en: { owe: "You owe ", from: "Invoice {n} from {i}", due: ", due on {d}.", overdue: ", which was due on {d}.", paidAll: "This invoice is paid in full.", thanks: "Thank you.",
       cancelled: "This invoice was cancelled.", noLink: "This link isn't valid or has expired.", tryLater: "Couldn't load. Check your connection and try again.", retry: "Try again",
@@ -111,7 +111,7 @@
       errs: { overpay: "That's more than is left after earlier reports.", partial_not_allowed: "This invoice is paid in one full payment.", claim_pending: "Earlier reports haven't been answered yet. Wait for the issuer.",
         rate_limited: "Too many attempts. Wait a little and try again.", bad_payer: "Enter your name.", bad_amount: "Enter the amount.", too_precise: "Too many decimal places.", bad_proof: "The image must be JPEG, PNG or WebP.",
         not_payable: "This invoice no longer accepts payment.", bad_account: "Choose the account you sent to.",
-        partial_is_full: "That's the full amount — choose “The full amount”.", bad_pay_type: "Choose: the full amount or a part payment.", proof_big: "The PDF is over 600 KB. Send a photo of the receipt instead.", proof_type: "The receipt must be a photo or a PDF." },
+        partial_is_full: "That's the full amount — choose “The full amount”.", bad_pay_type: "Choose: the full amount or a part payment.", proof_big: "The PDF is over 600 KB. Send a photo of the receipt instead.", proof_type: "The receipt must be a photo or a PDF.", server_busy: "The server is busy right now. Wait a minute and try again." },
       footer: "Invoices with Sawa.", privacy: "Privacy", lang: "العربيّة" }
   };
   function S() { return STRINGS[state.lang]; }
@@ -126,7 +126,7 @@
   function day(d) { var p = d.split("-").map(Number); return new Intl.DateTimeFormat(loc(), { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(Date.UTC(p[0], p[1] - 1, p[2])); }
   function api(op, payload) {
     return fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: op, payload: payload }), referrerPolicy: "no-referrer" })
-      .then(function (r) { return r.json(); }).then(function (b) { if (!b || !b.ok) throw new Error((b && b.error) || "error"); return b; });
+      .then(function (r) { return r.json(); }).then(function (b) { if (!b || !b.ok) { var er = new Error((b && b.error) || "error"); er.detail = b && b.detail; throw er; } return b; });   // TEMP-DEBUG: detail
   }
   var KEY = "sawa_pay_" + TOKEN;   // remembers this browser's report, to show it again after a reload
   function mine() { try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { return null; } }
@@ -399,18 +399,27 @@
   };
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") document.getElementById("closeBtn").click(); });
 
-  function shrink(file) {   // ≤ 1280 px JPEG, so a phone photo of a receipt stays small
+  function shrink(file, side, quality) {   // ≤ side px JPEG, so a phone photo of a receipt stays small
     return new Promise(function (res, rej) {
       var img = document.createElement("img"), url = URL.createObjectURL(file);
-      img.onload = function () { var k = Math.min(1, 1280 / Math.max(img.width, img.height)), c = document.createElement("canvas");
+      img.onload = function () { var k = Math.min(1, side / Math.max(img.width, img.height)), c = document.createElement("canvas");
         c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
-        res(c.toDataURL("image/jpeg", 0.8)); };
+        res(c.toDataURL("image/jpeg", quality)); };
       img.onerror = function () { URL.revokeObjectURL(url); rej(new Error("bad_proof")); };
       img.src = url;
     });
   }
   // C287: a photo is shrunk; a PDF (a bank's e-receipt) goes as it is, up to 600 KB.
   var PROOF_PDF_MAX = 600 * 1024;
+  // C289: the server refuses a proof over 600 KB (base64 ≈ 800,000 characters). A full-size phone photo used to be sent
+  // as it was and refused with the wrong message, so a photo is now shrunk in steps until it fits.
+  var PROOF_B64_MAX = 780000;
+  var PROOF_IMG_STEPS = [[1280, 0.8], [1024, 0.7], [800, 0.6]];
+  function shrinkToFit(file, i) {
+    return shrink(file, PROOF_IMG_STEPS[i][0], PROOF_IMG_STEPS[i][1]).then(function (d) {
+      return d.length <= PROOF_B64_MAX || i + 1 >= PROOF_IMG_STEPS.length ? d : shrinkToFit(file, i + 1);
+    });
+  }
   function proofOf(file) {
     var isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
     if (isPdf) {
@@ -418,7 +427,7 @@
       return new Promise(function (ok, no) { var r = new FileReader(); r.onload = function () { ok(String(r.result).replace(/^data:[^,]*,/, "data:application/pdf;base64,")); }; r.onerror = function () { no(new Error("proof_type")); }; r.readAsDataURL(file); });
     }
     if (!/^image\//.test(file.type || "")) return Promise.reject(new Error("proof_type"));
-    return shrink(file);
+    return shrinkToFit(file, 0);
   }
   function key() { try { return crypto.randomUUID(); } catch (e) { return "k" + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); } }
   var idem = key();
@@ -439,7 +448,10 @@
       state.sending = false; state.another = false; state.ptype = null; idem = key(); return load();
     }, function (e) {
       var code = String(e.message || "").split(":")[0];
-      state.sending = false; state.err = t.errs[code] || t.tryLater; render(); restore(keep);
+      // the worker answers 503 "server_error: busy" for a passing overload; say so instead of the generic line
+      var msg = /^server_error: busy/.test(String(e.message || "")) ? t.errs.server_busy : t.errs[code] || t.tryLater;
+      // TEMP-DEBUG: show the raw server detail under the message (revert with the worker's detail field)
+      state.sending = false; state.err = msg + (e.detail ? " [debug: " + e.detail + "]" : ""); render(); restore(keep);
     });
   }
   function restore(k) { var f = document.getElementById("claim"); if (!f) return; ["name", "phone", "amount", "reference", "date"].forEach(function (n) { if (k[n] != null && f[n] && !f[n].readOnly) f[n].value = k[n]; }); }
