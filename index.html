@@ -12,7 +12,12 @@ window.__sawaParts=(function(){var N=9,jobs=[];for(var i=1;i<=N;i++)(function(k)
 <link rel="preconnect" href="https://firestore.googleapis.com">
 <link rel="preconnect" href="https://identitytoolkit.googleapis.com">
 <link rel="preconnect" href="https://sawa-test-9770f-default-rtdb.europe-west1.firebasedatabase.app">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script>
+  // C289: التكبير بإصبعين مسموحٌ الآن (كان ممنوعاً: maximum-scale=1,user-scalable=no) — لضعاف البصر وكبار السنّ.
+  // على iOS فقط نُبقي maximum-scale=1 كي لا يكبّر Safari الشاشة تلقائيّاً عند لمس حقلٍ نصّه أصغر من 16 بكسل؛ وSafari يسمح بالتكبير بإصبعين رغمه.
+  try { if (/iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) { var vp = document.querySelector('meta[name=viewport]'); vp.setAttribute('content', vp.getAttribute('content') + ',maximum-scale=1'); } } catch (e) {}
+</script>
 <title>سوا</title>
 
 <link rel="manifest" href="./manifest.json">
@@ -43,6 +48,7 @@ window.__sawaParts=(function(){var N=9,jobs=[];for(var i=1;i<=N;i++)(function(k)
   :root{--sawa-font:'Sawa Plex',system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif}
   html,body,#root{height:100%;margin:0;background:#F5F7FA;
     -webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+  html{touch-action:manipulation}   /* C289: بلا تكبيرٍ بالنقر المزدوج (يتعارض مع النقر المزدوج في الرسائل)، ويبقى التكبير بإصبعين */
   body{font-family:var(--sawa-font)}
   /* شاشة التحميل */
   #boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
@@ -60,9 +66,12 @@ window.__sawaParts=(function(){var N=9,jobs=[];for(var i=1;i<=N;i++)(function(k)
   :root[data-theme=dark] .spin{border-color:#173049;border-top-color:#5AA9E6}
   /* C192: إطار التركيز — يظهر مع لوحة المفاتيح فقط (لا مع اللمس)، بلون المظهر. كانت 44 عنصراً تُخفيه (outline-none). الحقول مستثناة: فيها المؤشّر. */
   :is(button,a,summary,select,[role=button],[role=tab],[role=switch],[role=menuitem],[tabindex]):focus-visible{outline:2px solid var(--sawa-primary,#2774BA)!important;outline-offset:2px}
-  /* C192: مساحة لمسٍ 40 بكسل على الأقلّ للأزرار الصغيرة (20–32 بكسل) دون تغيير شكلها: طبقةٌ شفّافة حولها. */
-  button:where(.w-5,.w-6,.w-7,.w-8,.sawa-hit):not(.absolute):not(.fixed):not(.sticky){position:relative}
-  button:where(.w-5,.w-6,.w-7,.w-8,.sawa-hit)::after{content:"";position:absolute;top:min(0px,calc((100% - 40px) / 2));bottom:min(0px,calc((100% - 40px) / 2));left:min(0px,calc((100% - 40px) / 2));right:min(0px,calc((100% - 40px) / 2))}
+  /* C192: مساحة لمسٍ حول الأزرار الصغيرة دون تغيير شكلها: طبقةٌ شفّافة حولها.
+     C289: رُفعت من 40 إلى 44 بكسل (الحدّ الأدنى في إرشادات Apple وWCAG)، وشملت أزرار 36 و40 بكسل (أزرار الرأس: بحث وخيارات). */
+  button:where(.w-5,.w-6,.w-7,.w-8,.w-9,.w-10,.sawa-hit):not(.absolute):not(.fixed):not(.sticky){position:relative}
+  button:where(.w-5,.w-6,.w-7,.w-8,.w-9,.w-10,.sawa-hit)::after{content:"";position:absolute;top:min(0px,calc((100% - 44px) / 2));bottom:min(0px,calc((100% - 44px) / 2));left:min(0px,calc((100% - 44px) / 2));right:min(0px,calc((100% - 44px) / 2))}
+  /* C289: «تقليل الحركة» من إعدادات الهاتف يشمل التطبيق كلّه (كان في شاشات البداية فقط). المدّة القصيرة جدّاً تُبقي أحداث animationend/transitionend تعمل. */
+  @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
   #err{display:none;position:fixed;inset:0;padding:28px;background:#F5F7FA;z-index:10000;
     overflow:auto;direction:rtl;text-align:right}
   #err h2{color:#B42318;font-size:17px}

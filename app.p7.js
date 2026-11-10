@@ -428,7 +428,7 @@ function TaqaPurchaseScreen({ company, walletBalance, colors, onBack, onBuy }) {
                         { name: t("tq_mhmd"), phone: "0922345678" },
                         { name: t("tq_fatma"), phone: "0933456789" },
                     ].map(c => (React.createElement("button", { key: c.phone, onClick: () => setPhone(c.phone), className: "flex flex-col items-center gap-1 rounded-xl px-3 py-2 border flex-shrink-0", style: { backgroundColor: colors.bg, borderColor: colors.border } },
-                        React.createElement("div", { className: "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, c.name[0]),
+                        React.createElement("div", { className: "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold", style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, c.name[0]),
                         React.createElement("span", { className: "text-[9px] font-bold", style: { color: colors.text } }, c.name))))))),
                 phone !== "" && (React.createElement("div", { className: `border-t flex ${isRTL() ? "flex-row" : "flex-row-reverse"} items-center justify-between px-3 py-2`, style: { borderColor: colors.border } },
                     React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } },
@@ -551,7 +551,7 @@ function TaqaTokenScreen({ token, colors, onBack, onHistory }) {
                     t("tq_amsh_aw"),
                     t("tq_tabya"),
                 ].map((step, i) => (React.createElement("div", { key: i, className: `flex ${isRTL() ? "flex-row" : "flex-row-reverse"} items-center gap-2 mb-2 last:mb-0` },
-                    React.createElement("div", { className: "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, i + 1),
+                    React.createElement("div", { className: "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0", style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, i + 1),
                     React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } }, step))))),
             React.createElement("button", { onClick: onHistory, className: "w-full rounded-xl py-2.5 text-xs font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, t("tq_sjl_rmwz")))));
 }
@@ -1377,12 +1377,12 @@ function JamiyaDetailScreen({ jamiya, currentUserId, onPay, onBack }) {
                     const isWinner = ((_c = jamiya.rounds[currentRound]) === null || _c === void 0 ? void 0 : _c.memberId) === member.id;
                     return (React.createElement("div", { key: member.id, className: `flex ${rowStart()} items-center gap-3 px-3 py-2.5`, style: { borderBottom: idx < jamiya.members.length - 1 ? `0.5px solid ${colors.border}` : "none" } },
                         React.createElement("div", { className: "w-2 h-2 rounded-full flex-shrink-0", style: { backgroundColor: paid ? colors.success : colors.border } }),
-                        React.createElement("div", { className: "w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, member.name.slice(0, 2)),
+                        React.createElement("div", { className: "w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold", style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, member.name.slice(0, 2)),
                         React.createElement("div", { className: "flex-1" },
                             React.createElement("div", { className: "text-xs font-bold", style: { color: colors.text } },
                                 member.name,
                                 isMe ? t("w_ant_qws") : "")),
-                        isWinner && (React.createElement("div", { className: "rounded-full px-2 py-0.5 text-[10px] font-bold", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("w_almstfyd"))),
+                        isWinner && (React.createElement("div", { className: "rounded-full px-2 py-0.5 text-[10px] font-bold", style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, t("w_almstfyd"))),
                         !isWinner && (React.createElement("div", { className: "text-[11px] font-bold", style: { color: paid ? colors.success : colors.textMuted } }, paid ? t("w_dfa") : t("w_lm_ydfa")))));
                 })))))));
 }
@@ -1692,7 +1692,7 @@ function IntlTransferScreen({ balance, walletPinForConfirm, kycStatus, history, 
     const row = (k, v, strong) => React.createElement("div", { className: `flex ${rowStart()} items-center justify-between gap-3 p-3 border-b`, style: { borderColor: colors.border } },
         React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } }, k),
         React.createElement("span", { className: `text-xs ${strong ? "font-extrabold" : "font-bold"} ${textStart()}`, style: { color: colors.text } }, v));
-    const histBtn = React.createElement("button", { key: "h", onClick: () => setStep("history"), className: "text-xs font-bold px-3 py-1.5 rounded-full", style: { backgroundColor: colors.primaryLight, color: colors.primary } },
+    const histBtn = React.createElement("button", { key: "h", onClick: () => setStep("history"), className: "text-xs font-bold px-3 py-1.5 rounded-full", style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } },
         tl("السجلّ", "History") + (history.length ? " (" + history.length + ")" : ""));
     if (step === "history") {
         return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },

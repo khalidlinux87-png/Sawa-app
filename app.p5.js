@@ -343,7 +343,7 @@ function GroupInfoScreen({ messages = [], onMessageMember = null, group, myUserI
                     // C159: والعائلة أيضاً (لمالكها ومحرّريها — يتحقّق الخادم) · وسببٌ واضح بدل لا شيء
                     const canPhoto = group.cloud && window.SawaChat && window.SawaChat.setGroupPhoto && (isFamily || isAdmin || !group.infoAdminsOnly);
                     const why = !group.cloud ? tl("هذه المجموعة على جهازك فقط — صورتها تحتاج مجموعةً في سوا", "This group is only on your device") : !(window.SawaChat && window.SawaChat.setGroupPhoto) ? tl("ملفّ المحادثات على هذا الجهاز قديم (" + ((window.SawaChat && window.SawaChat.build) || "قبل c160") + "). افتح «حسابي ← تحديث التطبيق» واضغط «تحديث الآن» ثمّ جرّب", "The chat module on this device is old — open App update and tap Update now") : tl("المشرفون وحدهم يغيّرون صورة هذه المجموعة", "Only admins can change this group's photo");
-                    return React.createElement("button", { "aria-label": tl("صورة المجموعة", "Group photo"), onClick: () => canPhoto ? window.SawaChat.setGroupPhoto(group.id, !!group.photo) : (group.photo ? setViewPhoto(group.photo) : alert(why)), className: "relative mb-3", style: { cursor: "pointer" } },
+                    return React.createElement("button", { "aria-label": tl("صورة المجموعة", "Group photo"), onClick: () => canPhoto ? window.SawaChat.setGroupPhoto(group.id, !!group.photo) : (group.photo ? setViewPhoto(group.photo) : sawaNotice(why)), className: "relative mb-3", style: { cursor: "pointer" } },
                         React.createElement(Pic, { photo: group.photo || null, letter: null, size: 96, bg: colors.primaryLight, color: colors.primary }, group.photo ? null : React.createElement(UsersRound, { size: 40, color: colors.primary })),
                         canPhoto && React.createElement("span", { className: "absolute bottom-0 rounded-full flex items-center justify-center", style: { insetInlineEnd: 0, width: 30, height: 30, backgroundColor: colors.primary, border: "2px solid " + colors.card } }, React.createElement(Camera, { size: 15, color: "#fff" })));
                 })(),
@@ -660,7 +660,7 @@ function MsgActionSheet({ colors, onClose, preview, onReact, items }) {
             React.createElement("div", { className: "w-9 h-1 rounded-full mx-auto mt-2 mb-1", style: { backgroundColor: colors.border } }),
             preview ? React.createElement("div", { className: "px-4 pb-1 text-[11.5px] truncate", style: { color: colors.textMuted } }, String(preview).slice(0, 120)) : null,
             blocked && React.createElement("div", { className: "px-4 text-[10px] font-bold", style: { color: colors.danger } }, "⚠ " + tl("الإيموجي مغطّى بـ: ", "Covered by: ") + blocked),
-            onReact && React.createElement("div", { ref: rowRef, className: "flex items-center justify-around px-3 py-1.5" }, QUICK_REACTIONS.map((e) => React.createElement("button", { key: e, "aria-label": e, onClick: (ev) => { try { ev.stopPropagation(); } catch (x) { } try { onReact(e); } catch (x) { alert(tl("تعذّر التفاعل: ", "Reaction failed: ") + ((x && x.message) || x)); } onClose(); }, className: "text-[22px] w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.bg } }, e))),
+            onReact && React.createElement("div", { ref: rowRef, className: "flex items-center justify-around px-3 py-1.5" }, QUICK_REACTIONS.map((e) => React.createElement("button", { key: e, "aria-label": e, onClick: (ev) => { try { ev.stopPropagation(); } catch (x) { } try { onReact(e); } catch (x) { sawaNotice(tl("تعذّر التفاعل. أعد المحاولة.", "Reaction failed. Try again.")); } onClose(); }, className: "text-[22px] w-10 h-10 rounded-full flex items-center justify-center", style: { backgroundColor: colors.bg } }, e))),
             React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 2, padding: "4px 8px 2px", borderTop: `1px solid ${colors.border}` } },
                 items.map((it, k) => React.createElement("button", { key: k, onClick: () => { onClose(); it.act(); }, className: "flex flex-col items-center justify-center gap-1 rounded-xl", style: { padding: "9px 2px", minHeight: 62 } },
                     React.createElement(it.icon, { size: 20, color: it.danger ? colors.danger : colors.text }),
@@ -730,7 +730,7 @@ function UnreadDivider() {
     const { colors } = useTheme();
     return (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 my-3` },
         React.createElement("div", { className: "flex-1 h-px", style: { backgroundColor: colors.primary + "55" } }),
-        React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full", style: { color: colors.primary, backgroundColor: colors.primaryLight } }, tl("رسائل غير مقروءة", "Unread messages")),
+        React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full", style: { color: colors.primaryInk, backgroundColor: colors.primaryLight } }, tl("رسائل غير مقروءة", "Unread messages")),
         React.createElement("div", { className: "flex-1 h-px", style: { backgroundColor: colors.primary + "55" } })));
 }
 
@@ -1214,7 +1214,7 @@ function FilePreviewSheet({ file, onClose }) {
         React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 py-2 shrink-0`, style: { backgroundColor: colors.card, borderBottom: `1px solid ${colors.border}`, paddingTop: "calc(env(safe-area-inset-top,0px) + 8px)" } },
             React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: onClose, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0" }, React.createElement(X, { size: 20, color: colors.text })),
             React.createElement("span", { className: "flex-1 text-sm font-extrabold truncate", dir: "auto", style: { color: colors.text } }, file.name || tl("ملفّ", "File")),
-            React.createElement("button", { onClick: () => { try { window.SawaChat && window.SawaChat.saveFileBlob && window.SawaChat.saveFileBlob(file); } catch (e) {} }, className: "text-xs font-bold px-3 py-1.5 rounded-full shrink-0", style: { color: colors.primary, backgroundColor: colors.primaryLight } }, tl("حفظ", "Save"))),
+            React.createElement("button", { onClick: () => { try { window.SawaChat && window.SawaChat.saveFileBlob && window.SawaChat.saveFileBlob(file); } catch (e) {} }, className: "text-xs font-bold px-3 py-1.5 rounded-full shrink-0", style: { color: colors.primaryInk, backgroundColor: colors.primaryLight } }, tl("حفظ", "Save"))),
         React.createElement("div", { className: "flex-1 min-h-0 flex items-center justify-center", style: { backgroundColor: isImg ? "#000" : colors.bg } },
             isImg ? React.createElement("img", { src: file.url, alt: file.name || "", style: { maxWidth: "100%", maxHeight: "100%", objectFit: "contain" } })
                 : React.createElement("iframe", { src: file.url, title: file.name || "", style: { width: "100%", height: "100%", border: 0, backgroundColor: "#fff" } })));

@@ -1101,7 +1101,7 @@
       if (/Cancel/i.test(m)) return;   // أغلق المستخدم النافذة
       if (/NoGoogleConfig/i.test(m)) { toast(L("الدخول بـGoogle غير متاحٍ في هذه النسخة — استعمل Apple أو البريد", "Google sign-in isn't available in this version — use Apple or email")); return; }
       if (/NoCredential/i.test(m)) { toast(L("لا يوجد حساب Google على هذا الهاتف — أضفه من إعدادات الهاتف ← الحسابات", "No Google account on this phone — add one in Settings → Accounts")); return; }
-      toast(L("تعذّر الدخول بـGoogle: ", "Google sign-in failed: ") + m.slice(0, 120));
+      LOG.warn("google.fail", { err: m }); toast(L("تعذّر الدخول بـGoogle. ", "Google sign-in failed. ") + friendlyErr(m));
     });
   }
   // C123: Sign in with Apple (تطبيق iOS) — شرط App Store ما دام Google متاحاً. الاسم يأتي في أوّل دخولٍ فقط
@@ -1113,14 +1113,14 @@
     return IOSB().call("appleSignIn").then(function (r) {
       if (!r || !r.ok || !r.idToken) {
         var m = String((r && r.error) || "");
-        if (!/Cancel/i.test(m)) toast(L("تعذّر الدخول بـApple: ", "Apple sign-in failed: ") + m.slice(0, 120));
+        if (!/Cancel/i.test(m)) { LOG.warn("apple.fail", { err: m }); toast(L("تعذّر الدخول بـApple. ", "Apple sign-in failed. ") + friendlyErr(m)); }
         return;
       }
       var cred = new firebase.auth.OAuthProvider("apple.com").credential({ idToken: r.idToken, rawNonce: r.rawNonce });
       return idpCredential(cred, "Apple", r.name || null).catch(function (e) {
         var code = (e && e.code) || "";
         if (code === "auth/operation-not-allowed") toast(L("الدخول بـApple غير مفعّل في الخادم بعد", "Apple sign-in isn't enabled on the server yet"));
-        else toast(L("تعذّر الدخول: ", "Sign-in failed: ") + (code || (e && e.message) || e));
+        else { LOG.warn("signin.fail", { err: code || (e && e.message) || e }); toast(L("تعذّر الدخول. ", "Sign-in failed. ") + friendlyErr(e)); }
       });
     });
   }
@@ -1179,7 +1179,7 @@
         var code = e && e.code;
         if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment" || code === "auth/cancelled-popup-request") return auth.signInWithRedirect(provider);
         if (code === "auth/popup-closed-by-user") return;
-        toast(L("تعذّر الدخول: ", "Sign-in failed: ") + ((e && (e.code || e.message)) || e));
+        LOG.warn("signin.fail", { err: (e && (e.code || e.message)) || e }); toast(L("تعذّر الدخول. ", "Sign-in failed. ") + friendlyErr(e));
       });
     }
     var oldTokP = user.getIdToken();
@@ -1197,7 +1197,7 @@
           return signIn.then(function () { return adoptFrom(oldTok); }).then(function () {
             return afterLinked(L("دخلتَ بحسابك على Google ✓ ونُقلت عائلات هذا الجهاز إليه", "Signed in with Google ✓ — this device's families moved to your account"));
           });
-        }).catch(function (x) { toast(L("تعذّر الدخول: ", "Sign-in failed: ") + ((x && x.message) || x)); });
+        }).catch(function (x) { LOG.warn("signin.fail", { err: (x && (x.code || x.message)) || x }); toast(L("تعذّر الدخول. ", "Sign-in failed. ") + friendlyErr(x)); });
       }
       if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment" || code === "auth/cancelled-popup-request") {
         // بديل: إعادة التوجيه. نحفظ رمز الهويّة الحالية لتبنّيها بعد العودة.
@@ -1327,7 +1327,7 @@
           if (!cred) return;
           auth.signInWithCredential(cred).then(function () { return oldTok ? adoptFrom(oldTok) : null; })
             .then(function () { afterLinked(L("دخلتَ بحسابك على Google ✓", "Signed in with Google ✓")); })
-            .catch(function (x) { toast(L("تعذّر الدخول: ", "Sign-in failed: ") + ((x && x.message) || x)); });
+            .catch(function (x) { LOG.warn("signin.fail", { err: (x && (x.code || x.message)) || x }); toast(L("تعذّر الدخول. ", "Sign-in failed. ") + friendlyErr(x)); });
         }
       });
     } catch (e) {}
@@ -1348,9 +1348,9 @@
         navigator.share({ title: "سوا", text: text, url: url }).catch(function () {});
       } else if (global.navigator && navigator.clipboard) {
         navigator.clipboard.writeText(text + " " + url).then(function () { toast(L("نُسخ الرابط ✓", "Link copied ✓")); },
-          function () { global.prompt(L("انسخ الرابط:", "Copy the link:"), url); });
+          function () { copyBox(url); });
       } else {
-        global.prompt(L("انسخ الرابط:", "Copy the link:"), url);
+        copyBox(url);
       }
     }).catch(function (e) {
       var m = (e && e.message) || String(e);
@@ -1728,12 +1728,21 @@
   }
 
   // C196: رسالة خطأٍ يفهمها المستخدم بدل نصّ Firebase الخامّ بالإنجليزيّة (يبقى الخامّ في السجلّ LOG).
+  // C289: نسخٌ يدويّ بنافذة سوا (sawa-chat) بدل prompt() الأصليّ
+  function copyBox(t) { try { if (global.SawaChat && global.SawaChat.copySheet) { global.SawaChat.copySheet(t); return; } } catch (e) {} global.prompt(L("انسخ الرابط:", "Copy the link:"), t); }
   function friendlyErr(e) {
     var r = String((e && (e.code || e.message)) || e || "");
     if (/network|timeout|unavailable|offline|failed to fetch/i.test(r)) return L("تعذّر الاتّصال بالإنترنت. تحقّق من الاتّصال ثمّ أعد المحاولة.", "Couldn't connect. Check your internet and try again.");
     if (/popup-closed|cancelled-popup|user-cancel/i.test(r)) return L("أُلغي الدخول.", "Sign-in was cancelled.");
     if (/too-many-requests/i.test(r)) return L("محاولاتٌ كثيرة. انتظر قليلاً ثمّ أعد المحاولة.", "Too many attempts. Wait a moment and try again.");
-    return L("حدث خطأ غير متوقّع. أعد المحاولة بعد قليل.", "Something went wrong. Try again in a moment.");
+    // C289: رموز Firebase الشائعة بعبارةٍ مفهومة؛ وغير المعروف يُذكر رمزه مختصراً بين قوسين للدعم الفنّيّ فقط.
+    if (/popup-blocked/i.test(r)) return L("منع المتصفّح نافذة الدخول. اسمح بالنوافذ المنبثقة ثمّ أعد المحاولة.", "The browser blocked the sign-in window. Allow pop-ups and try again.");
+    if (/account-exists-with-different-credential|credential-already-in-use|email-already-in-use/i.test(r)) return L("هذا البريد مرتبطٌ بحسابٍ آخر. ادخل بالطريقة التي أنشأت بها حسابك.", "This email belongs to another account. Sign in the way you created it.");
+    if (/invalid-credential|wrong-password|invalid-login|user-not-found|invalid-email/i.test(r)) return L("بيانات الدخول غير صحيحة. تحقّق منها ثمّ أعد المحاولة.", "Those sign-in details aren't right. Check them and try again.");
+    if (/user-disabled/i.test(r)) return L("هذا الحساب موقوف. تواصل مع الدعم.", "This account is disabled. Contact support.");
+    if (/operation-not-allowed|unauthorized-domain|NoGoogleConfig/i.test(r)) return L("طريقة الدخول هذه غير متاحة الآن. جرّب طريقةً أخرى.", "This sign-in method isn't available right now. Try another one.");
+    var code = (r.match(/auth\/[a-z-]+/) || [])[0] || "";
+    return L("حدث خطأ غير متوقّع. أعد المحاولة بعد قليل.", "Something went wrong. Try again in a moment.") + (code ? " (" + code.replace("auth/", "") + ")" : "");
   }
 
   function reviewsSection(lg, sg) {
