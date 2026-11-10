@@ -2787,3 +2787,25 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - جسرٌ أصليّ جديد في Sawa-android: `SawaNativeBridge.ownerAuthOk()` و`verifyOwner(title, cb)` (BiometricPrompt: البصمة أو قفل شاشة الهاتف).
 - في التطبيق مع قفل شاشةٍ مفعّل: شاشة «نسيت رمز المحفظة» لا تعرض إلا «تحقّق ببصمة الهاتف» — أُخفيت رموز الاسترداد ورمز قفل التطبيق وحساب البريد/Google، فمن يمسك الهاتف مفتوحاً لا يستطيع تغيير رمز المحفظة.
 - هاتفٌ بلا قفل شاشة: تبقى الطرق القديمة مع تنبيهٍ أحمر بتفعيل القفل. الويب و iOS وAPK أقدم (بلا `verifyOwner`): بلا تغيير.
+## 🧾📎 C287 — Invoices: PDF that works in the apps, pay links fixed, client portal (full/partial, PDF receipts) · Projects: dated prices and attachments · app.p9 · pay.html · sawa-chat · sw v470 · Worker (pfm/)
+**Root causes found**
+- **PDF did nothing in the apps.** "Print or PDF" printed a hidden 0×0 frame; Android's WebView and iOS's WKWebView ignore `window.print()`. The server-side path (`invoice-pdf.mjs`) imported a package the Worker doesn't have, read the logo from an R2 key that is never written, and was never wired.
+- **Pay link opened nothing in the Android app.** The app claims every `www.sawaaap.com` link; `__sawaNativeOpen` (sawa-chat.js) answered "handled" for any URL without a query string, so `/pay/<token>` was swallowed. It now handles only `/` in place; other paths load normally.
+- **Invoices sent before C267 had no link**, so Share and "Copy pay link" had nothing to give. `inv.link` now makes one on first request.
+- `_redirects` rewrites `/pay/*` to `/pay` (not `/pay.html`, which Pages 308-redirects). The service worker no longer touches `/pay/…` (the token is not cached, and offline no longer shows the app instead).
+
+**Invoices**
+- "Download PDF": `inv.pdf` returns the server's PDF when Browser Rendering is configured (Worker secrets `CF_ACCOUNT_ID`, `CF_BR_TOKEN`), otherwise the HTML, and the phone makes the PDF (`sawaPdf`: off-screen frame → html2canvas 1.4.1 from unpkg with SRI → A4 pages cut between rows → JPEG-page PDF). Saved with `saveFileOut`. "Print" stays in browsers only.
+- Pay states (derived, never stored): `partially_paid`, `pending_verification` ("Paid — pending verification"), shown on the list, the detail, the printed invoice and the pay page.
+- Pay page: "What did you pay?" Full amount / Part payment (amount field only for partial; full takes everything still open); receipt as photo **or PDF** (≤ 600 KB); after a report, "Report another payment" while money is still open; "Download PDF" in the invoice sheet (works in the apps through the file bridge).
+- Issuer: each report says full or part; a PDF receipt opens as a file.
+
+**Projects**
+- Every BOQ price has a **price date** (date of the quote, default today, never in the future), optional **supplier**, a server stamp **pricedAt**, and a **priceLog** that grows on every change and is copied into the next revision. Approved revisions stay read-only.
+- **Attachments** (photo, quote, supplier invoice, receipt, other; image or PDF ≤ 4 MB) on the project, a line or a ledger entry, with a fixed document date and upload time. Sealed, split into parts. Removing needs a reason and keeps the record without the bytes. A quote on a line can carry its unit price.
+- **Price history** per line: estimate prices over time, quoted prices, unit prices actually paid, change since the first estimate, and paid vs the estimate in force on the purchase day.
+- New entry: attach receipts while recording. Report export is now a PDF.
+
+**Tests:** pfm-core 29 · pfm-worker **50** (+5) · projects-core 16 · projects-migrations 7 · projects-worker **23** (+3) · kin 17 · marriage 9 · `ui-check.mjs` ✓ (invoice PDF download, pay page PDF, partial report with PDF receipt, "report another" full with photo, issuer opens both receipts, confirms both) · `projects-ui-check.mjs` ✓ (dated price, quote PDF on a line, price history, receipt on an entry, PDF report). Checked by eye: a 40-line Arabic invoice made into a 4-page A4 PDF on the device, with correct shaping and right-to-left order.
+**Not tested here:** the live Browser Rendering call (mocked in tests), real Android/iOS file saving, the Pages rewrite on the live site.
+**Upload:** (1) Worker via wrangler: `pfm/pfm-worker.mjs`, `pfm/pfm-core.mjs`, `pfm/projects-core.mjs`, `pfm/projects-migrations.mjs`, `pfm/invoice-html.mjs`, `pfm/invoice-pdf.mjs` (`worker-3.js` unchanged). Optional secrets `CF_ACCOUNT_ID` + `CF_BR_TOKEN` for server PDFs. (2) `_redirects`, `pay.html`, `sawa-chat.js` (EXPECT updated), `app.p9.js`, then `sw.js` (v470) **last**. No Firestore rules change (the Worker writes everything).

@@ -115,6 +115,10 @@
   global.__sawaNativeOpen = function (url) {
     try {
       var u = new URL(url, global.location.href), p = u.searchParams, d = null;
+      // C287: only the app's own page is handled in place. Any other path (the invoice pay page /pay/<token>,
+      // /privacy.html …) needs a real page load: this used to answer "handled" for them, so a pay link opened
+      // in the Android app (it claims every www.sawaaap.com link) showed nothing.
+      if (!(u.pathname === "/" || u.pathname === "/index.html" || u.pathname === "")) return false;
       if (p.get("call")) d = { t: "call", call: p.get("call"), answer: p.get("answer") === "1" ? 1 : 0 };
       else if (p.get("room")) d = { room: p.get("room") };
       else if (p.get("chat")) d = { cid: p.get("chat") };

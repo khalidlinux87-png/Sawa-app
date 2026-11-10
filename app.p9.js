@@ -57,6 +57,13 @@ const AccountantScreen = (function () {
         bad_line: ["هذا البند ليس في التقدير المعتمد", "That line isn't in the approved estimate"],
         line_on_non_expense: ["البند يُربط بالمصروف فقط", "A line can only be set on an expense"],
         fx_rate_required: ["أدخل سعر الصرف للعملة المختلفة", "Enter the exchange rate for the other currency"],
+        // C287
+        bad_file: ["الملفّ يجب أن يكون صورة (JPEG أو PNG أو WebP) أو PDF حتّى 4 ميغابايت", "The file must be a JPEG, PNG or WebP photo or a PDF up to 4 MB"],
+        bad_price_date: ["تاريخ السعر يجب ألّا يكون بعد اليوم", "The price date can't be after today"],
+        too_many_files: ["بلغ عدد المرفقات الحدّ الأقصى", "The attachment limit is reached"],
+        file_removed: ["أُزيل هذا المرفق", "This attachment was removed"],
+        bad_quote: ["السعر المعروض يُسجَّل مع عرض سعرٍ على بند", "A quoted price goes with a quote on a line"],
+        reason_required: ["اكتب السبب", "Enter a reason"],
         copy_expense_only: ["يُنسخ المصروف فقط إلى محاسبك الشخصي", "Only expenses can be copied to your personal accountant"],
         draft_exists: ["أنهِ المراجعة المفتوحة أوّلاً", "Finish the open revision first"],
         reason_required: ["اكتب سبب المراجعة", "Enter the reason for the change"],
@@ -633,10 +640,13 @@ const AccountantScreen = (function () {
     const STATUS = {
         draft: [["مسوّدة", "Draft"], "textMuted"], sent: [["مُرسلة", "Sent"], null], overdue: [["متأخّرة", "Overdue"], "danger"],
         paid: [["مدفوعة", "Paid"], "success"], cancelled: [["ملغاة", "Cancelled"], "textMuted"],
+        // C287: money reported or confirmed but not the whole total
+        partially_paid: [["مدفوعة جزئيّاً", "Partially paid"], "warning"], pending_verification: [["مدفوعة — بانتظار تحقّقك", "Paid — pending verification"], "warning"],
     };
-    function Badge({ status }) {
+    const shownStatus = (status, payState) => (payState === "partially_paid" || payState === "pending_verification") && status !== "paid" && status !== "cancelled" ? payState : status;
+    function Badge({ status, payState }) {
         const { colors } = useTheme();
-        const [label, tone] = STATUS[status] || [[status, status]];
+        const [label, tone] = STATUS[shownStatus(status, payState)] || [[status, status]];
         const c = tone ? colors[tone] : colors.primary;
         return h("span", { style: { fontSize: T.tiny, fontWeight: 700, color: c, border: "1px solid " + c, borderRadius: 999, padding: "1px 8px", whiteSpace: "nowrap" } }, tl(label[0], label[1]));
     }
@@ -680,7 +690,7 @@ const AccountantScreen = (function () {
                     i.openClaims > 0 && h("div", { style: { fontSize: T.tiny, color: colors.warning, fontWeight: 700, marginTop: 2 } }, tl("أبلغ العميل عن دفع", "Client reported a payment"))),
                 h("span", { style: { textAlign: "end", flexShrink: 0 } },
                     h("div", { style: { fontWeight: 800, fontSize: T.body } }, fig(i.status === "paid" || i.status === "cancelled" || i.status === "draft" ? i.total : i.amountDue, i.currency)),
-                    h("div", { style: { marginTop: 4 } }, h(Badge, { status: i.status })))))));
+                    h("div", { style: { marginTop: 4 } }, h(Badge, { status: i.status, payState: i.payState })))))));
     }
 
     // Editor for a new or draft invoice. Totals come from the server (inv.preview), never from the browser.
@@ -776,13 +786,121 @@ const AccountantScreen = (function () {
                     h(Btn, { onClick: () => save(true), disabled: busy || !client.name.trim() || !totals, style: { flex: 1 } }, busy ? tl("جارٍ…", "Working…") : tl("إرسال", "Send")))));
     }
 
-    // Printing: the server renders the invoice page; a hidden frame prints it (the phone offers "Save as PDF").
+    // Printing in a browser: the server renders the page and a frame prints it. C287: the frame has a real A4 width
+    // off-screen (a 0×0 frame printed blank pages in Chrome) and is removed after printing, not after a fixed minute.
     function printHtml(html) {
         const f = document.createElement("iframe");
-        f.setAttribute("aria-hidden", "true"); f.style.cssText = "position:fixed;width:0;height:0;border:0;opacity:0";
+        f.setAttribute("aria-hidden", "true"); f.tabIndex = -1; f.style.cssText = "position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0";
         document.body.appendChild(f);
-        f.onload = () => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) {} setTimeout(() => f.remove(), 60000); };
+        f.onload = () => {
+            const w = f.contentWindow, gone = () => setTimeout(() => { try { f.remove(); } catch (e) { } }, 1000);
+            try { w.addEventListener("afterprint", gone); w.focus(); w.print(); } catch (e) { gone(); }
+            setTimeout(() => { try { f.remove(); } catch (e) { } }, 10 * 60000);   // a print dialog left open
+        };
         f.srcdoc = html;
+    }
+    const inApp = () => !!(window.SawaNativeBridge || window.SawaIOS);
+    // C287: HTML → PDF file on the phone. Android's WebView and iOS's WKWebView ignore window.print(), so "Print or PDF"
+    // did nothing in the Sawa apps. The page is laid out in an off-screen frame (scripts off), drawn with html2canvas,
+    // cut into A4 pages between rows, and written as a PDF of JPEG pages. The text is drawn by the browser itself, so
+    // Arabic shaping and right-to-left order are exactly what the screen shows.
+    var SAWA_H2C = { src: "https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js", sri: "sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" };
+    var sawaH2cP = null;
+    function sawaLoadH2c() {
+        if (window.html2canvas) return Promise.resolve(window.html2canvas);
+        if (sawaH2cP) return sawaH2cP;
+        sawaH2cP = new Promise(function (ok, no) {
+            var s = document.createElement("script");
+            s.src = SAWA_H2C.src; s.integrity = SAWA_H2C.sri; s.crossOrigin = "anonymous"; s.referrerPolicy = "no-referrer";
+            s.onload = function () { window.html2canvas ? ok(window.html2canvas) : no(new Error("pdf_lib")); };
+            s.onerror = function () { sawaH2cP = null; no(new Error("pdf_lib")); };
+            document.head.appendChild(s);
+        });
+        return sawaH2cP;
+    }
+    // A4 at 96 css px per inch, with the invoice template's own print margins (16 mm × 14 mm).
+    var SAWA_MM = 96 / 25.4, SAWA_PAGE = { w: 210, h: 297, mx: 14, my: 16 };
+    function sawaPdfBytes(pages) {   // pages: [{ jpeg: Uint8Array, w, h }] → Uint8Array (a PDF 1.4 file of JPEG pages)
+        var enc = new TextEncoder(), parts = [], size = 0, offs = [];
+        function put(x) { var u = typeof x === "string" ? enc.encode(x) : x; parts.push(u); size += u.length; }
+        function obj(num, dict, stream) {
+            offs[num] = size; put(num + " 0 obj\n");
+            if (stream) { put(dict.slice(0, -2) + "/Length " + stream.length + ">>\nstream\n"); put(stream); put("\nendstream"); } else put(dict);
+            put("\nendobj\n");
+        }
+        var pt = 72 / 25.4, pw = SAWA_PAGE.w * pt, ph = SAWA_PAGE.h * pt, mx = SAWA_PAGE.mx * pt, my = SAWA_PAGE.my * pt, cw = pw - 2 * mx;
+        var kids = pages.map(function (_, i) { return (5 + 3 * i) + " 0 R"; }).join(" "), last = 2 + 3 * pages.length;
+        put("%PDF-1.4\n%\u00e2\u00e3\u00cf\u00d3\n");
+        obj(1, "<</Type/Catalog/Pages 2 0 R>>");
+        obj(2, "<</Type/Pages/Count " + pages.length + "/Kids[" + kids + "]>>");
+        pages.forEach(function (p, i) {
+            var im = 3 + 3 * i, ct = 4 + 3 * i, pg = 5 + 3 * i, dh = cw * p.h / p.w;
+            obj(im, "<</Type/XObject/Subtype/Image/Width " + p.w + "/Height " + p.h + "/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode>>", p.jpeg);
+            obj(ct, "<<>>", enc.encode("q " + cw.toFixed(2) + " 0 0 " + dh.toFixed(2) + " " + mx.toFixed(2) + " " + (ph - my - dh).toFixed(2) + " cm /I0 Do Q"));
+            obj(pg, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 " + pw.toFixed(2) + " " + ph.toFixed(2) + "]/Resources<</XObject<</I0 " + im + " 0 R>>>>/Contents " + ct + " 0 R>>");
+        });
+        var xref = size, x = "xref\n0 " + (last + 1) + "\n0000000000 65535 f \n";
+        for (var k = 1; k <= last; k++) x += ("000000000" + offs[k]).slice(-10) + " 00000 n \n";
+        put(x + "trailer\n<</Size " + (last + 1) + "/Root 1 0 R>>\nstartxref\n" + xref + "\n%%EOF\n");
+        var all = new Uint8Array(size), at = 0;
+        parts.forEach(function (u) { all.set(u, at); at += u.length; });
+        return all;
+    }
+    function sawaB64ToBytes(b64) { var s = atob(b64), u = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+    // Where a page may end: the bottom of a table row or of a block, never through a line of text.
+    function sawaBreaks(doc) {
+        var out = [], els = doc.body.querySelectorAll("tr,header,section,table,.bottom,.notes,.accts,.acct,.party,.meta div,p,li,h1,h2,h3,.card,.row,div");
+        for (var i = 0; i < els.length; i++) { var r = els[i].getBoundingClientRect(); if (r.height > 0) out.push(r.bottom); }
+        return out.sort(function (a, b) { return a - b; });
+    }
+    function sawaPdf(html) {   // → Promise<Blob application/pdf>
+        return sawaLoadH2c().then(function (h2c) {
+            return new Promise(function (ok, no) {
+                var cssW = Math.round((SAWA_PAGE.w - 2 * SAWA_PAGE.mx) * SAWA_MM);
+                var f = document.createElement("iframe");
+                f.setAttribute("aria-hidden", "true"); f.setAttribute("sandbox", "allow-same-origin"); f.tabIndex = -1;
+                f.style.cssText = "position:fixed;left:-10000px;top:0;width:" + cssW + "px;height:1200px;border:0;background:#fff";
+                var done = false, cleanup = function () { try { f.remove(); } catch (e) { } };
+                var timer = setTimeout(function () { if (!done) { done = true; cleanup(); no(new Error("pdf_timeout")); } }, 45000);
+                f.onload = function () {
+                    var doc = f.contentDocument;
+                    if (!doc || !doc.body) { done = true; clearTimeout(timer); cleanup(); no(new Error("pdf_frame")); return; }
+                    var st = doc.createElement("style");
+                    st.textContent = "html,body{margin:0!important;padding:0!important;background:#fff!important;width:" + cssW + "px}";
+                    doc.head.appendChild(st);
+                    var fontsReady = doc.fonts && doc.fonts.ready ? doc.fonts.ready : Promise.resolve();
+                    fontsReady.then(function () {
+                        var H = Math.ceil(doc.documentElement.scrollHeight);
+                        f.style.height = H + "px";
+                        var scale = Math.min(2, Math.max(1.5, window.devicePixelRatio || 1));
+                        var breaks = sawaBreaks(doc);
+                        return h2c(doc.documentElement, { scale: scale, backgroundColor: "#ffffff", useCORS: false, logging: false, width: cssW, height: H, windowWidth: cssW, windowHeight: H }).then(function (canvas) {
+                            var pageH = (SAWA_PAGE.h - 2 * SAWA_PAGE.my) * SAWA_MM, pages = [], top = 0;
+                            while (top < H - 1) {
+                                var end = Math.min(H, top + pageH);
+                                if (end < H) { var best = 0; for (var i = 0; i < breaks.length; i++) { var b = breaks[i]; if (b > top + pageH * 0.6 && b <= end) best = b; } if (best) end = best; }
+                                var sy = Math.round(top * scale), sh = Math.max(1, Math.round(end * scale) - sy);
+                                var c = document.createElement("canvas"); c.width = canvas.width; c.height = sh;
+                                var g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(canvas, 0, sy, canvas.width, sh, 0, 0, canvas.width, sh);
+                                pages.push({ jpeg: sawaB64ToBytes(c.toDataURL("image/jpeg", 0.88).split(",")[1]), w: c.width, h: sh });
+                                top = end;
+                            }
+                            done = true; clearTimeout(timer); cleanup();
+                            ok(new Blob([sawaPdfBytes(pages)], { type: "application/pdf" }));
+                        });
+                    }).catch(function (e) { if (!done) { done = true; clearTimeout(timer); cleanup(); no(e); } });
+                };
+                document.body.appendChild(f);
+                f.srcdoc = html;
+            });
+        });
+    }
+    const pdfBlob = (b64) => new Blob([sawaB64ToBytes(b64)], { type: "application/pdf" });
+    // C287: a PDF file from an op that answers { pdf | html, filename } (inv.pdf, pfm.proj.report.pdf): the server's file
+    // when Browser Rendering is set up, otherwise made here. Saved through saveFileOut (Android saves, iOS shares).
+    function pdfFromOp(op, payload) {
+        return call(op, payload).then((r) => (r.pdf ? { blob: pdfBlob(r.pdf), r } : sawaPdf(r.html).then((blob) => ({ blob, r }), (e) => { e.html = r.html; throw e; })))
+            .then(({ blob, r }) => { saveFileOut(blob, r.filename, "application/pdf"); return r; });
     }
     const payLink = (inv) => "https://www.sawaaap.com/pay/" + inv.payLinkToken;
     function shareText(inv, bizName) {
@@ -801,16 +919,23 @@ const AccountantScreen = (function () {
     function InvoiceDetail({ id, base, today, onClose, onChanged, onEdit }) {
         const { colors } = useTheme();
         const [inv, setInv] = useState(null), [biz, setBiz] = useState(null), [err, setErr] = useState(""), [busy, setBusy] = useState(false), [msg, setMsg] = useState("");
-        const [pay, setPay] = useState(null), [proof, setProof] = useState(null);
+        const [pay, setPay] = useState(null), [proof, setProof] = useState(null), [pdfBusy, setPdfBusy] = useState(false);
         const load = () => call("inv.get", { id }).then((r) => setInv(r.invoice), (e) => setErr(errText(e)));
+        // C287: invoices sent before pay links existed get one here (inv.link makes it on first request)
+        const withLink = () => (inv.payLinkToken ? Promise.resolve(inv) : call("inv.link", { id }).then((r) => { const nx = Object.assign({}, inv, { payLinkToken: r.token }); setInv(nx); return nx; }, () => inv));
         useEffect(() => { load(); call("pfm.biz.get").then(setBiz, () => {}); }, [id]);
         if (!inv) return h(Sheet, { title: tl("فاتورة", "Invoice"), onClose }, err ? h("div", { role: "alert", style: { color: colors.danger } }, err) : h(Loading));
         const cur = inv.currency, t0 = inv.totals, st = inv.status;
         const run = (p, done) => { setBusy(true); setErr(""); return p.then((r) => { setBusy(false); if (r && r.invoice) setInv(r.invoice); onChanged(); if (done) done(r); }, (e) => { setErr(errText(e)); setBusy(false); }); };
         const doPrint = () => run(call("inv.html", { id }), (r) => printHtml(r.html));
-        const doShare = () => { const text = shareText(inv, (biz && biz.biz.name) || "");
-            if (navigator.share) navigator.share({ title: inv.number, text }).catch(() => {});
-            else if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => setMsg(tl("نُسخ نصّ الفاتورة — الصقه في المحادثة", "Invoice text copied — paste it in a chat")), () => {}); };
+        const doPdf = () => {
+            if (pdfBusy) return; setPdfBusy(true); setErr(""); setMsg("");
+            pdfFromOp("inv.pdf", { id }).then(() => { setPdfBusy(false); setMsg(inApp() ? tl("جُهّز ملفّ PDF للفاتورة", "The invoice PDF is ready") : tl("نُزّل ملفّ PDF للفاتورة", "The invoice PDF was downloaded")); },
+                (e) => { setPdfBusy(false); if (!inApp() && e && e.html) { printHtml(e.html); return; } setErr(tl("تعذّر تجهيز ملفّ PDF. تحقّق من الاتصال وأعد المحاولة.", "Couldn't make the PDF. Check your connection and try again.")); });
+        };
+        const doShare = () => withLink().then((iv) => { const text = shareText(iv, (biz && biz.biz.name) || "");
+            if (navigator.share) navigator.share({ title: iv.number, text }).catch(() => {});
+            else if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => setMsg(tl("نُسخ نصّ الفاتورة — الصقه في المحادثة", "Invoice text copied — paste it in a chat")), () => {}); });
         const payForm = pay && h("section", { "aria-label": tl("تسجيل دفعة", "Record a payment"), style: { padding: "12px 0", margin: "12px 0", borderTop: "1px solid " + colors.border } },
             h(Field, { label: tl("المبلغ المستلم", "Amount received") + " (" + cur + ")" }, h("input", { dir: "ltr", inputMode: "decimal", value: pay.amount, onChange: (e) => setPay(Object.assign({}, pay, { amount: e.target.value.replace(/[^0-9.٠-٩٫]/g, "") })), style: inputStyle(colors) })),
             h(Field, { label: tl("كيف وصلك", "How it arrived") }, h("select", { value: pay.method, onChange: (e) => setPay(Object.assign({}, pay, { method: e.target.value })), style: inputStyle(colors) },
@@ -825,7 +950,7 @@ const AccountantScreen = (function () {
                 h(Btn, { style: { flex: 1 }, disabled: busy || !(Number(pay.amount) > 0), onClick: () => run(call("inv.markPaid", { id, amount: pay.amount, method: pay.method, paidAt: pay.date, reference: pay.reference || null, fxRate: pay.fxRate || undefined, idemKey: pay.key }), () => setPay(null)) },
                     tl("سجّل الدفعة", "Record payment"))));
         return h(Sheet, { title: inv.number || tl("مسوّدة فاتورة", "Draft invoice"), onClose },
-            h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6 } }, h(Badge, { status: st }),
+            h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6 } }, h(Badge, { status: st, payState: inv.payState }),
                 st !== "draft" && st !== "cancelled" && h("span", { style: { fontSize: T.small, color: st === "overdue" ? colors.danger : colors.textMuted } }, tl("يستحقّ ", "Due ") + dayLabel(inv.dueDate))),
             h("h2", { style: { margin: "6px 0 2px", fontSize: 32, fontWeight: 800, lineHeight: 1.2, fontVariantNumeric: "tabular-nums" } },
                 st === "paid" ? [tl("دُفعت كاملةً: ", "Paid in full: "), fig(t0.total, cur)] : st === "cancelled" ? tl("ملغاة", "Cancelled")
@@ -836,13 +961,18 @@ const AccountantScreen = (function () {
                 t0.taxTotal > 0 && h("div", { style: { display: "flex", color: colors.textMuted } }, h("span", { style: { flex: 1 } }, inv.taxLabel || tl("الضريبة", "Tax")), fig(t0.taxTotal, cur))),
             (inv.payments || []).filter((p) => p.state === "claimed").map((p) => { const acct = (inv.payoutAccounts || []).find((a) => a.id === p.payoutAccountId);
                 return h("section", { key: p.id, "aria-label": tl("بلاغ دفع", "Payment report"), style: { padding: "12px 0 0", margin: "14px 0 0", borderTop: "1px solid " + colors.border } },
-                    h("div", { style: { fontWeight: 800, fontSize: T.body } }, h("bdi", null, p.payer && p.payer.name), tl(" يقول إنّه دفع ", " says they paid "), fig(p.amount, cur)),
+                    h("div", { style: { fontWeight: 800, fontSize: T.body } }, h("bdi", null, p.payer && p.payer.name), tl(" يقول إنّه دفع ", " says they paid "), fig(p.amount, cur),
+                        p.payType && h("span", { style: { fontWeight: 400, color: colors.textMuted, fontSize: T.small } }, p.payType === "full" ? tl(" — كامل المتبقّي", " — everything left") : tl(" — دفعة جزئيّة", " — part payment"))),
                     h("div", { style: { fontSize: T.small, color: colors.textMuted, marginTop: 4, lineHeight: 1.6 } },
                         dayLabel(p.at), acct ? [tl("، إلى ", ", to "), h("bdi", { key: "a", style: { whiteSpace: "nowrap" } }, (acct.bankName || acct.provider || acct.label) + " " + (acct.number || "").slice(-4))] : null,
                         p.reference ? [tl("، المرجع ", ", reference "), h("bdi", { key: "r", style: { whiteSpace: "nowrap" } }, p.reference)] : null, p.payer && p.payer.phone ? [tl("، هاتفه ", ", phone "), h("bdi", { key: "p", style: { whiteSpace: "nowrap" } }, p.payer.phone)] : null),
                     h("p", { style: { fontSize: T.tiny, color: colors.textMuted, margin: "6px 0 8px" } }, tl("تأكّد أنّ المبلغ وصل حسابك قبل التأكيد.", "Check the money reached your account before confirming.")),
                     h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
-                        p.hasProof && h(Btn, { kind: "ghost", disabled: busy, onClick: () => call("inv.claim.proof", { id, payId: p.id }).then((r) => setProof(r.data), (e) => setErr(errText(e))), style: { minHeight: 38, padding: "6px 12px", fontSize: T.small } }, tl("الإيصال", "Receipt")),
+                        p.hasProof && h(Btn, { kind: "ghost", disabled: busy, onClick: () => call("inv.claim.proof", { id, payId: p.id }).then((r) => {
+                            if (!r.data) return;
+                            // C287: a PDF receipt opens as a file (an <img> cannot show it)
+                            if (/^data:application\/pdf;/.test(r.data)) saveFileOut(pdfBlob(r.data.split(",")[1]), (r.name && /\.pdf$/i.test(r.name) ? r.name : "receipt-" + (inv.number || "invoice") + ".pdf").replace(/[\\/:*?"<>|]+/g, "-"), "application/pdf");
+                            else setProof(r.data); }, (e) => setErr(errText(e))), style: { minHeight: 38, padding: "6px 12px", fontSize: T.small } }, p.proofType === "application/pdf" ? tl("الإيصال (PDF)", "Receipt (PDF)") : tl("الإيصال", "Receipt")),
                         h(Btn, { kind: "danger", disabled: busy, onClick: () => { const r = window.prompt(tl("سبب الرفض (يراه العميل لاحقاً؛ اختياريّ)", "Why reject (optional)"), ""); if (r !== null) run(call("inv.claim.decide", { id, payId: p.id, decision: "reject", note: r || null })); }, style: { minHeight: 38, padding: "6px 12px", fontSize: T.small } }, tl("لم يصل", "Not received")),
                         h(Btn, { disabled: busy, onClick: () => { let fx; if (cur !== base) { fx = window.prompt(tl(`سعر الصرف: 1 ${cur} = ? ${base} (اتركه فارغاً لاحقاً)`, `Exchange rate: 1 ${cur} = ? ${base} (leave empty for later)`), ""); if (fx === null) return; }
                             run(call("inv.claim.decide", { id, payId: p.id, decision: "confirm", fxRate: fx || undefined })); }, style: { flex: 1, minHeight: 38, fontSize: T.small } }, tl("وصل — أكّد", "Received — confirm")))); }),
@@ -860,11 +990,12 @@ const AccountantScreen = (function () {
                     h(Btn, { key: "s", disabled: busy, onClick: () => { if (window.confirm(tl("ستأخذ الفاتورة رقماً ولن تُعدَّل بعد الإرسال. متابعة؟", "The invoice gets its number and can't be edited after sending. Continue?"))) run(call("inv.send", { id })); } }, tl("إرسال", "Send")),
                     h(Btn, { key: "e", kind: "ghost", onClick: () => onEdit(inv) }, tl("تعديل", "Edit"))],
                 (st === "sent" || st === "overdue") && !pay && h(Btn, { onClick: () => setPay({ amount: minorToText(t0.amountDue, cur), method: "bank_transfer", date: today, reference: "", fxRate: "", key: newKey() }) }, tl("تسجيل دفعة", "Record a payment")),
-                h("div", { style: { display: "flex", gap: 8 } },
-                    h(Btn, { kind: "ghost", disabled: busy, onClick: doPrint, style: { flex: 1 } }, tl("طباعة أو PDF", "Print or PDF")),
+                h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+                    h(Btn, { kind: "ghost", disabled: busy || pdfBusy, onClick: doPdf, style: { flex: 1 } }, pdfBusy ? tl("جارٍ تجهيز PDF…", "Making the PDF…") : tl("تنزيل PDF", "Download PDF")),
+                    !inApp() && h(Btn, { kind: "ghost", disabled: busy, onClick: doPrint, style: { flex: 1 } }, tl("طباعة", "Print")),
                     st !== "draft" && st !== "cancelled" && h(Btn, { kind: "ghost", onClick: doShare, style: { flex: 1 } }, tl("مشاركة", "Share"))),
-                (st === "sent" || st === "overdue") && inv.payLinkToken && h(Btn, { kind: "ghost", onClick: () => { const u = payLink(inv);
-                    (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => setMsg(tl("نُسخ رابط الدفع — يفتحه العميل دون حساب", "Pay link copied — the client opens it without an account")), () => setMsg(u)); } }, tl("نسخ رابط الدفع", "Copy pay link")),
+                (st === "sent" || st === "overdue") && h(Btn, { kind: "ghost", onClick: () => withLink().then((iv) => { if (!iv.payLinkToken) { setErr(tl("تعذّر تجهيز رابط الدفع. أعد المحاولة.", "Couldn't make the pay link. Try again.")); return; } const u = payLink(iv);
+                    (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => setMsg(tl("نُسخ رابط الدفع — يفتحه العميل دون حساب", "Pay link copied — the client opens it without an account")), () => setMsg(u)); }) }, tl("نسخ رابط الدفع", "Copy pay link")),
                 st === "draft" && h(Btn, { kind: "danger", disabled: busy, onClick: () => { if (window.confirm(tl("حذف المسوّدة؟", "Delete this draft?"))) run(call("inv.delete", { id }), () => onClose()); } }, tl("حذف المسوّدة", "Delete draft")),
                 (st === "sent" || st === "overdue") && !(t0.amountPaid > 0) && h(Btn, { kind: "danger", disabled: busy, onClick: () => { const r = window.prompt(tl("سبب الإلغاء (اختياريّ)", "Reason for cancelling (optional)"), ""); if (r !== null) run(call("inv.cancel", { id, reason: r })); } }, tl("إلغاء الفاتورة", "Cancel invoice"))));
     }
@@ -1140,11 +1271,12 @@ const AccountantScreen = (function () {
                 h(Field, { label: tl("الحالة", "Status") }, pjSelect(colors, p.status, (to) => act(call("pfm.proj.status", { pid, rev: p.rev, to })), PJ_STATUS.map((s) => [s[0], tl(s[1], s[2])]), tl("الحالة", "Status")))),
             title(tl("تصدير", "Export")),
             h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
-                h(Btn, { kind: "ghost", onClick: () => call("pfm.proj.report", { pid, lang: ar() ? "ar" : "en" }).then((r) => saveFileOut(new Blob([r.html], { type: "text/html;charset=utf-8" }), r.filename, "text/html"), (e) => setErr(errText(e))) },
-                    tl("تقرير للطباعة", "Printable report")),
+                h(Btn, { kind: "ghost", disabled: busy, onClick: () => { setBusy(true); pdfFromOp("pfm.proj.report.pdf", { pid, lang: ar() ? "ar" : "en" }).then(() => setBusy(false), (e) => { setBusy(false); setErr(e && e.html ? tl("تعذّر تجهيز ملفّ PDF. أعد المحاولة.", "Couldn't make the PDF. Try again.") : errText(e)); }); } },
+                    tl("تقرير PDF", "PDF report")),
+                h(Btn, { kind: "ghost", onClick: () => setSheet({ k: "files", target: { type: "project" }, title: tl("مرفقات المشروع", "Project attachments") }) }, tl("مرفقات المشروع", "Project attachments")),
                 h(Btn, { kind: "ghost", onClick: () => call("pfm.proj.export", { pid, lang: ar() ? "ar" : "en" }).then((r) => saveFileOut(new Blob([r.csv], { type: "text/csv;charset=utf-8" }), r.filename, "text/csv"), (e) => setErr(errText(e))) },
                     tl("جدول CSV", "CSV spreadsheet"))),
-            h("div", { style: { fontSize: 12, color: colors.textMuted, marginTop: 6 } }, tl("التقرير يُفتح في المتصفّح ثم تطبعه أو تحفظه PDF. ملفّ CSV يفتح في Excel وGoogle Sheets.", "Open the report in the browser, then print it or save it as PDF. The CSV opens in Excel and Google Sheets.")),
+            h("div", { style: { fontSize: 12, color: colors.textMuted, marginTop: 6 } }, tl("التقرير ملفّ PDF جاهز للمشاركة. ملفّ CSV يفتح في Excel وGoogle Sheets.", "The report is a PDF ready to share. The CSV opens in Excel and Google Sheets.")),
             title(tl("الرسوم البيانية", "Charts")),
             ch && h(Card, null,
                 h("div", { style: { fontWeight: 700, fontSize: 13, marginBottom: 8 } }, tl("التقدير مقابل الفعلي لكل فئة", "Estimate vs actual by category")),
@@ -1190,7 +1322,7 @@ const AccountantScreen = (function () {
                 tl("مراجعة ", "Revision ") + e.revision + " — " + ({ draft: tl("مسوّدة", "Draft"), baseline: tl("معتمد", "Approved"), superseded: tl("مستبدل", "Superseded") })[e.status] +
                 " · " + (e.lineCount || 0) + " " + tl("بند", "lines") + " · " + money(e.total || 0, cur) + (e.reason ? " · " + e.reason : ""))),
             !draft && canEdit && h(EstimateStart, { hasBaseline: !!p.baselineEstimateId, pid, onStarted: reload, call, act }),
-            draft && canEdit && h(EstimateEditor, { key: draft.id, pid, draft, cur, cats, onChanged: reload, call, act }),
+            draft && canEdit && h(EstimateEditor, { key: draft.id, pid, draft, cur, cats, onChanged: reload, call, act, today }),
             draft && !canEdit && h("div", { style: { fontSize: 13, color: colors.textMuted } }, tl("المسوّدة مفتوحة للتحرير من المحرّرين فقط.", "The draft is open to editors only.")),
             title(tl("البنود المعتمدة والفعلي", "Approved lines and actual")),
             linesOfBase.length === 0 && h("div", { style: { fontSize: 13, color: colors.textMuted } }, tl("لم يُعتمد تقدير بعد.", "No approved estimate yet.")),
@@ -1199,7 +1331,12 @@ const AccountantScreen = (function () {
                     h("div", { style: { fontWeight: 700, fontSize: 14 } }, l.name),
                     h("span", { style: { fontSize: 11, fontWeight: 800, color: (PJ_LINE[l.status] || PJ_LINE.not_started)[0] } }, tl(PJ_LINE[l.status][1], PJ_LINE[l.status][2]))),
                 h("div", { style: { fontSize: 12, color: colors.textMuted, marginTop: 4 } }, l.estQty + " " + (l.unit || "") + " × " + money(l.estUnitPrice, cur) + " = " + money(l.estTotal, cur)),
-                h("div", { style: { fontSize: 12, marginTop: 2 } }, tl("الفعلي: ", "Actual: ") + l.actualQty + " · " + money(l.actualCost, cur) + " · " + tl("انحراف ", "variance ") + money(l.totalVariance, cur)))));
+                l.priceDate && h("div", { style: { fontSize: 12, color: colors.textMuted, marginTop: 2 } }, tl("السعر بتاريخ ", "Price as of ") + pjDay(l.priceDate) + (l.supplier ? " · " + l.supplier : "")),
+                h("div", { style: { fontSize: 12, marginTop: 2 } }, tl("الفعلي: ", "Actual: ") + l.actualQty + " · " + money(l.actualCost, cur) + " · " + tl("انحراف ", "variance ") + money(l.totalVariance, cur)),
+                h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 } },
+                    h(Btn, { kind: "ghost", style: pjSmallBtn, onClick: () => setSheet({ k: "prices", lineKey: l.lineKey, name: l.name }) }, tl("سجلّ الأسعار", "Price history")),
+                    h(Btn, { kind: "ghost", style: pjSmallBtn, onClick: () => setSheet({ k: "files", target: { type: "line", estimateId: base0.estimateId, lineKey: l.lineKey }, title: l.name }) },
+                        tl("المرفقات", "Attachments") + (l.files ? " (" + l.files + ")" : ""))))));
 
         const ledger = h("div", null,
             canEdit && h(Btn, { onClick: () => setSheet({ k: "entry" }), style: { marginBottom: 12 } }, tl("حركة جديدة", "New entry")),
@@ -1214,9 +1351,11 @@ const AccountantScreen = (function () {
                     h("div", { style: { fontSize: 12, color: colors.textMuted, marginTop: 4 } },
                         t.occurredOn + " · " + pjName(PJ_KINDS, t.kind) + (t.lineKey ? " · " + ((linesOfBase.find((l) => l.lineKey === t.lineKey) || {}).name || "") : t.category ? " · " + pjName(PJ_BOQ, t.category) : "") +
                         (t.originalCurrency && t.originalCurrency !== cur ? " · " + t.originalAmount / Math.pow(10, expOf(t.originalCurrency)) + " " + t.originalCurrency : "") +
-                        (t.counterparty ? " · " + t.counterparty : "")),
+                        (t.counterparty ? " · " + t.counterparty : "") + (t.unitPrice != null ? " · " + money(t.unitPrice, cur) + tl(" للوحدة", " a unit") : "")),
+                    h(Btn, { kind: "ghost", style: Object.assign({ marginTop: 8, marginInlineEnd: 8 }, pjSmallBtn), onClick: () => setSheet({ k: "files", target: { type: "tx", txId: t.id }, title: t.description || pjName(PJ_KINDS, t.kind) }) },
+                        tl("المرفقات", "Attachments") + (t.files ? " (" + t.files + ")" : "")),
                     voided ? h("div", { style: { fontSize: 12, color: colors.danger, marginTop: 4 } }, tl("ملغاة: ", "Voided: ") + (t.voidReason || ""))
-                        : canEdit && h(Btn, { kind: "ghost", style: { marginTop: 8 }, onClick: () => { const r = window.prompt(tl("سبب الإلغاء", "Reason for voiding")); if (r && r.trim()) act(call("pfm.proj.tx.void", { pid, txId: t.id, reason: r.trim() })); } }, tl("إلغاء الحركة", "Void entry")));
+                        : canEdit && h(Btn, { kind: "ghost", style: Object.assign({ marginTop: 8 }, pjSmallBtn), onClick: () => { const r = window.prompt(tl("سبب الإلغاء", "Reason for voiding")); if (r && r.trim()) act(call("pfm.proj.tx.void", { pid, txId: t.id, reason: r.trim() })); } }, tl("إلغاء الحركة", "Void entry")));
             }),
             sheet && sheet.k === "entry" && h(ProjectEntrySheet, { pid, cur, base, cats, lines: linesOfBase, today,
                 onClose: () => setSheet(null), onSaved: () => { setSheet(null); reload(); } }));
@@ -1245,7 +1384,9 @@ const AccountantScreen = (function () {
             h("div", { style: { padding: 16 } },
                 err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, marginBottom: 12 } }, err),
                 h("div", { style: { marginBottom: 14 } }, h(Seg, { value: tab, onChange: setTab, options: tabs.map((t) => ({ value: t[0], label: t[1] })) })),
-                tab === "overview" ? overview : tab === "estimate" ? estimate : tab === "ledger" ? ledger : people));
+                tab === "overview" ? overview : tab === "estimate" ? estimate : tab === "ledger" ? ledger : people),
+            sheet && sheet.k === "files" && h(PjFiles, { pid, target: sheet.target, title: sheet.title, canEdit, cur, today, onClose: () => setSheet(null), onChanged: reload }),
+            sheet && sheet.k === "prices" && h(PjPrices, { pid, lineKey: sheet.lineKey, name: sheet.name, cur, onClose: () => setSheet(null) }));
     }
 
     // ── estimate: start a revision, edit the draft, approve ──
@@ -1258,18 +1399,20 @@ const AccountantScreen = (function () {
                 hasBaseline ? tl("مراجعة جديدة من التقدير المعتمد", "New revision from the approved estimate") : tl("إنشاء تقدير", "Create estimate")));
     }
 
-    function EstimateEditor({ pid, draft, cur, act }) {
+    function EstimateEditor({ pid, draft, cur, act, today }) {
         const { colors } = useTheme();
         const [rows, setRows] = useState(null), [err, setErr] = useState(""), [busy, setBusy] = useState(false);
         useEffect(() => {
-            call("pfm.proj.variance", { pid, estimateId: draft.id }).then((r) => setRows(r.lines.map((l) => ({ k: l.lineKey, name: l.name || "", category: l.category || "other", unit: l.unit || "", qty: l.estQty, price: pjMinor(l.estUnitPrice, cur) }))), (e) => setErr(errText(e)));
+            call("pfm.proj.variance", { pid, estimateId: draft.id }).then((r) => setRows(r.lines.map((l) => ({ k: l.lineKey, name: l.name || "", category: l.category || "other", unit: l.unit || "", qty: l.estQty, price: pjMinor(l.estUnitPrice, cur),
+                priceDate: l.priceDate || today || "", supplier: l.supplier || "", pricedAt: l.pricedAt || null }))), (e) => setErr(errText(e)));
         }, [draft.id, draft.rev]);
         const upd = (i, k, v) => setRows((rs) => rs.map((r, j) => (j === i ? Object.assign({}, r, { [k]: v }) : r)));
         const save = () => {
             if (busy || !rows) return;
             if (rows.some((r) => !r.name.trim() || !r.qty.trim() || !r.price.trim())) { setErr(tl("أكمل اسم كلّ بند وكمّيته وسعره", "Give every line a name, quantity and price")); return; }
             setBusy(true); setErr("");
-            act(call("pfm.proj.estimate.lines", { pid, eid: draft.id, rev: draft.rev, lines: rows.map((r) => ({ lineKey: r.k, category: r.category, name: r.name.trim(), unit: r.unit.trim(), estQty: r.qty.trim(), estUnitPrice: r.price.trim() })) }))
+            act(call("pfm.proj.estimate.lines", { pid, eid: draft.id, rev: draft.rev, lines: rows.map((r) => ({ lineKey: r.k, category: r.category, name: r.name.trim(), unit: r.unit.trim(), estQty: r.qty.trim(), estUnitPrice: r.price.trim(),
+                priceDate: r.priceDate || undefined, supplier: r.supplier.trim() || undefined })) }))
                 .then(() => setBusy(false), () => setBusy(false));
         };
         if (!rows) return err ? h("div", { role: "alert", style: { color: colors.danger, fontSize: 14 } }, err) : h(Loading);
@@ -1282,8 +1425,13 @@ const AccountantScreen = (function () {
                 h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
                     h(Field, { label: tl("الكمّيّة", "Quantity") }, h("input", { inputMode: "decimal", value: r.qty, onChange: (e) => upd(i, "qty", e.target.value), style: inputStyle(colors) })),
                     h(Field, { label: tl("سعر الوحدة", "Unit price") }, h("input", { inputMode: "decimal", value: r.price, onChange: (e) => upd(i, "price", e.target.value), style: inputStyle(colors) }))),
+                // C287: the date of the quote and who gave it; the server stamps when it was entered and keeps every earlier price
+                h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
+                    h(Field, { label: tl("تاريخ السعر", "Price date") }, h("input", { type: "date", value: r.priceDate, max: today || undefined, onChange: (e) => upd(i, "priceDate", e.target.value), style: inputStyle(colors) })),
+                    h(Field, { label: tl("المورّد (اختياري)", "Supplier (optional)") }, h("input", { value: r.supplier, maxLength: 120, onChange: (e) => upd(i, "supplier", e.target.value), style: inputStyle(colors) }))),
+                r.pricedAt && h("div", { style: { fontSize: 11, color: colors.textMuted, margin: "-4px 0 8px" } }, tl("سُجّل هذا السعر ", "This price was entered ") + pjStamp(r.pricedAt)),
                 h(Btn, { kind: "ghost", onClick: () => setRows((rs) => rs.filter((_, j) => j !== i)) }, tl("حذف البند", "Remove item")))),
-            h(Btn, { kind: "ghost", onClick: () => setRows((rs) => rs.concat([{ k: pjLineKey(), name: "", category: "other", unit: "", qty: "", price: "" }])), style: { marginBottom: 12 } }, tl("إضافة بند", "Add item")),
+            h(Btn, { kind: "ghost", onClick: () => setRows((rs) => rs.concat([{ k: pjLineKey(), name: "", category: "other", unit: "", qty: "", price: "", priceDate: today || "", supplier: "", pricedAt: null }])), style: { marginBottom: 12 } }, tl("إضافة بند", "Add item")),
             err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, marginBottom: 10 } }, err),
             h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
                 h(Btn, { onClick: save, disabled: busy }, tl("حفظ المسوّدة", "Save draft")),
@@ -1294,7 +1442,7 @@ const AccountantScreen = (function () {
     function ProjectEntrySheet({ pid, cur, base, cats, lines, today, onClose, onSaved }) {
         const { colors } = useTheme();
         const [f, setF] = useState({ kind: "expense", amount: "", currency: cur, fxRate: "", occurredOn: today || "", description: "", counterparty: "", lineKey: "", category: "other", quantity: "", unit: "", copy: false, personalCat: "", personalFxRate: "" });
-        const [busy, setBusy] = useState(false), [err, setErr] = useState(""), key = useRef(newKey());
+        const [busy, setBusy] = useState(false), [err, setErr] = useState(""), key = useRef(newKey()), [files, setFiles] = useState([]);
         const set = (k) => (v) => setF((x) => Object.assign({}, x, { [k]: v }));
         const isExp = f.kind === "expense", curDiff = f.currency !== cur, notBase = f.currency !== base;
         const personalCats = Object.values(cats || {}).filter((c) => c.kind === "expense" && !c.archived);
@@ -1308,7 +1456,11 @@ const AccountantScreen = (function () {
                 if (f.quantity.trim()) { b.quantity = f.quantity.trim(); b.unit = f.unit.trim(); }
                 if (f.copy) { b.copyToPersonal = { categoryId: f.personalCat || (personalCats[0] && personalCats[0].id) }; if (notBase) b.personalFxRate = f.personalFxRate.trim(); }
             }
-            call("pfm.proj.tx.add", b).then(onSaved, (e) => { setErr(errText(e)); setBusy(false); });
+            // C287: receipts and supplier invoices go up after the entry exists, dated with the entry's date
+            call("pfm.proj.tx.add", b).then((r) => files.reduce((pr, file, i) => pr.then(() => pjFileData(file).then((data) =>
+                call("pfm.proj.file.add", { pid, idemKey: key.current.slice(0, 30) + "-" + i, target: { type: "tx", txId: r.tx.id }, kind: isExp ? "receipt" : "other", name: file.name.slice(0, 120), docDate: f.occurredOn <= (today || f.occurredOn) ? f.occurredOn : today, data }))), Promise.resolve())
+                .then(onSaved, (e) => { setBusy(false); setErr(tl("حُفظت الحركة، لكن تعذّر رفع مرفق: ", "The entry was saved, but an attachment failed: ") + pjFileErr(e)); }),
+                (e) => { setErr(errText(e)); setBusy(false); });
         };
         const need = !f.amount.trim() || !f.description.trim() || !f.occurredOn;
         return h(Sheet, { title: tl("حركة في المشروع", "Project entry"), onClose },
@@ -1330,10 +1482,115 @@ const AccountantScreen = (function () {
                 tl("نسخ المصروف إلى محاسبي الشخصي", "Also record in my personal accountant")),
             isExp && f.copy && h(Field, { label: tl("فئة المحاسب الشخصي", "Personal category") }, pjSelect(colors, f.personalCat || (personalCats[0] && personalCats[0].id) || "", set("personalCat"), personalCats.map((c) => [c.id, tl(c.nameAr || c.name, c.name)]), tl("فئة المحاسب الشخصي", "Personal category"))),
             isExp && f.copy && notBase && h(Field, { label: tl("سعر الصرف إلى عملة محاسبك", "Rate to your personal currency") }, h("input", { inputMode: "decimal", value: f.personalFxRate, onChange: (e) => set("personalFxRate")(e.target.value), style: inputStyle(colors) })),
+            h(Field, { label: tl("إيصال أو فاتورة مورّد (اختياري)", "Receipt or supplier invoice (optional)"), hint: tl("صورة أو PDF، يبقى مع الحركة وتاريخها", "A photo or PDF, kept with the entry and its date") },
+                h("input", { type: "file", accept: "image/*,application/pdf", multiple: true, onChange: (e) => setFiles(Array.from(e.target.files || []).slice(0, 5)), style: { fontSize: 14 } })),
+            files.length > 0 && h("div", { style: { fontSize: 12, color: colors.textMuted, margin: "-4px 0 10px" } }, files.map((x) => x.name).join("، ")),
             err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, marginBottom: 10 } }, err),
             h("div", { style: { display: "flex", gap: 8, justifyContent: "flex-end" } },
                 h(Btn, { kind: "ghost", onClick: onClose }, tl("إلغاء", "Cancel")),
-                h(Btn, { onClick: save, disabled: busy || need }, tl("حفظ", "Save"))));
+                h(Btn, { onClick: save, disabled: busy || need }, busy ? tl("جارٍ الحفظ…", "Saving…") : tl("حفظ", "Save"))));
+    }
+
+
+    // ── C287: attachments with fixed dates, and the price history of a BOQ line ──
+    const PJ_FILE_KINDS = [["photo", "صورة", "Photo"], ["quote", "عرض سعر", "Quote"], ["supplier_invoice", "فاتورة مورّد", "Supplier invoice"], ["receipt", "إيصال", "Receipt"], ["other", "أخرى", "Other"]];
+    const PJ_FILE_MAX = 4 * 1024 * 1024;
+    const pjSmallBtn = { minHeight: 36, padding: "4px 12px", fontSize: 13 };
+    const pjDay = (d) => { if (!d) return ""; const [y, mo, da] = d.split("-").map(Number); return new Intl.DateTimeFormat(locale(), { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(Date.UTC(y, mo - 1, da)); };
+    const pjStamp = (iso) => { try { return new Intl.DateTimeFormat(locale(), { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso)); } catch (e) { return iso; } };
+    const pjFileErr = (e) => (e && e.message === "too_big" ? tl("الملفّ أكبر من 4 ميغابايت", "The file is over 4 MB") : e && e.message === "bad_type" ? tl("اختر صورة أو ملفّ PDF", "Choose a photo or a PDF") : errText(e));
+    // A picked file → a data: URI the server accepts. Photos are shrunk on the phone (JPEG ≤ 400 KB); PDFs go as they are (≤ 4 MB).
+    function pjFileData(file) {
+        const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+        if (isPdf) {
+            if (file.size > PJ_FILE_MAX) return Promise.reject(new Error("too_big"));
+            return new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).replace(/^data:[^,]*,/, "data:application/pdf;base64,")); r.onerror = () => no(new Error("bad_type")); r.readAsDataURL(file); });
+        }
+        if (/^image\//.test(file.type || "")) return shrinkImage(file, 1600, true).catch(() => { throw new Error("bad_type"); });
+        return Promise.reject(new Error("bad_type"));
+    }
+
+    function PjFiles({ pid, target, title, canEdit, cur, today, onClose, onChanged }) {
+        const { colors } = useTheme();
+        const [items, setItems] = useState(null), [err, setErr] = useState(""), [busy, setBusy] = useState(false), [view, setView] = useState(null), [removed, setRemoved] = useState(false);
+        const [f, setF] = useState({ kind: target.type === "tx" ? "receipt" : target.type === "line" ? "quote" : "photo", docDate: today || "", note: "", price: "" });
+        const tkey = JSON.stringify(target);
+        const load = () => call("pfm.proj.file.list", { pid, target, withRemoved: true }).then((r) => setItems(r.items), (e) => setErr(errText(e)));
+        useEffect(() => { load(); }, [pid, tkey]);
+        const set = (k) => (v) => setF((x) => Object.assign({}, x, { [k]: v }));
+        const pick = (e) => {
+            const file = e.target.files && e.target.files[0]; e.target.value = "";
+            if (!file || busy) return;
+            if (!f.docDate) { setErr(tl("اختر تاريخ المستند أوّلاً", "Choose the document date first")); return; }
+            setBusy(true); setErr("");
+            pjFileData(file).then((data) => call("pfm.proj.file.add", { pid, idemKey: newKey(), target, kind: f.kind, name: (file.name || "").slice(0, 120) || undefined, note: f.note.trim() || undefined,
+                docDate: f.docDate, data, quotedUnitPrice: f.kind === "quote" && target.type === "line" && f.price.trim() ? f.price.trim() : undefined }))
+                .then(() => { setBusy(false); setF((x) => Object.assign({}, x, { note: "", price: "" })); load(); if (onChanged) onChanged(); }, (e2) => { setBusy(false); setErr(pjFileErr(e2)); });
+        };
+        const open = (it) => call("pfm.proj.file.get", { pid, fid: it.id }).then((r) => {
+            if (it.type === "application/pdf") saveFileOut(pdfBlob(r.data.split(",")[1]), (it.name && /\.pdf$/i.test(it.name) ? it.name : "attachment-" + it.docDate + ".pdf").replace(/[\\/:*?"<>|]+/g, "-"), "application/pdf");
+            else setView(r.data); }, (e) => setErr(errText(e)));
+        const remove = (it) => { const r = window.prompt(tl("سبب الإزالة (يبقى المرفق في السجلّ بلا محتواه)", "Why remove it? (The record stays, without the file)"), "");
+            if (r == null) return; if (!r.trim()) { setErr(ERR.reason_required ? tl(ERR.reason_required[0], ERR.reason_required[1]) : "reason"); return; }
+            call("pfm.proj.file.remove", { pid, fid: it.id, reason: r.trim() }).then(() => { load(); if (onChanged) onChanged(); }, (e) => setErr(errText(e))); };
+        const live = (items || []).filter((x) => !x.removedAt), gone = (items || []).filter((x) => x.removedAt);
+        const row = (it) => h(Card, { key: it.id, style: { marginBottom: 8, opacity: it.removedAt ? 0.6 : 1 } },
+            h("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" } },
+                h("div", { dir: "auto", style: { fontWeight: 700, fontSize: 14, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, it.name || pjName(PJ_FILE_KINDS, it.kind)),
+                h("span", { style: { fontSize: 12, color: colors.textMuted, whiteSpace: "nowrap" } }, pjName(PJ_FILE_KINDS, it.kind) + (it.type === "application/pdf" ? " · PDF" : ""))),
+            h("div", { style: { fontSize: 12, color: colors.textMuted, marginTop: 4, lineHeight: 1.6 } },
+                tl("بتاريخ ", "Dated ") + pjDay(it.docDate) + " · " + tl("رُفع ", "uploaded ") + pjStamp(it.uploadedAt) + " · " + Math.max(1, Math.round(it.size / 1024)) + " KB",
+                it.quotedUnitPrice != null ? " · " + tl("السعر المعروض ", "quoted ") + money(it.quotedUnitPrice, cur) : ""),
+            it.note && h("div", { dir: "auto", style: { fontSize: 13, marginTop: 4 } }, it.note),
+            it.removedAt ? h("div", { style: { fontSize: 12, color: colors.danger, marginTop: 4 } }, tl("أُزيل ", "Removed ") + pjStamp(it.removedAt) + (it.removeReason ? " — " + it.removeReason : ""))
+                : h("div", { style: { display: "flex", gap: 8, marginTop: 8 } },
+                    h(Btn, { kind: "ghost", style: pjSmallBtn, onClick: () => open(it) }, it.type === "application/pdf" ? tl("فتح PDF", "Open PDF") : tl("عرض", "View")),
+                    canEdit && h(Btn, { kind: "ghost", style: pjSmallBtn, onClick: () => remove(it) }, tl("إزالة", "Remove"))));
+        return h(Sheet, { title: tl("المرفقات: ", "Attachments: ") + (title || ""), onClose },
+            canEdit && h("section", { "aria-label": tl("إضافة مرفق", "Add an attachment"), style: { paddingBottom: 12, marginBottom: 12, borderBottom: "1px solid " + colors.border } },
+                h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
+                    h(Field, { label: tl("النوع", "Type") }, pjSelect(colors, f.kind, set("kind"), PJ_FILE_KINDS.map((k) => [k[0], tl(k[1], k[2])]), tl("النوع", "Type"))),
+                    h(Field, { label: tl("تاريخ المستند", "Document date"), hint: tl("التاريخ المكتوب على العرض أو الإيصال", "The date printed on the quote or receipt") },
+                        h("input", { type: "date", value: f.docDate, max: today || undefined, onChange: (e) => set("docDate")(e.target.value), style: inputStyle(colors) }))),
+                f.kind === "quote" && target.type === "line" && h(Field, { label: tl("سعر الوحدة في العرض (اختياري)", "Unit price on the quote (optional)") + " (" + cur + ")", hint: tl("يدخل سجلّ أسعار البند بتاريخ العرض", "Goes into the line's price history on the quote's date") },
+                    h("input", { inputMode: "decimal", dir: "ltr", value: f.price, onChange: (e) => set("price")(e.target.value.replace(/[^0-9.,]/g, "")), style: inputStyle(colors) })),
+                h(Field, { label: tl("ملاحظة (اختياري)", "Note (optional)") }, h("input", { value: f.note, maxLength: 300, onChange: (e) => set("note")(e.target.value), style: inputStyle(colors) })),
+                h("label", { style: { position: "relative", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 44, borderRadius: 10, border: "1.5px dashed " + colors.primary, color: colors.primary, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 } },
+                    busy ? tl("جارٍ الرفع…", "Uploading…") : tl("اختر صورة أو PDF", "Choose a photo or PDF"),
+                    h("input", { type: "file", accept: "image/*,application/pdf", disabled: busy, onChange: pick, style: { position: "absolute", width: 1, height: 1, opacity: 0 } })),
+                h("div", { style: { fontSize: 11, color: colors.textMuted, marginTop: 6 } }, tl("الصور تُصغَّر على جهازك، وملفّات PDF حتّى 4 ميغابايت. لا يُعدَّل المرفق بعد رفعه؛ تاريخه ووقت رفعه ثابتان.", "Photos are shrunk on your device; PDFs up to 4 MB. An attachment can't be edited after upload: its dates are fixed."))),
+            err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, marginBottom: 10 } }, err),
+            !items ? h(Loading) : live.length === 0 ? h("div", { style: { fontSize: 13, color: colors.textMuted } }, tl("لا مرفقات بعد.", "No attachments yet.")) : live.map(row),
+            gone.length > 0 && h("button", { type: "button", onClick: () => setRemoved(!removed), style: { background: "none", border: 0, color: colors.primary, fontSize: 13, padding: "8px 0", cursor: "pointer" } },
+                (removed ? tl("إخفاء", "Hide") : tl("عرض", "Show")) + " " + tl("المرفقات المُزالة", "removed attachments") + " (" + gone.length + ")"),
+            removed && gone.map(row),
+            view && h(PhotoView, { src: view, onClose: () => setView(null) }));
+    }
+
+    function PjPrices({ pid, lineKey, name, cur, onClose }) {
+        const { colors } = useTheme();
+        const [d, setD] = useState(null), [err, setErr] = useState("");
+        useEffect(() => { call("pfm.proj.prices", { pid, lineKey }).then((r) => setD(r.lines[0] || { estimates: [], quotes: [], actual: [] }), (e) => setErr(errText(e))); }, [pid, lineKey]);
+        const ev = d ? [].concat(
+            d.estimates.map((e) => ({ day: e.priceDate, at: e.pricedAt, price: e.unitPrice, kind: "est", text: tl("تقدير — مراجعة ", "Estimate — revision ") + e.revision + (e.supplier ? " · " + e.supplier : ""), sub: tl("سُجّل ", "entered ") + pjStamp(e.pricedAt) })),
+            d.quotes.map((q) => ({ day: q.docDate, at: q.uploadedAt, price: q.unitPrice, kind: "quote", text: tl("عرض سعر مرفق", "Attached quote"), sub: tl("رُفع ", "uploaded ") + pjStamp(q.uploadedAt) })),
+            d.actual.map((a) => ({ day: a.occurredOn, at: a.createdAt, price: a.unitPrice, kind: "paid", text: tl("مدفوع فعلاً — ", "Actually paid — ") + a.quantity, sub: money(a.amount, cur) })))
+            .sort((a, b) => (a.day === b.day ? (a.at < b.at ? -1 : 1) : a.day < b.day ? -1 : 1)) : [];
+        const sign = (bp) => (bp > 0 ? "+" : "") + pct(bp);
+        return h(Sheet, { title: tl("سجلّ الأسعار: ", "Price history: ") + (name || ""), onClose },
+            err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 14 } }, err),
+            !d && !err && h(Loading),
+            d && h("div", null,
+                d.changeBp != null && d.estimates.length > 1 && h("p", { style: { margin: "0 0 6px", fontSize: 14 } },
+                    tl("تغيّر السعر المقدَّر ", "The estimated price moved ") + sign(d.changeBp) + tl(" منذ أوّل تقدير (", " since the first estimate (") + money(d.firstEstimate.unitPrice, cur) + " → " + money(d.latestEstimate.unitPrice, cur) + ")."),
+                d.actualVsEstimateBp != null && h("p", { style: { margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: d.actualVsEstimateBp > 0 ? colors.danger : colors.text } },
+                    tl("ما دُفع فعلاً ", "What was actually paid is ") + sign(d.actualVsEstimateBp) + tl(" عن السعر المقدَّر في يوم الشراء.", " against the estimate in force on the day of purchase.")),
+                ev.length === 0 ? h("div", { style: { fontSize: 13, color: colors.textMuted } }, tl("لا أسعار بعد.", "No prices yet."))
+                    : h("ol", { style: { listStyle: "none", margin: 0, padding: 0 } }, ev.map((e, i) => h("li", { key: i, style: { display: "flex", gap: 10, padding: "10px 0", borderTop: i ? "1px solid " + colors.border : 0 } },
+                        h("span", { "aria-hidden": true, style: { width: 8, height: 8, borderRadius: 4, marginTop: 6, flexShrink: 0, backgroundColor: e.kind === "paid" ? colors.text : e.kind === "quote" ? colors.warning : colors.primary } }),
+                        h("div", { style: { flex: 1, minWidth: 0 } },
+                            h("div", { style: { display: "flex", justifyContent: "space-between", gap: 8 } }, h("span", { style: { fontWeight: 700, fontSize: 14 } }, pjDay(e.day)), h("span", { style: { fontWeight: 800, fontSize: 14 } }, money(e.price, cur))),
+                            h("div", { dir: "auto", style: { fontSize: 12, color: colors.textMuted, marginTop: 2 } }, e.text + " · " + e.sub)))))));
     }
 
     // ── people: invite codes (owner) and the delete action (owner) ──
