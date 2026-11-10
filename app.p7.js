@@ -969,6 +969,37 @@ async function authenticateWalletPasskey(credentialId) {
         return { ok: false, error: err.message };
     }
 }
+// C285: بصمة الهاتف الأصليّة (تطبيق أندرويد: BiometricPrompt — البصمة أو قفل الشاشة). null إن لم تتوفّر
+function nativeOwnerBridge() {
+    try {
+        const nb = window.SawaNativeBridge;
+        return nb && nb.verifyOwner && nb.ownerAuthOk ? nb : null;
+    }
+    catch (e) { return null; }
+}
+function nativeOwnerReady() {
+    const nb = nativeOwnerBridge();
+    try { return !!(nb && nb.ownerAuthOk()); } catch (e) { return false; }
+}
+function verifyDeviceOwner(title) {
+    const nb = nativeOwnerBridge();
+    if (!nb) return Promise.resolve({ ok: false, error: "unsupported" });
+    return new Promise((resolve) => {
+        const cbs = window.__sawaNatCbs = window.__sawaNatCbs || {};
+        const id = "own_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+        const to = setTimeout(() => { delete cbs[id]; resolve({ ok: false, error: "timeout" }); }, 120000);
+        cbs[id] = (r) => { clearTimeout(to); resolve(r || {}); };
+        try { nb.verifyOwner(title || "", id); }
+        catch (e) { clearTimeout(to); delete cbs[id]; resolve({ ok: false, error: String(e) }); }
+    });
+}
+function ownerAuthError(err) {
+    const e = String(err || "");
+    if (!e || /^e(5|10|13):/.test(e)) return "";   // أغلق المستخدم النافذة
+    if (e === "no-screen-lock") return tl("فعّل قفل الشاشة أو البصمة في إعدادات الهاتف أوّلاً", "Turn on a screen lock or fingerprint in your phone settings first");
+    if (/^e(7|9):/.test(e)) return tl("محاولاتٌ كثيرة — انتظر قليلاً ثمّ أعد المحاولة", "Too many attempts — wait a bit and try again");
+    return tl("تعذّر التحقّق: ", "Couldn't verify: ") + e;
+}
 function SelfieCapture({ onCaptured }) {
     const { colors } = useTheme();
     const videoRef = useRef(null);
@@ -2729,6 +2760,23 @@ function WalletLockScreen({ onUnlock, onBack, walletPasskeyId, onPasskeyRegister
         const blocked = lockedFor > 0;
         const or = (k) => React.createElement("span", { key: k, className: "text-xs my-3", style: { color: colors.textMuted } }, t("aw"));
         const opts = [];
+        // C285: في تطبيق الهاتف لا يُغيَّر رمز المحفظة إلا ببصمة الهاتف (أو قفل شاشته) — فمن يمسك الهاتف مفتوحاً
+        // لا يكفيه رمز قفل التطبيق أو حساب Google المسجَّل على الهاتف ليستولي على المحفظة
+        if (nativeOwnerReady()) {
+            return page(tl("نسيت رمز المحفظة", "Forgot wallet PIN"), () => { setWebauthnStatus(""); setMode("unlock"); }, [
+                React.createElement(Fingerprint, { size: 40, color: colors.primary }),
+                React.createElement("h3", { className: "text-base font-extrabold mt-3 mb-1", style: { color: colors.text } }, tl("أثبت أنّها محفظتك", "Prove it's your wallet")),
+                React.createElement("p", { className: "text-xs mb-4 text-center max-w-[280px]", style: { color: colors.textMuted } }, tl("للحماية لا يُغيَّر رمز المحفظة إلا ببصمة هذا الهاتف (أو رمز قفل شاشته). بعد التحقّق تعيّن رمزاً جديداً، ويبقى رصيدك كما هو.", "For your protection the wallet PIN can only be changed with this phone's fingerprint (or its screen lock). After verifying you set a new PIN; your balance stays as it is.")),
+                React.createElement(Button, { icon: Fingerprint, label: tl("تحقّق ببصمة الهاتف", "Verify with fingerprint"), disabled: blocked, onPress: async () => {
+                        setWebauthnStatus("");
+                        const r = await verifyDeviceOwner(tl("تغيير رمز محفظة سوا", "Change Sawa wallet PIN"));
+                        if (r && r.ok) { succeed(); setMode("newPin"); }
+                        else setWebauthnStatus(ownerAuthError(r && r.error));
+                    }, style: { width: 240 } }),
+                statusEl,
+            ]);
+        }
+        if (nativeOwnerBridge()) opts.push(React.createElement("p", { key: "nolock", className: "text-[11px] mb-3 text-center max-w-[280px] font-bold", style: { color: colors.danger } }, tl("لا قفل شاشة في هذا الهاتف — فعّل البصمة أو رمز قفل الشاشة من إعدادات الهاتف ليصير تغيير رمز المحفظة بالبصمة فقط.", "This phone has no screen lock — turn on a fingerprint or screen lock in phone settings so the wallet PIN can only be changed with it.")));
         if (walletPasskeyId) opts.push(React.createElement(Button, { key: "bio", icon: Fingerprint, label: t("fth_bbsma_aljhaz"), onPress: () => handleAuthenticate(() => setMode("newPin")), variant: "outline", style: { width: 240 } }));
         if (appPin) {
             if (opts.length) opts.push(or("o1"));

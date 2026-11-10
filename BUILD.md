@@ -2782,3 +2782,8 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - السبب: `AccountRecoveryOption` يقرأ `firebase.auth().currentUser` مرّةً واحدة لحظة الرسم ولا يُعاد رسمه عند استرجاع الجلسة؛ وأيّ حسابٍ غير مجهول بلا مزوّد password/google.com كان يُعرض كـ«ضيف».
 - الإصلاح: `SawaSync.onAuthChange(cb)` و`SawaSync.accountStatus()` → loading | guest | linked | other. الخطّاف `useSawaAuthTick()` في `AccountRecoveryOption` و`WalletLockScreen` يعيد الرسم عند تغيّر الهويّة.
 - النصّ: «جارٍ التحقّق من حسابك…» أثناء الاسترجاع، ورسالةٌ خاصّة لحسابٍ مربوطٍ بطريقةٍ لا تصلح للتحقّق (Apple خارج iOS)، و«ضيف» للضيف فقط.
+
+## 🔐 C286 — «نسيت رمز المحفظة» ببصمة الهاتف فقط (تطبيق أندرويد) · app.p7 · Sawa-android c277 · sw v469
+- جسرٌ أصليّ جديد في Sawa-android: `SawaNativeBridge.ownerAuthOk()` و`verifyOwner(title, cb)` (BiometricPrompt: البصمة أو قفل شاشة الهاتف).
+- في التطبيق مع قفل شاشةٍ مفعّل: شاشة «نسيت رمز المحفظة» لا تعرض إلا «تحقّق ببصمة الهاتف» — أُخفيت رموز الاسترداد ورمز قفل التطبيق وحساب البريد/Google، فمن يمسك الهاتف مفتوحاً لا يستطيع تغيير رمز المحفظة.
+- هاتفٌ بلا قفل شاشة: تبقى الطرق القديمة مع تنبيهٍ أحمر بتفعيل القفل. الويب و iOS وAPK أقدم (بلا `verifyOwner`): بلا تغيير.
