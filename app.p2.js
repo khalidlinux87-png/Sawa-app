@@ -901,10 +901,21 @@ function LockScreen({ onUnlock, onForgot, correctPin, biometricEnabled, onBiomet
 // لا رموز ثابتة: كلمة المرور تُفحص على الخادم، و«نسيت كلمة المرور» يرسل رابطاً حقيقيّاً إلى البريد.
 // مستعمَل في «نسيت رمز القفل» و«نسيت رمز المحفظة».
 // ============================================================================
+// C285: يعيد الرسم عند تغيّر هويّة Firebase (استرجاع الجلسة بعد الإقلاع، ربط الحساب…)
+function useSawaAuthTick() {
+    const [, setTick] = useState(0);
+    useEffect(() => {
+        const S = window.SawaSync;
+        if (!S || !S.onAuthChange) return;
+        return S.onAuthChange(() => setTick((n) => n + 1));
+    }, []);
+}
 function AccountRecoveryOption({ onVerified, lockoutKey }) {
     const { colors } = useTheme();
+    useSawaAuthTick();
     const S = window.SawaSync;
     const acct = S && S.recoveryAccount ? S.recoveryAccount() : null;
+    const status = S && S.accountStatus ? S.accountStatus() : (acct ? "linked" : "guest");
     const [mode, setMode] = useState(null); // null | password
     const [pass, setPass] = useState("");
     const [busy, setBusy] = useState(false);
@@ -918,8 +929,10 @@ function AccountRecoveryOption({ onVerified, lockoutKey }) {
             React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, title),
             React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted }, dir: "auto" }, sub)));
     if (!acct) {
-        return React.createElement("p", { className: `text-[11px] mb-3 ${textStart()}`, style: { color: colors.textMuted } },
-            tl("لاستردادٍ بالبريد أو Google: اربط حسابك من «حسابي» (حسابك الآن «ضيف»).", "To recover with email or Google, link your account from the Account tab (it's a guest account now)."));
+        const txt = status === "loading" ? tl("جارٍ التحقّق من حسابك…", "Checking your account…")
+            : status === "other" ? tl("حسابك مربوطٌ بطريقةٍ لا تصلح للتحقّق هنا — استعمل البصمة أو رمز الاسترداد، أو أضف Google/البريد من «حسابي».", "Your account is linked with a method that can't verify here — use fingerprint or a recovery code, or add Google/email from the Account tab.")
+            : tl("لاستردادٍ بالبريد أو Google: اربط حسابك من «حسابي» (حسابك الآن «ضيف»).", "To recover with email or Google, link your account from the Account tab (it's a guest account now).");
+        return React.createElement("p", { className: `text-[11px] mb-3 ${textStart()}`, style: { color: colors.textMuted } }, txt);
     }
     async function run(kind) {
         const lo = walletLockoutGet(lockoutKey);

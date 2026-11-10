@@ -2777,3 +2777,8 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - **اختبار:** وحدة لـ`recoveryAccount`/`reauthAccount`/`reauthError` بـFirebase وهميّ (كلمة صحيحة/خاطئة · Google بـlogin_hint · ضيف). Playwright (الخادم مُحاكى): الخيارات الأربعة تظهر · كلمة خاطئة ⇒ رسالة · رابط التغيير يُرسَل · صحيحة ⇒ رمزٌ جديد يعمل بعد إعادة التحميل · البصمة ⇒ رمزٌ جديد يعمل · الضيف يرى التلميح فقط · المحفظة: Google ⇒ شاشة الرمز الجديد.
 - **غير مُختبَر هنا:** Firebase الحقيقيّ ونافذة Google (لا وصول من بيئة الاختبار) — جرّبه على الموقع بحساب بريد وحساب Google.
 - **الرفع:** `sawa-sync.js` و`app.p2.js` و`app.p7.js` و`app.p8.js` ثمّ `sw.js` (v467) **أخيراً**.
+
+## 🔑 C285 — «نسيت رمز المحفظة» يقول «حسابك ضيف» لحسابٍ مربوط · sawa-sync · app.p2 · app.p7 · sw v468
+- السبب: `AccountRecoveryOption` يقرأ `firebase.auth().currentUser` مرّةً واحدة لحظة الرسم ولا يُعاد رسمه عند استرجاع الجلسة؛ وأيّ حسابٍ غير مجهول بلا مزوّد password/google.com كان يُعرض كـ«ضيف».
+- الإصلاح: `SawaSync.onAuthChange(cb)` و`SawaSync.accountStatus()` → loading | guest | linked | other. الخطّاف `useSawaAuthTick()` في `AccountRecoveryOption` و`WalletLockScreen` يعيد الرسم عند تغيّر الهويّة.
+- النصّ: «جارٍ التحقّق من حسابك…» أثناء الاسترجاع، ورسالةٌ خاصّة لحسابٍ مربوطٍ بطريقةٍ لا تصلح للتحقّق (Apple خارج iOS)، و«ضيف» للضيف فقط.

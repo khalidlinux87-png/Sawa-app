@@ -103,6 +103,7 @@
         // أوّل نداءٍ لـ onAuthStateChanged يأتي بعد اكتمال الاسترجاع — عندها فقط نقرّر.
         var firstAuth = true;
         auth.onAuthStateChanged(function (user) {
+          authSettled = true; fireAuthListeners();
           if (firstAuth) {
             firstAuth = false;
             if (!user) {
@@ -1240,6 +1241,26 @@
     return firebase.auth().sendPasswordResetEmail(String(email || "").trim().toLowerCase());
   }
   // C284: استرداد رمز القفل/المحفظة بإثبات ملكيّة الحساب — إعادة المصادقة (لا دخولٌ جديد): Firebase يرفض حساباً آخر (auth/user-mismatch)
+  // C285: كانت شاشة «نسيت الرمز» تقرأ الحساب مرّةً واحدة لحظة فتحها — إن لم يكن Firebase قد استرجع الجلسة بعد
+  // ظهرت «حسابك ضيف» لحسابٍ مربوط. الآن: مستمعون يُبلَّغون عند كلّ تغيّرٍ في الهويّة، و authSettled يميّز «لم يُسترجع بعد» عن «ضيف».
+  var authSettled = false, authListeners = [];
+  function fireAuthListeners() { authListeners.slice().forEach(function (f) { try { f(); } catch (e) {} }); }
+  function onAuthChange(cb) {
+    authListeners.push(cb);
+    var off = null;
+    try { if (hasFirebase()) off = firebase.auth().onAuthStateChanged(function () { authSettled = true; try { cb(); } catch (e) {} }); } catch (e) {}
+    return function () { authListeners = authListeners.filter(function (f) { return f !== cb; }); try { if (off) off(); } catch (e) {} };
+  }
+  // "loading" (لم يُسترجع بعد) | "guest" | "linked" (يصلح للتحقّق) | "other" (مربوطٌ بمزوّدٍ لا يصلح هنا، مثل Apple خارج iOS)
+  function accountStatus() {
+    try {
+      if (!hasFirebase()) return "guest";
+      var u = firebase.auth().currentUser;
+      if (!u) return authSettled ? "guest" : "loading";
+      if (u.isAnonymous) return "guest";
+      return recoveryAccount() ? "linked" : "other";
+    } catch (e) { return "guest"; }
+  }
   function recoveryAccount() {
     try {
       var u = hasFirebase() && firebase.auth().currentUser; if (!u || u.isAnonymous) return null;
@@ -1855,7 +1876,7 @@
   global.SawaSync = {
     connect: connect, onReady: onReady, getToken: getToken,
     push: push, observe: observe, bindApp: bindApp,
-    uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, linkApple: linkApple, hasApple: hasApple, hasGoogle: hasGoogle, isIOSApp: function () { return !!IOSB(); }, renderGoogleButton: renderGoogleButton, googleCredential: googleCredential, gisPrompt: gisPrompt, loadGsi: loadGsi, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, recoveryAccount: recoveryAccount, reauthAccount: reauthAccount, reauthError: reauthError,   /* C284 */  syncAuthName: syncAuthName, shareLink: shareLink,
+    uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, linkApple: linkApple, hasApple: hasApple, hasGoogle: hasGoogle, isIOSApp: function () { return !!IOSB(); }, renderGoogleButton: renderGoogleButton, googleCredential: googleCredential, gisPrompt: gisPrompt, loadGsi: loadGsi, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, recoveryAccount: recoveryAccount, accountStatus: accountStatus, onAuthChange: onAuthChange, reauthAccount: reauthAccount, reauthError: reauthError,   /* C284 */  syncAuthName: syncAuthName, shareLink: shareLink,
     watchGroup: watchGroup, serverGid: serverGid,
     // C106: «هذا أنا» على الخادم — يربط حسابي بشخصٍ في الشجرة (أو يفكّه بـ null)
     inviteFor: inviteFor, adoptGroup: adoptGroup,   // C107
