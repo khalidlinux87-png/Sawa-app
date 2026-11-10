@@ -2623,6 +2623,7 @@ function walletLockoutReset(key = WALLET_LOCKOUT_KEY) { try { localStorage.remov
 function lockoutMsg(ms) { return tl("محاولات خاطئة كثيرة — حاول بعد " + Math.ceil(ms / 60000) + " دقيقة", "Too many wrong tries — try again in " + Math.ceil(ms / 60000) + " min"); }
 function WalletLockScreen({ onUnlock, onBack, walletPasskeyId, onPasskeyRegistered, walletPin, onSetWalletPin, appPin }) {
     const { colors } = useTheme();
+    useSawaAuthTick();
     const [webauthnStatus, setWebauthnStatus] = useState("");
     const [pinInput, setPinInput] = useState("");
     const [setupPin, setSetupPin] = useState("");
