@@ -50,7 +50,7 @@
   .primary[disabled]{opacity:.5;cursor:default}
   .err{color:var(--red);font-size:14px;margin:0}
   .hint{font-weight:400;font-size:12px;color:var(--muted)}
-  /* C284: full / partial choice, the pay-state chip */
+  /* C287: full / partial choice, the pay-state chip */
   fieldset.pt{border:0;margin:14px 0 0;padding:0}fieldset.pt legend{font-size:13px;font-weight:700;color:var(--muted);padding:0;margin-bottom:6px}
   .opt{display:flex;align-items:center;gap:10px;min-height:48px;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;margin-bottom:8px;color:var(--ink);font-size:15px;font-weight:700;cursor:pointer}
   .opt input{display:inline-block;flex:none;width:20px;height:20px;min-height:0;margin:0;padding:0;accent-color:var(--teal)}[hidden]{display:none!important}.opt:has(input:checked){border-color:var(--teal)}
@@ -130,7 +130,7 @@
   }
   var KEY = "sawa_pay_" + TOKEN;   // remembers this browser's report, to show it again after a reload
   function mine() { try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { return null; } }
-  // C284: one report per browser hid the form for good, so a second instalment could not be reported. "another" reopens it.
+  // C287: one report per browser hid the form for good, so a second instalment could not be reported. "another" reopens it.
 
   function setLang(l) {
     state.lang = l; document.documentElement.lang = l; document.documentElement.dir = l === "ar" ? "rtl" : "ltr";
@@ -191,7 +191,7 @@
       h.push('<form id="claim" novalidate>' +
         '<label>' + t.name + '<input name="name" autocomplete="name" required maxlength="80" dir="auto"></label>' +
         '<label>' + t.phoneOpt + '<input name="phone" type="tel" autocomplete="tel" maxlength="30" dir="ltr"></label>' +
-        // C284: full or partial. Full sends payType "full" and the server takes everything still open; partial asks for the amount.
+        // C287: full or partial. Full sends payType "full" and the server takes everything still open; partial asks for the amount.
         (v.allowPartial
           ? '<fieldset class="pt"><legend>' + t.payType + '</legend>' +
               '<label class="opt"><input type="radio" name="ptype" value="full"' + (state.ptype !== "partial" ? " checked" : "") + '><span>' + t.full + '<span class="hint">' + fill(t.fullHint, { a: money(room, v.currency) }) + "</span></span></label>" +
@@ -242,7 +242,7 @@
   }
   document.getElementById("closeBtn").onclick = function () { document.getElementById("sheet").classList.remove("on"); var vb = document.getElementById("viewBtn"); if (vb) vb.focus(); };
   document.getElementById("printBtn").onclick = function () { try { var w = document.getElementById("frame").contentWindow; w.focus(); w.print(); } catch (e) {} };
-  // C284: HTML → PDF file on the phone. Android's WebView and iOS's WKWebView ignore window.print(), so "Print or PDF"
+  // C287: HTML → PDF file on the phone. Android's WebView and iOS's WKWebView ignore window.print(), so "Print or PDF"
   // did nothing in the Sawa apps. The page is laid out in an off-screen frame (scripts off), drawn with html2canvas,
   // cut into A4 pages between rows, and written as a PDF of JPEG pages. The text is drawn by the browser itself, so
   // Arabic shaping and right-to-left order are exactly what the screen shows.
@@ -381,7 +381,7 @@
       img.src = url;
     });
   }
-  // C284: a photo is shrunk; a PDF (a bank's e-receipt) goes as it is, up to 600 KB.
+  // C287: a photo is shrunk; a PDF (a bank's e-receipt) goes as it is, up to 600 KB.
   var PROOF_PDF_MAX = 600 * 1024;
   function proofOf(file) {
     var isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");

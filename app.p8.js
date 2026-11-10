@@ -4267,7 +4267,7 @@ function AppInner() {
         lockActive && lockView && React.createElement("div", { role: "dialog", "aria-modal": "true", "aria-label": t("adkhl_rmz_alqfl"), className: "flex flex-col", style: { position: "fixed", inset: 0, zIndex: 2147483000, backgroundColor: colors.bg } },
             React.createElement("div", { className: "flex-1 min-h-0 flex flex-col", dir: interfaceLanguage === "en" ? "ltr" : "rtl" },
                 lockView === "locked" && React.createElement(LockScreen, { correctPin: pin, biometricEnabled: biometricEnabled, onBiometric: () => authenticateWalletPasskey(appLockPasskeyId), onUnlock: () => setLockView(null), onForgot: () => setLockView("forgot") }),
-                lockView === "forgot" && React.createElement(ForgotPinScreen, { onBack: () => setLockView("locked"),
+                lockView === "forgot" && React.createElement(ForgotPinScreen, { onBack: () => setLockView("locked"), onBiometric: appLockPasskeyId ? () => authenticateWalletPasskey(appLockPasskeyId) : null,
                     checkCode: (code) => {
                         const i = walletCodeIndex(pin, code);
                         if (i < 0) return false;

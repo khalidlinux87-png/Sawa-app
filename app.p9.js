@@ -57,7 +57,7 @@ const AccountantScreen = (function () {
         bad_line: ["هذا البند ليس في التقدير المعتمد", "That line isn't in the approved estimate"],
         line_on_non_expense: ["البند يُربط بالمصروف فقط", "A line can only be set on an expense"],
         fx_rate_required: ["أدخل سعر الصرف للعملة المختلفة", "Enter the exchange rate for the other currency"],
-        // C284
+        // C287
         bad_file: ["الملفّ يجب أن يكون صورة (JPEG أو PNG أو WebP) أو PDF حتّى 4 ميغابايت", "The file must be a JPEG, PNG or WebP photo or a PDF up to 4 MB"],
         bad_price_date: ["تاريخ السعر يجب ألّا يكون بعد اليوم", "The price date can't be after today"],
         too_many_files: ["بلغ عدد المرفقات الحدّ الأقصى", "The attachment limit is reached"],
@@ -640,7 +640,7 @@ const AccountantScreen = (function () {
     const STATUS = {
         draft: [["مسوّدة", "Draft"], "textMuted"], sent: [["مُرسلة", "Sent"], null], overdue: [["متأخّرة", "Overdue"], "danger"],
         paid: [["مدفوعة", "Paid"], "success"], cancelled: [["ملغاة", "Cancelled"], "textMuted"],
-        // C284: money reported or confirmed but not the whole total
+        // C287: money reported or confirmed but not the whole total
         partially_paid: [["مدفوعة جزئيّاً", "Partially paid"], "warning"], pending_verification: [["مدفوعة — بانتظار تحقّقك", "Paid — pending verification"], "warning"],
     };
     const shownStatus = (status, payState) => (payState === "partially_paid" || payState === "pending_verification") && status !== "paid" && status !== "cancelled" ? payState : status;
@@ -786,7 +786,7 @@ const AccountantScreen = (function () {
                     h(Btn, { onClick: () => save(true), disabled: busy || !client.name.trim() || !totals, style: { flex: 1 } }, busy ? tl("جارٍ…", "Working…") : tl("إرسال", "Send")))));
     }
 
-    // Printing in a browser: the server renders the page and a frame prints it. C284: the frame has a real A4 width
+    // Printing in a browser: the server renders the page and a frame prints it. C287: the frame has a real A4 width
     // off-screen (a 0×0 frame printed blank pages in Chrome) and is removed after printing, not after a fixed minute.
     function printHtml(html) {
         const f = document.createElement("iframe");
@@ -800,7 +800,7 @@ const AccountantScreen = (function () {
         f.srcdoc = html;
     }
     const inApp = () => !!(window.SawaNativeBridge || window.SawaIOS);
-    // C284: HTML → PDF file on the phone. Android's WebView and iOS's WKWebView ignore window.print(), so "Print or PDF"
+    // C287: HTML → PDF file on the phone. Android's WebView and iOS's WKWebView ignore window.print(), so "Print or PDF"
     // did nothing in the Sawa apps. The page is laid out in an off-screen frame (scripts off), drawn with html2canvas,
     // cut into A4 pages between rows, and written as a PDF of JPEG pages. The text is drawn by the browser itself, so
     // Arabic shaping and right-to-left order are exactly what the screen shows.
@@ -896,7 +896,7 @@ const AccountantScreen = (function () {
         });
     }
     const pdfBlob = (b64) => new Blob([sawaB64ToBytes(b64)], { type: "application/pdf" });
-    // C284: a PDF file from an op that answers { pdf | html, filename } (inv.pdf, pfm.proj.report.pdf): the server's file
+    // C287: a PDF file from an op that answers { pdf | html, filename } (inv.pdf, pfm.proj.report.pdf): the server's file
     // when Browser Rendering is set up, otherwise made here. Saved through saveFileOut (Android saves, iOS shares).
     function pdfFromOp(op, payload) {
         return call(op, payload).then((r) => (r.pdf ? { blob: pdfBlob(r.pdf), r } : sawaPdf(r.html).then((blob) => ({ blob, r }), (e) => { e.html = r.html; throw e; })))
@@ -921,7 +921,7 @@ const AccountantScreen = (function () {
         const [inv, setInv] = useState(null), [biz, setBiz] = useState(null), [err, setErr] = useState(""), [busy, setBusy] = useState(false), [msg, setMsg] = useState("");
         const [pay, setPay] = useState(null), [proof, setProof] = useState(null), [pdfBusy, setPdfBusy] = useState(false);
         const load = () => call("inv.get", { id }).then((r) => setInv(r.invoice), (e) => setErr(errText(e)));
-        // C284: invoices sent before pay links existed get one here (inv.link makes it on first request)
+        // C287: invoices sent before pay links existed get one here (inv.link makes it on first request)
         const withLink = () => (inv.payLinkToken ? Promise.resolve(inv) : call("inv.link", { id }).then((r) => { const nx = Object.assign({}, inv, { payLinkToken: r.token }); setInv(nx); return nx; }, () => inv));
         useEffect(() => { load(); call("pfm.biz.get").then(setBiz, () => {}); }, [id]);
         if (!inv) return h(Sheet, { title: tl("فاتورة", "Invoice"), onClose }, err ? h("div", { role: "alert", style: { color: colors.danger } }, err) : h(Loading));
@@ -970,7 +970,7 @@ const AccountantScreen = (function () {
                     h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
                         p.hasProof && h(Btn, { kind: "ghost", disabled: busy, onClick: () => call("inv.claim.proof", { id, payId: p.id }).then((r) => {
                             if (!r.data) return;
-                            // C284: a PDF receipt opens as a file (an <img> cannot show it)
+                            // C287: a PDF receipt opens as a file (an <img> cannot show it)
                             if (/^data:application\/pdf;/.test(r.data)) saveFileOut(pdfBlob(r.data.split(",")[1]), (r.name && /\.pdf$/i.test(r.name) ? r.name : "receipt-" + (inv.number || "invoice") + ".pdf").replace(/[\\/:*?"<>|]+/g, "-"), "application/pdf");
                             else setProof(r.data); }, (e) => setErr(errText(e))), style: { minHeight: 38, padding: "6px 12px", fontSize: T.small } }, p.proofType === "application/pdf" ? tl("الإيصال (PDF)", "Receipt (PDF)") : tl("الإيصال", "Receipt")),
                         h(Btn, { kind: "danger", disabled: busy, onClick: () => { const r = window.prompt(tl("سبب الرفض (يراه العميل لاحقاً؛ اختياريّ)", "Why reject (optional)"), ""); if (r !== null) run(call("inv.claim.decide", { id, payId: p.id, decision: "reject", note: r || null })); }, style: { minHeight: 38, padding: "6px 12px", fontSize: T.small } }, tl("لم يصل", "Not received")),
@@ -1425,7 +1425,7 @@ const AccountantScreen = (function () {
                 h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
                     h(Field, { label: tl("الكمّيّة", "Quantity") }, h("input", { inputMode: "decimal", value: r.qty, onChange: (e) => upd(i, "qty", e.target.value), style: inputStyle(colors) })),
                     h(Field, { label: tl("سعر الوحدة", "Unit price") }, h("input", { inputMode: "decimal", value: r.price, onChange: (e) => upd(i, "price", e.target.value), style: inputStyle(colors) }))),
-                // C284: the date of the quote and who gave it; the server stamps when it was entered and keeps every earlier price
+                // C287: the date of the quote and who gave it; the server stamps when it was entered and keeps every earlier price
                 h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
                     h(Field, { label: tl("تاريخ السعر", "Price date") }, h("input", { type: "date", value: r.priceDate, max: today || undefined, onChange: (e) => upd(i, "priceDate", e.target.value), style: inputStyle(colors) })),
                     h(Field, { label: tl("المورّد (اختياري)", "Supplier (optional)") }, h("input", { value: r.supplier, maxLength: 120, onChange: (e) => upd(i, "supplier", e.target.value), style: inputStyle(colors) }))),
@@ -1456,7 +1456,7 @@ const AccountantScreen = (function () {
                 if (f.quantity.trim()) { b.quantity = f.quantity.trim(); b.unit = f.unit.trim(); }
                 if (f.copy) { b.copyToPersonal = { categoryId: f.personalCat || (personalCats[0] && personalCats[0].id) }; if (notBase) b.personalFxRate = f.personalFxRate.trim(); }
             }
-            // C284: receipts and supplier invoices go up after the entry exists, dated with the entry's date
+            // C287: receipts and supplier invoices go up after the entry exists, dated with the entry's date
             call("pfm.proj.tx.add", b).then((r) => files.reduce((pr, file, i) => pr.then(() => pjFileData(file).then((data) =>
                 call("pfm.proj.file.add", { pid, idemKey: key.current.slice(0, 30) + "-" + i, target: { type: "tx", txId: r.tx.id }, kind: isExp ? "receipt" : "other", name: file.name.slice(0, 120), docDate: f.occurredOn <= (today || f.occurredOn) ? f.occurredOn : today, data }))), Promise.resolve())
                 .then(onSaved, (e) => { setBusy(false); setErr(tl("حُفظت الحركة، لكن تعذّر رفع مرفق: ", "The entry was saved, but an attachment failed: ") + pjFileErr(e)); }),
@@ -1492,7 +1492,7 @@ const AccountantScreen = (function () {
     }
 
 
-    // ── C284: attachments with fixed dates, and the price history of a BOQ line ──
+    // ── C287: attachments with fixed dates, and the price history of a BOQ line ──
     const PJ_FILE_KINDS = [["photo", "صورة", "Photo"], ["quote", "عرض سعر", "Quote"], ["supplier_invoice", "فاتورة مورّد", "Supplier invoice"], ["receipt", "إيصال", "Receipt"], ["other", "أخرى", "Other"]];
     const PJ_FILE_MAX = 4 * 1024 * 1024;
     const pjSmallBtn = { minHeight: 36, padding: "4px 12px", fontSize: 13 };

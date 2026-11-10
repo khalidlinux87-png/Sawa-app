@@ -2765,7 +2765,29 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 - **اختبار (Playwright):** لا قفل عند البدء · تفعيل ⇒ 10 رموز ولا نصّ في التخزين · إعادة تحميل ⇒ مقفول · خاطئ يُبقيه · صحيح يفتح · خيار البريد غير موجود · رمز استرداد خاطئ يُرفض وصحيح ⇒ رمز جديد · القديم مرفوض والجديد يفتح · «فوراً» + خلفيّة ⇒ يُقفل · 5 أخطاء ⇒ قفل · الإيقاف ⇒ لا قفل والسجلّ ممسوح.
 - **الرفع:** `sawa-chat.js` (EXPECT محدَّث) و`app.p2.js` و`app.p4.js` و`app.p7.js` و`app.p8.js` ثمّ `sw.js` (v466) **أخيراً**.
 
-## 🧾📎 C284 — Invoices: PDF that works in the apps, pay links fixed, client portal (full/partial, PDF receipts) · Projects: dated prices and attachments · app.p9 · pay.html · sawa-chat · sw v467 · Worker (pfm/)
+## 🔑 C284 — استرداد رمز القفل والمحفظة: بالبريد (أو Google) وببصمة الجهاز · sawa-sync · app.p2 · app.p7 · app.p8 · sw v467
+- **الطلب:** إلى جانب رموز الاسترداد: تحقّقٌ بالبريد، أو بالبصمة.
+- **«تحقّق بحسابك» (`AccountRecoveryOption` في app.p2):** يظهر في «نسيت رمز القفل» و«نسيت رمز المحفظة». **إعادة مصادقة** على Firebase (`SawaSync.reauthAccount`) لا دخولٌ جديد — Firebase يرفض حساباً آخر (`auth/user-mismatch`):
+  - حساب بريد: كلمة مرور الحساب تُفحص على الخادم. «نسيت كلمة المرور؟» يرسل **رابطاً حقيقيّاً** إلى البريد (`resetPassword`)، ثمّ تُدخل الجديدة.
+  - حساب Google: نافذة Google (الويب) أو حساب الهاتف عبر الجسر الأصليّ (أندرويد/iOS).
+  - حساب «ضيف»: لا خيار — تلميحٌ بربط الحساب من «حسابي».
+  - كلمة مرور خاطئة تُحسب في حدّ المحاولات نفسه (5 ⇒ قفلٌ مؤقّت)، وFirebase له حدّه أيضاً.
+- **بصمة الجهاز** في «نسيت رمز القفل» إن سُجّلت (WebAuthn) ⇒ رمزٌ جديد. (المحفظة كان فيها البصمة ورمز قفل التطبيق سلفاً.)
+- لماذا لا «رمزٌ يُرسَل إلى البريد»: لا خدمة بريدٍ على الخادم؛ إعادة المصادقة + رابط تغيير كلمة المرور من Firebase يثبتان ملكيّة البريد فعلاً بلا رمزٍ ثابت (كالـ123456 الذي أُزيل في C283).
+- **اختبار:** وحدة لـ`recoveryAccount`/`reauthAccount`/`reauthError` بـFirebase وهميّ (كلمة صحيحة/خاطئة · Google بـlogin_hint · ضيف). Playwright (الخادم مُحاكى): الخيارات الأربعة تظهر · كلمة خاطئة ⇒ رسالة · رابط التغيير يُرسَل · صحيحة ⇒ رمزٌ جديد يعمل بعد إعادة التحميل · البصمة ⇒ رمزٌ جديد يعمل · الضيف يرى التلميح فقط · المحفظة: Google ⇒ شاشة الرمز الجديد.
+- **غير مُختبَر هنا:** Firebase الحقيقيّ ونافذة Google (لا وصول من بيئة الاختبار) — جرّبه على الموقع بحساب بريد وحساب Google.
+- **الرفع:** `sawa-sync.js` و`app.p2.js` و`app.p7.js` و`app.p8.js` ثمّ `sw.js` (v467) **أخيراً**.
+
+## 🔑 C285 — «نسيت رمز المحفظة» يقول «حسابك ضيف» لحسابٍ مربوط · sawa-sync · app.p2 · app.p7 · sw v468
+- السبب: `AccountRecoveryOption` يقرأ `firebase.auth().currentUser` مرّةً واحدة لحظة الرسم ولا يُعاد رسمه عند استرجاع الجلسة؛ وأيّ حسابٍ غير مجهول بلا مزوّد password/google.com كان يُعرض كـ«ضيف».
+- الإصلاح: `SawaSync.onAuthChange(cb)` و`SawaSync.accountStatus()` → loading | guest | linked | other. الخطّاف `useSawaAuthTick()` في `AccountRecoveryOption` و`WalletLockScreen` يعيد الرسم عند تغيّر الهويّة.
+- النصّ: «جارٍ التحقّق من حسابك…» أثناء الاسترجاع، ورسالةٌ خاصّة لحسابٍ مربوطٍ بطريقةٍ لا تصلح للتحقّق (Apple خارج iOS)، و«ضيف» للضيف فقط.
+
+## 🔐 C286 — «نسيت رمز المحفظة» ببصمة الهاتف فقط (تطبيق أندرويد) · app.p7 · Sawa-android c277 · sw v469
+- جسرٌ أصليّ جديد في Sawa-android: `SawaNativeBridge.ownerAuthOk()` و`verifyOwner(title, cb)` (BiometricPrompt: البصمة أو قفل شاشة الهاتف).
+- في التطبيق مع قفل شاشةٍ مفعّل: شاشة «نسيت رمز المحفظة» لا تعرض إلا «تحقّق ببصمة الهاتف» — أُخفيت رموز الاسترداد ورمز قفل التطبيق وحساب البريد/Google، فمن يمسك الهاتف مفتوحاً لا يستطيع تغيير رمز المحفظة.
+- هاتفٌ بلا قفل شاشة: تبقى الطرق القديمة مع تنبيهٍ أحمر بتفعيل القفل. الويب و iOS وAPK أقدم (بلا `verifyOwner`): بلا تغيير.
+## 🧾📎 C287 — Invoices: PDF that works in the apps, pay links fixed, client portal (full/partial, PDF receipts) · Projects: dated prices and attachments · app.p9 · pay.html · sawa-chat · sw v470 · Worker (pfm/)
 **Root causes found**
 - **PDF did nothing in the apps.** "Print or PDF" printed a hidden 0×0 frame; Android's WebView and iOS's WKWebView ignore `window.print()`. The server-side path (`invoice-pdf.mjs`) imported a package the Worker doesn't have, read the logo from an R2 key that is never written, and was never wired.
 - **Pay link opened nothing in the Android app.** The app claims every `www.sawaaap.com` link; `__sawaNativeOpen` (sawa-chat.js) answered "handled" for any URL without a query string, so `/pay/<token>` was swallowed. It now handles only `/` in place; other paths load normally.
@@ -2786,4 +2808,4 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 
 **Tests:** pfm-core 29 · pfm-worker **50** (+5) · projects-core 16 · projects-migrations 7 · projects-worker **23** (+3) · kin 17 · marriage 9 · `ui-check.mjs` ✓ (invoice PDF download, pay page PDF, partial report with PDF receipt, "report another" full with photo, issuer opens both receipts, confirms both) · `projects-ui-check.mjs` ✓ (dated price, quote PDF on a line, price history, receipt on an entry, PDF report). Checked by eye: a 40-line Arabic invoice made into a 4-page A4 PDF on the device, with correct shaping and right-to-left order.
 **Not tested here:** the live Browser Rendering call (mocked in tests), real Android/iOS file saving, the Pages rewrite on the live site.
-**Upload:** (1) Worker via wrangler: `pfm/pfm-worker.mjs`, `pfm/pfm-core.mjs`, `pfm/projects-core.mjs`, `pfm/projects-migrations.mjs`, `pfm/invoice-html.mjs`, `pfm/invoice-pdf.mjs` (`worker-3.js` unchanged). Optional secrets `CF_ACCOUNT_ID` + `CF_BR_TOKEN` for server PDFs. (2) `_redirects`, `pay.html`, `sawa-chat.js` (EXPECT updated), `app.p9.js`, then `sw.js` (v467) **last**. No Firestore rules change (the Worker writes everything).
+**Upload:** (1) Worker via wrangler: `pfm/pfm-worker.mjs`, `pfm/pfm-core.mjs`, `pfm/projects-core.mjs`, `pfm/projects-migrations.mjs`, `pfm/invoice-html.mjs`, `pfm/invoice-pdf.mjs` (`worker-3.js` unchanged). Optional secrets `CF_ACCOUNT_ID` + `CF_BR_TOKEN` for server PDFs. (2) `_redirects`, `pay.html`, `sawa-chat.js` (EXPECT updated), `app.p9.js`, then `sw.js` (v470) **last**. No Firestore rules change (the Worker writes everything).
