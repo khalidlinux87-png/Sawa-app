@@ -2809,3 +2809,31 @@ Meta قيّدت حافظة الأعمال («prohibited from advertising, includ
 **Tests:** pfm-core 29 · pfm-worker **50** (+5) · projects-core 16 · projects-migrations 7 · projects-worker **23** (+3) · kin 17 · marriage 9 · `ui-check.mjs` ✓ (invoice PDF download, pay page PDF, partial report with PDF receipt, "report another" full with photo, issuer opens both receipts, confirms both) · `projects-ui-check.mjs` ✓ (dated price, quote PDF on a line, price history, receipt on an entry, PDF report). Checked by eye: a 40-line Arabic invoice made into a 4-page A4 PDF on the device, with correct shaping and right-to-left order.
 **Not tested here:** the live Browser Rendering call (mocked in tests), real Android/iOS file saving, the Pages rewrite on the live site.
 **Upload:** (1) Worker via wrangler: `pfm/pfm-worker.mjs`, `pfm/pfm-core.mjs`, `pfm/projects-core.mjs`, `pfm/projects-migrations.mjs`, `pfm/invoice-html.mjs`, `pfm/invoice-pdf.mjs` (`worker-3.js` unchanged). Optional secrets `CF_ACCOUNT_ID` + `CF_BR_TOKEN` for server PDFs. (2) `_redirects`, `pay.html`, `sawa-chat.js` (EXPECT updated), `app.p9.js`, then `sw.js` (v470) **last**. No Firestore rules change (the Worker writes everything).
+
+## ♿ C289 — UI/UX review fixes: zoom, readable sign-in errors, larger text, tap areas, empty states, Sawa dialogs instead of browser ones · index.html · app.p2–p9 · sawa-chat · sawa-sync · sw v472
+Source: UI/UX review of 10 Nov 2026 (offline render, phone size, Arabic, light and dark).
+
+**Low risk**
+- **Zoom:** viewport no longer has `maximum-scale=1,user-scalable=no`; pinch zoom works. iOS keeps `maximum-scale=1` (added by a small script) so Safari does not auto-zoom when a field under 16px gets focus — Safari still allows pinch zoom. `html{touch-action:manipulation}` stops double-tap zoom.
+- **Sign-in errors:** six paths in sawa-sync showed raw codes ("تعذّر الدخول: auth/internal-error"). All go through `friendlyErr()`, which now also covers popup-blocked, account exists, wrong details, disabled, method not available. Unknown errors keep a short code in brackets for support. The raw code still goes to `LOG.warn`.
+- **Tap area:** the invisible layer around small buttons (C192) is 44px (was 40) and now also covers `w-9`/`w-10` buttons (header search/options).
+- **Reduced motion:** the phone's "Reduce motion" now applies to the whole app (was the welcome screens only). Durations become 0.01ms so `animationend`/`transitionend` still fire.
+- **Contrast:** text on the light tint (`primaryLight`) uses `colors.primaryInk` instead of `colors.primary` (14 places; 3.5:1 ⇒ 5.3:1 in the default theme; follows the colour theme).
+- **Contacts:** no "0" badge and no second add button while the list is empty; the empty-state text is `text-sm`.
+- **Account:** Settings row uses the gear icon (was "⋯", which means "more").
+
+**Medium**
+- **Smallest text 12px** (was 11px): the C188 size table maps 9/9.5/10 ⇒ 12, 10.5/11 ⇒ 12.5, 11.5 ⇒ 13; badges 7 ⇒ 9, 8 ⇒ 10.
+- **Empty states:** `EmptyState` takes optional `desc` and `action`. Chats: title, explanation and a "محادثة جديدة" button. Calls: title and a line pointing to the Call button. Search/filter empty states are unchanged.
+- **Headers:** Calls and Contacts header buttons match Chats (40px, outlined, same icon sizes).
+
+**High**
+- **Sawa dialogs:** `SawaChat.confirm(msg, {ok, cancel, danger}) → Promise<boolean>` and `SawaChat.copySheet(text)` (bottom sheet, dark mode, top z-index). React helpers `sawaConfirm` / `sawaNotice` / `sawaCopyBox` in app.p2 fall back to the browser dialog if sawa-chat is not loaded. Converted 20 of 31: unlink account, cancel appointment, clear data, sign out, replace family tree, group photo note, reaction error, copy link (×5), family invite, delete moment, delete comment, discard moment, delete story, change my code.
+- **Still browser dialogs (11, follow-up):** sawa-sync family sync (replace server tree, claim invite, removed from family, leave family, unlink old copy and two more), update during a call (×2), SMS phone number prompt, admin report delete and team remove.
+
+**Export check:** SawaChat 165 ⇒ 167 keys (+confirm, +copySheet, none lost) · SawaRTC 55 · SawaSync 50 unchanged.
+**Tests:** `node --check` on all parts; rendered offline at iPhone 13 size in Arabic, light and dark: Chats, Calls, Contacts, Explore, Account, welcome, sign-in error, confirm and copy sheets (Cancel ⇒ false, OK ⇒ true).
+**Not tested here:** real sign-in, chats with data, calls, moments/stories with data (the converted handlers), native Android/iOS wrappers (pinch zoom in WKWebView needs `ignoresViewportScaleLimits`; Android WebView needs zoom enabled in settings).
+**Upload:** app.p2, p3, p4, p5, p6, p7, p8, p9 + index.html + sawa-chat.js + sawa-sync.js ← sw.js (v472) last.
+**Native (same change):** Sawa-iOS `WebViewController.swift` sets `cfg.ignoresViewportScaleLimits = true` (also in `Sawa-ios.zip`) · Sawa-android `MainActivity.java` turns on built-in zoom with the +/− buttons hidden, `SAWA_BUILD` c278 (inside `sawa-native.zip`). Not built here: Android builds after merge to main, iOS on a pull request or a TestFlight run.
+**Decisions (Khalid):** the daily reminder stays a pop-up; Khalid will add more to «استكشف».

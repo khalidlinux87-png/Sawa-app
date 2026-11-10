@@ -108,7 +108,7 @@ function SawaWrappedScreen({ onBack, conversations, groups, showToast = () => { 
                     React.createElement("div", { className: "flex-1 p-2.5 rounded-xl text-center", style: { backgroundColor: colors.primary + "15" } },
                         React.createElement("p", { className: "text-lg font-extrabold", style: { color: colors.primary } }, "3"),
                         React.createElement("p", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, t("mnasbat_hnat"))))),
-            React.createElement("button", { "aria-label": t("msharka"), onClick: () => showToast(t("tm_nskh_almlkhs_jahz"), "success"), className: `w-full mt-4 py-3 rounded-2xl font-bold text-sm flex ${rowStart()} items-center justify-center gap-2`, style: { backgroundColor: colors.primaryLight, color: colors.primary } },
+            React.createElement("button", { "aria-label": t("msharka"), onClick: () => showToast(t("tm_nskh_almlkhs_jahz"), "success"), className: `w-full mt-4 py-3 rounded-2xl font-bold text-sm flex ${rowStart()} items-center justify-center gap-2`, style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } },
                 React.createElement(Share2, { size: 15, color: colors.primary }),
                 t("shark_mlkhsk")),
             React.createElement("div", { className: "h-6" }))));
@@ -805,7 +805,7 @@ function HelpScreen({ onBack, onRestartTour }) {
                     React.createElement(ChevronLeft, { size: 14, color: colors.textMuted, style: { transform: openFaq === i ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform 0.2s", flexShrink: 0 } })),
                 openFaq === i && (React.createElement("div", { className: "px-4 pb-4 text-xs leading-relaxed " + (textStart()), style: { color: colors.textMuted } }, faq.a))))),
             React.createElement("div", { className: "mt-4 mb-2" },
-                React.createElement("button", { onClick: onRestartTour, className: "w-full py-3 rounded-xl text-sm font-extrabold", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("hp_abda_aljwla"))))));
+                React.createElement("button", { onClick: onRestartTour, className: "w-full py-3 rounded-xl text-sm font-extrabold", style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, t("hp_abda_aljwla"))))));
 }
 function OnboardingScreen({ onDone }) {
     const { colors } = useTheme();
@@ -2493,11 +2493,13 @@ function AppInner() {
     function handleLogout() {
         // C20: خروجٌ حقيقيّ (Firebase + الإشعارات + البيانات المحلّيّة) بنافذة تأكيد — كان يقفل الشاشة برمزٍ لم يُضبط
         if (window.SawaChat && window.SawaChat.signOutSheet && window.SawaChat.signOutSheet()) return;
-        if (window.confirm(t("tsjyl_alkhrwj_sthtaj_ila"))) {
+        sawaConfirm(t("tsjyl_alkhrwj_sthtaj_ila"), { ok: tl("تسجيل الخروج", "Sign out"), danger: true }).then((ok) => {   // C289
+            if (!ok)
+                return;
             setStack([]);
             setTab("me");
             if (lockActive) setLockView("locked");
-        }
+        });
     }
     function deleteEncryptionKeys() {
         // إصلاح: الرسالة تدّعي مسح "كل البيانات المحلية" — قبل كانت تمسح رمز
@@ -3727,12 +3729,14 @@ function AppInner() {
                 const current = countPersons(groupPersons);
                 // ⛔ استبدالٌ لا دمج: دمج شجرتين من جهازين يوحّد أشخاصاً
                 // بمعرّفات مختلفة ولا رجعة فيه. الاستبدال يُفهَم ويُتوقَّع.
-                if (!window.confirm(t("ex_takyd", { current: current.toLocaleString(loc()), incoming: incoming.toLocaleString(loc()) })))
-                    return;
-                setFamilyGroups(data.groups);
-                setGroupPersons(data.persons);
-                setKinshipRelations(data.relations);
-                showToast(t("ex_tm_alastyrad", { n: incoming.toLocaleString(loc()) }), "success");
+                sawaConfirm(t("ex_takyd", { current: current.toLocaleString(loc()), incoming: incoming.toLocaleString(loc()) }), { ok: tl("استبدال الشجرة", "Replace tree"), danger: true }).then((ok) => {   // C289
+                    if (!ok)
+                        return;
+                    setFamilyGroups(data.groups);
+                    setGroupPersons(data.persons);
+                    setKinshipRelations(data.relations);
+                    showToast(t("ex_tm_alastyrad", { n: incoming.toLocaleString(loc()) }), "success");
+                });
             };
             reader.readAsText(f);
         };

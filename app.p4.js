@@ -1557,8 +1557,8 @@ function ChatSettingsScreen({ chatBackupEnabled, setChatBackupEnabled, chatFolde
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
         React.createElement(TopBar, { title: t("iadadat_almhadthat"), onBack: onBack }),
         React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
-            React.createElement("button", { onClick: () => {
-                    if (!window.confirm(t("symsh_kl_ma_hw")))
+            React.createElement("button", { onClick: () => sawaConfirm(t("symsh_kl_ma_hw"), { ok: tl("مسح", "Clear"), danger: true }).then((ok) => {   // C289
+                    if (!ok)
                         return;
                     try {
                         Object.keys(window.localStorage || {})
@@ -1567,7 +1567,7 @@ function ChatSettingsScreen({ chatBackupEnabled, setChatBackupEnabled, chatFolde
                     }
                     catch (_a) { }
                     window.location.reload();
-                }, className: "w-full mb-4" },
+                }), className: "w-full mb-4" },
                 React.createElement(Card, { className: `flex ${rowStart()} items-center gap-3` },
                     React.createElement(Trash2, { size: 17, color: colors.danger }),
                     React.createElement("div", { className: `flex-1 ${textStart()}` },
@@ -1863,7 +1863,7 @@ function ArchivedChatsScreen({ conversations, archivedIds, mutedIds, onOpenChat,
                             React.createElement("span", { className: "font-bold text-sm truncate", style: { color: colors.text, direction: isRTL() ? "rtl" : "ltr" } }, c.isSavedMessages ? t("rsayly_almhfwza") : c.name)),
                         React.createElement("div", { className: `text-xs mt-0.5 truncate ${textStart()}`, style: { color: colors.textMuted } }, c.lastMessage || tl("اضغط لفتح المحادثة", "Tap to open the chat"))),
                     mutedIds.includes(c.id) && React.createElement(BellOff, { size: 13, color: colors.textMuted, className: `shrink-0 ${ms("1.5")}` })),
-                React.createElement("button", { onClick: () => onUnarchive(c.id), className: `px-2.5 py-1.5 rounded-xl text-[10px] font-bold shrink-0 ${me("2")}`, style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("astaada"))))))));
+                React.createElement("button", { onClick: () => onUnarchive(c.id), className: `px-2.5 py-1.5 rounded-xl text-[10px] font-bold shrink-0 ${me("2")}`, style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, t("astaada"))))))));
 }
 // C184: بطاقة جهة الاتّصال داخل المحادثة — اسم وأرقام ورمز سوا، مع أزرار: مراسلة/إضافة في سوا/اتّصال/حفظ/دعوة
 function ContactCardBubble({ m, mine }) {
@@ -2243,7 +2243,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                         tl("\u0648" + (upcomingBirthdays.length - 1) + " \u0645\u0646\u0627\u0633\u0628\u0629 \u0623\u062E\u0631\u0649 \u0647\u0630\u0627 \u0627\u0644\u0623\u0633\u0628\u0648\u0639", "+" + (upcomingBirthdays.length - 1) + " more this week")))),
                 React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0", style: { backgroundColor: colors.accent, color: "#fff" } }, t("hdha_alasbwa")))),
             React.createElement("div", { className: "pb-24" },   // C201: صفوفٌ مسطّحة بعرض الشاشة (كانت بطاقاتٍ داخل هامش) + مسافةٌ للزرّ العائم
-                visibleConversations.length === 0 && groups.length === 0 && broadcastLists.length === 0 && React.createElement(EmptyState, { icon: MessageCircle, label: t("la_twjd_mhadthat_bad") }),
+                visibleConversations.length === 0 && groups.length === 0 && broadcastLists.length === 0 && React.createElement(EmptyState, { icon: MessageCircle, label: t("la_twjd_mhadthat_bad"), desc: tl("ابدأ محادثةً مع أحد أقاربك أو أصدقائك، أو شارك رمزك ليتواصلوا معك.", "Start a chat with family or friends, or share your code so they can reach you."), action: { icon: MessageCircle, label: t("mhadtha_jdyda"), onPress: onNewConversation } }),
                 activeTab === "starred" && tabConversations.length === 0 && React.createElement(EmptyState, { icon: Star, label: t("ma_hfzt_ay_mhadtha") }),
                 activeTab === "unread" && tabConversations.length === 0 && React.createElement(EmptyState, { icon: MessageCircle, label: t("kl_almhadthat_mqrwa") }),
                 activeTab === "family" && tabConversations.length === 0 && tabGroups.length === 0 && (React.createElement("div", { className: "flex flex-col items-center gap-3 mt-8" },

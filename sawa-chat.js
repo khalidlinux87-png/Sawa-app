@@ -702,7 +702,7 @@
       var text = L("أضفني إلى جهات اتّصالك في سوا (الرابط صالح أسبوعاً):", "Add me as a contact on Sawa (link valid for a week):");
       if (global.navigator && navigator.share) return navigator.share({ title: "سوا", text: text, url: inv.url }).catch(function () {}).then(function () { return inv; });
       if (global.navigator && navigator.clipboard) return navigator.clipboard.writeText(text + " " + inv.url).then(function () { toast(L("نُسخ الرابط ✓", "Link copied ✓")); return inv; });
-      global.prompt(L("انسخ الرابط:", "Copy the link:"), inv.url); return inv;
+      copySheet(inv.url); return inv;   // C289
     }).catch(function (e) { toast(L("تعذّر إنشاء الرابط: ", "Couldn't create the link: ") + ((e && e.message) || e)); return null; });
   }
   // مكتبة QR تُحمَّل عند الحاجة فقط (cdnjs)
@@ -867,10 +867,11 @@
     var u = null; try { u = new URL(t); } catch (e) {}
     if (u && /(^|\.)sawaaap\.com$/i.test(u.hostname) || (u && u.origin === global.location.origin)) {
       if (u.searchParams.get("join")) {
-        if (global.confirm(L("هذا رابط دعوة للانضمام إلى عائلة في «صلة رحم». الانضمام؟", "This is a family invite. Join?"))) {
+        confirmSheet(L("هذا رابط دعوة للانضمام إلى عائلة في «صلة رحم». الانضمام؟", "This is a family invite. Join?"), { ok: L("انضمام", "Join") }).then(function (ok) {   // C289
+          if (!ok) return;
           if (global.SawaSync && global.SawaSync.join) global.SawaSync.join(u.searchParams.get("join"), u.searchParams.get("p"), u.searchParams.get("pn"));   // C114
           else global.location.assign(global.location.origin + "/?join=" + encodeURIComponent(u.searchParams.get("join")));
-        }
+        });
         return "join";
       }
       if (global.__sawaNativeOpen && global.__sawaNativeOpen(u.href) && (u.searchParams.get("chat") || u.searchParams.get("call") || u.searchParams.get("requests"))) return "link";
@@ -1532,7 +1533,7 @@
       var text = L("انضمّ إلى مجموعة «" + name + "» في سوا (صالح أسبوعاً):", "Join the «" + name + "» group on Sawa (valid for a week):");
       if (global.navigator && navigator.share) return navigator.share({ title: "سوا", text: text, url: url }).catch(function () {});
       if (global.navigator && navigator.clipboard) return navigator.clipboard.writeText(text + " " + url).then(function () { toast(L("نُسخ الرابط ✓", "Link copied ✓")); });
-      global.prompt(L("انسخ الرابط:", "Copy the link:"), url);
+      copySheet(url);   // C289
     }).catch(fail);
   }
   function joinGroup(tok) {
@@ -2704,9 +2705,10 @@
       add(L("✏️ تعديل النصّ", "✏️ Edit text"), "", function () { moEdit(p); });   // C135
       add(L("👥 من يراها", "👥 Who can see it"), "", function () { moAudInfo(p); });
       add(L("🗑 حذف اللحظة", "🗑 Delete moment"), "danger", function () {
-        if (!global.confirm(L("حذف هذه اللحظة نهائيّاً؟", "Delete this moment permanently?"))) return;
+        confirmSheet(L("حذف هذه اللحظة نهائيّاً؟", "Delete this moment permanently?"), { ok: L("حذف", "Delete"), danger: true }).then(function (ok) { if (!ok) return;   // C289
         mo.list = mo.list.filter(function (x) { return x.id !== p.id; }); moEmit();
         call("moment.delete", { pid: p.id }).then(function () { toast(L("حُذفت ✓", "Deleted ✓")); }, function (e) { toast(L("تعذّر الحذف: ", "Couldn't delete: ") + ((e && e.message) || e)); });
+        });
       });
     } else {
       add(L("💬 مراسلة ", "💬 Message ") + moName(p.by, p.name), "", function () { try { openDm(p.by); } catch (e) { openDmWith(p.by); } });
@@ -2856,10 +2858,11 @@
     }
     function cDelete(c) {
       var kids = list.filter(function (x) { return x.re === c.id; }).length;
-      if (!global.confirm(kids ? L("حذف التعليق وردوده؟", "Delete this comment and its replies?") : L("حذف هذا التعليق؟", "Delete this comment?"))) return;
+      confirmSheet(kids ? L("حذف التعليق وردوده؟", "Delete this comment and its replies?") : L("حذف هذا التعليق؟", "Delete this comment?"), { ok: L("حذف", "Delete"), danger: true }).then(function (ok) { if (!ok) return;   // C289
       if (editing && editing.id === c.id) setEdit(null);
       list = list.filter(function (x) { return x.id !== c.id && x.re !== c.id; }); paint();
       call("moment.uncomment", { pid: p.id, cmid: c.id }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+      });
     }
     // C136: ضغطةٌ مطوّلة على التعليق ⇒ تفاعلات سريعة + ردّ · نسخ · تعديل · حذف (بدل تحديد النصّ)
     function cMenu(c) {
@@ -3295,7 +3298,7 @@
     ov.dir = isAr() ? "rtl" : "ltr"; document.body.appendChild(ov);
     var top = mk("div", "display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;border-bottom:1px solid " + T.border);
     var x = mk("button", "width:38px;height:38px;border-radius:50%;border:0;background:" + T.bg + ";display:flex;align-items:center;justify-content:center;color:" + T.text); x.appendChild(moIcon(MI.x, 20));
-    x.onclick = function () { if (busy) return; if ((ta.value.trim() || media.length || poll || loc) && !global.confirm(L("تجاهل هذه اللحظة؟", "Discard this moment?"))) return; close(); };
+    x.onclick = function () { if (busy) return; if (!(ta.value.trim() || media.length || poll || loc)) { close(); return; } confirmSheet(L("تجاهل هذه اللحظة؟", "Discard this moment?"), { ok: L("تجاهل", "Discard"), cancel: L("متابعة الكتابة", "Keep editing"), danger: true }).then(function (ok) { if (ok) close(); }); };   // C289
     top.appendChild(x); top.appendChild(mk("div", "flex:1;font:800 17px var(--sawa-font,system-ui)", L("لحظة جديدة", "New moment")));
     var post = mk("button", "height:38px;border-radius:19px;border:0;padding:0 18px;background:" + T.primary + ";color:#fff;font:800 14px var(--sawa-font,system-ui)", L("نشر", "Post"));
     top.appendChild(post); ov.appendChild(top);
@@ -3595,7 +3598,7 @@
         var add = mk("button", "border:0;border-radius:14px;padding:12px 14px;background:rgba(255,255,255,.14);color:#fff;font:800 14px var(--sawa-font,system-ui)", "＋");
         add.onclick = function () { close(); storyComposer(); };
         var del = mk("button", "border:0;border-radius:14px;padding:12px 14px;background:rgba(239,68,68,.3);color:#fff;font:800 14px var(--sawa-font,system-ui)", "🗑");
-        del.onclick = function () { pause(true); if (!global.confirm(L("حذف هذه القصّة؟", "Delete this story?"))) { pause(false); return; } call("story.delete", { sid: it.id }).then(function () { toast(L("حُذفت", "Deleted")); close(); }).catch(function (e) { toast((e && e.message) || String(e)); pause(false); }); };
+        del.onclick = function () { pause(true); confirmSheet(L("حذف هذه القصّة؟", "Delete this story?"), { ok: L("حذف", "Delete"), danger: true }).then(function (ok) { if (!ok) { pause(false); return; } call("story.delete", { sid: it.id }).then(function () { toast(L("حُذفت", "Deleted")); close(); }).catch(function (e) { toast((e && e.message) || String(e)); pause(false); }); }); };   // C289
         foot.appendChild(sv); foot.appendChild(add); foot.appendChild(del);
         stSeenCount(it, sv);
       } else {
@@ -4431,6 +4434,34 @@
     ov.onclick = function (e) { if (e.target === ov) api.close(); };
     return api;
   }
+  // C289: بديلا confirm() وprompt() الأصليّين — كانا يظهران بنافذة المتصفّح (وفي تطبيقَي أندرويد وiOS بعنوان الموقع) وبلا الوضع الداكن.
+  //   confirmSheet تُرجع Promise<boolean>؛ الإغلاق بلمس الخلفيّة = لا. opts: { ok, cancel, danger }
+  function confirmSheet(msg, opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      var s = sheet(opts.title || ""), done = false;
+      s.ov.style.zIndex = "2147483647";   // فوق كلّ النوافذ (عارض القصص واللحظات أعلى من النافذة العاديّة)
+      var fin = function (v) { if (done) return; done = true; s.close(); resolve(v); };
+      s.ov.onclick = function (e) { if (e.target === s.ov) fin(false); };
+      s.box.appendChild(mk("div", "font:600 15px/1.8 var(--sawa-font,system-ui);text-align:center;margin:4px 4px 14px;white-space:pre-line", msg));
+      var y = mkBtn(opts.ok || L("تأكيد", "Confirm"), opts.danger ? "danger" : "primary");
+      var n = mkBtn(opts.cancel || L("إلغاء", "Cancel"));
+      n.style.marginTop = "8px";
+      y.onclick = function () { fin(true); }; n.onclick = function () { fin(false); };
+      s.box.appendChild(y); s.box.appendChild(n);
+      try { y.focus(); } catch (e) {}
+    });
+  }
+  // نسخٌ يدويّ حين يرفض المتصفّح الحافظة: النصّ محدَّدٌ في حقلٍ للقراءة فقط
+  function copySheet(text) {
+    var s = sheet(L("انسخ النصّ", "Copy the text")); s.ov.style.zIndex = "2147483647";
+    var f = mk("textarea", "width:100%;box-sizing:border-box;min-height:84px;border:1.5px solid #dfe5ec;border-radius:12px;padding:10px;font:500 14px/1.6 ui-monospace,Menlo,monospace;direction:ltr;resize:none;background:#f8fafc;color:#1A1A2E");
+    f.readOnly = true; f.value = text;
+    s.box.appendChild(note(L("المس النصّ مطوّلاً ثمّ اختر «نسخ».", "Long-press the text, then choose Copy.")));
+    s.box.appendChild(f);
+    var c = mkBtn(L("تمّ", "Done"), "primary"); c.style.marginTop = "10px"; c.onclick = s.close; s.box.appendChild(c);
+    setTimeout(function () { try { f.focus(); f.select(); } catch (e) {} }, 50);
+  }
   function note(text, color, bg) { return mk("div", "font:500 12.5px/1.7 var(--sawa-font,system-ui);color:" + (color || "#5b6b7c") + ";" + (bg ? "background:" + bg + ";border-radius:10px;padding:8px 10px;" : "") + "margin:6px 0", text); }
   function avatar(name, size) {
     size = size || 52;
@@ -4438,8 +4469,8 @@
   }
   function copyText(t) {
     var done = function () { toast(L("نُسخ ✓", "Copied ✓")); };
-    try { if (navigator.clipboard) return navigator.clipboard.writeText(t).then(done, function () { global.prompt(L("انسخ:", "Copy:"), t); }); } catch (e) {}
-    global.prompt(L("انسخ:", "Copy:"), t);
+    try { if (navigator.clipboard) return navigator.clipboard.writeText(t).then(done, function () { copySheet(t); }); } catch (e) {}
+    copySheet(t);
   }
   function shareText(t) {
     try { if (NB() && NB().share) { NB().share("سوا", t); return Promise.resolve(); } } catch (e) {}   // C84: WebView لا يعرف navigator.share
@@ -4970,7 +5001,9 @@
       }).catch(function (e) { cb.checked = !v; toast(codeErr(e)); });
     };
     reset.onclick = function () {
-      if (!global.confirm(L("تغيير رمزك؟ الرمز القديم يتوقّف فوراً.", "Change your code? The old one stops working."))) return;
+      confirmSheet(L("تغيير رمزك؟ الرمز القديم يتوقّف فوراً.", "Change your code? The old one stops working."), { ok: L("تغيير الرمز", "Change code"), danger: true }).then(function (ok) { if (ok) doReset(); });   // C289
+    };
+    var doReset = function () {
       reset.disabled = true;
       call("code.reset", {}).then(function (b) {
         state.me = Object.assign({}, state.me || {}, { code: b.code, findable: b.findable }); lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
@@ -6466,6 +6499,7 @@
   }
 
   global.SawaChat = {
+    confirm: confirmSheet, copySheet: copySheet,   // C289
     build: CHAT_BUILD,   // C160
     version: VERSION,
     bindApp: bindApp, refresh: refresh, contacts: contacts,

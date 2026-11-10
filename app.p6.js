@@ -186,7 +186,7 @@ function ScheduledRoomsScreen({ rooms = [], onJoin, onCancel, onNew, onBack }) {
     const list = [...rooms].map((r) => ({ r, st: roomStatus(r, now) })).filter((x) => x.st.k !== "past" || now - (x.r.end || x.r.at + 3600000) < 6 * 3600000)
         .sort((a, b) => (a.st.k === "past") - (b.st.k === "past") || a.r.at - b.r.at);
     const linkOf = (r) => r.link || (window.SawaRTC && window.SawaRTC.roomLink ? window.SawaRTC.roomLink(r.code) : "?room=" + r.code);
-    const copy = (r) => { const l = linkOf(r); try { navigator.clipboard.writeText(l).then(() => showToast(tl("نُسخ الرابط ✓", "Link copied ✓"), "success"), () => window.prompt(tl("انسخ الرابط:", "Copy:"), l)); } catch (e) { window.prompt(tl("انسخ الرابط:", "Copy:"), l); } };
+    const copy = (r) => { const l = linkOf(r); try { navigator.clipboard.writeText(l).then(() => showToast(tl("نُسخ الرابط ✓", "Link copied ✓"), "success"), () => sawaCopyBox(l)); } catch (e) { sawaCopyBox(l); } };
     const share = (r) => { const l = linkOf(r), txt = tl("أدعوك إلى غرفة سوا «" + r.title + "» — ", "Join my Sawa room «" + r.title + "» — ") + new Date(r.at).toLocaleString(loc(), { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
         try { if (window.SawaRTC && window.SawaRTC.schedPublish) { window.SawaRTC.schedPublish({ code: r.code, title: r.title, at: r.at }); return; } } catch (e) { }
         try { if (navigator.share) { navigator.share({ title: r.title, text: txt, url: l }).catch(() => { }); return; } } catch (e) { } copy(r); };
@@ -217,7 +217,7 @@ function ScheduledRoomsScreen({ rooms = [], onJoin, onCancel, onNew, onBack }) {
                     React.createElement("button", { onClick: () => share(r), className: `flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2.5 px-3.5 border`, style: { borderColor: colors.primary } },
                         React.createElement(Share2, { size: 14, color: colors.primary }),
                         React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.primary } }, tl("نشر", "Share"))),
-                    React.createElement("button", { "aria-label": r.mine === false ? tl("إزالة من مواعيدي", "Remove") : tl("إلغاء الموعد", "Cancel"), onClick: () => { if (window.confirm(r.mine === false ? tl("إزالة «" + r.title + "» من مواعيدك؟", "Remove «" + r.title + "»?") : tl("إلغاء موعد «" + r.title + "» للجميع؟", "Cancel «" + r.title + "» for everyone?"))) onCancel(r.id); }, className: "rounded-xl py-2 px-3 border", style: { borderColor: colors.danger } },
+                    React.createElement("button", { "aria-label": r.mine === false ? tl("إزالة من مواعيدي", "Remove") : tl("إلغاء الموعد", "Cancel"), onClick: () => { sawaConfirm(r.mine === false ? tl("إزالة «" + r.title + "» من مواعيدك؟", "Remove «" + r.title + "»?") : tl("إلغاء موعد «" + r.title + "» للجميع؟", "Cancel «" + r.title + "» for everyone?"), { ok: r.mine === false ? tl("إزالة", "Remove") : tl("إلغاء الموعد", "Cancel it"), cancel: tl("رجوع", "Back"), danger: true }).then((ok) => { if (ok) onCancel(r.id); }); }, className: "rounded-xl py-2 px-3 border", style: { borderColor: colors.danger } },
                         React.createElement(Trash2, { size: 14, color: colors.danger })))))))));
 }
 function SpeedDialScreen({ speedDialContacts, onUpdate, onCall, onBack }) {
@@ -343,10 +343,11 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 overflow-y-auto relative", style: { backgroundColor: colors.bg } },
         React.createElement("div", { style: { display: "flex", flexDirection: isRTL() ? "row" : "row-reverse", direction: "ltr", alignItems: "center", padding: "1rem 1rem 0 1rem" } },
             React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: isRTL() ? "row" : "row-reverse", justifyContent: "flex-start", alignItems: "center", gap: 8 } },
-                React.createElement("button", { "aria-label": t("khyarat"), onClick: () => setShowMenu(!showMenu), className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: colors.bg } },
-                    React.createElement(MoreVertical, { size: 18, color: colors.textMuted })),
-                React.createElement("button", { "aria-label": t("bhth"), onClick: () => setCallQ((q) => q === null ? "" : null), className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: callQ !== null ? colors.primaryLight : colors.bg } },
-                    React.createElement(Search, { size: 16, color: callQ !== null ? colors.primary : colors.textMuted }))),
+                // C289: أزرار الرأس بنمط «المحادثات» نفسه (40 بكسل بإطار) — كانت 36 بلا إطار فيختلف الرأس بين التبويبات
+                React.createElement("button", { "aria-label": t("khyarat"), onClick: () => setShowMenu(!showMenu), className: "w-10 h-10 rounded-full flex items-center justify-center border", style: { borderColor: showMenu ? colors.primary : colors.border, backgroundColor: showMenu ? colors.primary : "transparent" } },
+                    React.createElement(MoreVertical, { size: 22, color: showMenu ? "#fff" : colors.textMuted })),
+                React.createElement("button", { "aria-label": t("bhth"), "aria-expanded": callQ !== null, onClick: () => setCallQ((q) => q === null ? "" : null), className: "w-10 h-10 rounded-full flex items-center justify-center border", style: { borderColor: callQ !== null ? colors.primary : colors.border, backgroundColor: "transparent" } },
+                    React.createElement(Search, { size: 20, color: callQ !== null ? colors.primary : colors.textMuted }))),
             React.createElement("div", { style: { flex: 1, display: "flex", justifyContent: "center" } }),
             React.createElement("div", { style: { flex: 1, display: "flex", justifyContent: isRTL() ? "flex-end" : "flex-start" } },
                 React.createElement("h2", { dir: isRTL() ? "rtl" : "ltr", className: "text-xl font-extrabold", style: { color: colors.text } }, t("mkalmat")))),
@@ -397,7 +398,7 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
         React.createElement("div", { className: "px-4 pt-5 pb-1" },
             React.createElement("span", { className: "text-[15px] font-bold", style: { color: colors.text } }, t("alhdytha"))),
         React.createElement("div", { className: "pb-20" },
-            callLog.length === 0 && React.createElement(EmptyState, { icon: Phone, label: t("la_twjd_mkalmat_bad") }),
+            callLog.length === 0 && React.createElement(EmptyState, { icon: Phone, label: t("la_twjd_mkalmat_bad"), desc: tl("مكالماتك الصوتيّة والمرئيّة تظهر هنا. ابدأ بالزرّ «مكالمة» في الأعلى.", "Your voice and video calls appear here. Tap Call above to start one.") }),
             callQ && callLog.length > 0 && !callLog.some((c) => callMatch(c, callQ)) && React.createElement("p", { className: "text-sm text-center py-8", style: { color: colors.textMuted } }, tl("لا توجد مكالمات مطابقة", "No matching calls")),
             callLog.filter((c) => !callQ || callMatch(c, callQ)).map((c) => {
                 const Icon = callTypeIcons[c.type] || Phone;   // C232: نوعٌ غير معروف (سجلّ قديم محفوظ) كان يُسقط الشاشة كلّها
@@ -514,9 +515,9 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
             React.createElement("div", { className: "flex flex-row items-center justify-between mb-3" },
                 React.createElement("div", { className: "flex flex-row items-center gap-2" },
                     React.createElement("h2", { className: "text-xl font-extrabold", style: { color: colors.text } }, t("jhat_atsal")),
-                    React.createElement("span", { className: "text-xs font-bold px-2 py-0.5 rounded-full", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, contacts.length)),
-                SC && SC.codeSheet && React.createElement("button", { "aria-label": tl("رمزي في سوا", "My Sawa code"), onClick: () => SC.codeSheet(), className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: colors.btnFill } },
-                    React.createElement(QrCode, { size: 17, color: colors.primary }))),
+                    contacts.length > 0 && React.createElement("span", { className: "text-xs font-bold px-2 py-0.5 rounded-full", style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, contacts.length)),   // C289: بلا «0» في القائمة الفارغة
+                SC && SC.codeSheet && React.createElement("button", { "aria-label": tl("رمزي في سوا", "My Sawa code"), onClick: () => SC.codeSheet(), className: "w-10 h-10 rounded-full flex items-center justify-center border", style: { borderColor: colors.border, backgroundColor: "transparent" } },   // C289: بنمط أزرار الرأس
+                    React.createElement(QrCode, { size: 20, color: colors.textMuted }))),
             React.createElement("div", { className: "flex flex-row items-center gap-2 px-3 py-2.5 rounded-2xl", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                 React.createElement(Search, { size: 15, color: colors.textMuted }),
                 React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: search, onChange: (e) => setSearch(e.target.value), placeholder: tl("ابحث بالاسم أو التسمية", "Search by name"), className: "flex-1 bg-transparent text-sm outline-none", style: { color: colors.text, minWidth: 0 } }),
@@ -547,11 +548,11 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
                 React.createElement("div", { className: "w-16 h-16 rounded-full flex items-center justify-center mb-3", style: { backgroundColor: colors.primaryLight } },
                     React.createElement(Users, { size: 28, color: colors.primary })),
                 React.createElement("div", { className: "text-base font-extrabold mb-1.5", style: { color: colors.text } }, t("ct_none_title")),
-                React.createElement("p", { className: "text-xs leading-relaxed mb-4", style: { color: colors.textMuted } }, t("ct_none_desc")),
+                React.createElement("p", { className: "text-sm leading-relaxed mb-4", style: { color: colors.textMuted } }, t("ct_none_desc")),
                 React.createElement(Button, { icon: UserPlus, label: t("ct_add_title"), onPress: () => setShowAddModal(true) }))),
             contacts.length > 0 && filtered.length === 0 && (React.createElement(EmptyState, { icon: view === "online" ? Wifi : Search, label: view === "online" && !q ? tl("لا أحد متّصل الآن", "Nobody is online right now") : t("la_twjd_ntayj") }))),
         !search && view === "all" && sawaContacts.length >= 40 && letters.length > 6 && (React.createElement("div", { className: "absolute top-1/2 flex flex-col gap-0.5",   /* C197: للقوائم الطويلة فقط (كان يظهر مع 12 اسماً) */ style: { [isRTL() ? "left" : "right"]: 4, transform: "translateY(-50%)", zIndex: 10 } }, letters.map((l) => (React.createElement("button", { key: l, onClick: () => { var _a; (_a = sectionRefs.current[l]) === null || _a === void 0 ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "start" }); }, className: "w-7 h-7 flex items-center justify-center rounded-full text-[12px] font-extrabold", style: { color: colors.primary } }, l))))),
-        React.createElement("button", { "aria-label": t("idafa_mshark"), onClick: () => setShowAddModal(true), className: "absolute flex items-center justify-center rounded-full shadow-lg", style: { bottom: 20, [isRTL() ? "left" : "right"]: 20, width: 52, height: 52, backgroundColor: colors.primary, zIndex: 10 } },
+        contacts.length > 0 && React.createElement("button", { "aria-label": t("idafa_mshark"), onClick: () => setShowAddModal(true), className: "absolute flex items-center justify-center rounded-full shadow-lg", style: { bottom: 20, [isRTL() ? "left" : "right"]: 20, width: 52, height: 52, backgroundColor: colors.primary, zIndex: 10 } },
             React.createElement(UserPlus, { size: 22, color: "#fff" })),
         showAddModal && (React.createElement(AddContactSheet, { colors: colors, onClose: () => setShowAddModal(false) })),
         selected && !selected.onSawa && (React.createElement(NonSawaContactSheet, { contact: selected, colors: colors, onClose: close })),
@@ -610,7 +611,7 @@ function ContactRow({ contact, isOnline, blocked, colors, onPress, showInvite })
             React.createElement("div", { className: "text-sm font-bold truncate", style: { color: colors.text } }, contact.name),
             React.createElement("div", { className: "text-xs mt-0.5 truncate", style: { color: blocked ? colors.danger : isOnline ? "#16A34A" : colors.textMuted } }, blocked ? tl("محظور", "Blocked") : ctSubNode(contact, contactSubtitle(contact, isOnline)))),
         blocked && React.createElement(Ban, { size: 15, color: colors.danger }),
-        showInvite && (React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("dawa")))));
+        showInvite && (React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0", style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, t("dawa")))));
 }
 // C175: مشاركة جهة اتّصال خارج سوا (واتساب · رسالة · بريد…) — بطاقة vCard إن عُرف رقمه، وإلّا نصٌّ فيه رمز سوا ورابط إضافته
 function shareContactOut(contact) {

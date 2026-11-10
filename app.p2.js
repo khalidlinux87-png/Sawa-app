@@ -417,8 +417,20 @@ function PinKeypad({ onDigit, onBackspace, onBiometric, showBiometric }) {
         return (React.createElement("button", { key: k, onClick: () => onDigit(k), className: "w-16 h-16 rounded-full flex items-center justify-center m-2 text-2xl font-semibold", style: { color: colors.text } }, k));
     }))))));
 }
-function EmptyState({ icon: Icon, label }) {
+// C289: بدائل confirm/alert/prompt الأصليّة (نافذة المتصفّح بعنوان الموقع وبلا الوضع الداكن) — نافذة سوا السفليّة من sawa-chat، والأصليّ احتياطاً إن لم تُحمَّل.
+function sawaConfirm(msg, opts) { try { const C = window.SawaChat; if (C && C.confirm) return C.confirm(msg, opts || {}); } catch (e) { } return Promise.resolve(window.confirm(msg)); }
+function sawaNotice(msg) { try { const S = window.SawaSync; if (S && S.toast) { S.toast(msg); return; } } catch (e) { } window.alert(msg); }
+function sawaCopyBox(text) { try { const C = window.SawaChat; if (C && C.copySheet) { C.copySheet(text); return; } } catch (e) { } window.prompt("", text); }
+// C289: مع desc (وزرٍّ اختياريّ action) تصير حالةً فارغةً واضحة بنمط «جهات الاتّصال»: أيقونة في دائرة، عنوان، شرح، وخطوةٌ تالية.
+//   بلا desc تبقى كما كانت (لنتائج البحث والتصفية).
+function EmptyState({ icon: Icon, label, desc, action }) {
     const { colors } = useTheme();
+    if (desc) return (React.createElement("div", { className: "px-6 pt-10 pb-6 flex flex-col items-center text-center" },
+        React.createElement("div", { className: "w-16 h-16 rounded-full flex items-center justify-center mb-3", style: { backgroundColor: colors.primaryLight } },
+            React.createElement(Icon, { size: 28, color: colors.primary, "aria-hidden": true })),
+        React.createElement("div", { className: "text-base font-extrabold mb-1.5", style: { color: colors.text } }, label),
+        React.createElement("p", { className: "text-sm leading-relaxed", style: { color: colors.textMuted, maxWidth: 320 } }, desc),
+        action && React.createElement("div", { className: "mt-4 w-full", style: { maxWidth: 320 } }, React.createElement(Button, { icon: action.icon, label: action.label, onPress: action.onPress }))));
     return (React.createElement("div", { className: "flex flex-col items-center justify-center py-16 px-6" },
         React.createElement(Icon, { size: 30, color: colors.border }),
         React.createElement("p", { className: "text-xs text-center mt-2", style: { color: colors.textMuted } }, label)));
@@ -1180,7 +1192,7 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         // C39: تثبيت التطبيق على الشاشة الرئيسيّة — يظهر فقط حين يُفتح سوا من المتصفّح على هاتف
         ...(SCm && SCm.installable && SCm.installable() ? [{ key: "install", label: tl("ثبّت سوا على هاتفك", "Install Sawa on your phone"), icon: Download, onPress: () => SCm.installSheet(), color: "#2774BA" }] : []),
         { key: "feedback", label: t("me_arsl_mlahza"), icon: Send, onPress: onOpenFeedback, color: "#10B981" },
-        { key: "settings", label: t("me_iadadat_almlf"), icon: MoreHorizontal, onPress: onOpenSettings },
+        { key: "settings", label: t("me_iadadat_almlf"), icon: SettingsIcon, onPress: onOpenSettings },   // C289: ترس الإعدادات (كانت «⋯» وهي تعني «المزيد»)
         { key: "notifications", label: RELEASE_UI ? tl("التذكيرات", "Reminders") : t("me_mrkz_altnbyhat"), icon: BellIcon, onPress: onOpenNotifications },
         // ⛔ الأجهزة المرتبطة ربطُ محادثات، والإحصائيات إحصاءُ رسائل
         // ومكالمات — كلاهما خارج صلة الرحم فيُسحبان من أرحام.
@@ -1375,7 +1387,7 @@ function ReferralSection({ myCode, redeemedCode, onRedeem }) {
             React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-1` },
                 React.createElement("span", { className: "text-xs font-bold", style: { color: colors.textMuted } }, t("rmzk_alkhas")),
                 React.createElement("button", { onClick: handleCopy, className: "text-[10px] font-bold", style: { color: colors.primary } }, copied ? t("ps_tm_alnskh") : t("ps_nskh"))),
-            React.createElement("div", { className: "rounded-xl border px-3 py-2 text-center font-extrabold tracking-widest mb-3", style: { borderColor: colors.border, color: colors.primary, backgroundColor: colors.primaryLight } }, myCode),
+            React.createElement("div", { className: "rounded-xl border px-3 py-2 text-center font-extrabold tracking-widest mb-3", style: { borderColor: colors.border, color: colors.primaryInk, backgroundColor: colors.primaryLight } }, myCode),
             React.createElement("span", { className: "text-xs font-bold block mb-1.5", style: { color: colors.textMuted } }, t("andk_rmz_mn_sdyq")),
             React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                 React.createElement("input", { dir: "ltr", value: codeInput, onChange: (e) => setCodeInput(e.target.value), placeholder: "SAWA-XXXXX", disabled: !!redeemedCode, className: "flex-1 border rounded-xl px-3 py-2 text-sm text-center tracking-widest", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card, opacity: redeemedCode ? 0.5 : 1 } }),
