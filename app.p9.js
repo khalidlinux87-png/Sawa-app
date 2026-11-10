@@ -37,6 +37,7 @@ const AccountantScreen = (function () {
         not_payable: ["لا يمكن تسجيل دفعة على هذه الفاتورة", "Payments can't be recorded on this invoice"],
         bad_items: ["أكمل وصف كلّ بندٍ وسعره", "Give every line a description and a price"],
         bad_client: ["اكتب اسم العميل", "Enter the client's name"],
+        bad_sawa_id: ["رمز سوا عشرة أرقام، مثل 136-860-8541", "A Sawa ID is 10 digits, like 136-860-8541"],
         bad_logo: ["الشعار يجب أن يكون صورة PNG أو JPEG أو WebP صغيرة", "The logo must be a small PNG, JPEG or WebP image"],
         bad_account: ["تحقّق من بيانات الحساب (الرقم أو الآيبان)", "Check the account details (number or IBAN)"],
         bad_prefix: ["البادئة حروف إنجليزيّة كبيرة أو أرقام، حتّى 8", "The prefix is up to 8 capital letters or digits"],
@@ -698,7 +699,7 @@ const AccountantScreen = (function () {
         const { colors } = useTheme();
         const [biz, setBiz] = useState(null);
         const [cur, setCur] = useState(inv ? inv.currency : null);
-        const [client, setClient] = useState(inv ? inv.client : { name: "", contact: "", taxId: "" });
+        const [client, setClient] = useState(Object.assign({ name: "", contact: "", taxId: "", address: "", phone: "", sawaId: "" }, inv ? inv.client : {}));
         const [items, setItems] = useState(null);
         const [disc, setDisc] = useState(inv && inv.invoiceDiscount && inv.invoiceDiscount.type === "pct" ? inv.invoiceDiscount.rate : "");
         const [issue, setIssue] = useState(inv ? inv.issueDate : today), [due, setDue] = useState(inv ? inv.dueDate : null);
@@ -729,7 +730,7 @@ const AccountantScreen = (function () {
         const save = (andSend) => {
             if (andSend && !window.confirm(tl("ستأخذ الفاتورة رقماً ولن تُعدَّل بعد الإرسال. متابعة؟", "The invoice gets its number and can't be edited after sending. Continue?"))) return;
             setBusy(true); setErr("");
-            const p = { currency: cur, client: { name: client.name.trim(), contact: client.contact.trim(), taxId: client.taxId.trim() }, items: payloadItems(), invoiceDiscount: discount(),
+            const p = { currency: cur, client: { name: client.name.trim(), contact: (client.contact || "").trim(), taxId: (client.taxId || "").trim(), address: (client.address || "").trim(), phone: (client.phone || "").trim(), sawaId: (client.sawaId || "").trim() }, items: payloadItems(), invoiceDiscount: discount(),
                 issueDate: issue, dueDate: due, allowPartial: partial, payoutAccountIds: accts, notes: notes.trim(), lang };
             (inv ? call("inv.update", Object.assign({ id: inv.id, rev: inv.rev }, p)) : call("inv.create", p))
                 .then((r) => (andSend ? call("inv.send", { id: r.invoice.id }) : r))
@@ -741,7 +742,10 @@ const AccountantScreen = (function () {
         return h(Sheet, { title: inv ? tl("تعديل المسوّدة", "Edit draft") : tl("فاتورة جديدة", "New invoice"), onClose },
             h(Field, { label: tl("العميل", "Client") },
                 h("input", { dir: "auto", value: client.name, maxLength: 120, placeholder: tl("الاسم", "Name"), onChange: (e) => setClient(Object.assign({}, client, { name: e.target.value })), style: Object.assign(inputStyle(colors), { marginBottom: 8 }) }),
-                h("input", { dir: "auto", value: client.contact, maxLength: 120, placeholder: tl("هاتف أو بريد (اختياريّ)", "Phone or email (optional)"), onChange: (e) => setClient(Object.assign({}, client, { contact: e.target.value })), style: Object.assign(inputStyle(colors), { marginBottom: 8 }) }),
+                h("input", { dir: "ltr", type: "tel", inputMode: "tel", value: client.phone, maxLength: 30, placeholder: tl("الهاتف (اختياريّ)", "Phone (optional)"), "aria-label": tl("هاتف العميل", "Client phone"), onChange: (e) => setClient(Object.assign({}, client, { phone: e.target.value })), style: Object.assign(inputStyle(colors), { marginBottom: 8, textAlign: ar() ? "right" : "left" }) }),
+                h("input", { dir: "auto", value: client.contact, maxLength: 120, placeholder: tl("البريد الإلكترونيّ (اختياريّ)", "Email (optional)"), "aria-label": tl("بريد العميل", "Client email"), onChange: (e) => setClient(Object.assign({}, client, { contact: e.target.value })), style: Object.assign(inputStyle(colors), { marginBottom: 8 }) }),
+                h("input", { dir: "auto", value: client.address, maxLength: 200, placeholder: tl("العنوان (اختياريّ)", "Address (optional)"), "aria-label": tl("عنوان العميل", "Client address"), onChange: (e) => setClient(Object.assign({}, client, { address: e.target.value })), style: Object.assign(inputStyle(colors), { marginBottom: 8 }) }),
+                h("input", { dir: "ltr", inputMode: "numeric", value: client.sawaId, maxLength: 14, placeholder: tl("رمز سوا للعميل (اختياريّ)", "Client's Sawa ID (optional)"), "aria-label": tl("رمز سوا للعميل", "Client's Sawa ID"), onChange: (e) => setClient(Object.assign({}, client, { sawaId: e.target.value.replace(/[^\d-]/g, "") })), style: Object.assign(inputStyle(colors), { marginBottom: 8, textAlign: ar() ? "right" : "left" }) }),
                 B.taxRegistered && h("input", { dir: "ltr", value: client.taxId, maxLength: 40, placeholder: tl("الرقم الضريبيّ للعميل (اختياريّ)", "Client tax ID (optional)"), onChange: (e) => setClient(Object.assign({}, client, { taxId: e.target.value })), style: inputStyle(colors) })),
             h(Field, { label: tl("العملة", "Currency") }, h("select", { value: cur, onChange: (e) => setCur(e.target.value), style: inputStyle(colors) }, curs.map((c) => h("option", { key: c.code, value: c.code }, c.label)))),
             h(Field, { label: tl("البنود", "Items"), group: true },
@@ -805,17 +809,32 @@ const AccountantScreen = (function () {
     // cut into A4 pages between rows, and written as a PDF of JPEG pages. The text is drawn by the browser itself, so
     // Arabic shaping and right-to-left order are exactly what the screen shows.
     var SAWA_H2C = { src: "https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js", sri: "sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" };
-    var sawaH2cP = null;
+    var sawaH2cP = null, sawaH2cDoc = null;
+    // html2canvas measures font baselines (and runs its feature tests) in the global `document`. In the app that page has
+    // Tailwind and app styles (img display:block, line heights), the baselines came out wrong and every word was drawn
+    // ~9 px high: the header was cut off and the totals' rule ran through the text. Its `document` is this proxy, which
+    // points at the invoice's own frame while a page is drawn.
+    var sawaDocProxy = new Proxy({}, { get: function (_, k) { var d = sawaH2cDoc || window.document, v = d[k]; return typeof v === "function" ? v.bind(d) : v; } });
+    // C288: app.p1 declares `const { Image, … } = window.__L` (an icon) at the top level, and that name shadows the
+    // browser's Image in every later classic script. html2canvas loads pictures with `new Image()`, so in the app it got
+    // the icon, the logo never loaded and the invoice PDF came out without it. The library is fetched, checked against the
+    // same SRI hash a <script integrity> would use, and run with the real Image constructor (and the document proxy) passed in.
     function sawaLoadH2c() {
         if (window.html2canvas) return Promise.resolve(window.html2canvas);
         if (sawaH2cP) return sawaH2cP;
-        sawaH2cP = new Promise(function (ok, no) {
-            var s = document.createElement("script");
-            s.src = SAWA_H2C.src; s.integrity = SAWA_H2C.sri; s.crossOrigin = "anonymous"; s.referrerPolicy = "no-referrer";
-            s.onload = function () { window.html2canvas ? ok(window.html2canvas) : no(new Error("pdf_lib")); };
-            s.onerror = function () { sawaH2cP = null; no(new Error("pdf_lib")); };
-            document.head.appendChild(s);
-        });
+        sawaH2cP = fetch(SAWA_H2C.src, { mode: "cors", credentials: "omit", referrerPolicy: "no-referrer" })
+            .then(function (r) { if (!r.ok) throw new Error("pdf_lib"); return r.arrayBuffer(); })
+            .then(function (buf) {
+                return crypto.subtle.digest("SHA-384", buf).then(function (d) {
+                    var u = new Uint8Array(d), b = ""; for (var i = 0; i < u.length; i++) b += String.fromCharCode(u[i]);
+                    if ("sha384-" + btoa(b) !== SAWA_H2C.sri) throw new Error("pdf_lib");
+                    // eslint-disable-next-line no-new-func
+                    new Function("Image", "document", "module", "exports", "define", new TextDecoder().decode(buf)).call(window, window.Image, sawaDocProxy, undefined, undefined, undefined);
+                    if (!window.html2canvas) throw new Error("pdf_lib");
+                    return window.html2canvas;
+                });
+            })
+            .catch(function (e) { sawaH2cP = null; throw e && e.message === "pdf_lib" ? e : new Error("pdf_lib"); });
         return sawaH2cP;
     }
     // A4 at 96 css px per inch, with the invoice template's own print margins (16 mm × 14 mm).
@@ -859,24 +878,37 @@ const AccountantScreen = (function () {
                 var cssW = Math.round((SAWA_PAGE.w - 2 * SAWA_PAGE.mx) * SAWA_MM);
                 var f = document.createElement("iframe");
                 f.setAttribute("aria-hidden", "true"); f.setAttribute("sandbox", "allow-same-origin"); f.tabIndex = -1;
-                f.style.cssText = "position:fixed;left:-10000px;top:0;width:" + cssW + "px;height:1200px;border:0;background:#fff";
+                f.style.cssText = "position:fixed;left:-10000px;top:0;width:" + cssW + "px;height:40px;border:0;background:#fff";
+                f.style.setProperty("display", "block", "important"); f.style.setProperty("visibility", "visible", "important");   // C288: laid out even if a page rule hides iframes; 40 px tall, so the height measured is the content's
                 var done = false, cleanup = function () { try { f.remove(); } catch (e) { } };
                 var timer = setTimeout(function () { if (!done) { done = true; cleanup(); no(new Error("pdf_timeout")); } }, 45000);
                 f.onload = function () {
                     var doc = f.contentDocument;
+                    if (done) return;
+                    if (doc && doc.URL === "about:blank" && !(doc.body && doc.body.firstChild)) return;   // C288: the empty first load, not the invoice
                     if (!doc || !doc.body) { done = true; clearTimeout(timer); cleanup(); no(new Error("pdf_frame")); return; }
                     var st = doc.createElement("style");
                     st.textContent = "html,body{margin:0!important;padding:0!important;background:#fff!important;width:" + cssW + "px}";
                     doc.head.appendChild(st);
                     var fontsReady = doc.fonts && doc.fonts.ready ? doc.fonts.ready : Promise.resolve();
-                    fontsReady.then(function () {
-                        var H = Math.ceil(doc.documentElement.scrollHeight);
+                    // C288: the logo is a data: image; wait until it is decoded, or html2canvas may draw the header without it.
+                    var imgs = Array.prototype.slice.call(doc.images || []).map(function (im) {
+                        if (im.complete && im.naturalWidth) return im.decode ? im.decode().catch(function () { }) : null;
+                        return new Promise(function (r) { im.onload = im.onerror = function () { r(); }; setTimeout(r, 5000); });
+                    });
+                    Promise.all([fontsReady].concat(imgs)).then(function () {
+                        // C288: the content's own height. The frame was 1200 px tall and documentElement.scrollHeight is never
+                        // less than the frame, so a one-page invoice (≈ 1001 px of A4 content area) came out as two pages.
+                        var H = Math.ceil(Math.max(doc.body.scrollHeight, doc.body.getBoundingClientRect().bottom, 1));
                         f.style.height = H + "px";
+                        try { doc.defaultView.scrollTo(0, 0); } catch (e) { }   // C288: draw from the top of the page
                         var scale = Math.min(2, Math.max(1.5, window.devicePixelRatio || 1));
                         var breaks = sawaBreaks(doc);
-                        return h2c(doc.documentElement, { scale: scale, backgroundColor: "#ffffff", useCORS: false, logging: false, width: cssW, height: H, windowWidth: cssW, windowHeight: H }).then(function (canvas) {
+                        sawaH2cDoc = doc;   // C288: fonts are measured in the invoice's frame, not in the app page
+                        var unfix = function (x) { sawaH2cDoc = null; return x; };
+                        return h2c(doc.documentElement, { scale: scale, backgroundColor: "#ffffff", useCORS: false, logging: false, width: cssW, height: H, windowWidth: cssW, windowHeight: H, x: 0, y: 0, scrollX: 0, scrollY: 0 }).then(function (canvas) {
                             var pageH = (SAWA_PAGE.h - 2 * SAWA_PAGE.my) * SAWA_MM, pages = [], top = 0;
-                            while (top < H - 1) {
+                            while (H - top > 4) {   // C288: a sliver of a few px is not a page
                                 var end = Math.min(H, top + pageH);
                                 if (end < H) { var best = 0; for (var i = 0; i < breaks.length; i++) { var b = breaks[i]; if (b > top + pageH * 0.6 && b <= end) best = b; } if (best) end = best; }
                                 var sy = Math.round(top * scale), sh = Math.max(1, Math.round(end * scale) - sy);
@@ -887,11 +919,11 @@ const AccountantScreen = (function () {
                             }
                             done = true; clearTimeout(timer); cleanup();
                             ok(new Blob([sawaPdfBytes(pages)], { type: "application/pdf" }));
-                        });
+                        }).then(unfix, function (e) { unfix(); throw e; });
                     }).catch(function (e) { if (!done) { done = true; clearTimeout(timer); cleanup(); no(e); } });
                 };
+                f.srcdoc = html;   // C288: before the frame is attached, so its one load is the invoice
                 document.body.appendChild(f);
-                f.srcdoc = html;
             });
         });
     }
@@ -1062,8 +1094,10 @@ const AccountantScreen = (function () {
         if (!b || !form) return h(Sheet, { title: tl("بيانات النشاط", "Business details"), onClose }, err ? h("div", { role: "alert", style: { color: colors.danger } }, err) : h(Loading));
         const set = (k, v) => setForm(Object.assign({}, form, { [k]: v }));
         const curs = currencyList();
+        // C288: the user's own Sawa code (from the contacts module) fills "Sawa ID" with one tap.
+        let myCode = null; try { const me = window.SawaChat && window.SawaChat.me && window.SawaChat.me(); myCode = me && /^\d{10}$/.test(String(me.code || "")) ? String(me.code) : null; } catch (e) { }
         const save = () => { setBusy(true); setErr("");
-            call("pfm.biz.set", { name: form.name, contact: form.contact, address: form.address, taxId: form.taxId, taxRegistered: form.taxRegistered, taxLabel: form.taxLabel,
+            call("pfm.biz.set", { name: form.name, contact: form.contact, address: form.address, phone: form.phone || "", sawaId: (form.sawaId || "").trim(), taxId: form.taxId, taxRegistered: form.taxRegistered, taxLabel: form.taxLabel,
                 taxRates: form.taxRates.filter((r) => r.rate !== ""), defaultTaxRateId: form.defaultTaxRateId, invoicePrefix: (form.invoicePrefix || "INV").toUpperCase(),
                 defaultDueDays: Number(form.defaultDueDays) || 0, defaultAllowPartial: form.defaultAllowPartial, defaultInvoiceCurrency: form.defaultInvoiceCurrency,
                 defaultPayoutAccountIds: (b.accounts || []).filter((a) => !a.archived).map((a) => a.id), lang: form.lang })
@@ -1081,8 +1115,13 @@ const AccountantScreen = (function () {
                         b.logo ? tl("تغيير", "Change") : tl("اختر صورة", "Choose image"), h("input", { type: "file", accept: "image/png,image/jpeg,image/webp", onChange: pickLogo, style: { display: "none" } })),
                     b.logo && h("button", { type: "button", onClick: () => call("pfm.logo.delete").then(load), style: { border: 0, background: "none", color: colors.danger, fontWeight: 700, minHeight: 40, cursor: "pointer" } }, tl("إزالة", "Remove")))),
             inp("name", tl("اسم النشاط", "Business name"), { maxLength: 80 }),
-            inp("contact", tl("هاتف أو بريد", "Phone or email"), { maxLength: 120 }),
-            inp("address", tl("العنوان (اختياريّ)", "Address (optional)"), { maxLength: 200 }),
+            inp("phone", tl("الهاتف", "Phone"), { dir: "ltr", type: "tel", inputMode: "tel", maxLength: 30, placeholder: "+249…", style: Object.assign(inputStyle(colors), { textAlign: ar() ? "right" : "left" }) }),
+            inp("contact", tl("البريد الإلكترونيّ (اختياريّ)", "Email (optional)"), { maxLength: 120 }),
+            inp("address", tl("العنوان", "Address"), { maxLength: 200 }),
+            h(Field, { label: tl("رمز سوا", "Sawa ID"), hint: tl("يظهر على الفاتورة ليصل إليك العميل في سوا", "Shown on the invoice so the client can reach you on Sawa") },
+                h("div", { style: { display: "flex", gap: 8 } },
+                    h("input", { dir: "ltr", inputMode: "numeric", value: form.sawaId || "", maxLength: 14, placeholder: "136-860-8541", "aria-label": tl("رمز سوا", "Sawa ID"), onChange: (e) => set("sawaId", e.target.value.replace(/[^\d-]/g, "")), style: Object.assign(inputStyle(colors), { flex: 1, textAlign: ar() ? "right" : "left" }) }),
+                    myCode && myCode !== String(form.sawaId || "").replace(/\D/g, "") && h("button", { type: "button", onClick: () => set("sawaId", myCode), style: { minHeight: 40, padding: "0 12px", borderRadius: 12, border: "1px solid " + colors.border, background: "none", color: TEAL, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" } }, tl("رمزي", "My code")))),
             h(Check, { checked: form.taxRegistered, onChange: (v) => set("taxRegistered", v) }, tl("أفرض ضريبة على فواتيري", "I charge tax on my invoices")),
             form.taxRegistered && h("div", { style: { paddingInlineStart: 30, marginBottom: 8 } },
                 inp("taxId", tl("رقمي الضريبيّ", "My tax ID"), { dir: "ltr", maxLength: 40 }),
