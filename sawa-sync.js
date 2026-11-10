@@ -946,10 +946,12 @@
     if (sg) {
       // مربوطةٌ سلفاً: استبدالٌ في مكانها (تبقى المشاركة والأعضاء)
       if (roleOf(sg) !== "owner") { toast(L("استبدال الشجرة كلّها للمالك وحده", "Only the owner can replace the whole tree")); return Promise.resolve(null); }
-      var ok = global.confirm(L("استبدال نسخة الخادم بشجرة هذا الجهاز؟ ما ليس على هذا الجهاز يُزال من الخادم. المشاركة والأعضاء يبقون كما هم.",
-                                "Replace the server copy with this device's tree? Anything not on this device is removed from the server. Sharing stays as is."));
-      if (!ok) return Promise.resolve(null);
-      return doUpload(localGid, gp, rels, { groupId: sg, replace: true });
+      return ask(L("استبدال نسخة الخادم بشجرة هذا الجهاز؟ ما ليس على هذا الجهاز يُزال من الخادم. المشاركة والأعضاء يبقون كما هم.",
+                   "Replace the server copy with this device's tree? Anything not on this device is removed from the server. Sharing stays as is."),
+                 { ok: L("استبدال", "Replace"), danger: true }).then(function (ok) {   // C290
+        if (!ok) return null;
+        return doUpload(localGid, gp, rels, { groupId: sg, replace: true });
+      });
     }
     // غير مربوطة: هل الشجرة نفسها على حسابك سلفاً؟
     toast(L("أتحقّق إن كانت الشجرة مرفوعةً مسبقاً…", "Checking whether this tree is already uploaded…"));
@@ -1454,8 +1456,11 @@
     onReady(function () {
       whenApp(function () {
         // C156: «هل أنت فلان؟» قبل القبول ⇒ الخادم يربط إن كانت الدعوة لهذا الشخص نفسه (لا ربط بعد الانضمام بمجرّد الاختيار)
-        var claim = jp && global.confirm(L("دعوةٌ باسم «" + jpn + "» في شجرة العائلة — هل أنت «" + jpn + "»؟", "This invite is for «" + jpn + "» in the family tree — are you «" + jpn + "»?")) ? jp : null;
-        call("invite.accept", { token: tok, claim: claim || undefined }).then(function (b) {
+        // C290: السؤال بنافذة سوا (كان confirm()) — «نعم» يربطه بالشخص، و«لا» ينضمّ فقط
+        (jp ? ask(L("دعوةٌ باسم «" + jpn + "» في شجرة العائلة — هل أنت «" + jpn + "»؟", "This invite is for «" + jpn + "» in the family tree — are you «" + jpn + "»?"),
+                  { ok: L("نعم، أنا «" + jpn + "»", "Yes, I'm «" + jpn + "»"), cancel: L("لا، انضمّ فقط", "No, just join") }) : Promise.resolve(false)).then(function (yes) {
+        var claim = yes ? jp : null;
+        return call("invite.accept", { token: tok, claim: claim || undefined }).then(function (b) {
           var rp = Promise.resolve(restoreGroup(b.groupId, b.name, b.role));
           toast(L("انضممتَ إلى «" + (b.name || "العائلة") + "» (" + roleLabel(b.role) + ") ✓",
                   "Joined «" + (b.name || "family") + "» (" + roleLabel(b.role) + ") ✓"));
@@ -1472,7 +1477,8 @@
           var m = (e && e.message) || "";
           LOG.warn("join.fail", { err: m });
           var t = joinErr(m); toast(t);
-          if (/removed from this family/.test(m)) try { global.alert(t); } catch (x) {}
+          if (/removed from this family/.test(m)) ask(t, { ok: L("حسناً", "OK"), noCancel: true });   // C290
+        });
         }).then(function () {
           try { var u = new URL(global.location.href); u.searchParams.delete("join"); u.searchParams.delete("p"); u.searchParams.delete("pn"); global.history.replaceState(null, "", u.toString()); } catch (e) {}
         });
@@ -1504,24 +1510,27 @@
   }
   function deleteGroup(sg) {
     var g = (myGroups || []).filter(function (x) { return x.groupId === sg; })[0] || { name: "", personCount: 0 };
-    var ok = global.confirm(L(
+    ask(L(
       "حذف «" + g.name + "» (" + fmtNum(g.personCount) + " شخصاً، أُنشئت " + fmtWhen(g.createdTs) + ") من الخادم؟\n" +
       "يفقد كلّ من شاركتها معهم الوصول إليها، وتتوقّف روابط دعوتها. نسخ الأجهزة المحلّية لا تُحذف.",
       "Delete «" + g.name + "» (" + g.personCount + " people, created " + fmtWhen(g.createdTs) + ") from the server?\n" +
-      "Everyone you shared it with loses access and its invite links stop working. Local copies on devices stay."));
+      "Everyone you shared it with loses access and its invite links stop working. Local copies on devices stay."), { ok: L("حذف من الخادم", "Delete from server"), danger: true }).then(function (ok) {   // C290
     if (!ok) return;
     call("group.delete", { groupId: sg }).then(function () {
       unmap(sg);
       toast(L("حُذفت العائلة من الخادم ✓", "Family deleted from the server ✓"));
       refreshMyGroups(); renderPanel();
     }).catch(function (e) { toast(L("تعذّر الحذف: ", "Couldn't delete: ") + ((e && e.message) || e)); });
+    });
   }
   function leaveGroup(sg) {
     var g = (myGroups || []).filter(function (x) { return x.groupId === sg; })[0] || { name: "" };
-    if (!global.confirm(L("مغادرة «" + g.name + "»؟ لن تصلك تحديثاتها بعد الآن.", "Leave «" + g.name + "»? You'll stop receiving its updates."))) return;
+    ask(L("مغادرة «" + g.name + "»؟ لن تصلك تحديثاتها بعد الآن.", "Leave «" + g.name + "»? You'll stop receiving its updates."), { ok: L("مغادرة", "Leave"), danger: true }).then(function (ok) {   // C290
+    if (!ok) return;
     call("group.leave", { groupId: sg }).then(function () {
       unmap(sg); toast(L("غادرتَ العائلة ✓", "You left the family ✓")); refreshMyGroups(); renderPanel();
     }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+    });
   }
   function groupName(lg) {
     var groups = lastGroups || lsRead("familyGroups", []);
@@ -1614,10 +1623,10 @@
         else if (act === "rv-reject") resolveReview(t.getAttribute("data-rid"), "reject");
         else if (act === "relink-new") {
           var cg = currentLocalGid(), csg = serverGid(cg);
-          if (csg && global.confirm(L("فكّ ربط هذه العائلة بنسختها القديمة ورفعها كعائلةٍ جديدة على الحساب الحاليّ؟",
-                                      "Unlink this family from its old copy and upload it as a new family on the current account?"))) {
-            unmap(csg); uploadCurrent();
-          }
+          if (csg) ask(L("فكّ ربط هذه العائلة بنسختها القديمة ورفعها كعائلةٍ جديدة على الحساب الحاليّ؟",
+                         "Unlink this family from its old copy and upload it as a new family on the current account?"), { ok: L("رفعها كعائلةٍ جديدة", "Upload as new") }).then(function (ok) {   // C290
+            if (ok) { unmap(csg); uploadCurrent(); }
+          });
         }
         else if (act === "leave") leaveGroup(t.getAttribute("data-gid"));
         else if (act === "share-viewer") shareLink("viewer");
@@ -1728,6 +1737,12 @@
   }
 
   // C196: رسالة خطأٍ يفهمها المستخدم بدل نصّ Firebase الخامّ بالإنجليزيّة (يبقى الخامّ في السجلّ LOG).
+  // C290: التأكيد بنافذة سوا (sawa-chat) بدل confirm()/alert() — Promise<boolean>؛ والأصليّ احتياطاً إن لم تُحمَّل
+  function ask(msg, opts) {
+    try { if (global.SawaChat && global.SawaChat.confirm) return global.SawaChat.confirm(msg, opts || {}); } catch (e) {}
+    if (opts && opts.noCancel) { try { global.alert(msg); } catch (e) {} return Promise.resolve(true); }
+    return Promise.resolve(global.confirm(msg));
+  }
   // C289: نسخٌ يدويّ بنافذة سوا (sawa-chat) بدل prompt() الأصليّ
   function copyBox(t) { try { if (global.SawaChat && global.SawaChat.copySheet) { global.SawaChat.copySheet(t); return; } } catch (e) {} global.prompt(L("انسخ الرابط:", "Copy the link:"), t); }
   function friendlyErr(e) {

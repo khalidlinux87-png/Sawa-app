@@ -4,18 +4,18 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v472';
+const VERSION = 'sawa-v473';
 // C197: سجلّ منظَّم داخل عامل الخدمة (لا SawaLog هنا).
 function slog(lvl, ev, f) { try { (console[lvl] || console.log)('[sw] ' + ev, Object.assign({ v: VERSION }, f || {})); } catch (e) {} }
 // C83: «ما الجديد» — يظهر لكلّ مستخدم في «حسابي ← تحديث التطبيق». سطرٌ واحد بلا علامة ' (‎\n‎ لسطرٍ جديد). يُحدَّث مع كلّ نسخة.
-const NOTES = '• الفاتورة: ملفّ PDF بصفحة واحدة يظهر فيه شعارك، مع هاتفك وعنوانك ورمز سوا لك وللعميل';
+const NOTES = '• تكبير الشاشة بإصبعين، ونصوصٌ أوضح وأكبر قليلاً\n• رسائل خطأ الدخول بالعربيّة بدل الرموز\n• نوافذ التأكيد (الحذف، المغادرة، الخروج) بتصميم سوا وتدعم الوضع الداكن';
 // P2: على العناوين القديمة/البديلة (Netlify · sawaap.pages.dev · sawaaap.com بلا www) يصير عامل الخدمة «مُخلياً»:
 //     يمسح المخزون، يحوّل الصفحات المفتوحة إلى العنوان الرسميّ، ثمّ يلغي نفسه. على www.sawaaap.com يعمل كالمعتاد.
 //     (لا يُحذف هذا قبل أن ينتقل كلّ المستخدمين.)
 const MOVED_TO = 'https://www.sawaaap.com';
 const MOVED = /\.netlify\.app$/i.test(self.location.hostname) || /^sawaap\.pages\.dev$/i.test(self.location.hostname) || /^sawaaap\.com$/i.test(self.location.hostname);
 // C139: الحجم المتوقَّع (بالبايت) للملفّات المرفوعة مع هذه النسخة — إن اختلف على الخادم (لم يُرفع، أو رُفع ناقصاً) يُسجَّل ويُنبَّه المستخدم
-const EXPECT = { './sawa-rtc.js': 450453, './sawa-chat.js': 580656 };
+const EXPECT = { './sawa-rtc.js': 450453, './sawa-chat.js': 582831 };
 const REPORT = [];
 const ASSETS = [
   './',
