@@ -4196,8 +4196,13 @@
       return upd;
     });
   }
+  // C290: التأكيد أثناء المكالمة بنافذة سوا (كان confirm())
+  function askEndCall() { return confirmSheet(L("ستنتهي المكالمة الحاليّة. تحديث الآن؟", "This will end the current call. Update now?"), { ok: L("تحديث الآن", "Update now"), cancel: L("لاحقاً", "Later"), danger: true }); }
   function forceUpdate() {
-    if (upd.inCall() && !global.confirm(L("ستنتهي المكالمة الحاليّة. تحديث الآن؟", "This will end the current call. Update now?"))) return;
+    if (upd.inCall()) { askEndCall().then(function (ok) { if (ok) forceUpdateNow(); }); return; }
+    forceUpdateNow();
+  }
+  function forceUpdateNow() {
     var jobs = [];
     try {
       if (global.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k.indexOf("sawa-") === 0; }).map(function (k) { return caches.delete(k); })); }));
@@ -4267,7 +4272,7 @@
       var yes = btn(L("تحديث", "Update"), true); yes.style.background = "#fff"; yes.style.color = "#2774BA";
       var no = btn(L("لاحقاً", "Later")); no.style.color = "#e3f2fd";
       // C83: إن لم يتبدّل عامل الخدمة بعد (التحديث لم يُنزَّل) فإعادة التحميل لا تكفي ⇒ تحديثٌ قسريّ
-      yes.onclick = function () { if (upd.available && navigator.serviceWorker && !reloading) { forceUpdate(); return; } if (inCall() && !global.confirm(L("ستنتهي المكالمة الحاليّة. تحديث الآن؟", "This will end the current call. Update now?"))) return; reload(); };
+      yes.onclick = function () { if (upd.available && navigator.serviceWorker && !reloading) { forceUpdate(); return; } if (inCall()) { askEndCall().then(function (ok) { if (ok) reload(); }); return; } reload(); };   // C290
       no.onclick = function () { if (upd.server) lsSet("sawa_upd_dismissed", upd.server); try { upEl.remove(); } catch (e) {} upEl = null; };
       upEl.appendChild(txt); upEl.appendChild(yes); upEl.appendChild(no); document.body.appendChild(upEl);
     }
@@ -4445,11 +4450,31 @@
       s.ov.onclick = function (e) { if (e.target === s.ov) fin(false); };
       s.box.appendChild(mk("div", "font:600 15px/1.8 var(--sawa-font,system-ui);text-align:center;margin:4px 4px 14px;white-space:pre-line", msg));
       var y = mkBtn(opts.ok || L("تأكيد", "Confirm"), opts.danger ? "danger" : "primary");
-      var n = mkBtn(opts.cancel || L("إلغاء", "Cancel"));
-      n.style.marginTop = "8px";
-      y.onclick = function () { fin(true); }; n.onclick = function () { fin(false); };
-      s.box.appendChild(y); s.box.appendChild(n);
+      y.onclick = function () { fin(true); }; s.box.appendChild(y);
+      if (!opts.noCancel) {   // C290: noCancel ⇒ رسالةٌ بزرّ «حسناً» وحده (بدل alert)
+        var n = mkBtn(opts.cancel || L("إلغاء", "Cancel"));
+        n.style.marginTop = "8px"; n.onclick = function () { fin(false); }; s.box.appendChild(n);
+      }
       try { y.focus(); } catch (e) {}
+    });
+  }
+  // C290: بديل prompt() — حقلٌ واحد، تُرجع Promise بالنصّ أو null عند الإلغاء. opts: { placeholder, type, inputMode, ok }
+  function inputSheet(title, opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      var s = sheet(title), done = false;
+      s.ov.style.zIndex = "2147483647";
+      var fin = function (v) { if (done) return; done = true; s.close(); resolve(v); };
+      s.ov.onclick = function (e) { if (e.target === s.ov) fin(null); };
+      var f = mk("input", "width:100%;box-sizing:border-box;border:1.5px solid #dfe5ec;border-radius:12px;padding:12px;font:600 16px var(--sawa-font,system-ui);background:#fff;color:#1A1A2E;margin:4px 0 10px");
+      f.type = opts.type || "text"; if (opts.inputMode) f.inputMode = opts.inputMode; if (opts.placeholder) f.placeholder = opts.placeholder;
+      if (opts.type === "tel") f.dir = "ltr";
+      var y = mkBtn(opts.ok || L("متابعة", "Continue"), "primary"), n = mkBtn(L("إلغاء", "Cancel"));
+      n.style.marginTop = "8px";
+      y.onclick = function () { fin(f.value); }; n.onclick = function () { fin(null); };
+      f.onkeydown = function (e) { if (e.key === "Enter") fin(f.value); };
+      s.box.appendChild(f); s.box.appendChild(y); s.box.appendChild(n);
+      setTimeout(function () { try { f.focus(); } catch (e) {} }, 50);
     });
   }
   // نسخٌ يدويّ حين يرفض المتصفّح الحافظة: النصّ محدَّدٌ في حقلٍ للقراءة فقط
@@ -4906,7 +4931,7 @@
     var shr = mkBtn(L("واتساب وغيره", "WhatsApp & more"), "primary"), man = mkBtn(L("رقمٌ آخر", "Another number"));
     top.appendChild(shr); top.appendChild(man); s.box.appendChild(top);
     shr.onclick = function () { shareText(body()); };
-    man.onclick = function () { var n = global.prompt(L("رقم الهاتف:", "Phone number:"), ""); if (n && n.replace(/\D/g, "").length >= 6) openSms(n, body()); };
+    man.onclick = function () { inputSheet(L("رقم الهاتف", "Phone number"), { type: "tel", inputMode: "tel", placeholder: "09XXXXXXXX", ok: L("كتابة الرسالة", "Write message") }).then(function (n) { if (!n) return; if (n.replace(/\D/g, "").length >= 6) openSms(n, body()); else toast(L("الرقم قصير — اكتبه كاملاً", "That number is too short")); }); };   // C290
     var area = mk("div", "margin-top:6px"); s.box.appendChild(area);
     loadCode().then(function (b) { code = b.code; }).catch(function () {});
     var all = [];
@@ -5203,8 +5228,9 @@
       var err = function (e) { toast(L("تعذّر: ", "Failed: ") + codeErr(e)); };
       if (it.pid) {
         btn(L("🗑 حذف المحتوى", "🗑 Delete content"), "#ef4444", function () {
-          if (!global.confirm(L("حذف هذا المحتوى نهائيّاً وإغلاق البلاغ؟", "Delete this content permanently and close the report?"))) return;
+          confirmSheet(L("حذف هذا المحتوى نهائيّاً وإغلاق البلاغ؟", "Delete this content permanently and close the report?"), { ok: L("حذف", "Delete"), danger: true }).then(function (ok) { if (!ok) return;   // C290
           (it.cmid ? call("moment.uncomment", { pid: it.pid, cmid: it.cmid }) : call("moment.delete", { pid: it.pid })).then(function () { return closeR(false); }).catch(err);
+          });
         });
         btn(L("✓ لا مخالفة", "✓ No violation"), "#16a34a", function () { closeR(true).catch(err); });
       } else btn(L("إغلاق البلاغ", "Close report"), "#6b7280", function () { closeR(false).catch(err); });
@@ -5264,8 +5290,8 @@
         ["viewer", "moderator", "admin"].forEach(function (k) { var o = mk("option", "", RL[k]); o.value = k; if (m.role === k) o.selected = true; sel.appendChild(o); });
         sel.onchange = function () { sel.disabled = true; call("admin.team", { email: m.email, role: sel.value }).then(function (x) { toast(L("تمّ ✓", "Done ✓")); paint(x); }, function (e) { sel.disabled = false; toast(errT(e)); }); };
         var del = mk("button", "border:0;background:#fdecec;color:#b42318;border-radius:10px;padding:6px 10px;font:800 12px var(--sawa-font,system-ui)", L("حذف", "Remove"));
-        del.onclick = function () { if (!global.confirm(L("إزالة " + m.email + " من الفريق؟", "Remove " + m.email + "?"))) return; del.disabled = true;
-          call("admin.team", { email: m.email, role: null }).then(function (x) { toast(L("أُزيل ✓", "Removed ✓")); paint(x); }, function (e) { del.disabled = false; toast(errT(e)); }); };
+        del.onclick = function () { confirmSheet(L("إزالة " + m.email + " من الفريق؟", "Remove " + m.email + "?"), { ok: L("إزالة", "Remove"), danger: true }).then(function (ok) { if (!ok) return; del.disabled = true;   // C290
+          call("admin.team", { email: m.email, role: null }).then(function (x) { toast(L("أُزيل ✓", "Removed ✓")); paint(x); }, function (e) { del.disabled = false; toast(errT(e)); }); }); };
         row.appendChild(sel); row.appendChild(del); list.appendChild(row);
       });
       var lg = r.log || [];

@@ -2837,3 +2837,16 @@ Source: UI/UX review of 10 Nov 2026 (offline render, phone size, Arabic, light a
 **Upload:** app.p2, p3, p4, p5, p6, p7, p8, p9 + index.html + sawa-chat.js + sawa-sync.js ← sw.js (v472) last.
 **Native (same change):** Sawa-iOS `WebViewController.swift` sets `cfg.ignoresViewportScaleLimits = true` (also in `Sawa-ios.zip`) · Sawa-android `MainActivity.java` turns on built-in zoom with the +/− buttons hidden, `SAWA_BUILD` c278 (inside `sawa-native.zip`). Not built here: Android builds after merge to main, iOS on a pull request or a TestFlight run.
 **Decisions (Khalid):** the daily reminder stays a pop-up; Khalid will add more to «استكشف».
+
+## 💬 C290 — The last 11 browser dialogs become Sawa sheets · fix the C289 update notes · sawa-chat · sawa-sync · sw v473
+Follow-up to C289, which converted 20 of 31.
+
+- **sawa-chat:** update during a call (×2, now `askEndCall()`: "Update now" / "Later"), SMS "Another number" (new `inputSheet()`: phone field, Enter submits, too-short number explained), admin: delete reported content, remove team member.
+- **sawa-sync:** replace the server tree, "are you «name»?" on a family invite ("Yes, I'm «name»" / "No, just join"; still passes the person id as before), "removed from this family" (OK-only sheet), delete a family from the server, leave a family, unlink and upload as a new family. New helper `ask()` uses `SawaChat.confirm` and falls back to the browser dialog if sawa-chat is not loaded.
+- `confirmSheet` takes `noCancel` (one OK button, replaces `alert`).
+- **sw.js:** v473; `EXPECT` sawa-chat.js = 582831 bytes. C289 forgot to update `EXPECT` (fixed after the fact in a6338cd) and left C288's `NOTES`; `NOTES` now describe C289 + C290 (zoom and larger text, Arabic sign-in errors, Sawa-style confirm windows).
+- **Rule for next time:** any change to sawa-chat.js or sawa-rtc.js needs its byte size in `EXPECT`, and every sw version needs new `NOTES`.
+
+**Export check against main:** SawaChat 170 · SawaRTC 55 · SawaSync 55, identical.
+**Tests:** `node --check`; OK-only sheet shows one button and returns true. Not tested here: the family-sync flows and SMS on a real phone.
+**Upload:** sawa-chat.js + sawa-sync.js ← sw.js (v473) last.
