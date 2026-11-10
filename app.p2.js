@@ -299,18 +299,22 @@ function useToast() {
 }
 function ToastProvider({ children }) {
     const [toasts, setToasts] = useState([]);
-    function showToast(message, type = "success") {
+    // C203: ‎opts = { action, onAction }‎ ⇒ زرّ في الإشعار («تراجع»)، ويبقى ٦ ثوانٍ بدل ٣ ليُضغط.
+    //       كان الوسيط الثالث يُهمَل: «أُرشفت — اضغط تراجع» في المحادثات بلا زرٍّ يُضغط.
+    function showToast(message, type = "success", opts) {
         const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-        setToasts((prev) => [...prev, { id, message, type }]);
+        const action = opts && opts.action && typeof opts.onAction === "function" ? { label: opts.action, run: opts.onAction } : null;
+        setToasts((prev) => [...prev, { id, message, type, action }]);
         setTimeout(() => {
             setToasts((prev) => prev.filter((t) => t.id !== id));
-        }, 3000);
+        }, action ? 6000 : 3000);
     }
+    const dismissToast = (id) => setToasts((prev) => prev.filter((t) => t.id !== id));
     return (React.createElement(ToastContext.Provider, { value: { showToast } },
         children,
-        React.createElement(ToastHost, { toasts: toasts })));
+        React.createElement(ToastHost, { toasts: toasts, onDismiss: dismissToast })));
 }
-function ToastHost({ toasts }) {
+function ToastHost({ toasts, onDismiss }) {
     const { colors } = useTheme();
     if (toasts.length === 0)
         return null;
@@ -319,7 +323,8 @@ function ToastHost({ toasts }) {
             color: "#fff",
         } },
         toast.type === "error" ? React.createElement(AlertCircle, { size: 13, color: "#fff" }) : React.createElement(Check, { size: 13, color: "#fff" }),
-        toast.message)))));
+        toast.message,
+        toast.action && React.createElement("button", { onClick: () => { onDismiss && onDismiss(toast.id); toast.action.run(); }, className: "pointer-events-auto rounded-full px-2.5 py-1 text-[11px] font-extrabold shrink-0", style: { backgroundColor: "rgba(255,255,255,0.22)", color: "#fff", marginInlineStart: 6 } }, toast.action.label))))));
 }
 function SkeletonBox({ height = 16, width = "100%", rounded = "rounded-md" }) {
     const { colors } = useTheme();
@@ -338,9 +343,10 @@ function Button({ label, icon: Icon, onPress, variant = "filled", disabled, clas
     const filled = variant === "filled";
     return (React.createElement("button", { onClick: onPress, disabled: disabled, className: `w-full flex ${rowStart()} items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-extrabold transition-transform active:scale-[0.98] ${className}`, style: {
             // C199: المعطّل رماديّ بنصٍّ خافت (كان لون المظهر بشفافيّة 50٪ — نصٌّ أبيض على أزرق شاحب ~1.6:1)
-            backgroundColor: disabled ? (filled ? colors.border : colors.card) : filled ? colors.primary : colors.card,
-            color: disabled ? colors.textMuted : filled ? "#fff" : colors.primary,
-            border: disabled ? (filled ? "none" : `1.5px solid ${colors.border}`) : filled ? "none" : `1.5px solid ${colors.primary}`,
+            // C204: «outline» صار تعبئةً لونيّةً صلبة (primaryLight/primaryInk) بلا حدٍّ رفيع — الهرميّة بقوّة التعبئة لا بالخطّ
+            backgroundColor: disabled ? colors.border : filled ? colors.primary : (colors.primaryLight || colors.btnFill),
+            color: disabled ? colors.textMuted : filled ? "#fff" : (colors.primaryInk || colors.primary),
+            border: "none",
             opacity: 1,
             boxShadow: filled && !disabled ? `0 4px 14px ${colors.primary}40` : "none",
         } },
@@ -424,11 +430,66 @@ function Pic({ photo, letter, size, bg, color, className, style, children }) {
     return React.createElement("div", { className: "rounded-full shrink-0 flex items-center justify-center font-extrabold " + (className || ""), style: Object.assign({ color, fontSize: Math.round(size * 0.42) }, base) }, letter, children || null);
 }
 // C155: عرض صورة الحساب/المجموعة كبيرةً (اضغط في أيّ مكان للإغلاق)
-function PhotoViewer({ photo, onClose }) {
-    useEffect(() => { const h = () => onClose(); window.addEventListener("popstate", h); return () => window.removeEventListener("popstate", h); }, []);
-    return React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, zIndex: 2147483000, backgroundColor: "rgba(0,0,0,0.92)", display: "flex", alignItems: "center", justifyContent: "center" } },
-        React.createElement("img", { src: photo, alt: "", style: { width: "min(88vw, 88vh)", height: "min(88vw, 88vh)", objectFit: "cover", borderRadius: 16 } }),
-        React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: onClose, style: { position: "absolute", top: "calc(env(safe-area-inset-top,0px) + 14px)", insetInlineEnd: 14, width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" } }, React.createElement(X, { size: 20, color: "#fff" })));
+// C204: عارض الصورة بملء الشاشة — كانت تُقصّ مربّعاً مدوّراً (cover) من مصغّرةٍ 160px مكبّرة ⇒ ضبابيّة.
+//       الآن: الصورة كاملة (contain) على خلفيّةٍ سوداء، تظهر المصغّرة فوراً ثمّ تُستبدل بالنسخة العالية (avatars/{id}_hd)
+//       حين تصل · تكبيرٌ بإصبعين وبنقرتين (حتّى 4×) وسحبٌ وهي مكبّرة · سحبٌ للأسفل أو Esc أو «رجوع» للإغلاق.
+//       hdId اختياريّ — بدونه يُعرف صاحب الصورة من المصغّرة نفسها (SawaChat.photoHdOf).
+function PhotoViewer({ photo, onClose, hdId, title }) {
+    const [src, setSrc] = useState(photo);
+    const [hdState, setHdState] = useState("loading");   // loading | hd | none
+    const imgRef = useRef(null), st = useRef({ s: 1, x: 0, y: 0 }), pts = useRef({}), g = useRef(null), lastTap = useRef(0);
+    useEffect(() => { const h = () => onClose(); window.addEventListener("popstate", h); const k = (e) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => { window.removeEventListener("popstate", h); window.removeEventListener("keydown", k); }; }, []);
+    useEffect(() => {
+        let dead = false;
+        const SC = window.SawaChat;
+        const p = !SC ? Promise.resolve(null) : hdId && SC.photoHd ? SC.photoHd(hdId) : SC.photoHdOf ? SC.photoHdOf(photo) : Promise.resolve(null);
+        Promise.resolve(p).then((hd) => { if (dead) return; if (hd) { setSrc(hd); setHdState("hd"); } else setHdState("none"); }).catch(() => { if (!dead) setHdState("none"); });
+        return () => { dead = true; };
+    }, [photo, hdId]);
+    const apply = (anim) => { const el = imgRef.current; if (!el) return; const v = st.current; el.style.transition = anim ? "transform .2s ease" : "none"; el.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.s})`; };
+    const reset = () => { st.current = { s: 1, x: 0, y: 0 }; apply(true); };
+    const onDown = (e) => {
+        pts.current[e.pointerId] = { x: e.clientX, y: e.clientY };
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch (x) { }
+        const ids = Object.keys(pts.current);
+        if (ids.length === 2) { const a = pts.current[ids[0]], b = pts.current[ids[1]]; g.current = { d: Math.hypot(a.x - b.x, a.y - b.y), s: st.current.s }; }
+        else g.current = { x0: e.clientX, y0: e.clientY, x: st.current.x, y: st.current.y, moved: false };
+    };
+    const onMove = (e) => {
+        if (!pts.current[e.pointerId] || !g.current) return;
+        pts.current[e.pointerId] = { x: e.clientX, y: e.clientY };
+        const ids = Object.keys(pts.current), v = st.current;
+        if (ids.length >= 2 && g.current.d) { const a = pts.current[ids[0]], b = pts.current[ids[1]]; v.s = Math.min(4, Math.max(1, g.current.s * Math.hypot(a.x - b.x, a.y - b.y) / g.current.d)); if (v.s === 1) { v.x = 0; v.y = 0; } apply(false); return; }
+        if (g.current.x0 == null) return;
+        const dx = e.clientX - g.current.x0, dy = e.clientY - g.current.y0;
+        if (Math.hypot(dx, dy) > 6) g.current.moved = true;
+        if (v.s > 1) { v.x = g.current.x + dx; v.y = g.current.y + dy; apply(false); }
+        else if (dy > 0) { const el = imgRef.current; if (el) { el.style.transition = "none"; el.style.transform = `translateY(${dy}px)`; el.style.opacity = String(Math.max(0.3, 1 - dy / 400)); } }
+    };
+    const onUp = (e) => {
+        delete pts.current[e.pointerId];
+        const gg = g.current; if (Object.keys(pts.current).length) return; g.current = null;
+        if (!gg) return;
+        const v = st.current, el = imgRef.current;
+        if (gg.x0 != null && v.s === 1) {
+            const dy = e.clientY - gg.y0;
+            if (dy > 110) { onClose(); return; }   // سحبٌ للأسفل ⇒ إغلاق
+            if (el) { el.style.opacity = "1"; } apply(true);
+        }
+        if (gg.x0 != null && !gg.moved) {   // نقرتان ⇒ تكبير/إرجاع
+            const now = Date.now();
+            if (now - lastTap.current < 300) { if (v.s > 1) reset(); else { st.current = { s: 2.5, x: 0, y: 0 }; apply(true); } lastTap.current = 0; }
+            else lastTap.current = now;
+        }
+    };
+    return React.createElement("div", { role: "dialog", "aria-modal": true, "aria-label": title || tl("الصورة", "Photo"), "data-photo-viewer": hdState, style: { position: "fixed", inset: 0, zIndex: 2147483000, backgroundColor: "#000", display: "flex", flexDirection: "column" } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "calc(env(safe-area-inset-top,0px) + 10px) 12px 10px", color: "#fff", direction: isRTL() ? "rtl" : "ltr" } },
+            React.createElement("button", { "aria-label": tl("إغلاق", "Close"), onClick: onClose, style: { width: 40, height: 40, borderRadius: 20, border: 0, backgroundColor: "rgba(255,255,255,0.16)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, React.createElement(X, { size: 22, color: "#fff" })),
+            React.createElement("span", { style: { flex: 1, minWidth: 0, fontWeight: 800, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, dir: "auto" }, title || ""),
+            hdState === "loading" && React.createElement("span", { style: { fontSize: 11, opacity: 0.75 } }, tl("جارٍ تحميل الدقّة العالية…", "Loading full quality…"))),
+        React.createElement("div", { onPointerDown: onDown, onPointerMove: onMove, onPointerUp: onUp, onPointerCancel: onUp, style: { flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", touchAction: "none", paddingBottom: "env(safe-area-inset-bottom,0px)" } },
+            React.createElement("img", { ref: imgRef, src: src, alt: title || "", draggable: false, style: { maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", objectFit: "contain", userSelect: "none", filter: hdState === "loading" ? "blur(2px)" : "none", transition: "filter .25s ease", imageRendering: "auto" } })),
+        hdState === "none" && React.createElement("p", { style: { color: "rgba(255,255,255,0.6)", fontSize: 11, textAlign: "center", padding: "0 16px calc(env(safe-area-inset-bottom,0px) + 12px)" } }, tl("هذه الصورة رُفعت قبل الدقّة العالية — ستظهر بوضوحٍ أكبر حين يعيد صاحبها رفعها.", "This photo was uploaded before full quality was available.")));
 }
 // C195: يلوّن رؤوس TopBar داخل خدمةٍ بلونها، دون تغيير باقي الألوان (الأزرار تبقى بلون المظهر).
 function ServiceTheme({ color, children }) {
@@ -477,7 +538,11 @@ function FamAvatar({ name, photo, size = 46, radius, gray, ring, className, styl
     if (photo) return React.createElement("div", { className: "relative overflow-hidden " + (className || ""), style: Object.assign({}, base, { backgroundImage: `url(${photo})`, backgroundSize: "cover", backgroundPosition: "center", filter: gray ? "grayscale(1)" : undefined }) }, children || null);
     return React.createElement("div", { className: "relative flex items-center justify-center font-extrabold text-white " + (className || ""), style: Object.assign({}, base, { background: gray ? "linear-gradient(135deg,#94a3b8,#6b7280)" : famAvGrad(name), fontSize: Math.round(size * 0.4) }) }, letter, children || null);
 }
-function FamHeader({ title, subtitle, onBack, actions, children, compact }) {
+// C271: اسمٌ كاملٌ بأجياله يلتفّ على أسطر ولا يُقصّ (بلا «…» ولا قصّ الحاوية) — ملفّ الشخص وواجهة «تركيز»
+function FULL_NAME_STYLE(color, align) {
+    return { color, display: "block", whiteSpace: "normal", overflowWrap: "anywhere", wordBreak: "normal", textAlign: align || "center", lineHeight: 1.35, unicodeBidi: "plaintext", overflow: "visible", textOverflow: "clip" };
+}
+function FamHeader({ title, subtitle, onBack, actions, children, compact, wrapTitle }) {
     const { colors } = useTheme();
     return (React.createElement("div", { className: "shrink-0 relative", style: { background: famGrad(colors), borderBottomLeftRadius: 26, borderBottomRightRadius: 26, padding: `${compact ? 40 : 44}px 18px ${children ? 16 : 18}px` } },
         // C146: «رجوع» في جهة البداية (يمين العربيّة) والأزرار في الطرف الآخر
@@ -485,7 +550,7 @@ function FamHeader({ title, subtitle, onBack, actions, children, compact }) {
             onBack && React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: "rgba(255,255,255,0.18)" } },
                 React.createElement(isRTL() ? ChevronRight : ChevronLeft, { color: "#fff", size: 20 })),
             React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
-                React.createElement("h1", { className: "text-white font-extrabold truncate", style: { fontSize: compact ? 17 : 21, lineHeight: 1.25 } }, title),
+                React.createElement("h1", { className: "text-white font-extrabold" + (wrapTitle ? "" : " truncate"), style: Object.assign({ fontSize: compact ? 17 : 21, lineHeight: 1.25 }, wrapTitle ? { whiteSpace: "normal", overflowWrap: "anywhere" } : {}) }, title),   // C271: wrapTitle ⇒ الاسم الطويل كاملاً
                 subtitle && React.createElement("p", { className: "text-[12px] mt-0.5 truncate", style: { color: "rgba(255,255,255,0.85)" } }, subtitle)),
             actions && React.createElement("div", { className: "shrink-0 flex flex-row items-center gap-1.5" }, actions)),
         children && React.createElement("div", { className: "mt-4" }, children)));
@@ -540,8 +605,9 @@ function FamButton({ label, icon: Icon, onPress, disabled, variant = "filled", c
     const filled = variant === "filled";
     return React.createElement("button", { onClick: onPress, disabled: disabled, className: `w-full flex ${rowStart()} items-center justify-center gap-2 py-3.5 text-[15px] font-extrabold active:scale-[0.98] transition-transform ${className}`, style: filled
             ? { background: famGrad(colors), color: "#fff", borderRadius: 16, opacity: disabled ? 0.5 : 1, boxShadow: disabled ? "none" : `0 8px 20px ${colors.primary}40` }
-            : variant === "danger" ? { backgroundColor: colors.danger + "14", color: colors.danger, borderRadius: 16, opacity: disabled ? 0.5 : 1 }
-                : { backgroundColor: colors.bg, color: colors.primary, borderRadius: 16, opacity: disabled ? 0.5 : 1 } },
+            // C204: الخطر أحمرُ صلبٌ بنصٍّ أبيض · «soft» تعبئةٌ لونيّة (كانت بلون الخلفيّة فتبدو نصّاً بلا زرّ)
+            : variant === "danger" ? { backgroundColor: colors.danger, color: "#fff", borderRadius: 16, opacity: disabled ? 0.5 : 1 }
+                : { backgroundColor: colors.primaryLight || colors.btnFill, color: colors.primaryInk || colors.primary, borderRadius: 16, opacity: disabled ? 0.5 : 1 } },
         Icon && React.createElement(Icon, { size: 18 }), label);
 }
 // حقل إدخال ناعم بلا حدود
@@ -723,7 +789,7 @@ function generateRecoveryCodes() {
 // ============================================================================
 // شاشة إعداد PIN
 // ============================================================================
-function SetupPinScreen({ onDone }) {
+function SetupPinScreen({ onDone, onCancel }) {
     const { colors } = useTheme();
     const [step, setStep] = useState("enter");
     const [firstPin, setFirstPin] = useState("");
@@ -767,6 +833,7 @@ function SetupPinScreen({ onDone }) {
                 React.createElement(Button, { label: t("mtabaa"), onPress: () => onDone(firstPin, codes), disabled: !confirmed }))));
     }
     return (React.createElement("div", { className: "flex-1 flex flex-col overflow-y-auto", style: { backgroundColor: colors.bg } },
+        onCancel && React.createElement("button", { "aria-label": t("ighlaq"), onClick: onCancel, className: "m-4 mb-0 self-start" }, React.createElement(X, { size: 20, color: colors.textMuted })),
         React.createElement("div", { className: "flex flex-col items-center justify-center py-4" },
             React.createElement(Lock, { size: 30, color: colors.primary }),
             React.createElement("h2", { className: "text-base font-extrabold mt-3", style: { color: colors.text } }, step === "enter" ? "أنشئ رمز قفل التطبيق" : "أكّد الرمز"),
@@ -778,69 +845,163 @@ function SetupPinScreen({ onDone }) {
 // ============================================================================
 // شاشة القفل
 // ============================================================================
-function LockScreen({ onUnlock, onForgot, correctPin, biometricEnabled }) {
+// C283: الرمز محفوظٌ مُجزّأً (walletPinMatches) · حدّ محاولاتٍ حقيقيّ يبقى بعد إعادة التشغيل · البصمة عبر WebAuthn (onBiometric)
+function LockScreen({ onUnlock, onForgot, correctPin, biometricEnabled, onBiometric }) {
     const { colors } = useTheme();
     const [pin, setPin] = useState("");
     const [error, setError] = useState(false);
-    const [attempts, setAttempts] = useState(0);
-    const [lockMsg, setLockMsg] = useState("");
+    const [lockout, setLockout] = useState(() => walletLockoutGet(APP_LOCKOUT_KEY));
+    const [now, setNow] = useState(Date.now());
+    const [bioMsg, setBioMsg] = useState("");
+    const lockedFor = Math.max(0, lockout.until - now);
+    useEffect(() => {
+        if (!lockedFor) return;
+        const id = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(id);
+    }, [lockedFor > 0]);
     function handleDigit(d) {
-        if (pin.length >= 6)
+        if (pin.length >= 6 || lockedFor > 0)
             return;
         const next = pin + d;
         setPin(next);
         if (next.length === 6) {
-            if (next === correctPin) {
+            if (walletPinMatches(correctPin, next)) {
+                walletLockoutReset(APP_LOCKOUT_KEY);
                 onUnlock();
             }
             else {
-                const a = attempts + 1;
-                setAttempts(a);
+                setLockout(walletLockoutFail(APP_LOCKOUT_KEY));
+                setNow(Date.now());
                 setError(true);
-                if (a === 4)
-                    setLockMsg("محاولات كثيرة — انتظر 30 ثانية (محاكاة)");
-                else if (a >= 5)
-                    setLockMsg("محاولات كثيرة — انتظر 5 دقائق (محاكاة)");
                 setTimeout(() => { setPin(""); setError(false); }, 500);
             }
         }
     }
+    async function bio() {
+        if (!onBiometric) return;
+        setBioMsg("");
+        const r = await onBiometric();
+        if (r && r.ok) { walletLockoutReset(APP_LOCKOUT_KEY); onUnlock(); }
+        else if (r && r.error) setBioMsg(r.error);
+    }
+    const left = 5 - lockout.fails;
+    const msg = lockedFor > 0 ? lockoutMsg(lockedFor) : (lockout.fails >= 3 && left > 0 ? tl("بقيت " + left + " محاولات", left + " tries left") : bioMsg);
     return (React.createElement("div", { className: "flex-1 flex flex-col overflow-y-auto", style: { backgroundColor: colors.bg } },
         React.createElement("div", { className: "flex flex-col items-center justify-center py-4" },
             React.createElement("div", { className: "w-16 h-16 rounded-full flex items-center justify-center mb-3", style: { backgroundColor: colors.primary } },
                 React.createElement("span", { className: "text-white text-xl font-extrabold" }, appName())),
             React.createElement("h2", { className: "text-sm font-bold", style: { color: colors.text } }, t("adkhl_rmz_alqfl")),
             React.createElement(PinDots, { filled: pin.length, error: error }),
-            lockMsg && React.createElement("p", { className: "text-xs font-bold text-center px-8", style: { color: colors.danger } }, lockMsg),
+            msg && React.createElement("p", { className: "text-xs font-bold text-center px-8", style: { color: colors.danger } }, msg),
             React.createElement("button", { onClick: onForgot, className: "mt-3 text-xs font-bold", style: { color: colors.primary } }, t("nsyt_alrmz"))),
-        React.createElement(PinKeypad, { onDigit: handleDigit, onBackspace: () => setPin((p) => p.slice(0, -1)), onBiometric: onUnlock, showBiometric: biometricEnabled })));
+        React.createElement(PinKeypad, { onDigit: handleDigit, onBackspace: () => setPin((p) => p.slice(0, -1)), onBiometric: bio, showBiometric: biometricEnabled && !!onBiometric })));
+}
+// ============================================================================
+// C284: «تحقّق بحسابك» — يثبت ملكيّة حساب سوا (البريد وكلمة المرور، أو Google) بإعادة المصادقة على Firebase.
+// لا رموز ثابتة: كلمة المرور تُفحص على الخادم، و«نسيت كلمة المرور» يرسل رابطاً حقيقيّاً إلى البريد.
+// مستعمَل في «نسيت رمز القفل» و«نسيت رمز المحفظة».
+// ============================================================================
+// C285: يعيد الرسم عند تغيّر هويّة Firebase (استرجاع الجلسة بعد الإقلاع، ربط الحساب…)
+function useSawaAuthTick() {
+    const [, setTick] = useState(0);
+    useEffect(() => {
+        const S = window.SawaSync;
+        if (!S || !S.onAuthChange) return;
+        return S.onAuthChange(() => setTick((n) => n + 1));
+    }, []);
+}
+function AccountRecoveryOption({ onVerified, lockoutKey }) {
+    const { colors } = useTheme();
+    useSawaAuthTick();
+    const S = window.SawaSync;
+    const acct = S && S.recoveryAccount ? S.recoveryAccount() : null;
+    const status = S && S.accountStatus ? S.accountStatus() : (acct ? "linked" : "guest");
+    const [mode, setMode] = useState(null); // null | password
+    const [pass, setPass] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [msg, setMsg] = useState("");
+    const [info, setInfo] = useState("");
+    const cardCls = `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border mb-3`;
+    const cardStyle = { borderColor: colors.border, backgroundColor: colors.card };
+    const card = (key, Icon, title, sub, onClick) => React.createElement("button", { key, onClick, disabled: busy, className: cardCls, style: cardStyle },
+        React.createElement(Icon, { size: 20, color: colors.primary }),
+        React.createElement("div", { className: `flex-1 ${textStart()}` },
+            React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, title),
+            React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted }, dir: "auto" }, sub)));
+    if (!acct) {
+        const txt = status === "loading" ? tl("جارٍ التحقّق من حسابك…", "Checking your account…")
+            : status === "other" ? tl("حسابك مربوطٌ بطريقةٍ لا تصلح للتحقّق هنا — استعمل البصمة أو رمز الاسترداد، أو أضف Google/البريد من «حسابي».", "Your account is linked with a method that can't verify here — use fingerprint or a recovery code, or add Google/email from the Account tab.")
+            : tl("لاستردادٍ بالبريد أو Google: اربط حسابك من «حسابي» (حسابك الآن «ضيف»).", "To recover with email or Google, link your account from the Account tab (it's a guest account now).");
+        return React.createElement("p", { className: `text-[11px] mb-3 ${textStart()}`, style: { color: colors.textMuted } }, txt);
+    }
+    async function run(kind) {
+        const lo = walletLockoutGet(lockoutKey);
+        if (lo.until > Date.now()) { setMsg(lockoutMsg(lo.until - Date.now())); return; }
+        setBusy(true); setMsg(""); setInfo("");
+        try {
+            await S.reauthAccount(kind, pass);
+            walletLockoutReset(lockoutKey);
+            setPass("");
+            onVerified();
+        }
+        catch (e) {
+            const code = (e && e.code) || "";
+            let m = S.reauthError ? S.reauthError(e) : String(code || e);
+            if (/wrong-password|invalid-credential|invalid-login|user-mismatch/.test(code)) {
+                const o = walletLockoutFail(lockoutKey);
+                if (o.until > Date.now()) m = lockoutMsg(o.until - Date.now());
+                setPass("");
+            }
+            setMsg(m);
+        }
+        setBusy(false);
+    }
+    function sendReset() {
+        setBusy(true); setMsg(""); setInfo("");
+        S.resetPassword(acct.email).then(() => setInfo(tl("أرسلنا رابط تغيير كلمة المرور إلى " + acct.email + " — غيّرها من البريد ثمّ عد وأدخل الجديدة هنا.", "We sent a password reset link to " + acct.email + ". Change it from the email, then come back and enter the new one here.")),
+            (e) => setMsg(S.reauthError ? S.reauthError(e) : String((e && e.code) || e))).then(() => setBusy(false));
+    }
+    if (mode === "password") {
+        return React.createElement("div", { className: "w-full mb-3" },
+            React.createElement("p", { className: `text-xs font-bold mb-1 ${textStart()}`, style: { color: colors.text } }, tl("كلمة مرور حسابك", "Your account password")),
+            React.createElement("p", { className: `text-[11px] mb-2 ${textStart()}`, style: { color: colors.textMuted }, dir: "auto" }, acct.email),
+            React.createElement("input", { type: "password", value: pass, onChange: (e) => setPass(e.target.value), autoComplete: "current-password", "aria-label": tl("كلمة المرور", "Password"), className: "w-full border rounded-xl px-3 py-3 text-sm mb-2", dir: "ltr", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
+            msg && React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.danger } }, msg),
+            info && React.createElement("p", { className: "text-xs text-center mb-2", style: { color: colors.success || colors.primary } }, info),
+            React.createElement(Button, { label: busy ? "…" : t("thqq"), disabled: busy || !pass, onPress: () => run("password"), style: { width: "100%" } }),
+            React.createElement("button", { onClick: sendReset, disabled: busy, className: "w-full mt-2 text-xs font-bold", style: { color: colors.primary } }, tl("نسيت كلمة المرور؟ أرسل رابطاً إلى بريدي", "Forgot password? Email me a reset link")),
+            React.createElement("button", { onClick: () => { setMode(null); setMsg(""); setInfo(""); setPass(""); }, className: "w-full mt-2 text-xs", style: { color: colors.textMuted } }, tl("طريقة أخرى", "Another way")));
+    }
+    return React.createElement(React.Fragment, null,
+        acct.password && card("pw", Mail, tl("تحقّق بالبريد الإلكتروني", "Verify with your email account"), acct.email, () => { setMode("password"); setMsg(""); }),
+        acct.google && card("g", Globe, tl("تحقّق بحساب Google", "Verify with Google"), acct.email || "Google", () => run("google")),
+        msg && React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.danger } }, msg));
 }
 // ============================================================================
 // شاشة نسيت الرمز
 // ============================================================================
-function ForgotPinScreen({ onBack, onRecovered, validCodes }) {
+// C283: checkCode يتحقّق من الرمز المُجزّأ ويستهلكه · أُزيل «رمز التحقّق عبر البريد» (كان 123456 ثابتاً — يتجاوز أيّ رمزٍ محفوظ)
+function ForgotPinScreen({ onBack, onRecovered, checkCode, onBiometric }) {
     const { colors } = useTheme();
     const [step, setStep] = useState("choose");
     const [codeInput, setCodeInput] = useState("");
-    const [otpInput, setOtpInput] = useState("");
     const [error, setError] = useState("");
     const [pin, setPin] = useState("");
     const [firstPin, setFirstPin] = useState("");
     const [newPinStep, setNewPinStep] = useState("enter");
     const [mismatch, setMismatch] = useState(false);
     function verifyCode() {
-        if (validCodes.includes(codeInput.trim().toUpperCase())) {
+        const lo = walletLockoutGet(APP_LOCKOUT_KEY);
+        if (lo.until > Date.now()) { setError(lockoutMsg(lo.until - Date.now())); return; }
+        if (checkCode && checkCode(codeInput)) {
+            walletLockoutReset(APP_LOCKOUT_KEY);
             setStep("newPin");
         }
         else {
-            setError(t("alrmz_ghyr_shyh_aw"));
+            const o = walletLockoutFail(APP_LOCKOUT_KEY);
+            setCodeInput("");
+            setError(o.until > Date.now() ? lockoutMsg(o.until - Date.now()) : t("alrmz_ghyr_shyh_aw"));
         }
-    }
-    function verifyOtp() {
-        if (otpInput === "123456")
-            setStep("newPin");
-        else
-            setError(t("rmz_althqq_ghyr_shyh"));
     }
     function handleNewPinDigit(d) {
         if (pin.length >= 6)
@@ -876,16 +1037,19 @@ function ForgotPinScreen({ onBack, onRecovered, validCodes }) {
         step === "choose" && (React.createElement(React.Fragment, null,
             React.createElement("h2", { className: "text-lg font-extrabold mb-1", style: { color: colors.text } }, t("astrjaa_alwswl")),
             React.createElement("p", { className: "text-xs mb-4", style: { color: colors.textMuted } }, t("akhtr_tryqa_alastrjaa")),
-            React.createElement("button", { onClick: () => setStep("code"), className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border mb-3`, style: { borderColor: colors.border, backgroundColor: colors.card } },
+            React.createElement("button", { onClick: () => { setError(""); setStep("code"); }, className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border mb-3`, style: { borderColor: colors.border, backgroundColor: colors.card } },
                 React.createElement(Key, { size: 20, color: colors.primary }),
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
                     React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, t("rmz_astrjaa_ahtyaty")),
                     React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted } }, t("adkhl_ahd_alrmwz_alty")))),
-            React.createElement("button", { onClick: () => setStep("otp"), className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border mb-3`, style: { borderColor: colors.border, backgroundColor: colors.card } },
-                React.createElement(Mail, { size: 20, color: colors.primary }),
+            // C284: بصمة الجهاز (إن سُجّلت) · حساب سوا (البريد أو Google)
+            onBiometric && React.createElement("button", { onClick: async () => { setError(""); const r = await onBiometric(); if (r && r.ok) { walletLockoutReset(APP_LOCKOUT_KEY); setStep("newPin"); } else if (r && r.error) setError(r.error); }, className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border mb-3`, style: { borderColor: colors.border, backgroundColor: colors.card } },
+                React.createElement(Fingerprint, { size: 20, color: colors.primary }),
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
-                    React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, t("rmz_thqq_abr_albryd")),
-                    React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted } }, t("nrsl_rmza_ila_alqnaa")))),
+                    React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, tl("بصمة الجهاز", "Device fingerprint")),
+                    React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted } }, tl("البصمة أو الوجه المسجَّل لفتح سوا", "The fingerprint or face registered to unlock Sawa")))),
+            React.createElement(AccountRecoveryOption, { lockoutKey: APP_LOCKOUT_KEY, onVerified: () => setStep("newPin") }),
+            error && React.createElement("p", { className: "text-xs font-bold text-center mb-3", style: { color: colors.danger } }, error),
             React.createElement("button", { onClick: () => setStep("reset"), className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border`, style: { borderColor: colors.danger, backgroundColor: colors.card } },
                 React.createElement(AlertTriangle, { size: 20, color: colors.danger }),
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
@@ -896,16 +1060,10 @@ function ForgotPinScreen({ onBack, onRecovered, validCodes }) {
             React.createElement("input", { dir: "ltr", value: codeInput, onChange: (e) => setCodeInput(e.target.value.toUpperCase()), placeholder: "XXXX-XXXX", className: "w-full border rounded-xl px-3 py-3 text-center tracking-widest mb-3", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
             error && React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.danger } }, error),
             React.createElement(Button, { label: t("thqq"), onPress: verifyCode }))),
-        step === "otp" && (React.createElement(React.Fragment, null,
-            React.createElement("h2", { className: "text-lg font-extrabold mb-1", style: { color: colors.text } }, t("adkhl_rmz_althqq")),
-            React.createElement("p", { className: "text-xs mb-4", style: { color: colors.textMuted } }, t("jrb_123456_mhakaa")),
-            React.createElement("input", { dir: "ltr", value: otpInput, onChange: (e) => setOtpInput(e.target.value), placeholder: "000000", maxLength: 6, className: "w-full border rounded-xl px-3 py-3 text-center tracking-widest mb-3", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
-            error && React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.danger } }, error),
-            React.createElement(Button, { label: t("thqq"), onPress: verifyOtp }))),
         step === "reset" && (React.createElement(React.Fragment, null,
             React.createElement(AlertTriangle, { size: 32, color: colors.danger, className: "mx-auto mb-3" }),
             React.createElement("h2", { className: "text-base font-extrabold text-center mb-2", style: { color: colors.text } }, t("mtakd_mn_almsh_alkaml")),
-            React.createElement("p", { className: "text-xs text-center mb-4 px-4", style: { color: colors.textMuted } }, t("hdha_ymsh_rmz_alqfl")),
+            React.createElement("p", { className: "text-xs text-center mb-4 px-4", style: { color: colors.textMuted } }, t("hdha_ymsh_rmz_alqfl") + " " + tl("وتُسجَّل خارج حسابك — إن كان حسابك «ضيفاً» غير مربوط فلن تعود إليه.", "You'll also be signed out — a guest account that isn't linked can't be recovered.")),
             React.createElement(Button, { label: t("amsh_kl_shy"), variant: "filled", onPress: () => onRecovered(null, null, true), className: "mb-2", style: { backgroundColor: colors.danger } }),
             React.createElement(Button, { label: t("ilgha"), variant: "outline", onPress: () => setStep("choose") })))));
 }
@@ -1356,13 +1514,13 @@ function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiome
                     React.createElement("span", { className: "text-sm font-bold block mb-1", style: { color: colors.text } }, t("twfyr_albyanat")),
                     React.createElement("p", { className: "text-[10px]", style: { color: colors.textMuted } }, t("la_thml_alswr_walfydyw"))),
                 React.createElement(Download, { size: 16, color: colors.textMuted, className: "shrink-0 mt-0.5" })),
-            !RELEASE_UI && React.createElement(Card, { className: `flex ${rowEnd()} items-center gap-2.5` },
+            React.createElement(Card, { className: `flex ${rowEnd()} items-center gap-2.5` },
                 React.createElement("button", { onClick: () => setPinLockEnabled(!pinLockEnabled), className: "w-11 h-6 rounded-full relative", style: { backgroundColor: pinLockEnabled ? colors.primary : colors.border } },
                     React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [pinLockEnabled ? "right" : "left"]: 2 } })),
                 React.createElement("span", { className: `text-sm font-bold flex-1 ${textStart()}`, style: { color: colors.text } }, t("qfl_alttbyq_brmz_pin")),
                 React.createElement(Lock, { size: 16, color: colors.textMuted })),
-            !RELEASE_UI && pinLockEnabled && (React.createElement(Card, null,
-                React.createElement("div", { className: `flex ${rowEnd()} items-center gap-2.5 mb-2` },
+            pinLockEnabled && (React.createElement(Card, null,
+                !!window.PublicKeyCredential && React.createElement("div", { className: `flex ${rowEnd()} items-center gap-2.5 mb-2` },
                     React.createElement("button", { onClick: () => setBiometricEnabled(!biometricEnabled), className: "w-11 h-6 rounded-full relative", style: { backgroundColor: biometricEnabled ? colors.primary : colors.border } },
                         React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [biometricEnabled ? "right" : "left"]: 2 } })),
                     React.createElement("span", { className: `text-sm font-bold flex-1 ${textStart()}`, style: { color: colors.text } }, t("fth_balbsma_face_id"))),
@@ -1371,7 +1529,7 @@ function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiome
                 React.createElement("button", { onClick: onChangePin, className: `w-full flex ${rowStart()} items-center gap-2 py-2 border-t`, style: { borderColor: colors.border } },
                     React.createElement(Key, { size: 15, color: colors.primary }),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.primary } }, t("tghyyr_rmz_alqfl"))),
-                !IS_RAHIM && React.createElement("button", { onClick: onOpenSessions, className: `w-full flex ${rowStart()} items-center gap-2 py-2 border-t`, style: { borderColor: colors.border } },
+                !RELEASE_UI && !IS_RAHIM && React.createElement("button", { onClick: onOpenSessions, /* C283: أجهزةٌ تجريبيّة — تبقى مخفيّة في الإصدار */ className: `w-full flex ${rowStart()} items-center gap-2 py-2 border-t`, style: { borderColor: colors.border } },
                     React.createElement(Smartphone, { size: 15, color: colors.primary }),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.primary } }, t("alajhza_almsjla_alsyrfr"))),
                 React.createElement("p", { className: `text-[11px] ${textStart()} pt-1`, style: { color: colors.textMuted } },
@@ -1443,7 +1601,7 @@ function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiome
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                     React.createElement("button", { onClick: () => { onDeleteKeys(); setConfirmDeleteKeys(false); }, className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.danger } },
                         React.createElement("span", { className: "text-xs font-bold text-white" }, t("nam_ahdhf_nhayya"))),
-                    React.createElement("button", { onClick: () => setConfirmDeleteKeys(false), className: "flex-1 rounded-xl py-2 border", style: { borderColor: colors.border } },
+                    React.createElement("button", { onClick: () => setConfirmDeleteKeys(false), className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.btnFill } },
                         React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("ilgha")))))))));
 }
 function EncryptedNotesDemoScreen({ onBack, notes, onAdd, onDelete }) {
@@ -1568,6 +1726,11 @@ const KINSHIP_SECTIONS = [
         key: "zawj", titleKey: "sec_zawj", icon: "💍",
         items: ["الزوج", "الزوجة", "الزوج السابق", "الزوجة السابقة"],
     },
+    // C203: الأصهار — أهل الزوج/الزوجة: والده وإخوته وأعمامه وأخواله وأجداده من الطرفين
+    {
+        key: "ashar", titleKey: "sec_ashar", icon: "🤝",
+        items: ["والد الزوجة", "والدة الزوجة", "أخ الزوجة", "أخت الزوجة", "جد الزوجة", "جدة الزوجة", "عم الزوجة", "عمة الزوجة", "خال الزوجة", "خالة الزوجة", "جد الزوجة لأمها", "جدة الزوجة لأمها", "والد الزوج", "والدة الزوج", "أخ الزوج", "أخت الزوج", "جد الزوج", "جدة الزوج", "عم الزوج", "عمة الزوج", "خال الزوج", "خالة الزوج", "جد الزوج لأمه", "جدة الزوج لأمه"],
+    },
     {
         key: "other", titleKey: "sec_other", icon: "•",
         items: ["أخرى"],
@@ -1689,19 +1852,147 @@ function hasNoProximityPerson(p) { return !!p && hasNoProximity(p.kinship); } //
 function isSelfPerson(p) {
     return !!p && p.kinship === SELF_KINSHIP;
 }
+// ============================================================
+// C271: قاعدة «الحيّ» — ملفّ صاحب الحساب لا يُسجَّل متوفّى.
+// «ملفّي» = صلته «نفسي» (محسوبةً لي أو مخزَّنةً لصاحب الشجرة) · أو حسابي مربوطٌ به (acctMe) · أو اخترته «هذا أنا» (myId).
+// حارسٌ واحد لكلّ المسارات: نموذج الشخص · «هل هو على قيد الحياة؟» · حدث «وفاة» · addPerson/editPerson · والخادم (person.set).
+// ============================================================
+function isOwnProfilePerson(p, myId) {
+    return !!p && (p.kinship === SELF_KINSHIP || p.kinStored === SELF_KINSHIP || !!p.acctMe || (!!myId && p.id === myId));
+}
+// يعيد سبب الرفض (نصّاً) أو null. before = الشخص قبل التعديل (أو null لشخصٍ جديد) · patch = الحقول الجديدة
+function selfDeceasedBlock(before, patch, myId) {
+    const after = Object.assign({}, before || {}, patch || {});
+    if (after.alive !== false) return null;
+    if (!isOwnProfilePerson(after, myId) && !isOwnProfilePerson(before, myId)) return null;
+    const mine = !!(after.acctMe || (myId && after.id === myId) || after.kinship === SELF_KINSHIP);
+    return mine ? tl("لا يمكن تسجيلك «متوفّى» — هذا ملفّك أنت.", "You can't mark yourself as deceased — this is your own profile.")
+        : tl("صاحب الشجرة صاحب حسابٍ في سوا — لا يُسجَّل «متوفّى».", "The tree owner has a Sawa account — they can't be marked deceased.");
+}
 function daysSinceContact_(ts) { return ts ? Math.floor((Date.now() - ts) / 86400000) : 9999; }
 function isContactOverdue(person) {
     // صاحب الشجرة لا يُذكَّر بالتواصل مع نفسه. البوّابة هنا لأنها المخنق
     // الذي تمرّ منه كل عدّادات التأخّر وشاراتها وبطاقة التذكير.
     if (isSelfPerson(person) || isExSpousePerson(person))
         return false;
-    if (!person.alive || !person.proximity)
+    // C271: بدرجةٍ أو بمدّةٍ اختارها المستخدم لهذا القريب
+    if (!person.alive || !hasContactSchedule(person))
         return false;
-    const limit = proximityContactDays[person.proximity] || 30;
+    const limit = contactEveryDays(person);
     if (!contactRef(person))
         return false;   // لا مرجع (بياناتٌ قديمة) ⇒ لا نحكم بالتأخّر
     const days = daysSinceRef(person);
     return days >= limit;
+}
+// ============================================================
+// C271: مواعيد صلة الرحم المرنة
+// ------------------------------------------------------------
+// كانت المدّة ثابتةً لكلّ درجة (proximityContactDays). الآن ثلاث طبقات، الأقرب يغلب:
+//   ١) مدّةٌ لكلّ قريب (p.contactEvery بالأيّام، 1–365) — على هذا الجهاز وحده مثل lastContactDate (عادةٌ شخصيّة لا تُفرض على العائلة)
+//   ٢) مدّةٌ لكلّ درجة يضبطها المستخدم (kinRemindSettings().byDegree)
+//   ٣) الافتراض القديم لكلّ درجة.
+// والإشعار: الخادم يرسل ملخّصاً واحداً في اليوم على الأكثر في الساعة المختارة (kin.remind.set ⇐ Worker v126 kinReminders)،
+// وعلى هذا الجهاز تنبيهٌ احتياطيّ حين لا يصل الخادم (kinRemindLocalTick).
+// ============================================================
+const KIN_FREQ_PRESETS = [1, 2, 3, 7, 10, 14, 30];
+const KIN_REMIND_KEY = "sawa:kinRemind";
+let KIN_REMIND = null;
+function kinRemindSettings() {
+    if (!KIN_REMIND) {
+        let saved = null;
+        try { saved = JSON.parse(localStorage.getItem(KIN_REMIND_KEY) || "null"); } catch (e) { }
+        KIN_REMIND = Object.assign({ on: true, hour: 18, byDegree: {} }, saved && typeof saved === "object" ? saved : {});
+        if (!KIN_REMIND.byDegree || typeof KIN_REMIND.byDegree !== "object") KIN_REMIND.byDegree = {};
+    }
+    return KIN_REMIND;
+}
+function setKinRemindSettings(patch) {
+    KIN_REMIND = Object.assign({}, kinRemindSettings(), patch || {});
+    try { localStorage.setItem(KIN_REMIND_KEY, JSON.stringify(KIN_REMIND)); } catch (e) { }
+    try { window.dispatchEvent(new Event("sawa-kinremind")); } catch (e) { }
+    return KIN_REMIND;
+}
+function kinClampDays(n) {
+    if (n === null || n === undefined || n === "") return null;
+    const d = Math.round(Number(n));
+    return d >= 1 && d <= 365 ? d : null;
+}
+function kinClampHour(h) { const x = Math.round(Number(h)); return x >= 0 && x <= 23 ? x : 18; }
+// المدّة الافتراضيّة لدرجة (بعد ضبط المستخدم)
+function degreeContactDays(prox) {
+    return kinClampDays((kinRemindSettings().byDegree || {})[prox]) || proximityContactDays[prox] || 30;
+}
+// المدّة الفعليّة لقريب
+function contactEveryDays(p) {
+    return kinClampDays(p && p.contactEvery) || (p && p.proximity ? degreeContactDays(p.proximity) : 30);
+}
+// هل لهذا القريب موعدُ تواصل؟ (له درجة، أو اختار له المستخدم مدّة)
+function hasContactSchedule(p) {
+    if (!p || isSelfPerson(p) || isExSpousePerson(p) || p.alive === false) return false;
+    return !!kinClampDays(p.contactEvery) || (!!p.proximity && !hasNoProximityPerson(p));
+}
+// «يوميّاً» · «كل يومين» · «كل 3 أيام» · «أسبوعيّاً» · «كل 10 أيام» · «كل 45 يوماً»
+function kinFreqLabel(d) {
+    d = kinClampDays(d) || 30;
+    if (d === 1) return tl("يوميّاً", "Daily");
+    if (d === 2) return tl("كل يومين", "Every 2 days");
+    if (d === 7) return tl("أسبوعيّاً", "Weekly");
+    if (d === 14) return tl("كل أسبوعين", "Every 2 weeks");
+    if (d === 30) return tl("شهريّاً", "Monthly");
+    return tl(d <= 10 ? "كل " + d + " أيام" : "كل " + d + " يوماً", "Every " + d + " days");
+}
+function kinHourLabel(h) {
+    const d = new Date(2020, 0, 1, kinClampHour(h), 0);
+    try { return d.toLocaleTimeString(isRTL() ? "ar" : "en", { hour: "numeric", minute: "2-digit", numberingSystem: "latn" }); } catch (e) { return kinClampHour(h) + ":00"; }
+}
+// خطّة الإشعار التي تُرسَل إلى الخادم: لكلّ قريبٍ بموعد ⇒ { id, n: الاسم الأوّل, e: المدّة, l: مرجع آخر تواصل }
+// (النسخة الجسر عند الأصهار تُسقط إن وُجد أصلها، كما في getOverduePersons)
+function kinRemindPlan(groupPersons) {
+    const all = Object.keys(groupPersons || {}).flatMap((gid) => (groupPersons[gid] || []).map((p) => ({ gid, p })));
+    const ids = new Set(all.map((x) => x.p.id));
+    const items = [];
+    all.forEach(({ gid, p }) => {
+        const target = p.linkedTo && p.linkedTo.personId;
+        if (target && ids.has(target)) return;
+        if (!hasContactSchedule(p)) return;
+        const ref = contactRef(p);
+        if (!ref) return;
+        items.push({ id: String(gid + ":" + p.id).slice(0, 80), n: String(p.local_name || "").split(" ")[0].slice(0, 40), e: contactEveryDays(p), l: Number(ref) || 0 });
+    });
+    items.sort((a, b) => a.e - b.e || a.l - b.l);
+    return items.slice(0, 300);
+}
+// من يحين التواصل معه الآن (للتنبيه المحلّيّ ونصّه)
+function kinDueNow(groupPersons) {
+    return kinRemindPlan(groupPersons).filter((x) => Date.now() >= x.l + x.e * 86400000);
+}
+function kinDueText(list) {
+    const names = list.map((x) => x.n).filter(Boolean);
+    if (!names.length) return "";
+    if (names.length === 1) return tl("حان موعد التواصل مع " + names[0], "Time to reach out to " + names[0]);
+    if (names.length === 2) return tl("حان موعد التواصل مع " + names[0] + " و" + names[1], "Time to reach out to " + names[0] + " and " + names[1]);
+    return tl("حان موعد التواصل مع " + names.slice(0, 2).join("، ") + " و" + (names.length - 2) + " غيرهما", "Time to reach out to " + names.slice(0, 2).join(", ") + " and " + (names.length - 2) + " more");
+}
+// تنبيهٌ محلّيّ احتياطيّ: مرّةً في اليوم على الأكثر، بعد الساعة المختارة، والإذن ممنوح، والخادم لم يؤكّد خطّةً خلال يومين
+function kinRemindLocalTick(groupPersons) {
+    try {
+        const s = kinRemindSettings();
+        if (!s.on || typeof Notification === "undefined" || Notification.permission !== "granted") return false;
+        const now = new Date();
+        if (now.getHours() < kinClampHour(s.hour)) return false;
+        const day = now.getFullYear() + "-" + (now.getMonth() + 1) + "-" + now.getDate();
+        if (localStorage.getItem("sawa:kinRemindLocal") === day) return false;
+        const srv = Number(localStorage.getItem("sawa:kinRemindSrv") || 0);
+        if (srv && Date.now() - srv < 2 * 86400000) return false;   // الخادم يتولّى الإشعار
+        const due = kinDueNow(groupPersons);
+        if (!due.length) return false;
+        localStorage.setItem("sawa:kinRemindLocal", day);
+        const body = kinDueText(due), title = tl("صلة الرحم", "Family ties");
+        const show = (reg) => reg && reg.showNotification ? reg.showNotification(title, { body, tag: "sawa-kin", dir: "auto", lang: isRTL() ? "ar" : "en", icon: "./icons/icon-192.png", badge: "./icons/icon-192.png", data: { t: "kin" } }) : new Notification(title, { body, tag: "sawa-kin" });
+        if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) navigator.serviceWorker.getRegistration().then(show).catch(() => { try { new Notification(title, { body, tag: "sawa-kin" }); } catch (e) { } });
+        else show(null);
+        return true;
+    } catch (e) { return false; }
 }
 // احصل على كل الأشخاص الذين تأخر التواصل معهم
 function getOverduePersons(groupPersons) {
@@ -1788,6 +2079,31 @@ const KINSHIP_EN = {
     "\u0627\u0644\u062D\u0641\u064A\u062F\u0629": "Granddaughter",
     "\u0627\u0644\u0632\u0648\u062C": "Husband",
     "\u0627\u0644\u0632\u0648\u062C\u0629": "Wife",
+    // C203: الأصهار — أهل الزوج/الزوجة (يحسبها kinCompute من الشجرة)
+    "\u0648\u0627\u0644\u062F \u0627\u0644\u0632\u0648\u062C\u0629": "Father-in-law (wife's father)",
+    "\u0648\u0627\u0644\u062F\u0629 \u0627\u0644\u0632\u0648\u062C\u0629": "Mother-in-law (wife's mother)",
+    "\u0623\u062E \u0627\u0644\u0632\u0648\u062C\u0629": "Brother-in-law (wife's brother)",
+    "\u0623\u062E\u062A \u0627\u0644\u0632\u0648\u062C\u0629": "Sister-in-law (wife's sister)",
+    "\u062C\u062F \u0627\u0644\u0632\u0648\u062C\u0629": "Wife's Grandfather",
+    "\u062C\u062F\u0629 \u0627\u0644\u0632\u0648\u062C\u0629": "Wife's Grandmother",
+    "\u0639\u0645 \u0627\u0644\u0632\u0648\u062C\u0629": "Wife's Paternal Uncle",
+    "\u0639\u0645\u0629 \u0627\u0644\u0632\u0648\u062C\u0629": "Wife's Paternal Aunt",
+    "\u062E\u0627\u0644 \u0627\u0644\u0632\u0648\u062C\u0629": "Wife's Maternal Uncle",
+    "\u062E\u0627\u0644\u0629 \u0627\u0644\u0632\u0648\u062C\u0629": "Wife's Maternal Aunt",
+    "\u062C\u062F \u0627\u0644\u0632\u0648\u062C\u0629 \u0644\u0623\u0645\u0647\u0627": "Wife's Maternal Grandfather",
+    "\u062C\u062F\u0629 \u0627\u0644\u0632\u0648\u062C\u0629 \u0644\u0623\u0645\u0647\u0627": "Wife's Maternal Grandmother",
+    "\u0648\u0627\u0644\u062F \u0627\u0644\u0632\u0648\u062C": "Father-in-law (husband's father)",
+    "\u0648\u0627\u0644\u062F\u0629 \u0627\u0644\u0632\u0648\u062C": "Mother-in-law (husband's mother)",
+    "\u0623\u062E \u0627\u0644\u0632\u0648\u062C": "Brother-in-law (husband's brother)",
+    "\u0623\u062E\u062A \u0627\u0644\u0632\u0648\u062C": "Sister-in-law (husband's sister)",
+    "\u062C\u062F \u0627\u0644\u0632\u0648\u062C": "Husband's Grandfather",
+    "\u062C\u062F\u0629 \u0627\u0644\u0632\u0648\u062C": "Husband's Grandmother",
+    "\u0639\u0645 \u0627\u0644\u0632\u0648\u062C": "Husband's Paternal Uncle",
+    "\u0639\u0645\u0629 \u0627\u0644\u0632\u0648\u062C": "Husband's Paternal Aunt",
+    "\u062E\u0627\u0644 \u0627\u0644\u0632\u0648\u062C": "Husband's Maternal Uncle",
+    "\u062E\u0627\u0644\u0629 \u0627\u0644\u0632\u0648\u062C": "Husband's Maternal Aunt",
+    "\u062C\u062F \u0627\u0644\u0632\u0648\u062C \u0644\u0623\u0645\u0647": "Husband's Maternal Grandfather",
+    "\u062C\u062F\u0629 \u0627\u0644\u0632\u0648\u062C \u0644\u0623\u0645\u0647": "Husband's Maternal Grandmother",
     "\u0623\u062E\u0631\u0649": "Other",
 };
 // ── «ما قرابتي بفلان؟» ───────────────────────────────────────────

@@ -23,7 +23,7 @@ function DialPadScreen({ onCall, onBack }) {
             React.createElement("div", { className: "w-full text-center pt-4" },
                 React.createElement("span", { className: "text-2xl font-extrabold tracking-widest", style: { color: colors.text }, dir: "ltr" }, shown || "—"),
                 React.createElement("div", { className: "text-xs mt-2", style: { color: colors.textMuted } }, tl("أدخل رمز سوا الخاصّ بالشخص (10 أرقام) — تجده عنده في «جهات الاتّصال ← رمزي»", "Enter the person's 10-digit Sawa code (Contacts → My code)"))),
-            React.createElement("div", { dir: "ltr", className: "grid grid-cols-3 gap-4 w-full max-w-xs" }, keys.map(   /* C198: لوحة الأرقام بترتيبها المعتاد (1 يساراً) في كلّ اللغات — كانت تنقلب في العربيّة */(k, i) => k === "" ? React.createElement("div", { key: "e" + i }) : (React.createElement("button", { key: k, onClick: () => setNumber((prev) => (prev + k).slice(0, 10)), className: "w-16 h-16 rounded-full flex items-center justify-center mx-auto", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
+            React.createElement("div", { dir: "ltr", className: "grid grid-cols-3 gap-4 w-full max-w-xs" }, keys.map(   /* C198: لوحة الأرقام بترتيبها المعتاد (1 يساراً) في كلّ اللغات — كانت تنقلب في العربيّة */(k, i) => k === "" ? React.createElement("div", { key: "e" + i }) : (React.createElement("button", { key: k, onClick: () => setNumber((prev) => (prev + k).slice(0, 10)), className: "w-16 h-16 rounded-full flex items-center justify-center mx-auto", style: { backgroundColor: colors.btnFill } },
                 React.createElement("span", { className: "text-xl font-bold", style: { color: colors.text } }, k))))),
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-4 w-full max-w-xs justify-center` },
                 React.createElement("button", { "aria-label": t("atsal"), onClick: () => ready && onCall(number), disabled: !ready, className: "w-16 h-16 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary, opacity: ready ? 1 : 0.4 } },
@@ -288,10 +288,10 @@ const initialCallLog = [];
 const callTypeIcons = { incoming: PhoneIncoming, outgoing: PhoneOutgoing, missed: PhoneMissed };
 const callTypeColors = { incoming: "success", outgoing: "success", missed: "danger" };
 // C129: مطابقة البحث في سجلّ المكالمات — الاسم والمشاركون، بلا حساسيّة لحالة الأحرف وللهمزات/التشكيل العربيّ
-function callNorm(v) { return String(v || "").toLowerCase().replace(/[\u064B-\u0652\u0640]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").trim(); }
+// C271: طبقة التطبيع الموحّدة (arMatch في app.p3) بدل نسخةٍ أضيق هنا
 function callMatch(c, q) {
-    const n = callNorm(q); if (!n) return true;
-    return [c.name].concat((c.participants || []).map((x) => (x && (x.name || x)) || "")).some((x) => callNorm(x).indexOf(n) >= 0);
+    if (!String(q || "").trim()) return true;
+    return arMatchAny([c.name].concat((c.participants || []).map((x) => (x && (x.name || x)) || "")), q);
 }
 function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteContacts, onToggleFavorite, onLogCall, callSettings, onUpdateCallSettings, speedDialContacts, onUpdateSpeedDial, onClearCallLog, scheduledCalls, onAddScheduledCall, onDeleteScheduledCall, onDeleteCallEntry, }) {
     const { colors } = useTheme();
@@ -468,10 +468,9 @@ function contactSubtitle(c, isOnline) {
     if (c.via && c.via.indexOf("link") >= 0) return t("ct_link_contact");
     return c.phone || "";
 }
-// C24: البحث يتجاهل الهمزات والتشكيل والتاء المربوطة/الهاء والأرقام العربيّة
+// C24: البحث يتجاهل الهمزات والتشكيل والتاء المربوطة/الهاء والأرقام العربيّة · C271: من طبقة التطبيع الموحّدة (app.p3)
 function normAr(s) {
-    return String(s || "").toLowerCase().replace(/[ً-ْٰـ]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/ؤ/g, "و").replace(/ئ/g, "ي")
-        .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/\s+/g, " ").trim();
+    return arabicSearchKey(s, false);
 }
 // C24: شاشة جهات الاتّصال — تصفية (الكلّ · متّصلون · محظورون)، بحثٌ أذكى، اختصاراتٌ للإضافة،
 //      وملفّ الشخص: رسالة · اتّصال · فيديو · سرّيّة، ثمّ التسمية والحظر والإزالة والإبلاغ (بتأكيد)
@@ -490,7 +489,7 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
     const reqCount = useSawaRequests();
     const sectionRefs = useRef({});
     const q = normAr(search);
-    const matches = (c) => !q || [c.name, c.realName, c.nick, c.phone, c.tag].some((x) => x && normAr(x).includes(q));
+    const matches = (c) => !q || arMatchAny([c.name, c.realName, c.nick, c.phone, c.tag], search);   // C271
     const onlineCount = contacts.filter(isOn).length, blockedCount = contacts.filter(blockedOf).length;
     const view = filter === "blocked" && !blockedCount ? "all" : filter;
     const filtered = contacts.filter(matches).filter((c) => view === "online" ? isOn(c) : view === "blocked" ? blockedOf(c) : true);
@@ -507,7 +506,7 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
     // ⛔ لا شاشة مكالمةٍ وهميّة: تعذّرت المكالمة الحقيقيّة ⇒ نقول ذلك
     const callReal = (c, type) => { if (!cloudCallTo(c, type)) showToast(CALL_FAIL_MSG(), "error"); };
     const chip = (key, label, n) => React.createElement("button", { key, onClick: () => setFilter(key), className: "px-3 py-1.5 rounded-full text-xs font-bold shrink-0", style: { backgroundColor: view === key ? colors.primary : colors.card, color: view === key ? "#fff" : colors.text, border: `1px solid ${view === key ? colors.primary : colors.border}` } }, label + (n != null ? " · " + n : ""));
-    const quick = (icon, label, onPress) => React.createElement("button", { onClick: onPress, className: "flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
+    const quick = (icon, label, onPress) => React.createElement("button", { onClick: onPress, className: "flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3", style: { backgroundColor: colors.btnFill } },
         React.createElement("div", { className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primaryLight } }, React.createElement(icon, { size: 17, color: colors.primary })),
         React.createElement("span", { className: "text-[12px] font-bold", style: { color: colors.text } }, label));
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col relative", style: { backgroundColor: colors.bg } },
@@ -516,7 +515,7 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
                 React.createElement("div", { className: "flex flex-row items-center gap-2" },
                     React.createElement("h2", { className: "text-xl font-extrabold", style: { color: colors.text } }, t("jhat_atsal")),
                     React.createElement("span", { className: "text-xs font-bold px-2 py-0.5 rounded-full", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, contacts.length)),
-                SC && SC.codeSheet && React.createElement("button", { "aria-label": tl("رمزي في سوا", "My Sawa code"), onClick: () => SC.codeSheet(), className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
+                SC && SC.codeSheet && React.createElement("button", { "aria-label": tl("رمزي في سوا", "My Sawa code"), onClick: () => SC.codeSheet(), className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: colors.btnFill } },
                     React.createElement(QrCode, { size: 17, color: colors.primary }))),
             React.createElement("div", { className: "flex flex-row items-center gap-2 px-3 py-2.5 rounded-2xl", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                 React.createElement(Search, { size: 15, color: colors.textMuted }),
@@ -653,7 +652,7 @@ function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVid
         React.createElement("p", { className: "text-[11.5px] leading-5 mb-3", style: { color: colors.textMuted } }, text),
         React.createElement("div", { className: "flex flex-row gap-2" },
             React.createElement("button", { onClick: () => { setConfirm(null); onYes(); }, className: "flex-1 py-2.5 rounded-xl text-sm font-extrabold text-white", style: { backgroundColor: colors.danger } }, yes),
-            React.createElement("button", { onClick: () => setConfirm(null), className: "flex-1 py-2.5 rounded-xl text-sm font-bold", style: { backgroundColor: colors.card, color: colors.text, border: `1px solid ${colors.border}` } }, tl("إلغاء", "Cancel"))));
+            React.createElement("button", { onClick: () => setConfirm(null), className: "flex-1 py-2.5 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, tl("إلغاء", "Cancel"))));
     return (React.createElement(React.Fragment, null,
         React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", zIndex: 40 } }),
         React.createElement("div", { className: "absolute left-0 right-0 bottom-0 rounded-t-3xl pb-6 pt-3 px-5 overflow-y-auto", style: { backgroundColor: colors.card, zIndex: 50, maxHeight: "92%" } },
@@ -1440,7 +1439,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
     const total = ERSAL_BASE_PRICE + weightFee + city.fee + type.surcharge + handlingSurcharge + insuranceFee;
     const needsDriverConfirm = paymentMethod === "cash" || paymentMethod === "bank";
     const walletShort = total > (Number(walletBalance) || 0);
-    const walletPinOk = !!walletPin && walletPinIn === walletPin;
+    const walletPinOk = walletPinMatches(walletPin, walletPinIn);
     const walletReady = paymentMethod !== "wallet" || (!walletShort && walletPinOk);
     // C225: بلاطةٌ مدمجة (أيقونة · اسم · رسم) — اختيارٌ واحد للنوع، ومتعدّد للحالة (علامة صحّ)
     const erTile = (o, active, onPress, multi) => React.createElement("button", { key: o.key, onClick: onPress, "aria-pressed": active, className: `relative flex ${rowStart()} items-center gap-2 rounded-xl border-2 p-2.5 ${textStart()}`, style: { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primaryLight : colors.card, minWidth: 0 } },
@@ -1893,7 +1892,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                                 !isDelivered && !s.failed && stageIdx === 0 && (confirmingCancelId === s.id ? (React.createElement("div", { className: `flex-1 flex ${rowStart()} gap-1.5` },
                                     React.createElement("button", { onClick: () => { onCancelShipment(s.id); setConfirmingCancelId(null); }, className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.danger } },
                                         React.createElement("span", { className: "text-[11px] font-bold text-white" }, t("takyd"))),
-                                    React.createElement("button", { onClick: () => setConfirmingCancelId(null), className: "flex-1 rounded-xl py-2 border", style: { borderColor: colors.border } },
+                                    React.createElement("button", { onClick: () => setConfirmingCancelId(null), className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.btnFill } },
                                         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, t("traja"))))) : (React.createElement("button", { onClick: () => setConfirmingCancelId(s.id), className: "flex-1 rounded-xl py-2 border", style: { borderColor: colors.danger } },
                                     React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.danger } }, t("ilgha_alshhna"))))))))));
                 })));

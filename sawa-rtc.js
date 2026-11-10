@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c232";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c278";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -468,12 +468,17 @@
     } catch (e) {}
     return st;
   }
-  function getMedia(type, facing) {
-    return getMedia0(type, facing).then(ensureAec);
+  function getMedia(type, facing, plain) {
+    return getMedia0(type, facing, plain).then(ensureAec);
   }
-  function getMedia0(type, facing) {
+  // C278: بعض الهواتف (Honor) تُسكت التقاط WebView بنمط «المكالمات» (إلغاء الصدى ⇒ مصدر VOICE_COMMUNICATION) فلا يصل صوتي في الغرف
+  //       ولا تظهر علامة التحدّث. حين يثبت ذلك (صمتٌ رقميّ بعد إعادة فتح الميكروفون) نفتحه بنمط الميكروفون العاديّ ونتذكّره لهذا الجهاز.
+  var MICK = "sawa-mic-mode";
+  function micPlain() { try { return localStorage.getItem(MICK) === "plain"; } catch (e) { return false; } }
+  function micAudio(plain) { return plain || micPlain() ? { echoCancellation: false, noiseSuppression: true, autoGainControl: true } : { echoCancellation: true, noiseSuppression: true, autoGainControl: true }; }
+  function getMedia0(type, facing, plain) {
     var md = navigator.mediaDevices;
-    var audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    var audio = micAudio(plain);
     if (type !== "video") return md.getUserMedia({ audio: audio, video: false });
     // 640×480 كافية وخفيفة على الشبكات الضعيفة
     // الكاميرا مشغولة (تبويبٌ آخر/تطبيق) أو مرفوضة وحدها ⇒ نكمل بالصوت بدل أن تفشل المكالمة
@@ -873,6 +878,7 @@
     // C111: تحويل المكالمة الصوتيّة إلى فيديو (بموافقة الطرف الآخر)
     if (c.state === "connected" && c.type !== "video") bar.appendChild(btn("📹", c.vreqOut ? L("…بانتظاره", "…waiting") : L("فيديو", "Video"), "rgba(255,255,255,.16)", function () { askVideo(cur); }));
     if (c.state === "connected") bar.appendChild(btn("➕", L("إضافة", "Add"), "rgba(255,255,255,.16)", function () { pickPerson(cur); }));
+    if (c.held) bar.appendChild(btn("▶", L("استئناف", "Resume"), "#21a366", resumeHold));   // C234
     bar.appendChild(btn("📞", L("إنهاء", "End"), "#d64545", function () { hangup(); }));
     bar.lastChild._b.style.transform = "rotate(135deg)";
   }
@@ -1379,7 +1385,7 @@
         if (ckOn()) setTimeout(function () { if (cur === c && c.state === "incoming" && !ckRing[id] && !wantAnswer[id]) playTone("ring"); }, 1500);   // C151: النظام يرنّ (CallKit)
         else playTone("ring");
       }
-      if (wantAnswer[id]) { delete wantAnswer[id]; c.fromSys = true; setTimeout(function () { if (cur === c && c.state === "incoming") accept(false); }, 250); }
+      if (wantAnswer[id]) { delete wantAnswer[id]; c.fromSys = true; setTimeout(function () { if (cur === c && c.state === "incoming") accept(false); }, 0); }   // C272: كان ٢٥٠ مث
       listen(c, ref, "value", function (s) { onCalleeValue(c, s.val()); }, function () { finish(c, "remote", { remote: true }); });
       c.timers.ring = setTimeout(function () { if (c.state === "incoming") finish(c, "missed", { remote: true }); }, RING_MS + 5000);
       getIce();   // تجهيزٌ مسبق
@@ -1533,18 +1539,23 @@
   function setHold(on) {
     on = !!on;
     var c = cur;
-    if (c && !c.done && c.state !== "incoming" && c.state !== "ended" && !!c.held !== on) {
+    // C234: لا تعليق قبل أن تتّصل المكالمة — «مقاطعات» الجلسة عند الردّ (CallKit/النظام) كانت تكتم المكالمة من أوّلها فتبدو معطّلة
+    if (c && !c.done && (c.connectedAt || !on) && c.state !== "incoming" && c.state !== "ended" && !!c.held !== on) {
       c.held = on;
       try { if (c.local) c.local.getAudioTracks().forEach(function (t) { t.enabled = !on && !c.muted; }); } catch (e) {}
       try { if (ui.ra) ui.ra.muted = on; } catch (e) {}
       if (c.ref && c.live) { var u = {}; u["hold_" + c.role] = on ? TS() : null; c.ref.update(u).catch(function () {}); }
       LOG.info("hold", { id: c.id, on: on });
       if (!on) setTimeout(function () { if (cur === c && !c.held) resumeMedia(c); }, 1200);   // مهلةٌ ليعيد المتصفّح الالتقاط بنفسه إن استطاع
-      paintStatus(c);
+      paint(c);
     }
     var g = gc || rm;   // الجماعيّة والغرف: الميكروفون فقط
-    if (g && g.local && !g.done && !!g.held !== on) {
+    // C275: تطبيق أندرويد القديم (قبل c272) يعلّق عند أيّ فقدٍ لـ«تركيز الصوت» — ومشغّل صوت المشاركين في سوا نفسها يأخذه
+    //       حين ينضمّ أحد ⇒ كان ميكروفوني في الغرفة يُكتم بلا إشارة. الجديد (فيه audioResume) يتحقّق من مكالمةٍ أخرى فعلاً.
+    var nb = NB(); if (on && nb && !nb.audioResume) g = null;
+    if (g && g.local && !g.done && (g.live || g.joinedAt || !on) && !!g.held !== on) {
       g.held = on;
+      LOG.info("room.hold", { on: on });   // C277
       var micOn = g === rm ? !!g.mic : !g.muted;   // الغرف: mic = مفتوح · الجماعيّة: muted = مكتوم
       try { g.local.getAudioTracks().forEach(function (t) { t.enabled = !on && micOn; }); } catch (e) {}
     }
@@ -1567,6 +1578,8 @@
       attachLocal(c); paint(c);
     }).catch(function (e) { LOG.warn("resume.media", { err: e && (e.name || e.message) }); });
   }
+  // C234: «استئناف» يدويّ — المستخدم أنهى المكالمة الأخرى (والنظام لم يبلغ بانتهاء المقاطعة)
+  function resumeHold() { try { if (IOSB()) IOSB().call("audioResume", {}).catch(function () {}); var n = NB(); if (n && n.audioResume) n.audioResume(); } catch (e) {} setHold(false); }   // C272: أندرويد أيضاً
   global.__sawaAudioHold = function (on) { try { setHold(on); } catch (e) { LOG.warn("hold", { err: e && e.message }); } };
   function toggleCam() {
     var c = cur; if (!c || !c.local) return;
@@ -2135,6 +2148,7 @@
   function gJoin(g) {
     var me = myUid(), d = db();
     g.ref = d.ref("gcalls/" + g.gid);
+    preCallAudio();   // C274
     Promise.all([getMedia(g.type), getIce(), g.ref.once("value")]).then(function (r) {
       if (g.done) { stopStream(r[0]); return; }
       g.local = r[0]; g.ice = r[1];
@@ -2180,7 +2194,7 @@
       if (g.done) return;
       g.live = true;
       try { g.ref.child("members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
-      g.joinedAt = Date.now(); g.state = "live"; wakeOn(); gPaint(g); bgAudio(true, g.title || L("مكالمة جماعيّة", "Group call"), function () { groupLeave(); }); if (IOSB()) iosRoute.setSpeaker(true, true);   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
+      g.joinedAt = Date.now(); g.state = "live"; wakeOn(); gPaint(g); bgAudio(true, g.title || L("مكالمة جماعيّة", "Group call"), function () { groupLeave(); }); nativeSpk(true, true);   // C234: أندرويد أيضاً — كان صوت الغرف والجماعيّة يُفرض على سمّاعة الأذن (خافتاً جدّاً)   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
       if (!g.tick) g.tick = setInterval(function () { gPaintHead(g); }, 1000);
       if (g.role === "starter" && !g.vc) playTone("back");   // نغمة «يرنّ» حتّى ينضمّ أوّل شخص (لا رنين في الدردشة الصوتيّة)
       var first = true;
@@ -2885,7 +2899,11 @@
       var check = setInterval(function () { if (closed || r.done) { clearInterval(check); return; } if (ov && !ov.isConnected) { clearInterval(check); reject(Object.assign(new Error("nopin"), { ui: L("لم تدخل رمز الغرفة", "No PIN entered") })); } }, 300);
     });
   }
+  // C274: «وضع المكالمة» والمكبّر قبل فتح الميكروفون — كانا يُضبطان بعد الدخول (الميكروفون مفتوحٌ أصلاً)، وبعض هواتف أندرويد
+  //       تُسكت الالتقاط المفتوح حين يتغيّر الوضع/المسار بعده: الآخرون يُسمَعون وصوتي لا يصل (مضيفاً كنتُ أو مشاركاً). المكالمة الفرديّة تضبطه عند الرنين أصلاً.
+  function preCallAudio() { try { if (NB()) nativeSpk(true, true); } catch (e) {} }
   function rMedia(r) {
+    preCallAudio();
     return getMedia("audio").then(function (st) {
       if (r.done) { stopStream(st); return; }
       r.local = st;
@@ -2915,7 +2933,7 @@
       if (r.done) return;
       r.live = true; r.joinedAt = Date.now();
       try { rRef(r, "members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
-      r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }); if (IOSB()) iosRoute.setSpeaker(true, true);   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
+      r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }); nativeSpk(true, true);   // C234: أندرويد أيضاً — كان صوت الغرف والجماعيّة يُفرض على سمّاعة الأذن (خافتاً جدّاً)   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
       LOG.info("room.live", { ms: Date.now() - (r.t0 || Date.now()) });
       // C66: المضيف ينشر جلسته في meta (مقروءة قبل العضويّة) ⇒ الوافد يعرض عليه فور دخوله بلا انتظار أوّل لقطةٍ من قائمة الأعضاء (رحلةٌ كاملة أقلّ حتى يُسمع الصوت)
       if (amHost(r)) rRef(r, "meta/hsess").set(r.sess).catch(function () {});
@@ -3769,6 +3787,40 @@
     if (rui.root) { if (rui.min) rMinimize(false); rPaint(r); }
     setTimeout(function () { if (!rm) rHide(); }, 2600);
   }
+  // C272: صوت المضيف كان يختفي بعد ثوانٍ من بدء الغرفة — النظام يوقف التقاط الميكروفون حين يتغيّر «وضع الاتّصال»/المسار بعد فتحه
+  //       (الغرفة تفتح الميكروفون أوّلاً ثمّ توجّه الصوت إلى المكبّر)، والمسار يبقى «حيّاً» في الواجهة بلا صوت.
+  //       ميكروفونٌ منتهٍ أو مكتومٌ من النظام ٣ ثوانٍ (ونحن غير معلّقين بمكالمةٍ أخرى) ⇒ نلتقطه من جديد ونستبدله عند كلّ طرف بلا إعادة تفاوض
+  function rMicHeal(r) {
+    if (!r.live || r.done || !r.local || r.held || r.healing) { r.micBad = 0; return; }
+    var a = r.local.getAudioTracks()[0];
+    var bad = !a || a.readyState === "ended" || a.muted;
+    // C274: التقاطٌ «مُسكَت» من النظام يبقى حيّاً غير مكتوم لكنّه أصفارٌ تامّة — الميكروفون الحقيقيّ لا يعطي صمتاً رقميّاً تامّاً أبداً
+    var zero = false, measured = false;
+    try { var ctx = tone.ctx; if (!bad && r.mic && a && a.enabled && r.an && ctx && ctx.state === "running") { r.an.an.getByteTimeDomainData(r.an.buf); measured = true; zero = true; for (var i = 0; i < r.an.buf.length; i++) if (r.an.buf[i] !== 128) { zero = false; break; } } } catch (e) {}
+    r.micZero = zero ? (r.micZero || 0) + 1 : 0;
+    if (r.plainCheck && measured && !zero) { r.plainCheck = false; if (!micPlain()) { try { localStorage.setItem(MICK, "plain"); } catch (e) {} LOG.warn("mic.plain.ok"); if (isAdm()) toast(L("🎙 ميكروفونٌ بديل لهذا الهاتف — صار يعمل", "🎙 Fallback mic mode for this phone — working")); } }   // C278
+    if (r.micZero >= 4) { bad = true; r.micBad = 2; r.micZero = 0; r.zeroN = (r.zeroN || 0) + 1; }
+    r.micBad = bad ? (r.micBad || 0) + 1 : 0;
+    if (r.micBad < 3 || (r.healN || 0) >= 5) return;
+    r.healing = true; r.micBad = 0; r.healN = (r.healN || 0) + 1;
+    LOG.warn("room.mic.heal", { n: r.healN, st: a ? a.readyState : "none", muted: !!(a && a.muted), zero: !!zero });
+    var plain = !!zero && (r.zeroN || 0) >= 2 && !micPlain();   // C278: الإعادة العاديّة لم تكفِ ⇒ نمط الميكروفون العاديّ
+    if (plain) { r.plainCheck = true; LOG.warn("mic.plain.try"); }
+    getMedia("audio", null, plain).then(function (st) {
+      r.healing = false;
+      var nt = st.getAudioTracks()[0];
+      if (r.done || !r.local || !nt) { stopStream(st); return; }
+      nt.enabled = !!r.mic && !r.held;
+      try { if (a) { r.local.removeTrack(a); a.stop(); } r.local.addTrack(nt); } catch (e) {}
+      Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); });
+      try { if (r.sfu && r.sfu.atx) r.sfu.atx.sender.replaceTrack(nt).catch(function () {}); } catch (e) {}
+      try { if (r.an && r.an.src) r.an.src.disconnect(); r.an = null; rLevelWatch(r, "__me", r.local); } catch (e) {}
+    }).catch(function (e) { r.healing = false; LOG.warn("room.mic.heal.fail", { err: e && (e.name || e.message) }); });
+  }
+  // C275: صوت المشاركين يتوقّف حين ينضمّ ثالث — النظام/WebView يوقف مشغّلات الصوت عند تنازع «تركيز الصوت» ولا يعيدها
+  function rResumeAudio() {
+    try { if (!rui.audios) return; [].forEach.call(rui.audios.querySelectorAll("audio"), function (a) { if (a.srcObject && a.paused) { LOG.info("room.audio.resume"); a.play().catch(function () {}); } }); } catch (e) {}
+  }
   function rTick(r) {
     if (r.done) return;
     // C64: حارس — لا تبقى الغرفة عالقةً في «جارٍ العودة»: الصوت يتدفّق ⇒ حيّة · عودةٌ معلّقة أكثر من 20 ث (طلبٌ لم يرجع أثناء الانقطاع) ⇒ محاولةٌ جديدة
@@ -3798,6 +3850,8 @@
     }
     // C65: عضوٌ حاضر ولا اتّصال معه (عرضٌ ضاع: كُتب حين غاب أحدنا لحظةً فرفضته القواعد، أو حُذف مع sig) ⇒ نعيد المحاولة — كان لا يُعاد أبداً فيبقى كلٌّ وحده
     r.tickN = (r.tickN || 0) + 1;
+    rMicHeal(r);   // C272
+    if (r.live && !r.held) rResumeAudio();   // C275
     if (r.live && !r.rejoining && !rBig(r) && r.state === "live" && r.tickN % 4 === 0) {
       var me = myUid(), nowT = Date.now(); r.noPeer = r.noPeer || {};
       Object.keys(r.members || {}).forEach(function (u) {
@@ -4258,7 +4312,7 @@
     var r = rm; if (!r) return;
     var me = myUid(), sh = function (x) { return String(x || "—").slice(-4); };
     var nm = function (u) { return u === me ? L("أنا", "me") : rName(r, u); };
-    var lines = [], body0 = null;
+    var lines = [], body0 = null, aud = { cap: null, capE: null, out: {}, inn: {} };   // C277
     var paint = function (srv, routes) {
       if (!body0) return; body0.innerHTML = "";
       var row = function (k, v, bad) { var d = el("div", "display:flex;justify-content:space-between;gap:10px;padding:7px 16px;border-top:1px solid " + LINE + ";font:600 12px var(--sawa-font,system-ui)"); d.appendChild(el("span", "color:" + MUTED, k)); d.appendChild(el("span", "color:" + (bad ? "#f87171" : "#e2e8f0") + ";text-align:left;direction:ltr", v)); body0.appendChild(d); lines.push(k + ": " + v); };
@@ -4287,6 +4341,22 @@
         row(L("يصلني من ", "From ") + nm(u), "📷 " + (vi.cam || "—") + (p && p.sct ? " · 🖥 " + (vi.scr || "—") : ""), m.scr && !(vi.scr && !/^0×/.test(vi.scr)) && !(m.scrCam || !p || !p.sct));
         row(L("أرسل إلى ", "To ") + nm(u), "📷 " + (vo.cam || "—") + (p && p.sct ? " · 🖥 " + (vo.scr || "—") : ""));
       });
+      // C277: الصوت — هل يلتقط ميكروفوني صوتاً؟ هل يُرسَل؟ ماذا يفعل أندرويد بالصوت؟ (لتشخيص «صوتي لا يصل» على هاتفٍ بعينه)
+      var a0 = r.local && r.local.getAudioTracks()[0];
+      row(L("ميكروفوني", "My mic"), a0 ? a0.readyState + (a0.muted ? " · muted(sys)" : "") + (a0.enabled ? "" : " · off") : L("لا يوجد", "none"), !a0 || a0.readyState !== "live" || a0.muted || (r.mic && !a0.enabled));
+      row(L("حالة الصوت", "Audio state"), "mic=" + (r.mic ? 1 : 0) + " held=" + (r.held ? 1 : 0) + " heal=" + (r.healN || 0) + "/" + (r.zeroN || 0) + (micPlain() ? " mic=plain" : "") + " aec=" + (lastAec && lastAec.aec) + " lvl=" + (r.levels && r.levels[me] != null ? r.levels[me].toFixed(3) : "—") + " ctx=" + (tone.ctx ? tone.ctx.state : "—"), !!r.held);
+      if (aud.cap != null) row(L("مستوى الالتقاط", "Capture level"), aud.cap.toFixed(3) + (aud.capE != null ? " · E=" + aud.capE.toFixed(2) : ""), aud.cap === 0);
+      Object.keys(aud.out).forEach(function (u) { var o = aud.out[u]; row(L("صوتي إلى ", "My audio to ") + nm(u), o.kb + "KB · " + o.pk + "pk" + (o.d != null ? " · +" + o.d + "pk/2s" : ""), o.d === 0); });
+      Object.keys(aud.inn).forEach(function (u) { var o = aud.inn[u]; row(L("صوتٌ من ", "Audio from ") + nm(u), o.kb + "KB · lvl " + o.lv + (o.paused ? " · ⏸" : ""), !!o.paused); });
+      var nb = NB(), nat = "";
+      try { if (nb) { nat = (nb.platform ? nb.platform() : "android") + (nb.audioResume ? "" : " (old native)") + " · " + (nb.audioRoute ? nb.audioRoute() : ""); } else if (IOSB()) nat = "iOS"; } catch (e) {}
+      if (nat) row(L("التطبيق/المسار", "App/route"), nat);
+      var nlog = ""; try { if (nb && nb.audioLog) nlog = String(nb.audioLog() || ""); } catch (e) {}
+      var jlog = ""; try { jlog = SawaLog.recent(300).filter(function (x) { return /hold|heal|audio|room\.|mic|route|focus/.test(x.ev); }).slice(-25).map(function (x) { var o = []; for (var k in x) if (k !== "ts" && k !== "lvl" && k !== "mod" && k !== "ev") o.push(k + "=" + x[k]); return Math.round((x.ts - (r.t0 || x.ts)) / 1000) + "s " + x.ev + (o.length ? " " + o.join(" ") : ""); }).join("\n"); } catch (e) {}
+      lines.push("--- js log ---", jlog || "—");
+      if (nb) lines.push("--- android audio ---", nlog || "(no audioLog: old native)");
+      var pre = el("pre", "margin:8px 16px;padding:8px;max-height:180px;overflow:auto;background:#0006;border-radius:10px;color:#cbd5e1;font:500 10px/1.4 ui-monospace,monospace;white-space:pre-wrap;direction:ltr;text-align:left", (jlog || "—") + (nb ? "\n--- android ---\n" + (nlog || "(old native)") : ""));
+      body0.appendChild(pre);
       row(L("محاولات الحارس", "Watchdog retries"), String(r.retries || 0) + " · " + L("عودات", "rejoins") + " " + (r.rejoins || 0) + "/" + (r.softRejoins || 0));
       var bt = el("div", "display:flex;gap:8px;padding:12px 16px");
       var cp = el("button", "flex:1;padding:10px;border:0;border-radius:12px;background:" + LINE + ";color:#fff;font:800 12px var(--sawa-font,system-ui)", L("نسخ التقرير", "Copy report"));
@@ -4294,6 +4364,8 @@
       var rj = el("button", "flex:1;padding:10px;border:0;border-radius:12px;background:" + PRI + ";color:#fff;font:800 12px var(--sawa-font,system-ui)", L("إعادة الاتّصال", "Reconnect"));
       rj.onclick = function () { r.rejoining = false; Object.keys(r.peers).forEach(function (u) { rDrop(r, u); }); rRejoin(r); toast(L("جارٍ إعادة الاتّصال…", "Reconnecting…")); };
       bt.appendChild(cp); bt.appendChild(rj); body0.appendChild(bt);
+      if (micPlain()) { var rs = el("button", "margin:0 16px 12px;width:calc(100% - 32px);padding:9px;border:0;border-radius:12px;background:" + LINE + ";color:#fff;font:800 12px var(--sawa-font,system-ui)", L("إعادة الميكروفون إلى النمط الافتراضيّ (إلغاء الصدى)", "Reset mic to default (echo cancellation)"));   // C278
+        rs.onclick = function () { try { localStorage.removeItem(MICK); } catch (e) {} toast(L("سيُستعمل النمط الافتراضيّ من الغرفة القادمة", "Default mode from the next room")); rs.remove(); }; body0.appendChild(rs); }
     };
     sheet(L("تشخيص الاتّصال", "Connection diagnostics"), function (body) { body0 = el("div", ""); body.appendChild(body0); paint(null, null); });
     var routes = {}, vin = {}, vout = {};
@@ -4303,11 +4375,23 @@
       return p.pc.getStats().then(function (rep) { var pair = null; rep.forEach(function (x) { if (x.type === "candidate-pair" && x.state === "succeeded" && (x.nominated || x.selected)) pair = pair || x;
           // C122: ما يصل من صورٍ فعلاً (الكاميرا/الشاشة) — لتشخيص «يبدأ العرض ولا أرى شيئاً»
           if (x.type === "inbound-rtp" && x.kind === "video") { var k = p.sct && x.mid === p.sct.mid ? "scr" : "cam"; vin[u] = vin[u] || {}; vin[u][k] = (x.frameWidth || 0) + "×" + (x.frameHeight || 0) + " · " + Math.round(x.framesPerSecond || 0) + "fps · " + (x.framesDecoded || 0) + "f"; }
+          if (x.type === "media-source" && x.kind === "audio" && typeof x.audioLevel === "number") { aud.cap = x.audioLevel; aud.capE = x.totalAudioEnergy; }   // C277: ما يلتقطه ميكروفوني فعلاً
+          if (x.type === "outbound-rtp" && x.kind === "audio") { aud.out[u] = { kb: Math.round((x.bytesSent || 0) / 1024), pk: x.packetsSent || 0, d: null }; }
+          if (x.type === "inbound-rtp" && x.kind === "audio") { var at = rui.tiles && rui.tiles[u] && rui.tiles[u].a; aud.inn[u] = { kb: Math.round((x.bytesReceived || 0) / 1024), lv: typeof x.audioLevel === "number" ? x.audioLevel.toFixed(3) : "—", paused: !!(at && at.paused) }; }
           if (x.type === "outbound-rtp" && x.kind === "video") { var k2 = p.sct && x.mid === p.sct.mid ? "scr" : "cam"; vout[u] = vout[u] || {}; vout[u][k2] = (x.frameWidth || 0) + "×" + (x.frameHeight || 0) + " · " + Math.round((x.targetBitrate || 0) / 1000) + "k"; }
         });
         if (pair) { var lc = rep.get(pair.localCandidateId), rc = rep.get(pair.remoteCandidateId); routes[u] = (lc && lc.candidateType === "relay") || (rc && rc.candidateType === "relay") ? L("عبر وسيط", "relay") : L("مباشر", "direct"); } }).catch(function () {});
     }));
-    Promise.all([srvP, rtP]).then(function (x) { paint(x[0], routes); });
+    Promise.all([srvP, rtP]).then(function (x) {
+      paint(x[0], routes);
+      // C277: بعد ثانيتين — هل ما زال صوتي يُرسَل؟ (عدد الحزم يزيد)
+      setTimeout(function () {
+        if (r.done || !body0 || !body0.isConnected) return;
+        Promise.all(Object.keys(aud.out).map(function (u) { var p = r.peers[u]; if (!p || !p.pc) return null;
+          return p.pc.getStats().then(function (rep) { rep.forEach(function (y) { if (y.type === "outbound-rtp" && y.kind === "audio" && aud.out[u]) aud.out[u].d = (y.packetsSent || 0) - aud.out[u].pk; }); }).catch(function () {}); }))
+          .then(function () { paint(x[0], routes); });
+      }, 2000);
+    });
   }
   function rMore() {
     var r = rm; if (!r) return;
@@ -4849,7 +4933,7 @@
     if (!id) return;
     try { if (new URLSearchParams(global.location.search).get("answer") === "1") wantAnswer[id] = 1; } catch (e) {}   // C72: «ردّ» من شاشة الهاتف
     try { var u = new URL(global.location.href); u.searchParams.delete("call"); u.searchParams.delete("answer"); global.history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + u.hash); } catch (e) {}
-    whenUid(function () { setTimeout(function () { if (/^[gs]/.test(id)) groupIncoming(id); else incoming(id); }, 300); });
+    whenUid(function () { setTimeout(function () { if (/^[gs]/.test(id)) groupIncoming(id); else incoming(id); }, wantAnswer[id] ? 0 : 300); });   // C272: «ردّ» ⇒ بلا انتظار
   }
   try {
     if (global.navigator && navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", function (ev) {

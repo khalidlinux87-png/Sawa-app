@@ -284,7 +284,7 @@ function TaxiScreen({ ride, tripsHistory, scheduledRides, onRequestRide, onSched
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                     React.createElement("button", { onClick: () => { setShowSosConfirm(false); setSosActivated(true); showToast(t("tm_tfayl_tnbyh_altwary"), "error"); }, className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.danger } },
                         React.createElement("span", { className: "text-xs font-bold text-white" }, t("takyd_altwary"))),
-                    React.createElement("button", { onClick: () => setShowSosConfirm(false), className: "flex-1 rounded-xl py-2 border", style: { borderColor: colors.border } },
+                    React.createElement("button", { onClick: () => setShowSosConfirm(false), className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.btnFill } },
                         React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("ilgha")))))),
             sosActivated && (React.createElement("div", { className: `w-full rounded-xl mt-2 p-3 flex ${rowStart()} items-center gap-2`, style: { backgroundColor: colors.danger } },
                 React.createElement(AlertTriangle, { size: 14, color: "#fff" }),
@@ -553,7 +553,7 @@ function TaqaTokenScreen({ token, colors, onBack, onHistory }) {
                 ].map((step, i) => (React.createElement("div", { key: i, className: `flex ${isRTL() ? "flex-row" : "flex-row-reverse"} items-center gap-2 mb-2 last:mb-0` },
                     React.createElement("div", { className: "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, i + 1),
                     React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } }, step))))),
-            React.createElement("button", { onClick: onHistory, className: "w-full rounded-xl py-2.5 border text-xs font-bold", style: { borderColor: colors.border, color: colors.textMuted, backgroundColor: colors.card } }, t("tq_sjl_rmwz")))));
+            React.createElement("button", { onClick: onHistory, className: "w-full rounded-xl py-2.5 text-xs font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, t("tq_sjl_rmwz")))));
 }
 // ══════════════════════════════════════════════════════════════════════════
 // طاقة — مكوّن سجل الرموز
@@ -968,6 +968,37 @@ async function authenticateWalletPasskey(credentialId) {
     catch (err) {
         return { ok: false, error: err.message };
     }
+}
+// C285: بصمة الهاتف الأصليّة (تطبيق أندرويد: BiometricPrompt — البصمة أو قفل الشاشة). null إن لم تتوفّر
+function nativeOwnerBridge() {
+    try {
+        const nb = window.SawaNativeBridge;
+        return nb && nb.verifyOwner && nb.ownerAuthOk ? nb : null;
+    }
+    catch (e) { return null; }
+}
+function nativeOwnerReady() {
+    const nb = nativeOwnerBridge();
+    try { return !!(nb && nb.ownerAuthOk()); } catch (e) { return false; }
+}
+function verifyDeviceOwner(title) {
+    const nb = nativeOwnerBridge();
+    if (!nb) return Promise.resolve({ ok: false, error: "unsupported" });
+    return new Promise((resolve) => {
+        const cbs = window.__sawaNatCbs = window.__sawaNatCbs || {};
+        const id = "own_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+        const to = setTimeout(() => { delete cbs[id]; resolve({ ok: false, error: "timeout" }); }, 120000);
+        cbs[id] = (r) => { clearTimeout(to); resolve(r || {}); };
+        try { nb.verifyOwner(title || "", id); }
+        catch (e) { clearTimeout(to); delete cbs[id]; resolve({ ok: false, error: String(e) }); }
+    });
+}
+function ownerAuthError(err) {
+    const e = String(err || "");
+    if (!e || /^e(5|10|13):/.test(e)) return "";   // أغلق المستخدم النافذة
+    if (e === "no-screen-lock") return tl("فعّل قفل الشاشة أو البصمة في إعدادات الهاتف أوّلاً", "Turn on a screen lock or fingerprint in your phone settings first");
+    if (/^e(7|9):/.test(e)) return tl("محاولاتٌ كثيرة — انتظر قليلاً ثمّ أعد المحاولة", "Too many attempts — wait a bit and try again");
+    return tl("تعذّر التحقّق: ", "Couldn't verify: ") + e;
 }
 function SelfieCapture({ onCaptured }) {
     const { colors } = useTheme();
@@ -1472,7 +1503,7 @@ function PaymentMethodsScreen({ methods, onAddNew, onRemove, onBack }) {
                 confirmingId === m.id ? (React.createElement("div", { className: `flex ${rowStart()} gap-1.5 shrink-0` },
                     React.createElement("button", { onClick: () => { onRemove(m.id); setConfirmingId(null); }, className: "rounded-xl px-2.5 py-1.5", style: { backgroundColor: colors.danger } },
                         React.createElement("span", { className: "text-[11px] font-bold text-white" }, t("takyd"))),
-                    React.createElement("button", { onClick: () => setConfirmingId(null), className: "rounded-xl px-2.5 py-1.5 border", style: { borderColor: colors.border } },
+                    React.createElement("button", { onClick: () => setConfirmingId(null), className: "rounded-xl px-2.5 py-1.5", style: { backgroundColor: colors.btnFill } },
                         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.text } }, t("ilgha"))))) : (React.createElement("button", { "aria-label": t("hdhf"), onClick: () => setConfirmingId(m.id), className: "shrink-0" },
                     React.createElement(Trash2, { size: 16, color: colors.danger })))))),
             React.createElement("button", { onClick: onAddNew, className: "w-full rounded-full border border-dashed py-3 mt-2", style: { borderColor: colors.primary } },
@@ -1698,7 +1729,7 @@ function IntlTransferScreen({ balance, walletPinForConfirm, kycStatus, history, 
                 React.createElement(Button, { label: tl("تحويلٌ جديد", "New transfer"), variant: "outline", onPress: () => { setF({ country: "", method: "", name: "", phone: "", account: "", city: "", purpose: "", amount: "" }); setPin(""); setStep("form"); } }))));
     }
     if (step === "review" && ctry) {
-        const pinOk = !!walletPinForConfirm && pin === walletPinForConfirm;
+        const pinOk = walletPinMatches(walletPinForConfirm, pin);
         const m = INTL_METHODS[f.method];
         return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
             React.createElement(TopBar, { title: tl("مراجعة التحويل", "Review transfer"), onBack: () => { setPin(""); setStep("form"); } }),
@@ -1965,8 +1996,8 @@ function FxCardsScreens({ view, setView, balance, fxAccounts, cards, walletPinFo
                 !walletPinForConfirm ? React.createElement("div", { className: "text-xs", style: { color: colors.danger } }, tl("عيّن رمز المحفظة أوّلاً", "Set a wallet PIN first"))
                     : React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                         React.createElement("input", { dir: "ltr", type: "password", inputMode: "numeric", maxLength: 6, value: pin, onChange: (e) => setPin(e.target.value.replace(/[^0-9]/g, "")), placeholder: tl("رمز المحفظة", "Wallet PIN"), className: "flex-1 min-w-0 border rounded-xl px-3 py-2.5 text-sm text-center tracking-widest", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
-                        React.createElement("button", { disabled: pin !== walletPinForConfirm, onClick: () => { setRevealUntil(Date.now() + 30000); setPin(""); }, className: "shrink-0 flex items-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white", style: { backgroundColor: colors.primary, opacity: pin === walletPinForConfirm ? 1 : 0.5 } }, React.createElement(Eye, { size: 14, color: "#fff" }), tl("إظهار", "Show"))),
-                pin.length >= 4 && pin !== walletPinForConfirm && React.createElement("div", { className: "text-[11px] font-bold mt-1.5", style: { color: colors.danger } }, tl("رمز المحفظة غير صحيح", "Incorrect wallet PIN"))),
+                        React.createElement("button", { disabled: !walletPinMatches(walletPinForConfirm, pin), onClick: () => { setRevealUntil(Date.now() + 30000); setPin(""); }, className: "shrink-0 flex items-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white", style: { backgroundColor: colors.primary, opacity: walletPinMatches(walletPinForConfirm, pin) ? 1 : 0.5 } }, React.createElement(Eye, { size: 14, color: "#fff" }), tl("إظهار", "Show"))),
+                pin.length >= 4 && !walletPinMatches(walletPinForConfirm, pin) && React.createElement("div", { className: "text-[11px] font-bold mt-1.5", style: { color: colors.danger } }, tl("رمز المحفظة غير صحيح", "Incorrect wallet PIN"))),
             reveal && React.createElement("div", { className: `flex ${rowStart()} items-center justify-between rounded-xl p-3 mb-3`, style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                 React.createElement("span", { className: "text-xs font-bold", style: { color: colors.textMuted } }, tl("تُخفى التفاصيل بعد ", "Hidden again in ") + Math.max(0, Math.ceil((revealUntil - Date.now()) / 1000)).toLocaleString(wLoc()) + tl(" ث", "s")),
                 React.createElement("div", { className: `flex ${rowStart()} gap-3` },
@@ -1988,7 +2019,7 @@ function FxCardsScreens({ view, setView, balance, fxAccounts, cards, walletPinFo
                             React.createElement("div", { className: `text-xs font-bold mb-2 ${textStart()}`, style: { color: colors.danger } }, tl("حذف نهائيّ — لا يمكن استعادة البطاقة.", "Permanent — the card can't be restored.")),
                             React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                                 React.createElement("button", { onClick: () => { onCardsChange(cards.filter((x) => x.id !== cd.id)); setView("cards"); }, className: "flex-1 rounded-xl py-2.5 text-xs font-bold text-white", style: { backgroundColor: colors.danger } }, tl("نعم، احذفها", "Yes, delete")),
-                                React.createElement("button", { onClick: () => setConfirmDel(false), className: "flex-1 rounded-xl py-2.5 text-xs font-bold border", style: { borderColor: colors.border, color: colors.text } }, tl("إلغاء", "Cancel")))))),
+                                React.createElement("button", { onClick: () => setConfirmDel(false), className: "flex-1 rounded-xl py-2.5 text-xs font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, tl("إلغاء", "Cancel")))))),
             React.createElement(WalletDemoNote, { ar: "بطاقةٌ تجريبيّة — لا تعمل في أيّ متجر.", en: "Demo card — doesn't work at any merchant." })), () => setView("cards"));
     }
     return null;
@@ -2005,6 +2036,8 @@ function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, 
         { id: "fx", label: tl("حسابات العملات", "Currency accounts"), desc: tl("دولار · ريال · درهم · يورو", "USD · SAR · AED · EUR"), Icon: Banknote, bgColor: "#E8F5E9", iconColor: "#1B7A43", onPress: () => { if (fxAccounts.length) { setSelFx(fxAccounts[0].cur); setView("fxAcct"); } else setView("fxAdd"); } },
         { id: "fxconv", label: tl("تحويل العملات", "Convert currency"), desc: tl("بين الجنيه والعملات", "Between SDG and currencies"), Icon: RotateCcw, bgColor: "#E3F2FD", iconColor: "#1565C0", onPress: () => setView("fxConvert") },
         { id: "vcards", label: tl("البطاقات الافتراضيّة", "Virtual cards"), desc: tl("للشراء عبر الإنترنت", "For online purchases"), Icon: CreditCard, bgColor: "#F1E9F7", iconColor: "#5E35B1", onPress: () => setView("cards") });
+    // C263: المحاسب الشخصيّ — أوّل الخدمات، لكلّ المستخدمين (لا يعتمد على رصيد المحفظة)
+    WALLET_SERVICES.unshift({ id: "pfm", label: tl("المحاسب الشخصيّ", "Personal accountant"), desc: tl("الدخل والمصروفات والتحليلات", "Income, spending & insights"), Icon: BarChart3, bgColor: "#E6F4F1", iconColor: "#0f766e", onPress: () => setView("pfm") });
     const [selectedBank, setSelectedBank] = useState(WALLET_BANKS[0]);
     const [transferTo, setTransferTo] = useState("");
     const [transferPhone, setTransferPhone] = useState("");
@@ -2045,6 +2078,7 @@ function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, 
     const limitNearing = spendingLimit && !limitExceeded && monthlySpent >= spendingLimit * 0.8;
     const LOW_BALANCE_THRESHOLD = 2000;
     // ── شاشات الـ view (تُعالَج قبل navTab) ──
+    if (view === "pfm") return React.createElement(AccountantScreen, { onBack: () => setView("home") });   // C263
     if (view === "topup") {
         const TOPUP_AMOUNTS = [5000, 10000, 20000, 50000];
         return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col" },
@@ -2121,7 +2155,7 @@ function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, 
                         React.createElement(ShieldCheck, { size: 13, color: colors.accent }),
                         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.accent } }, t("mblgh_fwq_1_000"))),
                     React.createElement("input", { dir: "ltr", value: transferPinConfirm, onChange: (e) => setTransferPinConfirm(e.target.value), type: "password", maxLength: 6, placeholder: t("rmz_almhfza"), className: "w-full border rounded-xl px-3 py-3 text-sm mb-3 text-center tracking-widest", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }))),
-                React.createElement(Button, { label: transferPhone ? `إرسال إلى ${transferTo || transferPhone}` : t("w_adkhl_rqm_almstlm"), disabled: !transferPhone.trim() || !transferAmount || amountNum <= 0 || amountNum > balance || (needsPinConfirm && transferPinConfirm !== walletPinForConfirm), onPress: () => {
+                React.createElement(Button, { label: transferPhone ? `إرسال إلى ${transferTo || transferPhone}` : t("w_adkhl_rqm_almstlm"), disabled: !transferPhone.trim() || !transferAmount || amountNum <= 0 || amountNum > balance || (needsPinConfirm && !walletPinMatches(walletPinForConfirm, transferPinConfirm)), onPress: () => {
                         onTransfer(transferTo.trim() || transferPhone, amountNum);
                         setTransferTo("");
                         setTransferPhone("");
@@ -2337,6 +2371,13 @@ ${txn.note}
                         React.createElement(ChevronLeft, { size: 14, color: colors.textMuted, className: "shrink-0", style: { transform: isRTL() ? "none" : "scaleX(-1)" } })),
                     kycStatus !== "pending" && React.createElement("button", { "aria-label": t("ighlaq"), onClick: () => onDismissKyc && onDismissKyc(), className: "w-7 h-7 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.bg } },
                         React.createElement(X, { size: 13, color: colors.textMuted })))),
+                // C263: مدخل المحاسب الشخصيّ في الصفحة الرئيسة (وهو أيضاً أوّل الخدمات)
+                React.createElement("button", { onClick: () => setView("pfm"), className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl p-3 border mt-3`, style: { backgroundColor: colors.card, borderColor: colors.border } },
+                    React.createElement("span", { className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: "#0f766e1f" } }, React.createElement(BarChart3, { size: 18, color: "#0f766e" })),
+                    React.createElement("span", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
+                        React.createElement("span", { className: "block text-sm font-extrabold", style: { color: colors.text } }, tl("المحاسب الشخصيّ", "Personal accountant")),
+                        React.createElement("span", { className: "block text-xs", style: { color: colors.textMuted } }, tl("سجّل دخلك ومصروفاتك وتابع أين يذهب مالك", "Track income and spending, see where your money goes"))),
+                    React.createElement(ChevronLeft, { size: 16, color: colors.textMuted, className: "shrink-0", style: { transform: isRTL() ? "none" : "scaleX(-1)" } })),
                 React.createElement("h4", { className: "text-sm font-extrabold mt-4 mb-2", style: { color: colors.text } }, t("akhr_alhrkat")),
                 transactions.slice(0, 5).map((txn) => (React.createElement("button", { key: txn.id, onClick: () => { setSelectedTransaction(txn); setView("transactionDetail"); }, className: `w-full ${textStart()} block mb-1.5` },
                     // C221: صفّ الحركة كما في «الحركات»: لونٌ بحسب النوع · العنوان سطران على الأكثر لا يلتصق بالمبلغ · المبلغ بإشارته وعملته
@@ -2518,15 +2559,134 @@ ${txn.note}
                             React.createElement("p", { className: "text-sm font-extrabold text-center", style: { color: colors.text } }, t("tjmyd_almhfza_swal")),
                             React.createElement("p", { className: "text-xs text-center mt-2", style: { color: colors.textMuted } }, t("stwqf_kl_amlyat"))),
                         React.createElement("button", { onClick: () => { setWalletFrozen(true); setConfirmFreeze(false); }, className: "w-full py-3 rounded-xl text-sm font-extrabold text-white mb-2", style: { backgroundColor: colors.danger } }, t("nam_jmd_almhfza")),
-                        React.createElement("button", { onClick: () => setConfirmFreeze(false), className: "w-full py-3 rounded-xl text-sm font-bold", style: { color: colors.textMuted, border: `1px solid ${colors.border}` } }, t("ilgha")))))))),
+                        React.createElement("button", { onClick: () => setConfirmFreeze(false), className: "w-full py-3 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, t("ilgha")))))))),
         React.createElement(WalletNavBar, { navTab: navTab, setNavTab: setNavTab, colors: colors })));
 }
-function WalletLockScreen({ onUnlock, onBack, walletPasskeyId, onPasskeyRegistered, walletPin, onSetWalletPin }) {
+// ============================================================================
+// C282: رمز المحفظة محفوظٌ على الجهاز (مُجزّأً بملحٍ، لا نصّاً) فيبقى بعد إعادة التشغيل،
+// مع «نسيت رمز المحفظة؟»: تعيينٌ جديد بعد التحقّق ببصمة الجهاز أو رمز قفل التطبيق أو رمز استرداد.
+// السجلّ: { v:1, salt, hash, codes:[hash…] } — الرموز تُعرض مرّةً واحدة ولا تُحفظ إلا مُجزّأة.
+// ============================================================================
+function sawaSha256Hex(str) {
+    const K = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
+    const bytes = new TextEncoder().encode(str);
+    const len = bytes.length;
+    const total = ((len + 9 + 63) >> 6) << 6;
+    const m = new Uint8Array(total);
+    m.set(bytes);
+    m[len] = 0x80;
+    const bits = len * 8;
+    m[total - 4] = (bits >>> 24) & 255; m[total - 3] = (bits >>> 16) & 255; m[total - 2] = (bits >>> 8) & 255; m[total - 1] = bits & 255;
+    const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+    const W = new Array(64);
+    const rotr = (x, n) => (x >>> n) | (x << (32 - n));
+    for (let off = 0; off < total; off += 64) {
+        for (let i = 0; i < 16; i++) W[i] = (m[off + i * 4] << 24) | (m[off + i * 4 + 1] << 16) | (m[off + i * 4 + 2] << 8) | m[off + i * 4 + 3];
+        for (let i = 16; i < 64; i++) {
+            const s0 = rotr(W[i - 15], 7) ^ rotr(W[i - 15], 18) ^ (W[i - 15] >>> 3);
+            const s1 = rotr(W[i - 2], 17) ^ rotr(W[i - 2], 19) ^ (W[i - 2] >>> 10);
+            W[i] = (W[i - 16] + s0 + W[i - 7] + s1) | 0;
+        }
+        let [a, b, c, d, e, f, g, h] = H;
+        for (let i = 0; i < 64; i++) {
+            const t1 = (h + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + W[i]) | 0;
+            const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+            h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+        }
+        H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;
+        H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;
+    }
+    return H.map((x) => (x >>> 0).toString(16).padStart(8, "0")).join("");
+}
+const WALLET_PIN_ROUNDS = 2000;
+function walletHashSecret(salt, secret) {
+    let h = sawaSha256Hex(salt + ":" + secret);
+    for (let i = 1; i < WALLET_PIN_ROUNDS; i++) h = sawaSha256Hex(salt + h);
+    return h;
+}
+function normalizeWalletCode(code) { return String(code || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+function isWalletSecret(rec) {
+    return !!rec && typeof rec === "object" && rec.v === 1 && typeof rec.salt === "string" && typeof rec.hash === "string" && Array.isArray(rec.codes);
+}
+// يُرجع { record, codes } — codes نصّاً للعرض مرّةً واحدة فقط
+// C283: السجلّ نفسه لرمز قفل التطبيق (sawa:appLock) — makeSecretRecord برموزٍ جاهزة
+function makeSecretRecord(pin, codes) {
+    const salt = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+    return { v: 1, salt, hash: walletHashSecret(salt, String(pin)), codes: (codes || []).map((c) => walletHashSecret(salt, normalizeWalletCode(c))) };
+}
+function makeWalletSecret(pin) {
+    const codes = generateRecoveryCodes();
+    return { record: makeSecretRecord(pin, codes), codes };
+}
+let walletPinMatchCache = { key: "", ok: false };
+function walletPinMatches(rec, pin) {
+    if (!isWalletSecret(rec) || !pin || String(pin).length < 4) return false;
+    const key = rec.hash + "|" + pin;
+    if (walletPinMatchCache.key !== key) walletPinMatchCache = { key, ok: walletHashSecret(rec.salt, String(pin)) === rec.hash };
+    return walletPinMatchCache.ok;
+}
+// يُرجع فهرس رمز الاسترداد المطابق أو -1
+function walletCodeIndex(rec, code) {
+    if (!isWalletSecret(rec)) return -1;
+    const n = normalizeWalletCode(code);
+    if (n.length < 8) return -1;
+    return rec.codes.indexOf(walletHashSecret(rec.salt, n));
+}
+// حدّ المحاولات الخاطئة (رمز المحفظة ورموز الاسترداد معاً) — يبقى بعد إعادة التشغيل
+const WALLET_LOCKOUT_KEY = SAWA_STORE_PREFIX + "walletLockout";
+const APP_LOCKOUT_KEY = SAWA_STORE_PREFIX + "appLockout"; // C283: قفل التطبيق — العدّاد نفسه بمفتاحٍ منفصل
+function walletLockoutGet(key = WALLET_LOCKOUT_KEY) {
+    try { const o = JSON.parse(localStorage.getItem(key) || "null"); return o && typeof o.fails === "number" ? o : { fails: 0, until: 0 }; }
+    catch (e) { return { fails: 0, until: 0 }; }
+}
+function walletLockoutFail(key = WALLET_LOCKOUT_KEY) {
+    const o = walletLockoutGet(key);
+    const fails = o.fails + 1;
+    // 5 محاولات ⇒ 5 دقائق، ثمّ تتضاعف مع كلّ خطأ بعدها (حتى ساعة)
+    const until = fails >= 5 ? Date.now() + Math.min(60, 5 * Math.pow(2, fails - 5)) * 60000 : 0;
+    try { localStorage.setItem(key, JSON.stringify({ fails, until })); } catch (e) { }
+    return { fails, until };
+}
+function walletLockoutReset(key = WALLET_LOCKOUT_KEY) { try { localStorage.removeItem(key); } catch (e) { } }
+function lockoutMsg(ms) { return tl("محاولات خاطئة كثيرة — حاول بعد " + Math.ceil(ms / 60000) + " دقيقة", "Too many wrong tries — try again in " + Math.ceil(ms / 60000) + " min"); }
+function WalletLockScreen({ onUnlock, onBack, walletPasskeyId, onPasskeyRegistered, walletPin, onSetWalletPin, appPin }) {
     const { colors } = useTheme();
+    useSawaAuthTick();
     const [webauthnStatus, setWebauthnStatus] = useState("");
     const [pinInput, setPinInput] = useState("");
     const [setupPin, setSetupPin] = useState("");
+    const [setupConfirm, setSetupConfirm] = useState("");
+    const [mode, setMode] = useState("unlock"); // unlock | forgot | newPin | codes
+    const [shownCodes, setShownCodes] = useState([]);
+    const [recoveryInput, setRecoveryInput] = useState("");
+    const [appPinInput, setAppPinInput] = useState("");
+    const [lockout, setLockout] = useState(walletLockoutGet);
+    const [now, setNow] = useState(Date.now());
     const [webauthnSupported] = useState(() => !!window.PublicKeyCredential);
+    const lockedFor = Math.max(0, lockout.until - now);
+    useEffect(() => {
+        if (!lockedFor) return;
+        const id = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(id);
+    }, [lockedFor > 0]);
+    const lockMsg = lockedFor > 0 ? lockoutMsg(lockedFor) : "";
+    function fail(msg) {
+        const o = walletLockoutFail();
+        setLockout(o);
+        setNow(Date.now());
+        setWebauthnStatus(o.until > Date.now() ? "" : msg + (o.fails >= 3 ? tl(" — بقيت " + (5 - o.fails) + " محاولات", " — " + (5 - o.fails) + " tries left") : ""));
+    }
+    function succeed() { walletLockoutReset(); setLockout({ fails: 0, until: 0 }); setWebauthnStatus(""); }
+    function savePin(newPin) {
+        const { record, codes } = makeWalletSecret(newPin);
+        onSetWalletPin(record);
+        setShownCodes(codes);
+        setSetupPin(""); setSetupConfirm("");
+        setMode("codes");
+    }
     async function handleRegisterPasskey() {
         setWebauthnStatus(tl("جاري التسجيل...", "Registering..."));
         const result = await registerWalletPasskey();
@@ -2538,47 +2698,139 @@ function WalletLockScreen({ onUnlock, onBack, walletPasskeyId, onPasskeyRegister
             setWebauthnStatus(t("tadhr_altsjyl", { error: result.error }));
         }
     }
-    async function handleAuthenticate() {
+    async function handleAuthenticate(next) {
         setWebauthnStatus(tl("جاري التحقق...", "Verifying..."));
         const result = await authenticateWalletPasskey(walletPasskeyId);
-        if (result.ok)
-            onUnlock();
-        else
-            setWebauthnStatus(t("fshl_althqq", { error: result.error }));
+        if (result.ok) { succeed(); next(); }
+        else setWebauthnStatus(t("fshl_althqq", { error: result.error }));
+    }
+    const inputCls = "w-full max-w-[240px] border rounded-xl px-3 py-3 text-sm mb-3 text-center tracking-widest";
+    const inputStyle = { borderColor: colors.border, color: colors.text, backgroundColor: colors.card };
+    const statusEl = !!(lockMsg || webauthnStatus) && React.createElement("p", { className: "text-[11px] mt-3 text-center font-bold", style: { color: colors.danger } }, lockMsg || webauthnStatus);
+    const page = (title, onBackFn, children) => (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col" },
+        React.createElement(TopBar, { title, onBack: onBackFn }),
+        React.createElement("div", { className: "flex-1 overflow-y-auto flex flex-col items-center justify-center p-6", style: { backgroundColor: colors.bg } }, ...children)));
+    const pinField = (value, set, placeholder, label) => React.createElement("input", { dir: "ltr", type: "password", inputMode: "numeric", value, onChange: (e) => set(e.target.value.replace(/\D/g, "").slice(0, 6)), placeholder, "aria-label": label || placeholder, maxLength: 6, className: inputCls, style: inputStyle });
+    // تعيين رمز (أوّل مرّة أو بعد النسيان): رمز + تأكيده
+    const newPinForm = (btnLabel) => {
+        const mismatch = setupConfirm.length >= 4 && setupConfirm !== setupPin;
+        return [
+            pinField(setupPin, setSetupPin, t("rmz_almhfza_4_6")),
+            pinField(setupConfirm, setSetupConfirm, tl("أعد كتابة الرمز", "Re-enter the PIN")),
+            mismatch && React.createElement("p", { className: "text-[11px] -mt-2 mb-2 font-bold", style: { color: colors.danger } }, tl("الرمزان غير متطابقين", "PINs don't match")),
+            React.createElement(Button, { label: btnLabel, onPress: () => savePin(setupPin), disabled: setupPin.length < 4 || setupConfirm !== setupPin, style: { width: 240 } }),
+        ];
+    };
+    // ① رموز الاسترداد — تُعرض مرّةً واحدة بعد كلّ تعيين
+    if (mode === "codes") {
+        return page(tl("رموز استرداد المحفظة", "Wallet recovery codes"), null, [
+            React.createElement(Key, { size: 36, color: colors.primary }),
+            React.createElement("h3", { className: "text-base font-extrabold mt-3 mb-1 text-center", style: { color: colors.text } }, tl("احفظ هذه الرموز في مكانٍ آمن", "Keep these codes somewhere safe")),
+            React.createElement("p", { className: "text-xs mb-4 text-center max-w-[280px]", style: { color: colors.textMuted } }, tl("إن نسيت رمز المحفظة، يفتحها أيٌّ منها مرّةً واحدة لتعيين رمزٍ جديد. لن تظهر مرّةً أخرى.", "If you forget your wallet PIN, any one of these lets you set a new PIN (each works once). They won't be shown again.")),
+            React.createElement("div", { dir: "ltr", className: "grid grid-cols-2 gap-2 mb-4 w-full max-w-[280px]" }, shownCodes.map((c) => React.createElement("div", { key: c, className: "rounded-lg px-2 py-2 text-center font-mono text-sm font-bold select-all", style: { backgroundColor: colors.card, color: colors.text, border: "1px solid " + colors.border } }, c))),
+            React.createElement(Button, { label: tl("نسخ الرموز", "Copy codes"), variant: "outline", onPress: () => { try { navigator.clipboard.writeText(shownCodes.join("\n")); setWebauthnStatus(tl("نُسخت", "Copied")); } catch (e) { } }, style: { width: 240, marginBottom: 8 } }),
+            React.createElement(Button, { label: tl("حفظتها — افتح المحفظة", "I saved them — open wallet"), onPress: () => { setShownCodes([]); setMode("unlock"); onUnlock(); }, style: { width: 240 } }),
+            !!webauthnStatus && React.createElement("p", { className: "text-[11px] mt-3 text-center", style: { color: colors.textMuted } }, webauthnStatus),
+        ]);
     }
     if (!walletPin && !walletPasskeyId) {
         // أول استخدام — لازم يُعدّ رمز المحفظة أو بصمة الجهاز قبل أي دخول
-        return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col" },
-            React.createElement(TopBar, { title: t("iadad_aman_almhfza"), onBack: onBack }),
-            React.createElement("div", { className: "flex-1 overflow-y-auto flex flex-col items-center justify-center p-6", style: { backgroundColor: colors.bg } },
-                React.createElement(Wallet, { size: 40, color: colors.primary }),
-                React.createElement("h3", { className: "text-base font-extrabold mt-3 mb-1", style: { color: colors.text } }, t("amn_mhfztk_awla")),
-                React.createElement("p", { className: "text-xs mb-4 text-center", style: { color: colors.textMuted } }, t("rmz_mnfsl_tmama_an")),
-                React.createElement("input", { dir: "ltr", value: setupPin, onChange: (e) => setSetupPin(e.target.value.replace(/\D/g, "").slice(0, 6)), placeholder: t("rmz_almhfza_4_6"), className: "w-full max-w-[240px] border rounded-xl px-3 py-3 text-sm mb-3 text-center tracking-widest", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
-                React.createElement(Button, { label: t("hfz_rmz_almhfza"), onPress: () => setupPin.length >= 4 && onSetWalletPin(setupPin), disabled: setupPin.length < 4, style: { width: 240 } }),
-                webauthnSupported && (React.createElement(React.Fragment, null,
-                    React.createElement("span", { className: "text-xs my-3", style: { color: colors.textMuted } }, t("aw")),
-                    React.createElement(Button, { icon: Fingerprint, label: t("sjl_bsma_aljhaz_webauthn"), onPress: handleRegisterPasskey, variant: "outline", style: { width: 240 } }))),
-                !!webauthnStatus && React.createElement("p", { className: "text-[11px] mt-3 text-center", style: { color: colors.textMuted } }, webauthnStatus))));
+        return page(t("iadad_aman_almhfza"), onBack, [
+            React.createElement(Wallet, { size: 40, color: colors.primary }),
+            React.createElement("h3", { className: "text-base font-extrabold mt-3 mb-1", style: { color: colors.text } }, t("amn_mhfztk_awla")),
+            React.createElement("p", { className: "text-xs mb-4 text-center", style: { color: colors.textMuted } }, t("rmz_mnfsl_tmama_an")),
+            ...newPinForm(t("hfz_rmz_almhfza")),
+            webauthnSupported && (React.createElement(React.Fragment, null,
+                React.createElement("span", { className: "text-xs my-3", style: { color: colors.textMuted } }, t("aw")),
+                React.createElement(Button, { icon: Fingerprint, label: t("sjl_bsma_aljhaz_webauthn"), onPress: handleRegisterPasskey, variant: "outline", style: { width: 240 } }))),
+            !!webauthnStatus && React.createElement("p", { className: "text-[11px] mt-3 text-center", style: { color: colors.textMuted } }, webauthnStatus),
+        ]);
+    }
+    // ③ رمزٌ جديد بعد التحقّق
+    if (mode === "newPin") {
+        return page(tl("رمز محفظة جديد", "New wallet PIN"), () => { setSetupPin(""); setSetupConfirm(""); setMode("unlock"); }, [
+            React.createElement(Lock, { size: 36, color: colors.primary }),
+            React.createElement("h3", { className: "text-base font-extrabold mt-3 mb-4", style: { color: colors.text } }, tl("تمّ التحقّق — عيّن رمزاً جديداً", "Verified — set a new PIN")),
+            ...newPinForm(t("hfz_rmz_almhfza")),
+        ]);
+    }
+    // ② نسيت الرمز — التحقّق بإحدى الطرق المتاحة على هذا الجهاز
+    if (mode === "forgot") {
+        const hasCodes = isWalletSecret(walletPin) && walletPin.codes.length > 0;
+        const blocked = lockedFor > 0;
+        const or = (k) => React.createElement("span", { key: k, className: "text-xs my-3", style: { color: colors.textMuted } }, t("aw"));
+        const opts = [];
+        // C285: في تطبيق الهاتف لا يُغيَّر رمز المحفظة إلا ببصمة الهاتف (أو قفل شاشته) — فمن يمسك الهاتف مفتوحاً
+        // لا يكفيه رمز قفل التطبيق أو حساب Google المسجَّل على الهاتف ليستولي على المحفظة
+        if (nativeOwnerReady()) {
+            return page(tl("نسيت رمز المحفظة", "Forgot wallet PIN"), () => { setWebauthnStatus(""); setMode("unlock"); }, [
+                React.createElement(Fingerprint, { size: 40, color: colors.primary }),
+                React.createElement("h3", { className: "text-base font-extrabold mt-3 mb-1", style: { color: colors.text } }, tl("أثبت أنّها محفظتك", "Prove it's your wallet")),
+                React.createElement("p", { className: "text-xs mb-4 text-center max-w-[280px]", style: { color: colors.textMuted } }, tl("للحماية لا يُغيَّر رمز المحفظة إلا ببصمة هذا الهاتف (أو رمز قفل شاشته). بعد التحقّق تعيّن رمزاً جديداً، ويبقى رصيدك كما هو.", "For your protection the wallet PIN can only be changed with this phone's fingerprint (or its screen lock). After verifying you set a new PIN; your balance stays as it is.")),
+                React.createElement(Button, { icon: Fingerprint, label: tl("تحقّق ببصمة الهاتف", "Verify with fingerprint"), disabled: blocked, onPress: async () => {
+                        setWebauthnStatus("");
+                        const r = await verifyDeviceOwner(tl("تغيير رمز محفظة سوا", "Change Sawa wallet PIN"));
+                        if (r && r.ok) { succeed(); setMode("newPin"); }
+                        else setWebauthnStatus(ownerAuthError(r && r.error));
+                    }, style: { width: 240 } }),
+                statusEl,
+            ]);
+        }
+        if (nativeOwnerBridge()) opts.push(React.createElement("p", { key: "nolock", className: "text-[11px] mb-3 text-center max-w-[280px] font-bold", style: { color: colors.danger } }, tl("لا قفل شاشة في هذا الهاتف — فعّل البصمة أو رمز قفل الشاشة من إعدادات الهاتف ليصير تغيير رمز المحفظة بالبصمة فقط.", "This phone has no screen lock — turn on a fingerprint or screen lock in phone settings so the wallet PIN can only be changed with it.")));
+        if (walletPasskeyId) opts.push(React.createElement(Button, { key: "bio", icon: Fingerprint, label: t("fth_bbsma_aljhaz"), onPress: () => handleAuthenticate(() => setMode("newPin")), variant: "outline", style: { width: 240 } }));
+        if (appPin) {
+            if (opts.length) opts.push(or("o1"));
+            opts.push(React.createElement("p", { key: "apl", className: "text-xs mb-2 text-center", style: { color: colors.textMuted } }, tl("رمز قفل التطبيق (6 أرقام)", "App lock PIN (6 digits)")));
+            opts.push(React.createElement(React.Fragment, { key: "apf" }, pinField(appPinInput, setAppPinInput, "••••••", tl("رمز قفل التطبيق", "App lock PIN"))));
+            opts.push(React.createElement(Button, { key: "apb", label: tl("تحقّق", "Verify"), disabled: blocked || appPinInput.length < 6, onPress: () => {
+                    if (walletPinMatches(appPin, appPinInput)) { succeed(); setAppPinInput(""); setMode("newPin"); }
+                    else { setAppPinInput(""); fail(tl("رمز قفل التطبيق غير صحيح", "Incorrect app lock PIN")); }
+                }, style: { width: 240 } }));
+        }
+        if (hasCodes) {
+            if (opts.length) opts.push(or("o2"));
+            opts.push(React.createElement("p", { key: "rcl", className: "text-xs mb-2 text-center", style: { color: colors.textMuted } }, tl("رمز استرداد المحفظة (مثل ABCD-1234)", "Wallet recovery code (like ABCD-1234)")));
+            opts.push(React.createElement("input", { key: "rcf", dir: "ltr", value: recoveryInput, onChange: (e) => setRecoveryInput(e.target.value.toUpperCase().slice(0, 12)), placeholder: "XXXX-XXXX", "aria-label": tl("رمز الاسترداد", "Recovery code"), autoCapitalize: "characters", autoComplete: "off", className: inputCls + " font-mono", style: inputStyle }));
+            opts.push(React.createElement(Button, { key: "rcb", label: tl("تحقّق", "Verify"), disabled: blocked || normalizeWalletCode(recoveryInput).length < 8, onPress: () => {
+                    const i = walletCodeIndex(walletPin, recoveryInput);
+                    setRecoveryInput("");
+                    if (i < 0) { fail(tl("رمز الاسترداد غير صحيح", "Incorrect recovery code")); return; }
+                    // يُستهلك الرمز فوراً حتى لو لم يُكمل تعيين الرمز الجديد
+                    onSetWalletPin(Object.assign({}, walletPin, { codes: walletPin.codes.filter((_, j) => j !== i) }));
+                    succeed();
+                    setMode("newPin");
+                }, style: { width: 240 } }));
+        }
+        // C284: التحقّق بحساب سوا (البريد أو Google) — يظهر دائماً (للضيف: تلميحٌ بربط الحساب)
+        const acctOk = !!(window.SawaSync && window.SawaSync.recoveryAccount && window.SawaSync.recoveryAccount());
+        if (opts.length && acctOk) opts.push(or("o3"));
+        opts.push(React.createElement("div", { key: "acct", className: "w-full max-w-[300px] mt-1" },
+            React.createElement(AccountRecoveryOption, { lockoutKey: WALLET_LOCKOUT_KEY, onVerified: () => { succeed(); setMode("newPin"); } })));
+        const anyMethod = !!walletPasskeyId || !!appPin || hasCodes || acctOk;
+        return page(tl("نسيت رمز المحفظة", "Forgot wallet PIN"), () => { setWebauthnStatus(""); setMode("unlock"); }, [
+            React.createElement(Key, { size: 36, color: colors.primary }),
+            React.createElement("h3", { className: "text-base font-extrabold mt-3 mb-1", style: { color: colors.text } }, tl("أثبت أنّها محفظتك", "Prove it's your wallet")),
+            React.createElement("p", { className: "text-xs mb-4 text-center max-w-[280px]", style: { color: colors.textMuted } }, anyMethod
+                ? tl("لا يمكن عرض الرمز القديم — بعد التحقّق تعيّن رمزاً جديداً، ويبقى رصيدك كما هو.", "The old PIN can't be shown — after verifying you set a new one. Your balance stays as it is.")
+                : tl("لا توجد طريقة استرداد على هذا الجهاز (لا بصمة مسجّلة ولا رموز استرداد متبقّية). تواصل مع الدعم من «حسابي».", "No recovery method on this device (no registered biometrics and no recovery codes left). Contact support from the Me tab.")),
+            ...opts,
+            statusEl,
+        ]);
     }
     // شاشة الدخول — PIN موجود أو بصمة مسجّلة
-    return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
-        React.createElement(TopBar, { title: t("almhfza"), onBack: onBack }),
-        React.createElement("div", { className: "flex-1 overflow-y-auto flex flex-col items-center justify-center p-6", style: { backgroundColor: colors.bg } },
-            React.createElement(Wallet, { size: 40, color: colors.primary }),
-            React.createElement("h3", { className: "text-base font-extrabold mt-3 mb-1", style: { color: colors.text } }, t("fth_almhfza")),
-            React.createElement("p", { className: "text-xs mb-4 text-center", style: { color: colors.textMuted } }, t("adkhl_rmz_almhfza")),
-            React.createElement("input", { dir: "ltr", type: "password", value: pinInput, onChange: (e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6)), placeholder: "\u2022\u2022\u2022\u2022", maxLength: 6, className: "w-full max-w-[240px] border rounded-xl px-3 py-3 text-sm mb-3 text-center tracking-widest font-bold", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } }),
-            React.createElement(Button, { label: t("fth_balrmz"), disabled: pinInput.length < 4, onPress: () => { if (pinInput === walletPin) {
-                    onUnlock();
-                    setPinInput("");
-                }
-                else {
-                    setWebauthnStatus(t("rmz_almhfza_ghyr_shyh"));
-                    setPinInput("");
-                } }, style: { width: 240 } }),
-            walletPasskeyId && (React.createElement(Button, { icon: Fingerprint, label: t("fth_bbsma_aljhaz"), onPress: handleAuthenticate, variant: "outline", style: { width: 240, marginTop: 8 } })),
-            !!webauthnStatus && React.createElement("p", { className: "text-[11px] mt-3 text-center", style: { color: colors.danger } }, webauthnStatus))));
+    return page(t("almhfza"), onBack, [
+        React.createElement(Wallet, { size: 40, color: colors.primary }),
+        React.createElement("h3", { className: "text-base font-extrabold mt-3 mb-1", style: { color: colors.text } }, t("fth_almhfza")),
+        walletPin && React.createElement("p", { className: "text-xs mb-4 text-center", style: { color: colors.textMuted } }, t("adkhl_rmz_almhfza")),
+        walletPin && pinField(pinInput, setPinInput, "••••", t("rmz_almhfza")),
+        walletPin && React.createElement(Button, { label: t("fth_balrmz"), disabled: lockedFor > 0 || pinInput.length < 4, onPress: () => {
+                if (walletPinMatches(walletPin, pinInput)) { succeed(); setPinInput(""); onUnlock(); }
+                else { setPinInput(""); fail(t("rmz_almhfza_ghyr_shyh")); }
+            }, style: { width: 240 } }),
+        walletPasskeyId && (React.createElement(Button, { icon: Fingerprint, label: t("fth_bbsma_aljhaz"), onPress: () => handleAuthenticate(onUnlock), variant: "outline", style: { width: 240, marginTop: 8 } })),
+        walletPin && React.createElement("button", { onClick: () => { setWebauthnStatus(""); setMode("forgot"); }, className: "mt-4 text-xs font-bold", style: { color: colors.primary } }, tl("نسيت رمز المحفظة؟", "Forgot wallet PIN?")),
+        statusEl,
+    ]);
 }
 // ============================================================================
 // إطار الجوال — مطابق تماماً لإطار سوا الحقيقي

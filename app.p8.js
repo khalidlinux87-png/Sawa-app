@@ -154,7 +154,7 @@ function ScheduleRoomModal({ onSave, onClose }) {
                     React.createElement("button", { onClick: () => { copyText(link); showToast(t("nskh_alrabt_2"), "success"); }, className: "text-[10px] font-extrabold px-2 py-1 rounded-lg", "aria-label": t("nskh"), style: { backgroundColor: colors.primary, color: "#fff" } }, t("nskh"))),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                     React.createElement("button", { onClick: save, className: "flex-1 py-3 rounded-xl text-sm font-extrabold", style: { backgroundColor: colors.primary, color: "#fff" } }, t("hfz_almwad")),
-                    React.createElement("button", { onClick: onClose, className: "flex-1 py-3 rounded-xl text-sm font-bold", style: { backgroundColor: colors.bg, color: colors.textMuted, border: `1px solid ${colors.border}` } }, t("ilgha")))))));
+                    React.createElement("button", { onClick: onClose, className: "flex-1 py-3 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, t("ilgha")))))));
 }
 function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, groups = [], onSendTasksToGroup }) {
     var _a, _b, _c;
@@ -725,7 +725,7 @@ function FirstRunScreen({ onStartFresh, onViewDemo }) {
                 React.createElement("div", { className: "flex-1 h-px", style: { backgroundColor: colors.border } }),
                 React.createElement("span", { className: "text-xs", style: { color: colors.textMuted } }, tl("\u0623\u0648", "or")),
                 React.createElement("div", { className: "flex-1 h-px", style: { backgroundColor: colors.border } })),
-            React.createElement("button", { onClick: onViewDemo, className: "w-full py-3 rounded-xl text-sm font-bold border", style: { borderColor: colors.border, color: colors.textMuted, backgroundColor: colors.card } }, tl("\u0627\u0633\u062A\u0639\u0631\u0636 \u0645\u062B\u0627\u0644 \u062A\u0648\u0636\u064A\u062D\u064A \u0623\u0648\u0644\u0627\u064B", "View a demo example first")),
+            React.createElement("button", { onClick: onViewDemo, className: "w-full py-3 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, tl("\u0627\u0633\u062A\u0639\u0631\u0636 \u0645\u062B\u0627\u0644 \u062A\u0648\u0636\u064A\u062D\u064A \u0623\u0648\u0644\u0627\u064B", "View a demo example first")),
             React.createElement("p", { className: "text-[10px] text-center mt-2", style: { color: colors.textMuted } }, tl("\u0628\u064A\u0627\u0646\u0627\u062A \u0648\u0647\u0645\u064A\u0629 \u0641\u0642\u0637 \u2014 \u0644\u0646 \u062A\u064F\u062D\u0641\u0638", "Demo data only — won't be saved")))));
 }
 
@@ -853,7 +853,7 @@ function CaptionSendSheet({ items, colors, onCancel, onSend }) {
                     more > 0 && React.createElement("p", { className: "text-[11px]", style: { color: colors.textMuted } }, tl("و" + more + " آخرون", "and " + more + " more")))),
             React.createElement("input", { value: cap, onChange: (e) => setCap(e.target.value), maxLength: 1000, autoFocus: true, placeholder: tl("أضف تعليقاً…", "Add a caption…"), dir: isRTL() ? "rtl" : "ltr", className: "w-full border rounded-xl px-3 py-2.5 text-sm mb-3", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             React.createElement("div", { className: "flex items-center gap-2" },
-                React.createElement("button", { onClick: onCancel, className: "flex-1 py-2.5 rounded-xl text-sm font-bold border", style: { borderColor: colors.border, color: colors.textMuted } }, tl("إلغاء", "Cancel")),
+                React.createElement("button", { onClick: onCancel, className: "flex-1 py-2.5 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, tl("إلغاء", "Cancel")),
                 React.createElement("button", { onClick: () => onSend(cap.trim()), className: "flex-1 py-2.5 rounded-xl text-sm font-bold text-white", style: { backgroundColor: colors.primary } }, tl("إرسال", "Send")))));
 }
 function FeedbackSheet({ onClose, currentScreen = "" }) {
@@ -980,7 +980,17 @@ function ContributionAmountModal({ onConfirm, onClose, walletBalance }) {
 function AppInner() {
     var _a, _b, _c, _d, _e, _f;
     const { colors } = useTheme();
-    const { showToast } = useToast();
+    const { showToast: showToast0 } = useToast();
+    // C203: تعديلٌ في الشجرة يُسجَّل (logActivity) ثمّ يُعلَن بإشعار نجاح — نُلحق بذلك الإشعار زرّ «تراجع».
+    //       pendingUndoRef يُملأ في logActivity ويُستهلك في أوّل إشعارٍ بعده في الدورة نفسها، ثمّ يُفرَّغ.
+    const pendingUndoRef = useRef(null);
+    const showToast = (message, type, opts) => {
+        const pu = pendingUndoRef.current;
+        pendingUndoRef.current = null;
+        if (pu && (type || "success") === "success" && !opts)
+            return showToast0(message, type, { action: tl("تراجع", "Undo"), onAction: () => famUndo(pu.groupId, pu.id) });
+        return showToast0(message, type, opts);
+    };
     // تنبيه واحد عند امتلاء التخزين — أفضل من فقدان صامت للبيانات
     useEffect(() => {
         const onFull = () => showToast(t("msaha_altkhzyn_mmtlya_bad"), "error");
@@ -993,9 +1003,14 @@ function AppInner() {
     const [showHelp, setShowHelp] = useState(false);
     function markTooltipSeen(key) { setSeenTooltips(function(p){return Object.assign({},p,{[key]:true});}); }
     function resetTooltips() { setSeenTooltips({}); } // onboarding | setup | locked | forgot | postRecoveryCodes | app
-    const [pin, setPin] = useState(null);
-    const [recoveryCodes, setRecoveryCodes] = useState([]);
-    const [biometricEnabled, setBiometricEnabled] = useState(false);
+    // C283: رمز قفل التطبيق محفوظٌ على الجهاز سجلّاً مُجزّأً { v, salt, hash, codes } (كرمز المحفظة) — لا نصّاً
+    const [appLockRaw, setAppLock] = usePersistedState("appLock", null);
+    const pin = isWalletSecret(appLockRaw) ? appLockRaw : null;
+    const [recoveryCodes, setRecoveryCodes] = useState([]); // نصّاً للعرض مرّةً واحدة فقط (لا يُحفظ)
+    const [appLockPasskeyId, setAppLockPasskeyId] = usePersistedState("appLockPasskeyId", null); // البصمة: WebAuthn حقيقيّ
+    const biometricEnabled = !!appLockPasskeyId;
+    // القفل مفعّلٌ ⇒ يبدأ التطبيق مقفولاً. غطاءٌ فوق التطبيق (لا تغيير flow) فلا تضيع حالة الشاشات ولا تنقطع مكالمة
+    const [lockView, setLockView] = useState(() => (isWalletSecret(loadPersisted("appLock", null)) && loadPersisted("appLockOn", false) === true ? "locked" : null)); // null | locked | forgot | codes
     const [statusOption, setStatusOption] = usePersistedState("statusOption", "online");
     const [customStatusMessage, setCustomStatusMessage] = useState("");
     const [profilePhoto, setProfilePhoto] = usePersistedState("profilePhoto", null);
@@ -1010,7 +1025,7 @@ function AppInner() {
     // setLocale يكتب في window، وReact لا يراه. المفتاح على الغلاف
     // يجبر إعادة بناء الشجرة كاملة فتُقرأ الاتجاهات والنصوص من جديد.
     React.useEffect(() => { setLocale(interfaceLanguage); }, [interfaceLanguage]);
-    const [pinLockEnabled, setPinLockEnabled] = useState(true);
+    const [pinLockEnabled, setPinLockEnabled] = usePersistedState("appLockOn", false); // C283: معطّلٌ حتى يفعّله المستخدم
     const [browserNotifEnabled, setBrowserNotifEnabled] = useState(false);
     const [blockUnsolicited, setBlockUnsolicited] = useState(true);
     const [identityVerified, setIdentityVerified] = useState(false);
@@ -1068,7 +1083,46 @@ function AppInner() {
                 showToast(t("ma_wafqt_ala_idhn"), "error");
         });
     }
-    const [autoLockDelay, setAutoLockDelay] = useState(0);
+    const [autoLockDelay, setAutoLockDelay] = usePersistedState("autoLockDelay", 60); // C283: ثوانٍ في الخلفيّة قبل القفل
+    const lockActive = pinLockEnabled && !!pin;
+    // C283: القفل التلقائيّ — يُقفل عند العودة إن بقي التطبيق في الخلفيّة autoLockDelay ثانيةً أو أكثر
+    const hiddenAtRef = useRef(0);
+    useEffect(() => {
+        if (!lockActive) return;
+        const onVis = () => {
+            if (document.visibilityState === "hidden") { hiddenAtRef.current = Date.now(); return; }
+            const at = hiddenAtRef.current; hiddenAtRef.current = 0;
+            if (at && Date.now() - at >= (Number(autoLockDelay) || 0) * 1000) setLockView((v) => v || "locked");
+        };
+        document.addEventListener("visibilitychange", onVis);
+        return () => document.removeEventListener("visibilitychange", onVis);
+    }, [lockActive, autoLockDelay]);
+    function saveAppPin(newPin, codes) {
+        setAppLock(makeSecretRecord(newPin, codes));
+        walletLockoutReset(APP_LOCKOUT_KEY);
+    }
+    function toggleAppLock() {
+        if (pinLockEnabled) {
+            // الإيقاف يمسح الرمز والبصمة — لا رمزٌ منسيٌّ يبقى في الخلفيّة
+            setPinLockEnabled(false); setAppLock(null); setAppLockPasskeyId(null); setRecoveryCodes([]);
+            walletLockoutReset(APP_LOCKOUT_KEY);
+            return;
+        }
+        if (pin) { setPinLockEnabled(true); return; }
+        setFlow("setup"); // يُفعَّل بعد تعيين الرمز
+    }
+    async function toggleAppLockBiometric() {
+        if (appLockPasskeyId) { setAppLockPasskeyId(null); return; }
+        const r = await registerWalletPasskey();
+        if (r.ok && r.credentialId) { setAppLockPasskeyId(r.credentialId); showToast(tl("فُعّل الفتح بالبصمة", "Biometric unlock is on"), "success"); }
+        else showToast(t("tadhr_altsjyl", { error: r.error || "" }), "error");
+    }
+    function fullLocalReset() {
+        // آخر حلّ في «نسيت الرمز»: خروجٌ من الحساب ومسحُ كلّ ما على الجهاز (كحذف الحساب محلّيّاً)
+        try { if (window.SawaChat && window.SawaChat.wipeLocal) { window.SawaChat.wipeLocal(); return; } } catch (e) { }
+        try { localStorage.clear(); } catch (e) { }
+        try { location.replace(location.pathname); } catch (e) { }
+    }
     const [tab, setTab] = useState(IS_RAHIM ? "discover" : "chats");   // C13e: التطبيق يفتح على المحادثات
     const [stack, setStack] = useState([]); // 'security' | 'demo' | 'sessions' | 'wallet' | 'stats' | 'notifications'
     const [notes, setNotes] = useState([]);
@@ -1268,10 +1322,34 @@ function AppInner() {
         });
         if (Object.keys(upd).length) setFamMe((prev) => ({ ...(prev || {}), ...upd }));
     }, [members, familyGroups, groupPersons]);
-    const [activityLog, setActivityLog] = usePersistedState("famActivityLog", []); // { id, groupId, text, ts } — C75: يُحفظ (كان يضيع عند كلّ فتح فيبدو السجلّ فارغاً دائماً)
+    const [activityLog, setActivityLog] = usePersistedState("famActivityLog", []);
+    // C203: لقطات التراجع لكلّ عائلة: groupId ⇒ [{ id, text, ts, snap }] الأحدث أوّلاً. في الذاكرة وحدها —
+    //       اللقطة تحمل صور الأشخاص (data:‎) فحفظها في localStorage يملؤه. تُفقد بإغلاق التطبيق، والسجلّ النصّيّ يبقى.
+    const famUndoRef = useRef({});
+    const [famUndoVer, setFamUndoVer] = useState(0);
+    // تغييرٌ وصل من الخادم (عضوٌ آخر عدّل الشجرة): الرجوع إلى لقطةٍ أقدم يمحو تعديله، فتُسقط لقطات تلك العائلة.
+    const famUndoDropGroups = (gids) => {
+        let any = false;
+        gids.forEach((g) => { if ((famUndoRef.current[g] || []).length) { famUndoRef.current[g] = []; any = true; } });
+        if (any) setTimeout(() => setFamUndoVer((v) => v + 1), 0);
+    };
+    const remoteSetGroupPersons = (fn) => setGroupPersons((prev) => {
+        const next = typeof fn === "function" ? fn(prev) : fn;
+        famUndoDropGroups(Object.keys(next || {}).filter((k) => (prev || {})[k] !== next[k]));
+        return next;
+    });
+    const remoteSetKinshipRelations = (fn) => setKinshipRelations((prev) => {
+        const next = typeof fn === "function" ? fn(prev) : fn;
+        const old = new Set(prev || []), touched = new Set();
+        (next || []).forEach((r) => { if (!old.has(r)) touched.add(r.groupId); });
+        const kept = new Set(next || []);
+        (prev || []).forEach((r) => { if (!kept.has(r)) touched.add(r.groupId); });
+        famUndoDropGroups([...touched]);
+        return next;
+    }); // { id, groupId, text, ts } — C75: يُحفظ (كان يضيع عند كلّ فتح فيبدو السجلّ فارغاً دائماً)
     const [groupSettings, setGroupSettings] = usePersistedState("groupSettings", initialSettings);
     // الجسر (B5): يُعطي sawa-sync.js مُحدِّثات الحالة ليطبّق بيانات الخادم (القراءة، الاستعادة، الانضمام)
-    useEffect(() => { if (window.SawaSync && window.SawaSync.bindApp) window.SawaSync.bindApp({ setFamilyGroups, setGroupPersons, setKinshipRelations, setCurrentGroupId, setGroupSettings, setMembers, setEvents, setSchedules }); }, []);
+    useEffect(() => { if (window.SawaSync && window.SawaSync.bindApp) window.SawaSync.bindApp({ setFamilyGroups, setGroupPersons: remoteSetGroupPersons, setKinshipRelations: remoteSetKinshipRelations, setCurrentGroupId, setGroupSettings, setMembers, setEvents, setSchedules }); }, []);
     // الجسر (B4/B5): كلّ تغيّرٍ يُرسَل فرقُه للخادم (المجموعات المرفوعة فقط)، ويُبلَّغ بالمجموعة الحاليّة لمراقبتها
     useEffect(() => { if (window.SawaSync && window.SawaSync.observe) window.SawaSync.observe(groupPersons, kinshipRelations, currentGroupId, familyGroups, events, schedules); }, [groupPersons, kinshipRelations, currentGroupId, familyGroups, events, schedules]);
     // ⛔ كانت useState: كلّ سؤالٍ تجاهلتَه يعود عند إعادة التحميل. ويزداد
@@ -2163,7 +2241,9 @@ function AppInner() {
     }
     // ------------------------------- المحفظة -------------------------------
     const [walletUnlocked, setWalletUnlocked] = useState(false);
-    const [walletPin, setWalletPin] = useState(null); // منفصل تماماً عن PIN قفل التطبيق
+    // C282: محفوظٌ على الجهاز كسجلٍّ مُجزّأ { v, salt, hash, codes } — لا نصّاً — فيبقى بعد إعادة التشغيل
+    const [walletSecretRaw, setWalletPin] = usePersistedState("walletSecret", null); // منفصل تماماً عن PIN قفل التطبيق
+    const walletPin = isWalletSecret(walletSecretRaw) ? walletSecretRaw : null;
     const [linkedPaymentMethods, setLinkedPaymentMethods] = useState([]);
     const [blockedConversations, setBlockedConversations] = usePersistedState("blockedConvs", []);
     const [lockedConversationIds, setLockedConversationIds] = usePersistedState("lockedConvs", []);
@@ -2339,7 +2419,7 @@ function AppInner() {
         showToast(t("tm_ilgha_alhzr"), "success");
     }
     const [spendingLimit, setSpendingLimit] = useState(null);
-    const [walletPasskeyId, setWalletPasskeyId] = useState(null);
+    const [walletPasskeyId, setWalletPasskeyId] = usePersistedState("walletPasskeyId", null); // C282: معرّف البصمة ليس سرّاً
     const [walletBalance, setWalletBalance] = useState(45200);
     const walletCardNumber = "4532123456781234";
     const [kycStatus, setKycStatus] = useState("none"); // none | pending | verified
@@ -2416,14 +2496,13 @@ function AppInner() {
         if (window.confirm(t("tsjyl_alkhrwj_sthtaj_ila"))) {
             setStack([]);
             setTab("me");
-            setFlow("locked");
+            if (lockActive) setLockView("locked");
         }
     }
     function deleteEncryptionKeys() {
         // إصلاح: الرسالة تدّعي مسح "كل البيانات المحلية" — قبل كانت تمسح رمز
         // القفل والملاحظات بس، تاركة صلة الرحم والمحفظة وسجل النشاط كما هي.
-        // الآن تمسح فعلياً كل حالة محلية لتطابق الادّعاء بصدق
-        setPin(null);
+        // الآن تمسح فعلياً كل حالة محلية لتطابق الادّعاء بصدق (رمز القفل يُمسح أدناه — C283)
         setNotes([]);
         setGroupPersons({});
         setKinshipRelations([]);
@@ -2439,9 +2518,18 @@ function AppInner() {
         setWalletBalance(0);
         setWalletTransactions([]);
         setLinkedPaymentMethods([]);
+        setWalletPin(null);
+        setWalletPasskeyId(null);
+        setWalletUnlocked(false);
+        walletLockoutReset();
+        setAppLock(null);
+        setAppLockPasskeyId(null);
+        setPinLockEnabled(false);
+        setRecoveryCodes([]);
+        walletLockoutReset(APP_LOCKOUT_KEY);
         setRedeemedReferralCode(null);
         setStack([]);
-        setFlow("setup");
+        setFlow("app"); // C283: قفل التطبيق اختياريّ — لا نفرض رمزاً جديداً
         showToast(t("tm_hdhf_mfatyh_altshfyr"), "success");
     }
     function addPaymentMethod(data) {
@@ -2671,6 +2759,19 @@ function AppInner() {
                 }
             });
         });
+        // C203: زوجاتٌ تُكتب في النسب السريع تمرّ بقواعد الزواج — ما يخالف لا يُربط ويُذكر سببه
+        {
+            const gpAll = (groupPersons[groupId] || []).concat(newPersons, extraPersons);
+            let rs = kinshipRelations.filter((r) => r.groupId === groupId).concat(newRelations.filter((r) => !famIsMarriage(r)));
+            const kept = [], why = [];
+            newRelations.forEach((r) => {
+                if (!famIsMarriage(r)) { kept.push(r); return; }
+                const w = marriageCheck(gpAll, rs, r.source, r.target, r.type);
+                if (w) { why.push(w.msg); return; }
+                kept.push(r); rs = rs.concat([r]);
+            });
+            if (why.length) { newRelations.length = 0; newRelations.push(...kept); setTimeout(() => showToast(why[0], "error"), 700); }
+        }
         setGroupPersons((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), ...newPersons, ...extraPersons] }));
         // نُسقط أي علاقة ذاتية أو مكرّرة قد تنشأ عند الربط بأشخاص موجودين
         setKinshipRelations((prev) => {
@@ -2689,7 +2790,7 @@ function AppInner() {
             let out = [...prev, ...accepted];
             const childIds = new Set(accepted.filter((r) => r.type === "parent").map((r) => r.target));
             childIds.forEach((cid) => {
-                const sp = inferSpouseFromParents(groupId, cid, out);
+                const sp = inferSpouseFromParents(groupId, cid, out, newPersons.concat(extraPersons));
                 if (sp)
                     out = [...out, sp];
             });
@@ -2730,9 +2831,11 @@ function AppInner() {
             const nm = chain[i], next = (chain[i + 1] || "").trim();
             const same = persons.filter((p) => normalizeArabicName(p.local_name) === normalizeArabicName(nm) && (p.gender || "male") === "male");
             let found = null;
-            if (next) found = same.find((p) => parentName(p.id) === normalizeArabicName(next)) || null;
-            else if (same.length === 1) found = same[0];
             const kin = deriveKinship(prevKin, "parent", "male") || "أخرى";
+            if (next) found = same.find((p) => parentName(p.id) === normalizeArabicName(next)) || null;
+            // C203: اسمٌ بلا أبٍ يؤكّده لا يُربط بمن يشبهه إلّا إن كانت صلته هي الصلة المنتظرة نفسها.
+            //       كان «نورة بنت علي» زوجةً لخالد تُربط بجدّه «علي» (الوحيد بهذا الاسم) فتصير عمّته وزوجته معاً.
+            else if (same.length === 1 && kin !== "أخرى" && same[0].kinship === kin) found = same[0];
             if (found) { ids.push(found.id); prevKin = found.kinship || kin; continue; }
             const id = `gp-${Date.now()}-n${i}-${Math.random().toString(36).slice(2, 5)}`;
             created.push({ id, local_name: nm, kinship: kin, gender: "male", proximity: proximityForKinship(kin), alive: true, favorite: false, locations: [],
@@ -2821,15 +2924,22 @@ function AppInner() {
         }
         // حدود الزواج — تُحسب على العلاقات الحالية فقط، والسابقة بلا حدّ
         // لأنها توثيق تاريخي قد يتضمن زيجات متعددة متعاقبة.
-        if (relKey === "spouse") {
-            const currentSpouses = kinshipRelations.filter((r) => r.groupId === groupId && r.type === "spouse"
-                && (r.source === person.id || r.target === person.id)).length;
-            // المرأة: زوج واحد. الرجل: حتى أربع.
-            const limit = sel.gender === "male" ? 1 : 4;
-            if (currentSpouses + ids.length > limit) {
-                showToast(limit === 1 ? t("ai_la_akthr_zwj") : t("ai_la_akthr_zwjat"), "error");
-                return;
+        // C203: الزواج (قائماً أو سابقاً) يمرّ بالقواعد نفسها: يُفحص كلّ اسمٍ مع ما قبله في الدفعة
+        //       (الحدّ القديم كان يعدّ الحاليّ وحده، ولا يفحص جنس شخصٍ موجود اختير «هو نفسه»).
+        if (relKey === "spouse" || relKey === "ex_spouse") {
+            const gp = existing.concat(created);
+            let rs = kinshipRelations.filter((r) => r.groupId === groupId);
+            for (let i = 0; i < ids.length; i++) {
+                const why = marriageCheck(gp, rs, person.id, ids[i], relKey);
+                if (why) { showToast(why.msg, "error"); return; }
+                rs = rs.concat([{ id: "~chk" + i, groupId, source: person.id, target: ids[i], type: relKey }]);
             }
+        }
+        // C203: بعد ربط النسب المكتوب — زوجٌ صار بالنسب أصلاً أو فرعاً أو أخاً لصاحب البطاقة يُرفض
+        if (relKey === "spouse" || relKey === "ex_spouse") {
+            const rs = kinshipRelations.filter((r) => r.groupId === groupId).concat(nasabRels);
+            const bad = ids.find((id) => famIsDirectKin(rs, person.id, id));
+            if (bad) { showToast(tl("النسب المكتوب يجعل «" + (names[ids.indexOf(bad)] || "") + "» من أصول «" + famFirst(person) + "» أو فروعه أو إخوته — لا يُسجَّل زواج. راجع اسم الأب.", "The written lineage makes them direct kin — marriage not recorded. Check the father's name."), "error"); return; }
         }
         setGroupPersons((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), ...created, ...nasabPersons] }));
         if (nasabConflicts.length) setTimeout(() => showToast(tl("لم يُضَف نسب: " + nasabConflicts.join("، ") + " — يختلف عن والدٍ مسجَّل", "Lineage skipped for: " + nasabConflicts.join(", ")), "info"), 600);
@@ -2851,7 +2961,7 @@ function AppInner() {
             if (relKey === "child") ids.forEach((cid) => { const cop = coParentEdge(groupId, person.id, cid, out, coParentOf[cid] || sel.coParent); if (cop) out = [...out, cop]; });   // C81 · C104: أبٌ مكتوب بالاسم
             const childIds = new Set(accepted.filter((r) => r.type === "parent").map((r) => r.target));
             childIds.forEach((cid) => {
-                const sp = inferSpouseFromParents(groupId, cid, out);
+                const sp = inferSpouseFromParents(groupId, cid, out, created.concat(nasabPersons));
                 if (sp)
                     out = [...out, sp];
             });
@@ -2869,8 +2979,42 @@ function AppInner() {
         showToast(reused ? t("adyf_wrbt_mwjwda_b", { length: created.length, reused, local_name: person.local_name })
             : t("adyf_qryb_l", { length: created.length, local_name: person.local_name }), "success");
     }
-    function logActivity(groupId, text) {
-        setActivityLog((prev) => [{ id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, groupId, text, ts: Date.now() }, ...(prev || [])].slice(0, 300));
+    // C203: كلّ سطرٍ في السجلّ يحمل لقطة العائلة **قبل** التعديل — هذه الدالّة تُنادى في نهاية كلّ تعديل،
+    //       وقيم groupPersons/kinshipRelations في إغلاقها هي حالة ما قبل التعديل (المُحدِّثات لم تُطبَّق بعد).
+    //       opts.undo === false: سطرٌ بلا تراجع (إنشاء مجموعة، تسمية…) — ليس تعديلاً في أشخاص الشجرة.
+    function famSnapshotFull(groupId) {
+        return { ...famSnapshot(groupId, groupPersons, kinshipRelations),
+            events: (events || []).filter((e) => e.groupId === groupId),
+            schedules: (schedules || []).filter((x) => x.groupId === groupId) };
+    }
+    function logActivity(groupId, text, opts) {
+        const id = `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const undoable = !(opts && opts.undo === false) && !!groupPersons[groupId];
+        if (undoable) {
+            const stack = famUndoRef.current[groupId] || [];
+            famUndoRef.current[groupId] = [{ id, text, ts: Date.now(), snap: (opts && opts.snap) || famSnapshotFull(groupId) }, ...stack].slice(0, FAM_UNDO_MAX);
+            setFamUndoVer((v) => v + 1);
+            pendingUndoRef.current = { groupId, id };
+            Promise.resolve().then(() => { if (pendingUndoRef.current && pendingUndoRef.current.id === id) pendingUndoRef.current = null; });
+        }
+        setActivityLog((prev) => [{ id, groupId, text, ts: Date.now(), undoable }, ...(prev || [])].slice(0, 300));
+    }
+    // تراجعٌ عن سطرٍ في السجلّ: تعود العائلة كما كانت قبله — وقبل كلّ ما جاء بعده أيضاً (اللقطات متتابعة).
+    // التراجع نفسه يُسجَّل بلقطةٍ لما قبله، فـ«تراجع» عنه = إعادة.
+    function famUndo(groupId, entryId) {
+        const stack = famUndoRef.current[groupId] || [];
+        const i = stack.findIndex((e) => e.id === entryId);
+        if (i < 0) { showToast0(tl("لا يمكن التراجع عن هذا الآن — تغيّرت الشجرة بعده (ربّما من جهازٍ آخر).", "Can't undo this any more — the tree changed since (maybe from another device)."), "error"); return; }
+        const entry = stack[i], before = famSnapshotFull(groupId), snap = entry.snap;
+        setGroupPersons((prev) => famRestore(groupId, snap, prev, []).groupPersons);
+        setKinshipRelations((prev) => famRestore(groupId, snap, {}, prev).kinshipRelations);
+        setEvents((prev) => (prev || []).filter((e) => e.groupId !== groupId).concat(snap.events || []));
+        setSchedules((prev) => (prev || []).filter((x) => x.groupId !== groupId).concat(snap.schedules || []));
+        famUndoRef.current[groupId] = stack.slice(i + 1);
+        const later = i;   // كم تعديلاً أحدث منه أُلغي معه
+        logActivity(groupId, tl("تراجعتُ عن: ", "Undid: ") + entry.text + (later ? tl(" (ومعه " + later + " تعديلاً بعده)", " (and " + later + " later edits)") : ""), { snap: before });
+        pendingUndoRef.current = null;
+        showToast0(tl("تمّ التراجع ✓", "Undone ✓"), "success", { action: tl("إعادة", "Redo"), onAction: () => { const top = (famUndoRef.current[groupId] || [])[0]; if (top) famUndo(groupId, top.id); } });
     }
     // C81: ابنٌ يُضاف لشخصٍ متزوّج ⇒ زوجه الحاليّ الوحيد والده الآخر تلقائيّاً.
     //      كان يُربط بأحد الوالدين فقط، فيظهر أبناء العمّة (زوجة الخال) «أبناءَها من زواجٍ آخر» لا أبناء الخال.
@@ -2894,6 +3038,14 @@ function AppInner() {
         var _a;
         const { relation, linkedTo, ancestorChain, ...personData } = data;
         const newPersonId = `gp-${Date.now()}`;
+        if (personData.local_name != null) personData.local_name = cleanArabicNameInput(personData.local_name);   // C271
+        // C271: «نفسي» جديدٌ لا يُضاف متوفّى
+        { const why = selfDeceasedBlock(null, personData, null); if (why) { showToast(why, "error"); return; } }
+        // C203: النموذج يمنع هذا قبل الحفظ؛ وهنا حارسٌ ثانٍ لكلّ مسارٍ آخر يصل إلى addPerson
+        if (relation && relation.relatedToId && (relation.relationType === "spouse" || relation.relationType === "ex_spouse")) {
+            const why = marriageCheck((groupPersons[groupId] || []).concat([{ ...personData, id: newPersonId }]), kinshipRelations.filter((r) => r.groupId === groupId), newPersonId, relation.relatedToId, relation.relationType);
+            if (why) { showToast(why.msg, "error"); return; }
+        }
         // نسب مكتوب في الاسم: نُنشئ الأصول الناقصة ونربطها صعوداً.
         // الموجود منهم يُعاد استعماله بدل إنشاء نسخة مكرّرة.
         const existing = groupPersons[groupId] || [];
@@ -2914,8 +3066,10 @@ function AppInner() {
             const sameName = existing.filter((p) => normalizeArabicName(p.local_name) === normalizeArabicName(nm));   // C74: أحمد = احمد
             let found = null;
             if (sameName.length === 1 && !expectedParent) {
-                // اسم فريد ولا سلف بعده — نقبله
-                found = sameName[0];
+                // اسم فريد ولا سلف بعده — نقبله فقط إن كانت صلته هي المنتظرة (C203: لا ربط بتشابه الاسم وحده)
+                const shared0 = !personData.kinship || ["نفسي", "الأخ", "الأخت"].indexOf(personData.kinship) >= 0;
+                const want = shared0 ? (i === 0 ? "الوالد" : i === 1 ? "الجد" : null) : null;
+                if (want && sameName[0].kinship === want) found = sameName[0];
             }
             else if (expectedParent) {
                 // نقبل من يطابق والده الاسم المتوقَّع، أو من لا والد له بعد
@@ -2984,13 +3138,13 @@ function AppInner() {
                     setTimeout(() => showToast(t("lhdha_alshkhs_waldan_msjlan"), "error"), 0);
                     return prev;
                 }
-                let next = [...prev, { id: `k-${Date.now()}`, groupId, source: edge.source, target: edge.target, type: edge.type }];
+                let next = [...prev, Object.assign({ id: `k-${Date.now()}`, groupId, source: edge.source, target: edge.target, type: edge.type }, edge.type === "sibling" && (relation.half === "father" || relation.half === "mother") ? { half: relation.half } : {})];   // C204: نوع الأخوّة
                 if (edge.type === "parent" && edge.source === relation.relatedToId) {
                     const cop = coParentEdge(groupId, edge.source, edge.target, next);   // C81
                     if (cop) next = [...next, cop];
                 }
                 if (edge.type === "parent") {
-                    const sp = inferSpouseFromParents(groupId, edge.target, next);
+                    const sp = inferSpouseFromParents(groupId, edge.target, next, [{ ...personData, id: newPersonId }].concat(newAncestors));
                     if (sp)
                         next = [...next, sp];
                     next = [...next, ...inferParentsForSiblings(groupId, edge.target, next)];
@@ -3008,9 +3162,42 @@ function AppInner() {
             ? t("adyf_w_mn_aswlh", { local_name: personData.local_name, length: newAncestors.length })
             : `تمت إضافة ${personData.local_name}${(relation === null || relation === void 0 ? void 0 : relation.relatedToId) ? t("ai_wrbtha") : " ✓"}`, "success");
     }
+    // C271: الشخص كما يراه هذا المستخدم (القرابة المحسوبة + kinStored + acctMe) — لحارس «لا تسجّل نفسك متوفّى»
+    function ownViewOf(groupId, personId) {
+        const raw = (groupPersons[groupId] || []).find((p) => p.id === personId) || null;
+        const shown = (famPersons[groupId] || []).find((p) => p.id === personId) || null;
+        if (!raw && !shown) return null;
+        return Object.assign({}, raw || {}, shown ? { kinship: shown.kinship, kinStored: raw ? raw.kinship : shown.kinStored, acctMe: shown.acctMe } : {});
+    }
+    function myPidIn(groupId) {
+        const me = (famPersons[groupId] || []).find((p) => p.kinship === SELF_KINSHIP || p.acctMe);
+        return (me && me.id) || (famMe || {})[groupId] || null;
+    }
     function editPerson(groupId, personId, data) {
         var _a;
         const { linkedTo, motherApplicable, motherId, motherCandidateIds, kinLabel, kinAlso, kinComputed, kinStored, kinSection, ancestorChain, ...personData0 } = data;
+        if (personData0.local_name != null) personData0.local_name = cleanArabicNameInput(personData0.local_name);   // C271: تطويل/محارف خفيّة/مسافات
+        // C271: ملفّ صاحب الحساب لا يُسجَّل متوفّى (النموذج يمنعه؛ هنا حارسٌ لكلّ مسارٍ آخر)
+        if (data.alive === false) {
+            const why = selfDeceasedBlock(ownViewOf(groupId, personId), Object.assign({ alive: false }, data.kinship ? { kinship: data.kinship } : {}), myPidIn(groupId));
+            if (why) { showToast(why, "error"); return; }
+        }
+        // C203: تغيير الجنس لا يُنشئ زواجاً بين جنسٍ واحد ولا والدَين من جنسٍ واحد
+        {
+            const list = groupPersons[groupId] || [], cur = list.find((p) => p.id === personId);
+            if (cur && data.gender && cur.gender && data.gender !== cur.gender) {
+                const rels = kinshipRelations.filter((r) => r.groupId === groupId);
+                const after = list.map((p) => (p.id === personId ? { ...p, gender: data.gender } : p));
+                const bad = marriageViolations(after, rels).find((v) => v.ids.indexOf(personId) >= 0);
+                const kids = rels.filter((r) => r.type === "parent" && r.source === personId).map((r) => r.target);
+                const clash = kids.some((k) => rels.some((r) => r.type === "parent" && r.target === k && r.source !== personId && (after.find((p) => p.id === r.source) || {}).gender === data.gender));
+                if (bad || clash) {
+                    showToast(bad ? tl("لا يُغيَّر الجنس: «" + famFirst(cur) + "» مرتبطٌ بزواجٍ يصير بين جنسٍ واحد. احذف تلك العلاقة أوّلاً.", "Gender not changed: it would make a same-gender marriage. Remove that relation first.")
+                        : tl("لا يُغيَّر الجنس: لأحد أبناء «" + famFirst(cur) + "» والدٌ آخر من الجنس الجديد.", "Gender not changed: one of the children already has a parent of that gender."), "error");
+                    return;
+                }
+            }
+        }
         // C104: النسب المكتوب في الاسم عند التعديل ⇒ أصولٌ تُضاف وتُربط (إن لم يعارض والداً مسجَّلاً)
         if (ancestorChain && ancestorChain.length) {
             const gp = groupPersons[groupId] || [], me0 = gp.find((p) => p.id === personId) || {};
@@ -3083,6 +3270,23 @@ function AppInner() {
         const removePerson = (groupPersons[groupId] || []).find((p) => p.id === removeId);
         if (!keepPerson || !removePerson)
             return;
+        // C203: الدمج لا يجمع ذكراً وأنثى، ولا يُنتج امرأةً بزوجين حاليّين أو زواجاً بين جنسٍ واحد
+        {
+            if (keepPerson.gender && removePerson.gender && keepPerson.gender !== removePerson.gender) {
+                showToast(tl("لا يُدمج «" + famFirst(keepPerson) + "» و«" + famFirst(removePerson) + "»: أحدهما ذكر والآخر أنثى.", "Can't merge a male and a female record."), "error");
+                return;
+            }
+            const rels = kinshipRelations.filter((r) => r.groupId === groupId)
+                .map((r) => ({ ...r, source: r.source === removeId ? keepId : r.source, target: r.target === removeId ? keepId : r.target }))
+                .filter((r) => r.source !== r.target);
+            const seenM = new Set(), relsU = rels.filter((r) => { const k = [r.source, r.target].sort().join("|") + r.type; if (seenM.has(k)) return false; seenM.add(k); return true; });
+            const after = (groupPersons[groupId] || []).filter((p) => p.id !== removeId).map((p) => (p.id === keepId ? { ...p, gender: p.gender || removePerson.gender } : p));
+            const bad = marriageViolations(after, relsU).find((v) => v.ids.indexOf(keepId) >= 0);
+            if (bad) {
+                showToast(tl("لا يمكن الدمج: ", "Can't merge: ") + bad.msg, "error");
+                return;
+            }
+        }
         // نعيد توجيه كل علاقة كانت تشير للمكرّر لتشير للأصلي بدلاً عنه، ونحذف
         // أي علاقة تصبح ذاتية (شخص مرتبط بنفسه) أو مكرّرة بعد إعادة التوجيه
         setKinshipRelations((prev) => {
@@ -3144,7 +3348,7 @@ function AppInner() {
     // والدا الشخص الواحد زوجان بالضرورة — نستنتج الرابط تلقائياً.
     // بدونه يظهر كلٌّ منهما جذراً مستقلاً في كتلة منفصلة (كحال الجدة
     // المضافة كأمٍّ لوالدك بينما جدّك مسجَّل أباً له).
-    function inferSpouseFromParents(groupId, childId, relsSnapshot) {
+    function inferSpouseFromParents(groupId, childId, relsSnapshot, extraPersons) {
         const parentsOfChild = relsSnapshot
             .filter((r) => r.groupId === groupId && r.type === "parent" && r.target === childId)
             .map((r) => r.source);
@@ -3157,7 +3361,11 @@ function AppInner() {
             && ((r.source === a && r.target === b) || (r.source === b && r.target === a)));
         if (exists)
             return null;
-        return { id: `k-${Date.now()}-sp`, groupId, source: a, target: b, type: "spouse", inferred: "parents-spouse" };
+        // C203: قائمٌ إن جاز، وإلّا سابق (أبناءٌ من زواجٍ انتهى)، ولا شيء إن امتنع
+        const type = inferredMarriageType((groupPersons[groupId] || []).concat(extraPersons || []), relsSnapshot.filter((r) => r.groupId === groupId), a, b);
+        if (!type)
+            return null;
+        return { id: `k-${Date.now()}-sp`, groupId, source: a, target: b, type, inferred: "parents-spouse" };
     }
     // من كان أخاً لشخص، فوالدا ذلك الشخص والداه. نشتقّ الأبوّة الناقصة
     // تلقائياً — وإلا ظهر الإخوة بلا والد رغم ارتباطهم بمن له والد.
@@ -3266,8 +3474,12 @@ function AppInner() {
                 const has = [...out, ...spouses].some((r) => r.groupId === gid
                     && (r.type === "spouse" || r.type === "ex_spouse")
                     && ((r.source === a && r.target === b) || (r.source === b && r.target === a)));
-                if (!has)
-                    spouses.push({ id: `k-${Date.now()}-s${spouses.length}`, groupId: gid, source: a, target: b, type: "spouse", inferred: "parents-spouse" });
+                if (has)
+                    return;
+                // C203: كان يُسجَّل «قائماً» دائماً — فأمٌّ تزوّجت بعد طلاقٍ لم يُسجَّل تصير بزوجين حاليّين عند فتح الشجرة
+                const type = inferredMarriageType(groupPersons[gid] || [], [...out, ...spouses].filter((r) => r.groupId === gid), a, b);
+                if (type)
+                    spouses.push({ id: `k-${Date.now()}-s${spouses.length}`, groupId: gid, source: a, target: b, type, inferred: "parents-spouse" });
             });
             if (spouses.length)
                 out = [...out, ...spouses];
@@ -3313,6 +3525,12 @@ function AppInner() {
             showToast(t("la_ymkn_itmam_hdha"), "error");
             return;
         }
+        // C203: قواعد الزواج (جنسان مختلفان معروفان · زوجٌ حاليّ واحد للمرأة · أربع للرجل · لا محارم)
+        const whyNot = marriageCheck(groupPersons[groupId] || [], kinshipRelations.filter((r) => r.groupId === groupId), sourceId, targetId, type);
+        if (whyNot) {
+            showToast(whyNot.msg, "error");
+            return;
+        }
         const newRelation = { id: `k-${Date.now()}`, groupId, source: sourceId, target: targetId, type };
         setKinshipRelations((prev) => {
             let next = [...prev, newRelation];
@@ -3333,6 +3551,60 @@ function AppInner() {
         const targetName = ((_b = (groupPersons[groupId] || []).find((p) => p.id === targetId)) === null || _b === void 0 ? void 0 : _b.local_name) || t("ai_shkhs");
         logActivity(groupId, t("rbtt_alaqa_qraba_byn", { sourceName, targetName }));
         showToast(t("tm_rbt_alalaqa"), "success");
+    }
+    // C204: والدٌ واحد لعدّة إخوة — حركةٌ واحدة (سطرٌ واحد في السجلّ وتراجعٌ واحد).
+    //       spec = { parentId } لشخصٍ من الشجرة، أو { newName, gender } لشخصٍ جديد («إبراهيم بن محمد» ⇒ تُضاف أصوله).
+    function batchAssignParent(groupId, spec, childIds) {
+        const gp = groupPersons[groupId] || [], rels0 = kinshipRelations.filter((r) => r.groupId === groupId);
+        let parentId = spec.parentId, created = [], nasabRels = [];
+        if (!parentId) {
+            const nb = splitNasab(spec.newName || "");
+            if (!nb.name) return;
+            parentId = `gp-${Date.now()}-bp`;
+            const first = gp.find((p) => p.id === childIds[0]);
+            const kin = (first && (kinPreview(gp, rels0, first, "parent", spec.gender) || deriveKinship(first.kinship, "parent", spec.gender))) || "أخرى";
+            created.push({ id: parentId, local_name: nb.name, gender: spec.gender, kinship: kin, proximity: proximityForKinship(kin), alive: true, favorite: false, locations: [],
+                lastContactDate: null, addedAt: Date.now(), contacts: null, notes: "", linkedTo: null });
+            if (nb.chain.length) {
+                const r = resolveNasab(groupId, parentId, kin, nb.chain, gp.concat(created), kinshipRelations);
+                if (!r.conflict) { created = created.concat(r.created); nasabRels = nasabEdges(groupId, parentId, r.ids, kinshipRelations); }
+            }
+        }
+        const plan = planBatchParent(gp.concat(created), rels0.concat(nasabRels), parentId, childIds);
+        if (!plan.add.length) { showToast(tl("لم يُربط أحد: ", "No one linked: ") + plan.skipped.map((x) => x.why).join("، "), "error"); return; }
+        if (created.length) setGroupPersons((prev) => ({ ...prev, [groupId]: [...(prev[groupId] || []), ...created] }));
+        setKinshipRelations((prev) => {
+            let out = prev.concat(nasabRels, plan.add.map((e, i) => ({ id: `k-${Date.now()}-bp${i}`, groupId, ...e })));
+            plan.add.forEach((e) => { const sp = inferSpouseFromParents(groupId, e.target, out, created); if (sp) out = [...out, sp]; });
+            plan.add.forEach((e) => { out = [...out, ...inferParentsForSiblings(groupId, e.target, out)]; });
+            return out;
+        });
+        const pn = (created[0] || gp.find((p) => p.id === parentId) || {}).local_name || "";
+        logActivity(groupId, tl("صار «" + pn + "» " + (spec.gender === "female" || (gp.find((p) => p.id === parentId) || {}).gender === "female" ? "أمّاً" : "أباً") + " لـ" + plan.add.length + ": " + plan.add.map((e) => famFirst(gp.find((p) => p.id === e.target))).join("، "), pn + " linked as parent of " + plan.add.length));
+        showToast(tl("رُبط «" + pn + "» بـ" + plan.add.length + (plan.skipped.length ? " · تُخطّي " + plan.skipped.length : ""), "Linked " + plan.add.length), "success");
+    }
+    // C204: نوع الأخوّة بين اثنين (شقيق · لأب · لأم) — الوالدان يُعدَّلان تبعاً، وحافّة الأخوّة تحمل النوع
+    function applySiblingType(groupId, aId, bId, type, otherParentId) {
+        const gp = groupPersons[groupId] || [], rels0 = kinshipRelations.filter((r) => r.groupId === groupId);
+        const plan = planSiblingType(gp, rels0, aId, bId, type, otherParentId);
+        if (plan.error) { showToast(plan.error, "error"); return; }
+        for (const e of plan.add) if (e.type === "parent" && wouldCreateParentCycle(groupId, e.source, e.target)) { showToast(t("la_ymkn_itmam_hdha"), "error"); return; }
+        setKinshipRelations((prev) => {
+            const rm = new Set(plan.remove), up = {};
+            plan.update.forEach((u) => { up[u.id] = u.half; });
+            let out = prev.filter((r) => !rm.has(r.id)).map((r) => {
+                if (!(r.id in up)) return r;
+                const n = { ...r };
+                if (up[r.id]) n.half = up[r.id]; else delete n.half;
+                return n;
+            });
+            out = out.concat(plan.add.map((e, i) => ({ id: `k-${Date.now()}-st${i}`, groupId, ...e })));
+            [aId, bId].forEach((c) => { const sp = inferSpouseFromParents(groupId, c, out); if (sp) out = [...out, sp]; });
+            return out;
+        });
+        const nm = (id) => famFirst(gp.find((p) => p.id === id));
+        logActivity(groupId, tl("«" + nm(bId) + "» أخٌ " + ({ full: "شقيق", father: "لأب", mother: "لأم" })[type] + " لـ«" + nm(aId) + "»", nm(bId) + " set as " + type + " sibling of " + nm(aId)));
+        showToast(tl("حُفظ نوع الأخوّة", "Sibling type saved"), "success");
     }
     // C79: تغيير أب/أمّ شخصٍ واحد (أو إزالته) — حذف حافّة الوالد من ذلك الجنس ثمّ إضافة الجديدة
     // C81: إصلاح «أبناء زوجته من زواجٍ آخر» حين يكونون أبناءه هو أيضاً — يُضاف والداً لمن ليس له والدٌ من جنسه
@@ -3507,6 +3779,70 @@ function AppInner() {
         }));
         showToast(t("sjlna_twaslk_alhyn"), "success");
     }
+    // ── C271: مواعيد صلة الرحم المرنة ──
+    // مدّةٌ لقريبٍ بعينه (أيّام) أو null ⇒ مدّة درجته. على هذا الجهاز وحده (عادةٌ شخصيّة، مثل lastContactDate).
+    function setContactEvery(groupId, personId, days) {
+        const d = kinClampDays(days);
+        setGroupPersons((prev) => ({
+            ...prev,
+            [groupId]: (prev[groupId] || []).map((p) => (p.id === personId ? Object.assign({}, p, { contactEvery: d }, p.lastContactDate || p.addedAt ? {} : { addedAt: Date.now() }) : p)),
+        }));
+        const nm = (((groupPersons[groupId] || []).find((p) => p.id === personId)) || {}).local_name || "";
+        showToast(d ? tl("سنذكّرك بـ" + String(nm).split(" ")[0] + ": " + kinFreqLabel(d), "We'll remind you about " + String(nm).split(" ")[0] + ": " + kinFreqLabel(d).toLowerCase())
+            : tl("عادت المدّة إلى درجة القرابة", "Back to the kinship-degree interval"), "success");
+    }
+    const [kinRemindRev, setKinRemindRev] = useState(0);
+    useEffect(() => {
+        const on = () => setKinRemindRev((n) => n + 1);
+        window.addEventListener("sawa-kinremind", on);
+        return () => window.removeEventListener("sawa-kinremind", on);
+    }, []);
+    // الخطّة إلى الخادم (Worker v126 ⇐ kinrem/{uid}): بعد ٤ ثوانٍ من آخر تغيير، وفقط إن تغيّرت فعلاً
+    const kinSentRef = useRef("");
+    useEffect(() => {
+        if (flow !== "app") return;
+        const SS = window.SawaSync;
+        if (!SS || !SS.isReady || !SS.isReady() || !SS.call) return;
+        const s = kinRemindSettings();
+        // ⛔ famPersons لا groupPersons: القرابة محسوبةٌ من منظوري (للعضو: صاحب الشجرة قريبٌ يُذكَّر به، وأنا «نفسي» لا أُذكَّر بنفسي)
+        const payload = { on: !!s.on, hour: kinClampHour(s.hour), tz: new Date().getTimezoneOffset(), lang: isRTL() ? "ar" : "en", items: s.on ? kinRemindPlan(famPersons) : [] };
+        const sig = JSON.stringify(payload);
+        if (sig === kinSentRef.current) return;
+        const tmr = setTimeout(() => {
+            SS.call("kin.remind.set", payload).then((b) => {
+                kinSentRef.current = sig;
+                try { if (b && b.ok !== false) localStorage.setItem("sawa:kinRemindSrv", String(payload.on && payload.items.length ? Date.now() : 0)); } catch (e) { }
+            }).catch(() => { try { localStorage.removeItem("sawa:kinRemindSrv"); } catch (e) { } });   // خادمٌ قديم/بلا شبكة ⇒ التنبيه المحلّيّ يتولّى
+        }, 4000);
+        return () => clearTimeout(tmr);
+    }, [flow, famPersons, kinRemindRev]);
+    // التنبيه المحلّيّ الاحتياطيّ: عند الفتح، وكلّ ٣٠ دقيقة والتطبيق ظاهر
+    const groupPersonsRef = useRef(famPersons);
+    groupPersonsRef.current = famPersons;
+    useEffect(() => {
+        if (flow !== "app") return;
+        const tick = () => { if (!document.hidden) kinRemindLocalTick(groupPersonsRef.current); };
+        const t0 = setTimeout(tick, 8000), iv = setInterval(tick, 30 * 60000);
+        return () => { clearTimeout(t0); clearInterval(iv); };
+    }, [flow]);
+    // فتح «من حان التواصل معه» — من الإشعار (‎?kin=1‎ أو رسالة عامل الخدمة)
+    const openKinDue = () => {
+        const g = familyGroups.find((x) => (famPersons[x.id] || []).some((p) => isContactOverdue(p))) || familyGroups[0];
+        setTab("discover");
+        setDiscoverStack(g ? [{ type: "groups" }, { type: "groupDetail", data: g, filter: "overdue" }] : [{ type: "groups" }]);
+    };
+    const openKinDueRef = useRef(openKinDue);
+    openKinDueRef.current = openKinDue;
+    useEffect(() => {
+        if (flow !== "app") return;
+        try {
+            const u = new URL(window.location.href);
+            if (u.searchParams.get("kin")) { u.searchParams.delete("kin"); history.replaceState(null, "", u.pathname + (u.search && u.search !== "?" ? u.search : "") + u.hash); setTimeout(() => openKinDueRef.current(), 300); }
+        } catch (e) { }
+        const onMsg = (ev) => { const m = ev && ev.data; if (m && (m.type === "sawa-open") && m.data && m.data.t === "kin") openKinDueRef.current(); };
+        try { if (navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", onMsg); } catch (e) { }
+        return () => { try { if (navigator.serviceWorker) navigator.serviceWorker.removeEventListener("message", onMsg); } catch (e) { } };
+    }, [flow]);
     // ── C37: منازل الأقارب وتنبيه القرب ──
     const [proxEnabled, setProxEnabled] = usePersistedState("ui.proxAlerts", false, 50);
     const [proxRadius, setProxRadius] = usePersistedState("ui.proxRadius", 1000, 50);   // C37b: النطاق العامّ لكلّ الأقارب
@@ -3556,7 +3892,7 @@ function AppInner() {
         }));
         setMembers((prev) => ({ ...prev, [newId]: [{ userId: "u-1", name: "أنت", role: "owner" }] }));
         setGroupSettings((prev) => ({ ...prev, [newId]: { allowMemberEvents: false } }));
-        logActivity(sourceGroupId, t("anshat_mjmwaa_wrbttha_b", { groupName, local_name: person.local_name }));
+        logActivity(sourceGroupId, t("anshat_mjmwaa_wrbttha_b", { groupName, local_name: person.local_name }), { undo: false });
         showToast(t("anshyt_adf_waldha_wikhwtha", { groupName }), "success");
         // ننتقل مباشرة للمجموعة الجديدة
         setCurrentGroupId(newId);
@@ -3567,7 +3903,7 @@ function AppInner() {
         if (!clean)
             return;
         setFamilyGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, name: clean } : g)));
-        logActivity(groupId, t("fg_smyt_almjmwaa", { name: clean }));
+        logActivity(groupId, t("fg_smyt_almjmwaa", { name: clean }), { undo: false });
         showToast(t("fg_tmt_altsmya"), "success");
     }
     // ⛔ أثر المجموعة في تسعة مخازن. إغفال واحدٍ يترك يتامى لا سبيل إليهم
@@ -3652,6 +3988,8 @@ function AppInner() {
         setEvents((prev) => [{ id: `e-${Date.now()}`, groupId, personId, type, title, desc: desc || "", dateTimestamp: ts }, ...prev]);
         // C75: حدث «وفاة» يُسجّل القريب متوفّى (كانت التذكيرات والمواعيد تستمرّ له)، و«مرض/عملية» تجعل حالته «مريض»
         const target = personId && (groupPersons[groupId] || []).find((p) => p.id === personId);
+        // C271: لا حدث «وفاة» لصاحب الحساب
+        if (target && type === "death") { const why = selfDeceasedBlock(ownViewOf(groupId, personId), { alive: false }, myPidIn(groupId)); if (why) { showToast(why, "error"); return; } }
         if (target && type === "death" && target.alive !== false) {
             const d = new Date(ts), iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
             setGroupPersons((prev) => ({ ...prev, [groupId]: (prev[groupId] || []).map((p) => p.id === personId ? { ...p, alive: false, death_date: p.death_date || iso, status_detail: null } : p) }));
@@ -3732,7 +4070,7 @@ function AppInner() {
         discoverContent = (React.createElement(FamilyGroupDetailScreen, { meId: famMe[group.id] || (((famPersons[group.id] || []).find((p) => p.kinship === SELF_KINSHIP && p.kinStored !== SELF_KINSHIP)) || {}).id || null, onPickMe: (pid) => { setFamMe((prev) => { const o = { ...(prev || {}) }; if (pid) o[group.id] = pid; else delete o[group.id]; return o; }); famClaim(group.id, pid || null);
                 if (pid && group.role && group.role !== "owner" && group.role !== "editor") setTimeout(() => showToast(tl("تُعرض القرابات منك على جهازك. ليُربط حسابك بهذا الشخص يرسل لك أحد محرّري العائلة «هل هذا أنت؟»", "Relations now show from you on this device. To link your account, a family editor sends you “Is this you?”"), "info"), 300); }, key: group.id + ":" + (discoverTop.filter || "all"), initialFilterStatus: discoverTop.filter || "all", group: group, persons: famPersons[group.id] || [], favorites: familyFavorites, otherGroups: otherGroups, onToggleFav: toggleFamilyFav, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: group.id }]), onOpenGroups: IS_RAHIM ? () => setDiscoverStack(groupsStackFrom(discoverStack)) : undefined,
             // ⛔ الشاشة نفسها جذرٌ في أرحام ومحطّةٌ في سوا — السهم يتبع المكدّس
-            onBack: discoverStack.length ? () => setDiscoverStack(discoverStack.slice(0, -1)) : undefined, onAddPerson: (data) => addPerson(group.id, data), onAddPersonChain: (chainNames, groupsOfRelatives, targetIndex, matchDecisions, firstGender, firstIsSelf) => addPersonChain(group.id, chainNames, groupsOfRelatives, targetIndex, matchDecisions, firstGender, firstIsSelf), onMergePersons: (keepId, removeId) => mergePersons(keepId, removeId), relations: kinshipRelations.filter((r) => r.groupId === group.id), onAddRelativesBulk: addRelativesBulk, onDeletePerson: (pid) => deletePerson(group.id, pid), onDeletePersonsBulk: (ids) => {
+            onBack: discoverStack.length ? () => setDiscoverStack(discoverStack.slice(0, -1)) : undefined, onAddPerson: (data) => addPerson(group.id, data), onAddPersonChain: (chainNames, groupsOfRelatives, targetIndex, matchDecisions, firstGender, firstIsSelf) => addPersonChain(group.id, chainNames, groupsOfRelatives, targetIndex, matchDecisions, firstGender, firstIsSelf), onMergePersons: (keepId, removeId) => mergePersons(keepId, removeId), onBatchParent: batchAssignParent, onSiblingType: applySiblingType, relations: kinshipRelations.filter((r) => r.groupId === group.id), onAddRelativesBulk: addRelativesBulk, onDeletePerson: (pid) => deletePerson(group.id, pid), onDeletePersonsBulk: (ids) => {
                 const gid = group.id;
                 const names = (groupPersons[gid] || []).filter((p) => ids.includes(p.id)).map((p) => p.local_name);
                 // حذف واحد لكل الحالات — الاستدعاء المتتابع كان يقرأ حالة قديمة فيفشل
@@ -3821,11 +4159,11 @@ function AppInner() {
                     [gid]: (prev[gid] || []).map((p) => p.id === pid ? { ...p, noChildren: false, neverMarried: false } : p),
                 }));
                 showToast(t("sysal_anh_fy_alaqtrahat"), "info");
-            }, onSimulateProximity: (personId) => simulateProximity(personId, freshPerson.local_name), onMarkContact: (personId) => markContactNow(currentGroupIdForPerson, personId), onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
+            }, onSimulateProximity: (personId) => simulateProximity(personId, freshPerson.local_name), onMarkContact: (personId) => markContactNow(currentGroupIdForPerson, personId), onSetContactEvery: (personId, days) => setContactEvery(currentGroupIdForPerson, personId, days), onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
     }
     else if (discoverTop.type === "tree") {
         const canEditTree = famCanEdit(discoverTop.data);
-        discoverContent = (React.createElement(FamilyTreeScreen, { key: "tree:" + discoverTop.data.id + ":" + (discoverTop.focus || ""), initialFocusId: discoverTop.focus || null, groupId: discoverTop.data.id, persons: famPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), canEdit: canEditTree, onAddRelation: addKinshipRelation, onChangeParent: changeParent, onClaimChildren: claimChildren, onDeleteRelation: deleteKinshipRelation, onEndMarriage: endMarriage, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: discoverTop.data.id }]), onMarkContact: (personId) => markContactNow(discoverTop.data.id, personId), onQuickSchedule: (personId) => { setPreselectedSchedulePersonId(personId); setShowAddSchedule(true); }, onOpenStats: () => setDiscoverStack([...discoverStack, { type: "stats", data: discoverTop.data }]), onAddRelativeTo: (gid, person, relKey, kinship, gender) => setGapAddPreset({
+        discoverContent = (React.createElement(FamilyTreeScreen, { key: "tree:" + discoverTop.data.id + ":" + (discoverTop.focus || ""), initialFocusId: discoverTop.focus || null, groupId: discoverTop.data.id, onMergePersons: canEditTree ? (keepId, removeId) => mergePersons(keepId, removeId) : null, onBatchParent: canEditTree ? batchAssignParent : null, onSiblingType: canEditTree ? applySiblingType : null, onDeletePerson: canEditTree ? (gid, pid) => deletePerson(gid, pid) : null, undoCount: (famUndoRef.current[discoverTop.data.id] || []).length + 0 * famUndoVer, onOpenHistory: () => setDiscoverStack([...discoverStack, { type: "activityLog", data: discoverTop.data }]), onUndoLast: () => { const top = (famUndoRef.current[discoverTop.data.id] || [])[0]; if (top) famUndo(discoverTop.data.id, top.id); }, persons: famPersons[discoverTop.data.id] || [], relations: kinshipRelations.filter((r) => r.groupId === discoverTop.data.id), canEdit: canEditTree, onAddRelation: addKinshipRelation, onChangeParent: changeParent, onClaimChildren: claimChildren, onDeleteRelation: deleteKinshipRelation, onEndMarriage: endMarriage, onOpenPerson: (p) => setDiscoverStack([...discoverStack, { type: "personDetail", data: p, groupId: discoverTop.data.id }]), onMarkContact: (personId) => markContactNow(discoverTop.data.id, personId), onQuickSchedule: (personId) => { setPreselectedSchedulePersonId(personId); setShowAddSchedule(true); }, onOpenStats: () => setDiscoverStack([...discoverStack, { type: "stats", data: discoverTop.data }]), onAddRelativeTo: (gid, person, relKey, kinship, gender) => setGapAddPreset({
                 groupId: gid,
                 relatedToId: person.id,
                 relationType: relKey,
@@ -3871,6 +4209,7 @@ function AppInner() {
             }, onSetAlive: (personId, alive) => {
                 var _a;
                 const gid = discoverTop.data.id;
+                if (alive === false) { const why = selfDeceasedBlock(ownViewOf(gid, personId), { alive: false }, myPidIn(gid)); if (why) { showToast(why, "error"); return; } }   // C271
                 const nm = ((_a = (groupPersons[gid] || []).find((p) => p.id === personId)) === null || _a === void 0 ? void 0 : _a.local_name) || t("ai_alqryb");
                 setGroupPersons((prev) => ({
                     ...prev,
@@ -3912,29 +4251,36 @@ function AppInner() {
             onShare: cloud ? (role) => SS.shareLink(role, group.id) : null, onOpenActivityLog: () => setDiscoverStack([...discoverStack, { type: "activityLog", data: group }]), onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
     }
     else if (discoverTop.type === "activityLog") {
-        discoverContent = (React.createElement(FamilyActivityLogScreen, { groupId: discoverTop.data.id, activityLog: activityLog, onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
+        discoverContent = (React.createElement(FamilyActivityLogScreen, { groupId: discoverTop.data.id, activityLog: activityLog, onBack: () => setDiscoverStack(discoverStack.slice(0, -1)),
+            undoIds: (famUndoRef.current[discoverTop.data.id] || []).map((e) => e.id), onUndo: (id) => famUndo(discoverTop.data.id, id) }));
     }
     return (React.createElement(PhoneFrame, { dir: interfaceLanguage === "en" ? "ltr" : "rtl" },
         flow === "onboarding" && React.createElement(OnboardingScreen, { onDone: () => setFlow("setup") }),
-        flow === "setup" && (React.createElement(SetupPinScreen, { onDone: (newPin, newCodes) => {
-                setPin(newPin);
-                setRecoveryCodes(newCodes);
+        flow === "setup" && (React.createElement(SetupPinScreen, { onCancel: () => setFlow("app"), onDone: (newPin, newCodes) => {
+                saveAppPin(newPin, newCodes);
+                setPinLockEnabled(true);
+                setRecoveryCodes([]);
                 setFlow(backendLinked || backendSkipped ? "app" : "connectBackend");
             } })),
         flow === "connectBackend" && (React.createElement(ConnectBackendScreen, { onDone: () => { setBackendLinked(true); setFlow("app"); }, onSkip: () => { setBackendSkipped(true); setFlow("app"); } })),
-        flow === "locked" && (React.createElement(LockScreen, { correctPin: pin, biometricEnabled: biometricEnabled, onUnlock: () => setFlow("app"), onForgot: () => setFlow("forgot") })),
-        flow === "forgot" && (React.createElement(ForgotPinScreen, { validCodes: recoveryCodes, onBack: () => setFlow("locked"), onRecovered: (newPin, newCodes, wipe) => {
-                if (wipe) {
-                    setPin(null);
-                    setNotes([]);
-                    setFlow("setup");
-                    return;
-                }
-                setPin(newPin);
-                setRecoveryCodes(newCodes);
-                setFlow("postRecoveryCodes");
-            } })),
-        flow === "postRecoveryCodes" && (React.createElement(PostRecoveryCodesScreen, { codes: recoveryCodes, onDone: () => setFlow("app") })),
+        // C283: شاشة القفل غطاءٌ فوق كلّ شيء (حتى نوافذ SawaChat) — التطبيق تحتها يبقى كما هو
+        lockActive && lockView && React.createElement("div", { role: "dialog", "aria-modal": "true", "aria-label": t("adkhl_rmz_alqfl"), className: "flex flex-col", style: { position: "fixed", inset: 0, zIndex: 2147483000, backgroundColor: colors.bg } },
+            React.createElement("div", { className: "flex-1 min-h-0 flex flex-col", dir: interfaceLanguage === "en" ? "ltr" : "rtl" },
+                lockView === "locked" && React.createElement(LockScreen, { correctPin: pin, biometricEnabled: biometricEnabled, onBiometric: () => authenticateWalletPasskey(appLockPasskeyId), onUnlock: () => setLockView(null), onForgot: () => setLockView("forgot") }),
+                lockView === "forgot" && React.createElement(ForgotPinScreen, { onBack: () => setLockView("locked"), onBiometric: appLockPasskeyId ? () => authenticateWalletPasskey(appLockPasskeyId) : null,
+                    checkCode: (code) => {
+                        const i = walletCodeIndex(pin, code);
+                        if (i < 0) return false;
+                        setAppLock(Object.assign({}, pin, { codes: pin.codes.filter((_, j) => j !== i) })); // يُستهلك فوراً
+                        return true;
+                    },
+                    onRecovered: (newPin, newCodes, wipe) => {
+                        if (wipe) { fullLocalReset(); return; }
+                        saveAppPin(newPin, newCodes);
+                        setRecoveryCodes(newCodes);
+                        setLockView("codes");
+                    } }),
+                lockView === "codes" && React.createElement(PostRecoveryCodesScreen, { codes: recoveryCodes, onDone: () => { setRecoveryCodes([]); setLockView(null); } }))),
         flow === "app" && proxAlert && React.createElement(ProximitySheet, { alert: proxAlert, onClose: () => setProxAlert(null),
             onVisit: () => { markContactNow(proxAlert.gid, proxAlert.person.id); logActivity(proxAlert.gid, tl("زيارة " + proxAlert.person.local_name, "Visited " + proxAlert.person.local_name)); setProxAlert(null); },
             onCall: (phone) => { const a = proxAlert; setProxAlert(null); markContactNow(a.gid, a.person.id); if (phone) { try { location.href = "tel:" + phone.replace(/[^\d+]/g, ""); } catch (e) { } } else showToast(tl("لا رقم مسجَّلاً له — أضفه من ملفّه", "No phone saved — add it in their profile"), "error"); },
@@ -3981,7 +4327,7 @@ function AppInner() {
         flow === "app" && !activeRoom && !showLinkedDevices && !showWrapped && (React.createElement("div", { className: "flex-1 flex flex-col overflow-hidden" },
         showHelp && React.createElement("div", { className: "absolute inset-0 z-50 flex flex-col", style: { backgroundColor: "white" } }, React.createElement(HelpScreen, { onBack: function(){setShowHelp(false);}, onRestartTour: function(){resetTooltips();setShowHelp(false);} })),
         isDemoMode && React.createElement("div", { className: "flex items-center justify-between px-3 py-1.5", style: { backgroundColor: "#F59E0B", flexShrink: 0 } }, React.createElement("span", { className: "text-[10px] font-bold text-white" }, tl("⚠️ عرض توضيحي — البيانات وهمية", "⚠️ Demo — data is not real")), React.createElement("button", { onClick: function(){ setFamilyGroups([{id:"g-main",name:"عائلتي",description:"",role:"owner",ownerPersonId:null}]); setGroupPersons({"g-main":[]}); setIsDemoMode(false); }, className: "text-[10px] font-extrabold text-white underline" }, tl("ابدأ من صفر", "Start from scratch"))),
-            React.createElement("div", { className: "flex-1 overflow-hidden flex flex-col" }, stack[stack.length - 1] === "security" ? (React.createElement(ProfileSettingsScreen, { onBack: () => setStack([]), onChangePin: () => setFlow("setup"), biometricEnabled: biometricEnabled, setBiometricEnabled: setBiometricEnabled, autoLockDelay: autoLockDelay, setAutoLockDelay: setAutoLockDelay, remainingCodes: recoveryCodes.length, onLockNow: () => setFlow("locked"), onOpenSessions: () => setStack(["security", "sessions"]), profilePhoto: profilePhoto, setProfilePhoto: setProfilePhoto, interfaceLanguage: interfaceLanguage, setInterfaceLanguage: setInterfaceLanguage, pinLockEnabled: pinLockEnabled, setPinLockEnabled: setPinLockEnabled, browserNotifEnabled: browserNotifEnabled, onToggleBrowserNotif: toggleBrowserNotif, statusOption: statusOption, setStatusOption: setStatusOption, customStatusMessage: customStatusMessage, setCustomStatusMessage: setCustomStatusMessage, redeemedReferralCode: redeemedReferralCode, onRedeemReferral: redeemReferral, blockUnsolicited: blockUnsolicited, setBlockUnsolicited: setBlockUnsolicited, identityVerified: identityVerified, chatBackupEnabled: chatBackupEnabled, setChatBackupEnabled: setChatBackupEnabled, onDeleteKeys: deleteEncryptionKeys, backendLinked: backendLinked, onUnlink: () => setBackendLinked(false) })) : stack[stack.length - 1] === "sessions" ? (React.createElement(SessionsScreen, { sessions: sessions, onRevoke: revokeSession, onRevokeAll: revokeAllSessions, onBack: () => setStack(["security"]) })) : stack[0] === "wallet" && !walletUnlocked ? (React.createElement(ServiceTheme, { color: SERVICE_COLORS.wallet }, React.createElement(WalletLockScreen, { onUnlock: () => setWalletUnlocked(true), onBack: () => setStack([]), walletPasskeyId: walletPasskeyId, onPasskeyRegistered: setWalletPasskeyId, walletPin: walletPin, onSetWalletPin: setWalletPin }))) : stack[0] === "wallet" && walletUnlocked ? (React.createElement(ServiceTheme, { color: SERVICE_COLORS.wallet }, React.createElement(WalletScreen, { balance: walletBalance, transactions: walletTransactions, cardNumber: walletCardNumber, walletPinForConfirm: walletPin, kycStatus: kycStatus, kycDismissed: kycDismissed, onDismissKyc: () => setKycDismissed(true), onSubmitKyc: submitKyc, onTopUp: topUpWallet, onTransfer: transferWallet, onScanPay: scanPay, canIntl: canIntl, intlHistory: intlHistory, onIntlTransfer: intlTransfer, kycMeta: kycMeta, fxAccounts: fxAccounts, onOpenFx: openFx, onExchange: fxExchange, cards: vCards, onCardsChange: setVCards, holder: (myProfile && (myProfile.name || myProfile.googleName)) || "", onBack: () => { setStack([]); setWalletUnlocked(false); }, linkedMethods: linkedPaymentMethods, onAddPaymentMethod: addPaymentMethod, onRemovePaymentMethod: removePaymentMethod, spendingLimit: spendingLimit, onSetSpendingLimit: setSpendingLimit, jamiyaList: jamiyaList, onPayJamiya: payJamiya, onCreateJamiya: createJamiya, CURRENT_USER_ID: CURRENT_USER_ID }))) : stack[0] === "stats" ? (React.createElement(StatsScreen, { transactions: walletTransactions, onBack: () => setStack([]) })) : stack[0] === "notifications" ? (React.createElement(NotificationCenterScreen, { notifications: notifications, onMarkRead: markNotificationRead, onBack: () => setStack([]) })) : stack[stack.length - 1] === "demo" ? (React.createElement(EncryptedNotesDemoScreen, { onBack: () => setStack([]), notes: notes, onAdd: (text) => setNotes((prev) => [{ id: Date.now(), text }, ...prev]), onDelete: (id) => setNotes((prev) => prev.filter((n) => n.id !== id)) })) : (React.createElement(React.Fragment, null,
+            React.createElement("div", { className: "flex-1 overflow-hidden flex flex-col" }, stack[stack.length - 1] === "security" ? (React.createElement(ProfileSettingsScreen, { onBack: () => setStack([]), onChangePin: () => setFlow("setup"), biometricEnabled: biometricEnabled, setBiometricEnabled: toggleAppLockBiometric, autoLockDelay: autoLockDelay, setAutoLockDelay: setAutoLockDelay, remainingCodes: pin ? pin.codes.length : 0, onLockNow: () => lockActive && setLockView("locked"), onOpenSessions: () => setStack(["security", "sessions"]), profilePhoto: profilePhoto, setProfilePhoto: setProfilePhoto, interfaceLanguage: interfaceLanguage, setInterfaceLanguage: setInterfaceLanguage, pinLockEnabled: lockActive, setPinLockEnabled: toggleAppLock, browserNotifEnabled: browserNotifEnabled, onToggleBrowserNotif: toggleBrowserNotif, statusOption: statusOption, setStatusOption: setStatusOption, customStatusMessage: customStatusMessage, setCustomStatusMessage: setCustomStatusMessage, redeemedReferralCode: redeemedReferralCode, onRedeemReferral: redeemReferral, blockUnsolicited: blockUnsolicited, setBlockUnsolicited: setBlockUnsolicited, identityVerified: identityVerified, chatBackupEnabled: chatBackupEnabled, setChatBackupEnabled: setChatBackupEnabled, onDeleteKeys: deleteEncryptionKeys, backendLinked: backendLinked, onUnlink: () => setBackendLinked(false) })) : stack[stack.length - 1] === "sessions" ? (React.createElement(SessionsScreen, { sessions: sessions, onRevoke: revokeSession, onRevokeAll: revokeAllSessions, onBack: () => setStack(["security"]) })) : stack[0] === "wallet" && !walletUnlocked ? (React.createElement(ServiceTheme, { color: SERVICE_COLORS.wallet }, React.createElement(WalletLockScreen, { onUnlock: () => setWalletUnlocked(true), onBack: () => setStack([]), walletPasskeyId: walletPasskeyId, onPasskeyRegistered: setWalletPasskeyId, walletPin: walletPin, onSetWalletPin: setWalletPin, appPin: pin }))) : stack[0] === "wallet" && walletUnlocked ? (React.createElement(ServiceTheme, { color: SERVICE_COLORS.wallet }, React.createElement(WalletScreen, { balance: walletBalance, transactions: walletTransactions, cardNumber: walletCardNumber, walletPinForConfirm: walletPin, kycStatus: kycStatus, kycDismissed: kycDismissed, onDismissKyc: () => setKycDismissed(true), onSubmitKyc: submitKyc, onTopUp: topUpWallet, onTransfer: transferWallet, onScanPay: scanPay, canIntl: canIntl, intlHistory: intlHistory, onIntlTransfer: intlTransfer, kycMeta: kycMeta, fxAccounts: fxAccounts, onOpenFx: openFx, onExchange: fxExchange, cards: vCards, onCardsChange: setVCards, holder: (myProfile && (myProfile.name || myProfile.googleName)) || "", onBack: () => { setStack([]); setWalletUnlocked(false); }, linkedMethods: linkedPaymentMethods, onAddPaymentMethod: addPaymentMethod, onRemovePaymentMethod: removePaymentMethod, spendingLimit: spendingLimit, onSetSpendingLimit: setSpendingLimit, jamiyaList: jamiyaList, onPayJamiya: payJamiya, onCreateJamiya: createJamiya, CURRENT_USER_ID: CURRENT_USER_ID }))) : stack[0] === "stats" ? (React.createElement(StatsScreen, { transactions: walletTransactions, onBack: () => setStack([]) })) : stack[0] === "notifications" ? (React.createElement(NotificationCenterScreen, { notifications: notifications, onMarkRead: markNotificationRead, onBack: () => setStack([]) })) : stack[stack.length - 1] === "demo" ? (React.createElement(EncryptedNotesDemoScreen, { onBack: () => setStack([]), notes: notes, onAdd: (text) => setNotes((prev) => [{ id: Date.now(), text }, ...prev]), onDelete: (id) => setNotes((prev) => prev.filter((n) => n.id !== id)) })) : (React.createElement(React.Fragment, null,
                 tab === "chats" && (() => {
                     const chatsTop = chatsStack[chatsStack.length - 1];
                     if (!backendLinked) {
@@ -4009,7 +4355,7 @@ function AppInner() {
                             }, onBack: () => setChatsStack([]) }));
                     }
                     if (chatsTop.type === "lockedChats") {
-                        return (React.createElement(LockedChatsScreen, { conversations: conversations, lockedConversationIds: lockedConversationIds, correctPin: pin, onOpenChat: (c) => setChatsStack([{ type: "chat", data: c }]), onClose: () => setChatsStack([]), onForgot: () => { setChatsStack([]); setFlow("forgot"); } }));
+                        return (React.createElement(LockedChatsScreen, { conversations: conversations, lockedConversationIds: lockedConversationIds, correctPin: pin, onOpenChat: (c) => setChatsStack([{ type: "chat", data: c }]), onClose: () => setChatsStack([]), onForgot: () => { setChatsStack([]); if (lockActive) setLockView("forgot"); } }));
                     }
                     if (chatsTop.type === "starredMessages") {
                         return (React.createElement(StarredMessagesScreen, { starredMessages: starredMessages, onOpenConversation: (conversationId) => {

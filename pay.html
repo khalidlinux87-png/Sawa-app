@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>دفع فاتورة · سوا</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+  /* C267: the public pay page. Standalone (no app, no login). The token in the path picks the invoice. */
+  @font-face{font-family:'Sawa Plex';font-weight:100 500;font-display:swap;src:url(/fonts/plex-arabic-400.woff2) format('woff2');unicode-range:U+0600-06FF,U+0750-077F,U+08A0-08FF,U+200C-200F,U+FB50-FDFF,U+FE70-FEFC}
+  @font-face{font-family:'Sawa Plex';font-weight:100 500;font-display:swap;src:url(/fonts/plex-latin-400.woff2) format('woff2');unicode-range:U+0000-00FF,U+2000-206F,U+20AC,U+2212}
+  @font-face{font-family:'Sawa Plex';font-weight:600 900;font-display:swap;src:url(/fonts/plex-arabic-700.woff2) format('woff2');unicode-range:U+0600-06FF,U+0750-077F,U+08A0-08FF,U+200C-200F,U+FB50-FDFF,U+FE70-FEFC}
+  @font-face{font-family:'Sawa Plex';font-weight:600 900;font-display:swap;src:url(/fonts/plex-latin-700.woff2) format('woff2');unicode-range:U+0000-00FF,U+2000-206F,U+20AC,U+2212}
+  :root{--teal:#2774BA;--ink:#111827;--muted:#6B7280;--paper:#F5F7FA;--card:#FFFFFF;--line:#E2E5E9;--amber:#B45309;--red:#B42318;--green:#1B7A43;color-scheme:light}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--teal:#5AA9E6;--ink:#EDEFF2;--muted:#8A93A0;--paper:#0E1116;--card:#171B21;--line:#262B33;--amber:#F5B14C;--red:#E5695C;--green:#5CD692;color-scheme:dark}}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.6 'Sawa Plex',system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif}
+  main{max-width:520px;margin:0 auto;padding:20px 16px calc(env(safe-area-inset-bottom,0px) + 40px)}
+  .num{direction:ltr;unicode-bidi:isolate;font-variant-numeric:tabular-nums;white-space:nowrap}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+  header img{max-height:44px;max-width:120px;object-fit:contain;border-radius:6px;background:#fff;padding:2px}
+  header .who{flex:1;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  button{font:inherit;cursor:pointer}
+  .lang{border:1px solid var(--line);background:none;color:var(--ink);border-radius:999px;min-height:36px;padding:0 12px;font-size:13px}
+  h1{font-size:30px;line-height:1.3;font-weight:800;margin:0 0 8px}
+  .sub{color:var(--muted);margin:0}
+  .sub.red{color:var(--red)}
+  .note{margin:24px 0 0;padding:12px 0 0;border-top:1px solid var(--line);color:var(--amber)}
+  .note.ok{color:var(--green)}
+  h2{font-size:17px;font-weight:800;margin:36px 0 12px}
+  .acct{padding:14px 0;border-top:1px solid var(--line)}
+  .acct:first-of-type{border-top:0}
+  .acct b{display:block;font-size:16px}
+  .row{display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--muted)}
+  .row .v{color:var(--ink);flex:1;min-width:0;overflow-wrap:anywhere}
+  .copy{border:1px solid var(--line);background:var(--card);color:var(--teal);border-radius:10px;min-height:36px;padding:0 12px;font-weight:700;font-size:13px}
+  .ref{margin-top:14px;font-size:14px;color:var(--muted)}
+  .items{width:100%;border-collapse:collapse;font-size:14px}
+  .items td{padding:6px 0;vertical-align:top}
+  .items td:last-child{text-align:end}
+  .items tr.total td{border-top:1px solid var(--line);font-weight:800;padding-top:10px}
+  .link{background:none;border:0;color:var(--teal);font-weight:700;padding:8px 0;min-height:40px}
+  form{display:grid;gap:14px}
+  label{display:block;font-size:13px;font-weight:700;color:var(--muted)}
+  input,select{display:block;width:100%;margin-top:6px;min-height:46px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:16px}
+  input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+  .primary{min-height:52px;border:0;border-radius:14px;background:var(--teal);color:#fff;font-weight:800;font-size:16px}
+  .primary[disabled]{opacity:.5;cursor:default}
+  .err{color:var(--red);font-size:14px;margin:0}
+  .hint{font-weight:400;font-size:12px;color:var(--muted)}
+  /* C287: full / partial choice, the pay-state chip */
+  fieldset.pt{border:0;margin:14px 0 0;padding:0}fieldset.pt legend{font-size:13px;font-weight:700;color:var(--muted);padding:0;margin-bottom:6px}
+  .opt{display:flex;align-items:center;gap:10px;min-height:48px;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;margin-bottom:8px;color:var(--ink);font-size:15px;font-weight:700;cursor:pointer}
+  .opt input{display:inline-block;flex:none;width:20px;height:20px;min-height:0;margin:0;padding:0;accent-color:var(--teal)}[hidden]{display:none!important}.opt:has(input:checked){border-color:var(--teal)}
+  .opt .hint{display:block;margin-top:2px}
+  .chip{display:inline-block;margin-top:8px;padding:2px 10px;border-radius:999px;font-size:13px;font-weight:700;color:var(--amber);border:1px solid var(--amber)}
+  #sheet{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:stretch;justify-content:center;z-index:5}
+  #sheet.on{display:flex}
+  #sheet .box{background:#fff;width:100%;max-width:820px;display:flex;flex-direction:column}
+  #sheet .bar{display:flex;gap:8px;padding:10px;background:var(--card);border-bottom:1px solid var(--line)}
+  #sheet iframe{flex:1;border:0;width:100%;background:#fff}
+  footer{margin-top:48px;color:var(--muted);font-size:12px;text-align:center}
+  footer a{color:inherit}
+  .skel{color:var(--muted)}
+  @media (prefers-reduced-motion:no-preference){.fresh{animation:in .35s ease-out}@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}}
+</style>
+</head>
+<body>
+<main id="app" aria-live="polite"><p class="skel">…</p></main>
+<div id="sheet" role="dialog" aria-modal="true" aria-label="الفاتورة"><div class="box"><div class="bar">
+  <button class="copy" id="pdfBtn" type="button"></button><button class="copy" id="printBtn" type="button"></button><span style="flex:1"></span><button class="copy" id="closeBtn" type="button"></button></div>
+  <iframe id="frame" title="invoice"></iframe></div></div>
+<script>
+(function () {
+  "use strict";
+  // Fixed on purpose: a link can never point this page at another server (that would let a crafted URL on our domain show fake account numbers).
+  var API = "https://sawa-deploy-test.khalidlinux87.workers.dev/pfm/pay";
+  var TOKEN = (location.pathname.split("/pay/")[1] || "").replace(/\/+$/, "");
+  var app = document.getElementById("app");
+  var state = { v: null, lang: null, sending: false, err: "", first: true };
+  var STRINGS = {
+    ar: { owe: "مطلوب منك ", from: "فاتورة {n} من {i}", due: "، تستحقّ في {d}.", overdue: "، كان استحقاقها في {d}.", paidAll: "دُفعت هذه الفاتورة كاملةً.", thanks: "شكراً لك.",
+      cancelled: "أُلغيت هذه الفاتورة.", noLink: "هذا الرابط غير صحيح أو انتهى.", tryLater: "تعذّر التحميل. تحقّق من الاتصال وأعد المحاولة.", retry: "إعادة المحاولة",
+      payTo: "ادفع إلى", holder: "صاحب الحساب", number: "رقم الحساب", phone: "رقم المحفظة", branch: "الفرع", copy: "نسخ", copied: "نُسخ",
+      reference: "اكتب {n} في خانة البيان أو الملاحظة عند التحويل.", noAccounts: "لم يضف المُصدِر حسابات دفع لهذه الفاتورة. تواصل معه مباشرة.",
+      details: "تفاصيل الفاتورة", total: "الإجماليّ", paid: "المدفوع", view: "عرض الفاتورة كاملةً أو طباعتها", print: "طباعة أو PDF", close: "إغلاق",
+      claimH: "دفعتَ؟ أبلغ {i}", name: "اسمك", phoneOpt: "هاتفك (اختياريّ)", amount: "المبلغ الذي حوّلته", account: "إلى أيّ حساب", refOpt: "رقم العمليّة أو المرجع (اختياريّ)",
+      date: "تاريخ التحويل", proof: "إيصال الدفع — صورة أو PDF (اختياريّ)", proofHint: "الصور تُصغَّر على جهازك، وملفّ PDF حتّى 600 كيلوبايت", send: "أبلغ عن الدفع", sending: "جارٍ الإرسال…",
+      payType: "ماذا دفعت؟", full: "المبلغ كاملاً", fullHint: "كلّ المتبقّي: {a}", part: "دفعة جزئيّة", partHint: "جزء من المبلغ، والباقي لاحقاً", partAmt: "المبلغ الذي دفعته الآن",
+      stPartial: "مدفوعة جزئيّاً", stPending: "مدفوعة — بانتظار تحقّق {i}", pendingAll: "أبلغتَ عن دفع المبلغ كاملاً. ينتظر {i} وصوله إلى حسابه ليؤكّده.",
+      another: "الإبلاغ عن دفعة أخرى", pdf: "تنزيل PDF", pdfBusy: "جارٍ التجهيز…", pdfFail: "تعذّر تجهيز الملفّ. استعمل «طباعة» واختر «حفظ PDF».",
+      sent: "وصل بلاغك. سيتحقّق {i} من حسابه ويؤكّد الدفعة.", pending: "بلاغات دفعٍ بانتظار تأكيد المُصدِر: {a}", fixed: "المبلغ كاملاً (لا تُقبل دفعات جزئيّة)",
+      errs: { overpay: "المبلغ أكبر من المتبقّي بعد البلاغات السابقة.", partial_not_allowed: "هذه الفاتورة تُدفع كاملةً دفعةً واحدة.", claim_pending: "هناك بلاغاتٌ سابقة لم يُردّ عليها بعد. انتظر رداً من المُصدِر.",
+        rate_limited: "محاولاتٌ كثيرة. انتظر قليلاً ثمّ أعد المحاولة.", bad_payer: "اكتب اسمك.", bad_amount: "اكتب المبلغ.", too_precise: "عدد الخانات العشريّة أكثر من المسموح.", bad_proof: "الصورة يجب أن تكون JPEG أو PNG أو WebP.",
+        not_payable: "لم تعد هذه الفاتورة تقبل الدفع.", bad_account: "اختر الحساب الذي حوّلت إليه.",
+        partial_is_full: "هذا هو المبلغ كاملاً — اختر «المبلغ كاملاً».", bad_pay_type: "اختر: المبلغ كاملاً أو دفعة جزئيّة.", proof_big: "ملفّ PDF أكبر من 600 كيلوبايت. أرسل صورة للإيصال بدلاً منه.", proof_type: "الإيصال صورة أو ملفّ PDF فقط." },
+      footer: "فواتير عبر سوا.", privacy: "الخصوصيّة", lang: "English" },
+    en: { owe: "You owe ", from: "Invoice {n} from {i}", due: ", due on {d}.", overdue: ", which was due on {d}.", paidAll: "This invoice is paid in full.", thanks: "Thank you.",
+      cancelled: "This invoice was cancelled.", noLink: "This link isn't valid or has expired.", tryLater: "Couldn't load. Check your connection and try again.", retry: "Try again",
+      payTo: "Pay to", holder: "Account holder", number: "Account number", phone: "Wallet number", branch: "Branch", copy: "Copy", copied: "Copied",
+      reference: "Put {n} in the transfer's reference or note.", noAccounts: "The issuer added no payment accounts to this invoice. Contact them directly.",
+      details: "Invoice details", total: "Total", paid: "Paid", view: "View or print the full invoice", print: "Print or PDF", close: "Close",
+      claimH: "Paid? Let {i} know", name: "Your name", phoneOpt: "Your phone (optional)", amount: "Amount you sent", account: "To which account", refOpt: "Transaction number or reference (optional)",
+      date: "Date of the transfer", proof: "Payment receipt — photo or PDF (optional)", proofHint: "Photos are shrunk on your device; PDFs up to 600 KB", send: "Report payment", sending: "Sending…",
+      payType: "What did you pay?", full: "The full amount", fullHint: "Everything left: {a}", part: "A part payment", partHint: "Part of the amount, the rest later", partAmt: "Amount you paid now",
+      stPartial: "Partially paid", stPending: "Paid — waiting for {i} to check", pendingAll: "You reported paying in full. {i} will confirm once it reaches their account.",
+      another: "Report another payment", pdf: "Download PDF", pdfBusy: "Preparing…", pdfFail: "Couldn't make the file. Use Print and choose Save as PDF.",
+      sent: "Your report arrived. {i} will check their account and confirm the payment.", pending: "Payment reports waiting for the issuer: {a}", fixed: "The full amount (no part payments)",
+      errs: { overpay: "That's more than is left after earlier reports.", partial_not_allowed: "This invoice is paid in one full payment.", claim_pending: "Earlier reports haven't been answered yet. Wait for the issuer.",
+        rate_limited: "Too many attempts. Wait a little and try again.", bad_payer: "Enter your name.", bad_amount: "Enter the amount.", too_precise: "Too many decimal places.", bad_proof: "The image must be JPEG, PNG or WebP.",
+        not_payable: "This invoice no longer accepts payment.", bad_account: "Choose the account you sent to.",
+        partial_is_full: "That's the full amount — choose “The full amount”.", bad_pay_type: "Choose: the full amount or a part payment.", proof_big: "The PDF is over 600 KB. Send a photo of the receipt instead.", proof_type: "The receipt must be a photo or a PDF." },
+      footer: "Invoices with Sawa.", privacy: "Privacy", lang: "العربيّة" }
+  };
+  function S() { return STRINGS[state.lang]; }
+  function fill(s, o) { return s.replace(/\{(\w)\}/g, function (_, k) { return o[k] != null ? o[k] : ""; }); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function loc() { return state.lang === "ar" ? "ar-u-nu-latn" : "en"; }
+  function money(minor, cur) {
+    var e = 2; try { e = new Intl.NumberFormat("en", { style: "currency", currency: cur }).resolvedOptions().maximumFractionDigits; } catch (x) {}
+    var f; try { f = new Intl.NumberFormat(loc(), { style: "currency", currency: cur, currencyDisplay: state.lang === "ar" ? "symbol" : "code" }); } catch (x) { f = new Intl.NumberFormat("en"); }
+    return '<bdi class="num">' + esc(f.format(minor / Math.pow(10, e)).replace(/[‎‏؜]/g, "")) + "</bdi>";
+  }
+  function day(d) { var p = d.split("-").map(Number); return new Intl.DateTimeFormat(loc(), { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(Date.UTC(p[0], p[1] - 1, p[2])); }
+  function api(op, payload) {
+    return fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: op, payload: payload }), referrerPolicy: "no-referrer" })
+      .then(function (r) { return r.json(); }).then(function (b) { if (!b || !b.ok) throw new Error((b && b.error) || "error"); return b; });
+  }
+  var KEY = "sawa_pay_" + TOKEN;   // remembers this browser's report, to show it again after a reload
+  function mine() { try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { return null; } }
+  // C287: one report per browser hid the form for good, so a second instalment could not be reported. "another" reopens it.
+
+  function setLang(l) {
+    state.lang = l; document.documentElement.lang = l; document.documentElement.dir = l === "ar" ? "rtl" : "ltr";
+    document.title = l === "ar" ? "دفع فاتورة · سوا" : "Pay an invoice · Sawa";
+    render();
+  }
+
+  function render() {
+    var v = state.v, t = S();
+    if (!v) return;
+    var h = [];
+    h.push('<header>' + (v.issuer.logo ? '<img src="' + esc(v.issuer.logo) + '" alt="">' : "") + '<span class="who" dir="auto">' + esc(v.issuer.name) + '</span>' +
+      '<button class="lang" type="button" id="langBtn">' + t.lang + "</button></header>");
+    var from = fill(t.from, { n: '<bdi class="num">' + esc(v.number) + "</bdi>", i: "<bdi>" + esc(v.issuer.name) + "</bdi>" });
+    if (v.status === "paid") { h.push('<h1 class="' + (state.first ? "fresh" : "") + '">' + t.paidAll + "</h1>"); h.push('<p class="sub">' + from + ". " + t.thanks + "</p>"); }
+    else if (v.status === "cancelled") { h.push('<h1 class="' + (state.first ? "fresh" : "") + '">' + t.cancelled + "</h1>"); h.push('<p class="sub">' + from + ".</p>"); }
+    else {
+      h.push('<h1 class="' + (state.first ? "fresh" : "") + '">' + t.owe + money(v.amountDue, v.currency) + "</h1>");
+      var late = v.status === "overdue";
+      h.push('<p class="sub' + (late ? " red" : "") + '">' + from + fill(late ? t.overdue : t.due, { d: day(v.dueDate) }) + "</p>");
+      if (v.payState === "partially_paid" || v.payState === "pending_verification")
+        h.push('<span class="chip">' + (v.payState === "partially_paid" ? t.stPartial : fill(t.stPending, { i: "<bdi>" + esc(v.issuer.name) + "</bdi>" })) + "</span>");
+    }
+    var issuerB = "<bdi>" + esc(v.issuer.name) + "</bdi>";
+    var room0 = v.amountDue - (v.pendingClaims || 0);
+    var m = mine() && !state.another ? mine() : null;
+    if (v.payable && v.payState === "pending_verification") h.push('<p class="note ok" role="status">' + fill(t.pendingAll, { i: issuerB }) + "</p>");
+    else if (m && v.payable) h.push('<p class="note ok" role="status">' + fill(t.sent, { i: issuerB }) + "</p>");
+    else if (v.pendingClaims > 0 && v.payable) h.push('<p class="note">' + fill(t.pending, { a: money(v.pendingClaims, v.currency) }) + "</p>");
+    if (m && v.payable && room0 > 0) h.push('<button class="link" type="button" id="anotherBtn">' + t.another + "</button>");
+
+    if (v.payable) {
+      h.push("<h2>" + t.payTo + "</h2>");
+      if (!v.accounts.length) h.push('<p class="sub">' + t.noAccounts + "</p>");
+      v.accounts.forEach(function (a, i) {
+        var title = a.bankName || a.provider || a.label;
+        h.push('<div class="acct"><b dir="auto">' + esc(title) + "</b>" +
+          (a.holderName ? '<div class="row"><span>' + t.holder + '</span><span class="v" dir="auto">' + esc(a.holderName) + "</span></div>" : "") +
+          (a.number ? '<div class="row"><span>' + (a.type === "mobile_money" ? t.phone : t.number) + '</span><span class="v num">' + esc(a.number) + '</span><button class="copy" type="button" data-copy="' + esc(a.number) + '">' + t.copy + "</button></div>" : "") +
+          (a.branch ? '<div class="row"><span>' + t.branch + '</span><span class="v" dir="auto">' + esc(a.branch) + "</span></div>" : "") +
+          (a.details ? '<div class="row"><span class="v" dir="auto">' + esc(a.details) + "</span></div>" : "") + "</div>");
+      });
+      if (v.accounts.length) h.push('<p class="ref">' + fill(t.reference, { n: '<bdi class="num">' + esc(v.number) + "</bdi>" }) + ' <button class="copy" type="button" data-copy="' + esc(v.number) + '">' + t.copy + "</button></p>");
+    }
+
+    h.push("<h2>" + t.details + '</h2><table class="items">');
+    v.items.forEach(function (it) { h.push('<tr><td dir="auto">' + esc(it.description) + ' <span class="num" style="color:var(--muted)">× ' + esc(it.qty) + "</span></td><td>" + money(it.amount, v.currency) + "</td></tr>"); });
+    if (v.taxTotal) h.push("<tr><td>" + esc(v.taxLabel || (state.lang === "ar" ? "الضريبة" : "Tax")) + "</td><td>" + money(v.taxTotal, v.currency) + "</td></tr>");
+    h.push('<tr class="total"><td>' + t.total + "</td><td>" + money(v.total, v.currency) + "</td></tr>");
+    if (v.amountPaid) h.push("<tr><td>" + t.paid + "</td><td>−" + money(v.amountPaid, v.currency) + "</td></tr>");
+    h.push('</table><button class="link" type="button" id="viewBtn">' + t.view + "</button>");
+
+    if (v.payable && v.accounts.length && !m && room0 > 0) {
+      var room = room0, e = 2;
+      try { e = new Intl.NumberFormat("en", { style: "currency", currency: v.currency }).resolvedOptions().maximumFractionDigits; } catch (x) {}
+      var today = new Date().toISOString().slice(0, 10);
+      h.push("<h2>" + fill(t.claimH, { i: "<bdi>" + esc(v.issuer.name) + "</bdi>" }) + "</h2>");
+      h.push('<form id="claim" novalidate>' +
+        '<label>' + t.name + '<input name="name" autocomplete="name" required maxlength="80" dir="auto"></label>' +
+        '<label>' + t.phoneOpt + '<input name="phone" type="tel" autocomplete="tel" maxlength="30" dir="ltr"></label>' +
+        // C287: full or partial. Full sends payType "full" and the server takes everything still open; partial asks for the amount.
+        (v.allowPartial
+          ? '<fieldset class="pt"><legend>' + t.payType + '</legend>' +
+              '<label class="opt"><input type="radio" name="ptype" value="full"' + (state.ptype !== "partial" ? " checked" : "") + '><span>' + t.full + '<span class="hint">' + fill(t.fullHint, { a: money(room, v.currency) }) + "</span></span></label>" +
+              '<label class="opt"><input type="radio" name="ptype" value="partial"' + (state.ptype === "partial" ? " checked" : "") + '><span>' + t.part + '<span class="hint">' + t.partHint + "</span></span></label></fieldset>" +
+            '<label id="amtRow"' + (state.ptype === "partial" ? "" : " hidden") + '>' + t.partAmt + " (" + esc(v.currency) + ")" +
+              '<input name="amount" inputmode="decimal" dir="ltr" autocomplete="off" placeholder="0.' + "0".repeat(Math.max(0, e)) + '"></label>'
+          : '<label>' + t.amount + " (" + esc(v.currency) + ') <span class="hint">' + t.fixed + '</span><input name="amount" inputmode="decimal" dir="ltr" value="' + (room / Math.pow(10, e)).toFixed(e) + '" readonly></label>' +
+            '<input type="hidden" name="ptype" value="full">') +
+        (v.accounts.length > 1 ? '<label>' + t.account + '<select name="account">' + v.accounts.map(function (a) { return '<option value="' + esc(a.id) + '">' + esc((a.bankName || a.provider || a.label) + (a.number ? " " + a.number.slice(-4) : "")) + "</option>"; }).join("") + "</select></label>"
+          : '<input type="hidden" name="account" value="' + esc(v.accounts[0].id) + '">') +
+        '<label>' + t.refOpt + '<input name="reference" maxlength="80" dir="auto"></label>' +
+        '<label>' + t.date + '<input name="date" type="date" max="' + today + '" value="' + today + '"></label>' +
+        '<label>' + t.proof + ' <span class="hint">' + t.proofHint + '</span><input name="proof" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf"></label>' +
+        (state.err ? '<p class="err" role="alert">' + esc(state.err) + "</p>" : "") +
+        '<button class="primary" type="submit"' + (state.sending ? " disabled" : "") + ">" + (state.sending ? t.sending : t.send) + "</button></form>");
+    }
+    h.push("<footer>" + t.footer + ' <a href="/privacy.html">' + t.privacy + "</a></footer>");
+    app.innerHTML = h.join("");
+    state.first = false;   // the headline animates once, on first load only
+    bind();
+  }
+
+  function bind() {
+    var lb = document.getElementById("langBtn"); if (lb) lb.onclick = function () { setLang(state.lang === "ar" ? "en" : "ar"); };
+    Array.prototype.forEach.call(document.querySelectorAll("[data-copy]"), function (b) {
+      b.onclick = function () { var t = S(), v = b.getAttribute("data-copy");
+        (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(function () { b.textContent = t.copied; setTimeout(function () { b.textContent = t.copy; }, 1500); }, function () {}); };
+    });
+    var vb = document.getElementById("viewBtn"); if (vb) vb.onclick = openInvoice;
+    var f = document.getElementById("claim"); if (f) f.onsubmit = submit;
+    var ab = document.getElementById("anotherBtn"); if (ab) ab.onclick = function () { state.another = true; idem = key(); render(); var c = document.getElementById("claim"); if (c && c.name) c.name.focus(); };
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="ptype"][type="radio"]'), function (r) {
+      r.onchange = function () { state.ptype = r.value; var row = document.getElementById("amtRow"); if (row) { row.hidden = r.value !== "partial"; if (!row.hidden) row.querySelector("input").focus(); } };
+    });
+  }
+
+  // the full invoice, rendered by the server, in a sandboxed frame (no scripts) that can still be printed
+  function openInvoice() {
+    var sh = document.getElementById("sheet"), fr = document.getElementById("frame"), t = S();
+    document.getElementById("printBtn").textContent = t.print; document.getElementById("closeBtn").textContent = t.close; document.getElementById("pdfBtn").textContent = t.pdf;
+    // WebViews (the Sawa apps) ignore print(): there only the PDF button shows
+    document.getElementById("printBtn").hidden = inApp();
+    api("pay.view", { token: TOKEN, lang: state.lang }).then(function (b) {
+      state.html = b.html;
+      fr.setAttribute("sandbox", "allow-modals allow-same-origin"); fr.srcdoc = b.html; sh.classList.add("on");
+      document.getElementById("closeBtn").focus();
+    }, function () {});
+  }
+  document.getElementById("closeBtn").onclick = function () { document.getElementById("sheet").classList.remove("on"); var vb = document.getElementById("viewBtn"); if (vb) vb.focus(); };
+  document.getElementById("printBtn").onclick = function () { try { var w = document.getElementById("frame").contentWindow; w.focus(); w.print(); } catch (e) {} };
+  // C287: HTML → PDF file on the phone. Android's WebView and iOS's WKWebView ignore window.print(), so "Print or PDF"
+  // did nothing in the Sawa apps. The page is laid out in an off-screen frame (scripts off), drawn with html2canvas,
+  // cut into A4 pages between rows, and written as a PDF of JPEG pages. The text is drawn by the browser itself, so
+  // Arabic shaping and right-to-left order are exactly what the screen shows.
+  var SAWA_H2C = { src: "https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js", sri: "sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" };
+  var sawaH2cP = null, sawaH2cDoc = null;
+  // html2canvas measures font baselines (and runs its feature tests) in the global `document`. In the app that page has
+  // Tailwind and app styles (img display:block, line heights), the baselines came out wrong and every word was drawn
+  // ~9 px high: the header was cut off and the totals' rule ran through the text. Its `document` is this proxy, which
+  // points at the invoice's own frame while a page is drawn.
+  var sawaDocProxy = new Proxy({}, { get: function (_, k) { var d = sawaH2cDoc || window.document, v = d[k]; return typeof v === "function" ? v.bind(d) : v; } });
+  // C288: app.p1 declares `const { Image, … } = window.__L` (an icon) at the top level, and that name shadows the
+  // browser's Image in every later classic script. html2canvas loads pictures with `new Image()`, so in the app it got
+  // the icon, the logo never loaded and the invoice PDF came out without it. The library is fetched, checked against the
+  // same SRI hash a <script integrity> would use, and run with the real Image constructor (and the document proxy) passed in.
+  function sawaLoadH2c() {
+      if (window.html2canvas) return Promise.resolve(window.html2canvas);
+      if (sawaH2cP) return sawaH2cP;
+      sawaH2cP = fetch(SAWA_H2C.src, { mode: "cors", credentials: "omit", referrerPolicy: "no-referrer" })
+          .then(function (r) { if (!r.ok) throw new Error("pdf_lib"); return r.arrayBuffer(); })
+          .then(function (buf) {
+              return crypto.subtle.digest("SHA-384", buf).then(function (d) {
+                  var u = new Uint8Array(d), b = ""; for (var i = 0; i < u.length; i++) b += String.fromCharCode(u[i]);
+                  if ("sha384-" + btoa(b) !== SAWA_H2C.sri) throw new Error("pdf_lib");
+                  // eslint-disable-next-line no-new-func
+                  new Function("Image", "document", "module", "exports", "define", new TextDecoder().decode(buf)).call(window, window.Image, sawaDocProxy, undefined, undefined, undefined);
+                  if (!window.html2canvas) throw new Error("pdf_lib");
+                  return window.html2canvas;
+              });
+          })
+          .catch(function (e) { sawaH2cP = null; throw e && e.message === "pdf_lib" ? e : new Error("pdf_lib"); });
+      return sawaH2cP;
+  }
+  // A4 at 96 css px per inch, with the invoice template's own print margins (16 mm × 14 mm).
+  var SAWA_MM = 96 / 25.4, SAWA_PAGE = { w: 210, h: 297, mx: 14, my: 16 };
+  function sawaPdfBytes(pages) {   // pages: [{ jpeg: Uint8Array, w, h }] → Uint8Array (a PDF 1.4 file of JPEG pages)
+      var enc = new TextEncoder(), parts = [], size = 0, offs = [];
+      function put(x) { var u = typeof x === "string" ? enc.encode(x) : x; parts.push(u); size += u.length; }
+      function obj(num, dict, stream) {
+          offs[num] = size; put(num + " 0 obj\n");
+          if (stream) { put(dict.slice(0, -2) + "/Length " + stream.length + ">>\nstream\n"); put(stream); put("\nendstream"); } else put(dict);
+          put("\nendobj\n");
+      }
+      var pt = 72 / 25.4, pw = SAWA_PAGE.w * pt, ph = SAWA_PAGE.h * pt, mx = SAWA_PAGE.mx * pt, my = SAWA_PAGE.my * pt, cw = pw - 2 * mx;
+      var kids = pages.map(function (_, i) { return (5 + 3 * i) + " 0 R"; }).join(" "), last = 2 + 3 * pages.length;
+      put("%PDF-1.4\n%\u00e2\u00e3\u00cf\u00d3\n");
+      obj(1, "<</Type/Catalog/Pages 2 0 R>>");
+      obj(2, "<</Type/Pages/Count " + pages.length + "/Kids[" + kids + "]>>");
+      pages.forEach(function (p, i) {
+          var im = 3 + 3 * i, ct = 4 + 3 * i, pg = 5 + 3 * i, dh = cw * p.h / p.w;
+          obj(im, "<</Type/XObject/Subtype/Image/Width " + p.w + "/Height " + p.h + "/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode>>", p.jpeg);
+          obj(ct, "<<>>", enc.encode("q " + cw.toFixed(2) + " 0 0 " + dh.toFixed(2) + " " + mx.toFixed(2) + " " + (ph - my - dh).toFixed(2) + " cm /I0 Do Q"));
+          obj(pg, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 " + pw.toFixed(2) + " " + ph.toFixed(2) + "]/Resources<</XObject<</I0 " + im + " 0 R>>>>/Contents " + ct + " 0 R>>");
+      });
+      var xref = size, x = "xref\n0 " + (last + 1) + "\n0000000000 65535 f \n";
+      for (var k = 1; k <= last; k++) x += ("000000000" + offs[k]).slice(-10) + " 00000 n \n";
+      put(x + "trailer\n<</Size " + (last + 1) + "/Root 1 0 R>>\nstartxref\n" + xref + "\n%%EOF\n");
+      var all = new Uint8Array(size), at = 0;
+      parts.forEach(function (u) { all.set(u, at); at += u.length; });
+      return all;
+  }
+  function sawaB64ToBytes(b64) { var s = atob(b64), u = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+  // Where a page may end: the bottom of a table row or of a block, never through a line of text.
+  function sawaBreaks(doc) {
+      var out = [], els = doc.body.querySelectorAll("tr,header,section,table,.bottom,.notes,.accts,.acct,.party,.meta div,p,li,h1,h2,h3,.card,.row,div");
+      for (var i = 0; i < els.length; i++) { var r = els[i].getBoundingClientRect(); if (r.height > 0) out.push(r.bottom); }
+      return out.sort(function (a, b) { return a - b; });
+  }
+  function sawaPdf(html) {   // → Promise<Blob application/pdf>
+      return sawaLoadH2c().then(function (h2c) {
+          return new Promise(function (ok, no) {
+              var cssW = Math.round((SAWA_PAGE.w - 2 * SAWA_PAGE.mx) * SAWA_MM);
+              var f = document.createElement("iframe");
+              f.setAttribute("aria-hidden", "true"); f.setAttribute("sandbox", "allow-same-origin"); f.tabIndex = -1;
+              f.style.cssText = "position:fixed;left:-10000px;top:0;width:" + cssW + "px;height:40px;border:0;background:#fff";
+              f.style.setProperty("display", "block", "important"); f.style.setProperty("visibility", "visible", "important");   // C288: laid out even if a page rule hides iframes; 40 px tall, so the height measured is the content's
+              var done = false, cleanup = function () { try { f.remove(); } catch (e) { } };
+              var timer = setTimeout(function () { if (!done) { done = true; cleanup(); no(new Error("pdf_timeout")); } }, 45000);
+              f.onload = function () {
+                  var doc = f.contentDocument;
+                  if (done) return;
+                  if (doc && doc.URL === "about:blank" && !(doc.body && doc.body.firstChild)) return;   // C288: the empty first load, not the invoice
+                  if (!doc || !doc.body) { done = true; clearTimeout(timer); cleanup(); no(new Error("pdf_frame")); return; }
+                  var st = doc.createElement("style");
+                  st.textContent = "html,body{margin:0!important;padding:0!important;background:#fff!important;width:" + cssW + "px}";
+                  doc.head.appendChild(st);
+                  var fontsReady = doc.fonts && doc.fonts.ready ? doc.fonts.ready : Promise.resolve();
+                  // C288: the logo is a data: image; wait until it is decoded, or html2canvas may draw the header without it.
+                  var imgs = Array.prototype.slice.call(doc.images || []).map(function (im) {
+                      if (im.complete && im.naturalWidth) return im.decode ? im.decode().catch(function () { }) : null;
+                      return new Promise(function (r) { im.onload = im.onerror = function () { r(); }; setTimeout(r, 5000); });
+                  });
+                  Promise.all([fontsReady].concat(imgs)).then(function () {
+                      // C288: the content's own height. The frame was 1200 px tall and documentElement.scrollHeight is never
+                      // less than the frame, so a one-page invoice (≈ 1001 px of A4 content area) came out as two pages.
+                      var H = Math.ceil(Math.max(doc.body.scrollHeight, doc.body.getBoundingClientRect().bottom, 1));
+                      f.style.height = H + "px";
+                      try { doc.defaultView.scrollTo(0, 0); } catch (e) { }   // C288: draw from the top of the page
+                      var scale = Math.min(2, Math.max(1.5, window.devicePixelRatio || 1));
+                      var breaks = sawaBreaks(doc);
+                      sawaH2cDoc = doc;   // C288: fonts are measured in the invoice's frame, not in the app page
+                      var unfix = function (x) { sawaH2cDoc = null; return x; };
+                      return h2c(doc.documentElement, { scale: scale, backgroundColor: "#ffffff", useCORS: false, logging: false, width: cssW, height: H, windowWidth: cssW, windowHeight: H, x: 0, y: 0, scrollX: 0, scrollY: 0 }).then(function (canvas) {
+                          var pageH = (SAWA_PAGE.h - 2 * SAWA_PAGE.my) * SAWA_MM, pages = [], top = 0;
+                          while (H - top > 4) {   // C288: a sliver of a few px is not a page
+                              var end = Math.min(H, top + pageH);
+                              if (end < H) { var best = 0; for (var i = 0; i < breaks.length; i++) { var b = breaks[i]; if (b > top + pageH * 0.6 && b <= end) best = b; } if (best) end = best; }
+                              var sy = Math.round(top * scale), sh = Math.max(1, Math.round(end * scale) - sy);
+                              var c = document.createElement("canvas"); c.width = canvas.width; c.height = sh;
+                              var g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(canvas, 0, sy, canvas.width, sh, 0, 0, canvas.width, sh);
+                              pages.push({ jpeg: sawaB64ToBytes(c.toDataURL("image/jpeg", 0.88).split(",")[1]), w: c.width, h: sh });
+                              top = end;
+                          }
+                          done = true; clearTimeout(timer); cleanup();
+                          ok(new Blob([sawaPdfBytes(pages)], { type: "application/pdf" }));
+                      }).then(unfix, function (e) { unfix(); throw e; });
+                  }).catch(function (e) { if (!done) { done = true; clearTimeout(timer); cleanup(); no(e); } });
+              };
+              f.srcdoc = html;   // C288: before the frame is attached, so its one load is the invoice
+              document.body.appendChild(f);
+          });
+      });
+  }
+
+  function inApp() { return !!(window.SawaNativeBridge || window.SawaIOS); }
+  // Saves a file: Android app (the Sawa file bridge), iOS app (share sheet), or a browser download.
+  function blobB64(blob) { return new Promise(function (ok, no) { var r = new FileReader(); r.onload = function () { var s0 = String(r.result || ""); ok(s0.slice(s0.indexOf(",") + 1)); }; r.onerror = function () { no(r.error); }; r.readAsDataURL(blob); }); }
+  function saveFile(blob, name) {
+    var NB = window.SawaNativeBridge;
+    if (NB && NB.fileBegin) {
+      var id = NB.fileBegin(name, "application/pdf");
+      if (id) return blobB64(blob).then(function (b64) {
+        for (var i = 0; i < b64.length; i += 512 * 1024) if (!NB.fileChunk(id, b64.slice(i, i + 512 * 1024))) throw new Error("write");
+        return new Promise(function (ok) {
+          var c = window.__sawaNatCbs = window.__sawaNatCbs || {};
+          if (!window.__sawaNativeCb) window.__sawaNativeCb = function (k, r) { var f = c[k]; delete c[k]; if (f) f(r || {}); };
+          var k = "fileEnd_" + Date.now(); c[k] = ok; try { NB.fileEnd(id, "save", k); } catch (e) { ok({ ok: false }); }
+          setTimeout(function () { if (c[k]) { delete c[k]; ok({ ok: false }); } }, 60000);
+        });
+      });
+    }
+    if (window.SawaIOS && window.SawaIOS.call) return blobB64(blob).then(function (b64) { return window.SawaIOS.call("share", { fileName: name, fileB64: b64, mime: "application/pdf" }); });
+    var u = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = u; a.download = name; a.rel = "noopener"; document.body.appendChild(a); a.click();
+    setTimeout(function () { a.remove(); URL.revokeObjectURL(u); }, 4000);
+    return Promise.resolve({ ok: true });
+  }
+  document.getElementById("pdfBtn").onclick = function () {
+    var b = document.getElementById("pdfBtn"), t = S();
+    if (!state.html || b.disabled) return;
+    b.disabled = true; b.textContent = t.pdfBusy;
+    var name = "invoice-" + String((state.v && state.v.number) || "sawa").replace(/[^A-Za-z0-9._-]+/g, "-") + ".pdf";
+    sawaPdf(state.html).then(function (blob) { return saveFile(blob, name); })
+      .then(function () { b.disabled = false; b.textContent = t.pdf; }, function () { b.disabled = false; b.textContent = t.pdf; alert(t.pdfFail); });
+  };
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") document.getElementById("closeBtn").click(); });
+
+  function shrink(file) {   // ≤ 1280 px JPEG, so a phone photo of a receipt stays small
+    return new Promise(function (res, rej) {
+      var img = document.createElement("img"), url = URL.createObjectURL(file);
+      img.onload = function () { var k = Math.min(1, 1280 / Math.max(img.width, img.height)), c = document.createElement("canvas");
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+        res(c.toDataURL("image/jpeg", 0.8)); };
+      img.onerror = function () { URL.revokeObjectURL(url); rej(new Error("bad_proof")); };
+      img.src = url;
+    });
+  }
+  // C287: a photo is shrunk; a PDF (a bank's e-receipt) goes as it is, up to 600 KB.
+  var PROOF_PDF_MAX = 600 * 1024;
+  function proofOf(file) {
+    var isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+    if (isPdf) {
+      if (file.size > PROOF_PDF_MAX) return Promise.reject(new Error("proof_big"));
+      return new Promise(function (ok, no) { var r = new FileReader(); r.onload = function () { ok(String(r.result).replace(/^data:[^,]*,/, "data:application/pdf;base64,")); }; r.onerror = function () { no(new Error("proof_type")); }; r.readAsDataURL(file); });
+    }
+    if (!/^image\//.test(file.type || "")) return Promise.reject(new Error("proof_type"));
+    return shrink(file);
+  }
+  function key() { try { return crypto.randomUUID(); } catch (e) { return "k" + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); } }
+  var idem = key();
+  function submit(ev) {
+    ev.preventDefault();
+    var f = ev.target, t = S();
+    var ptEl = f.querySelector('input[name="ptype"]:checked') || f.querySelector('input[name="ptype"]');
+    var ptype = ptEl ? ptEl.value : "full";
+    var p = { token: TOKEN, idemKey: idem, payType: ptype, amount: ptype === "partial" ? f.amount.value.trim() : undefined, payoutAccountId: f.account.value, reference: f.reference.value.trim() || null,
+      paidAt: f.date.value || null, payer: { name: f.name.value.trim(), phone: f.phone.value.trim() || null } };
+    if (!p.payer.name) { state.err = t.errs.bad_payer; render(); f = document.getElementById("claim"); f.name.focus(); return; }
+    if (ptype === "partial" && !(Number(String(p.amount || "").replace(/,/g, "")) > 0)) { state.err = t.errs.bad_amount; render(); f = document.getElementById("claim"); if (f.amount) f.amount.focus(); return; }
+    var file = f.proof.files && f.proof.files[0];
+    var keep = { name: f.name.value, phone: f.phone.value, amount: f.amount ? f.amount.value : "", reference: f.reference.value, date: f.date.value };
+    state.sending = true; state.err = ""; render(); restore(keep);
+    (file ? proofOf(file) : Promise.resolve(null)).then(function (proof) { if (proof) { p.proof = proof; p.proofName = String(file.name || "").slice(0, 120) || null; } return api("pay.claim", p); }).then(function () {
+      try { localStorage.setItem(KEY, JSON.stringify({ at: Date.now() })); } catch (e) {}
+      state.sending = false; state.another = false; state.ptype = null; idem = key(); return load();
+    }, function (e) {
+      var code = String(e.message || "").split(":")[0];
+      state.sending = false; state.err = t.errs[code] || t.tryLater; render(); restore(keep);
+    });
+  }
+  function restore(k) { var f = document.getElementById("claim"); if (!f) return; ["name", "phone", "amount", "reference", "date"].forEach(function (n) { if (k[n] != null && f[n] && !f[n].readOnly) f[n].value = k[n]; }); }
+
+  function fail(msg, retry) {
+    app.innerHTML = "<h1>" + esc(msg) + "</h1>" + (retry ? '<button class="primary" type="button" id="again">' + S().retry + "</button>" : "");
+    var b = document.getElementById("again"); if (b) b.onclick = load;
+  }
+  function load() {
+    return api("pay.view", { token: TOKEN }).then(function (v) { state.v = v; if (!state.lang) state.lang = v.lang === "en" ? "en" : "ar"; setLang(state.lang); },
+      function (e) { if (!state.lang) state.lang = (navigator.language || "ar").slice(0, 2) === "ar" ? "ar" : "en";
+        /^not_found/.test(e.message) ? fail(S().noLink) : fail(S().tryLater, true); });
+  }
+  if (!/^[a-z0-9]{22}$/.test(TOKEN)) { state.lang = (navigator.language || "ar").slice(0, 2) === "ar" ? "ar" : "en"; fail(S().noLink); }
+  else load();
+})();
+</script>
+</body>
+</html>
