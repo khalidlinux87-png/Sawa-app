@@ -4,7 +4,7 @@
 //    تغيّر VERSION ⇒ يُنزَّل كلّ شيءٍ من جديد (cache:'reload' يتجاوز مخزون المتصفّح) ⇒ يُعرض «تحديث جديد» داخل التطبيق.
 // ⛔ لا يعترض إلا ملفّات التطبيق ومكتبات الواجهة. اتّصالات الخادم (Firestore الحيّ، الـWorker،
 // الدخول بـGoogle) تمرّ مباشرةً — اعتراضها وتخزينها يكسر التزامن الحيّ.
-const VERSION = 'sawa-v466';
+const VERSION = 'sawa-v467';
 // C197: سجلّ منظَّم داخل عامل الخدمة (لا SawaLog هنا).
 function slog(lvl, ev, f) { try { (console[lvl] || console.log)('[sw] ' + ev, Object.assign({ v: VERSION }, f || {})); } catch (e) {} }
 // C83: «ما الجديد» — يظهر لكلّ مستخدم في «حسابي ← تحديث التطبيق». سطرٌ واحد بلا علامة ' (‎\n‎ لسطرٍ جديد). يُحدَّث مع كلّ نسخة.
@@ -15,7 +15,7 @@ const NOTES = '• قفل التطبيق برمز: يبقى بعد إعادة ا
 const MOVED_TO = 'https://www.sawaaap.com';
 const MOVED = /\.netlify\.app$/i.test(self.location.hostname) || /^sawaap\.pages\.dev$/i.test(self.location.hostname) || /^sawaaap\.com$/i.test(self.location.hostname);
 // C139: الحجم المتوقَّع (بالبايت) للملفّات المرفوعة مع هذه النسخة — إن اختلف على الخادم (لم يُرفع، أو رُفع ناقصاً) يُسجَّل ويُنبَّه المستخدم
-const EXPECT = { './sawa-rtc.js': 450453, './sawa-chat.js': 577412 };
+const EXPECT = { './sawa-rtc.js': 450453, './sawa-chat.js': 577819 };
 const REPORT = [];
 const ASSETS = [
   './',
@@ -169,6 +169,8 @@ self.addEventListener('fetch', (e) => {
   const cdn = CDN_HOSTS.indexOf(url.hostname) >= 0;
   if (!sameOrigin && !cdn) return;            // الخادم وFirestore والدخول: لا نتدخّل
   if (sameOrigin && url.pathname.indexOf('/__/') === 0) return; // مسارات Firebase الخاصّة
+  // C284: صفحة دفع الفاتورة ‎/pay/<رمز>‎ من الشبكة مباشرةً — لا تُخزَّن (الرمز سرّ)، ولا يُعرض التطبيق مكانها دون اتّصال
+  if (sameOrigin && (url.pathname === '/pay' || url.pathname === '/pay.html' || url.pathname.indexOf('/pay/') === 0)) return;
   if (sameOrigin && url.pathname === '/sw.js') return;
   // C139: ‎/sw-status‎ — حالة آخر تحديث (للتشخيص من المتصفّح)
   if (sameOrigin && url.pathname === '/sw-status') { e.respondWith(caches.open('flags-sawa').then((c) => c.match('/upd-status')).then((r) => r || new Response(JSON.stringify({ v: VERSION, none: true }), { headers: { 'Content-Type': 'application/json' } }))); return; }
