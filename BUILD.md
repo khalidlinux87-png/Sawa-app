@@ -2835,3 +2835,5 @@ Source: UI/UX review of 10 Nov 2026 (offline render, phone size, Arabic, light a
 **Tests:** `node --check` on all parts; rendered offline at iPhone 13 size in Arabic, light and dark: Chats, Calls, Contacts, Explore, Account, welcome, sign-in error, confirm and copy sheets (Cancel ⇒ false, OK ⇒ true).
 **Not tested here:** real sign-in, chats with data, calls, moments/stories with data (the converted handlers), native Android/iOS wrappers (pinch zoom in WKWebView needs `ignoresViewportScaleLimits`; Android WebView needs zoom enabled in settings).
 **Upload:** app.p2, p3, p4, p5, p6, p7, p8, p9 + index.html + sawa-chat.js + sawa-sync.js ← sw.js (v472) last.
+**Native (same change):** Sawa-iOS `WebViewController.swift` sets `cfg.ignoresViewportScaleLimits = true` (also in `Sawa-ios.zip`) · Sawa-android `MainActivity.java` turns on built-in zoom with the +/− buttons hidden, `SAWA_BUILD` c278 (inside `sawa-native.zip`). Not built here: Android builds after merge to main, iOS on a pull request or a TestFlight run.
+**Decisions (Khalid):** the daily reminder stays a pop-up; Khalid will add more to «استكشف».
