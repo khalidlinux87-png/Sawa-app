@@ -2897,3 +2897,13 @@ Khalid: reading receipts uploaded in Personal Accountant is slow.
 - **Not changed:** the reader itself (`ocr/sawa-reader-4.js`, `ocr/v1/`) — no new download. Per-image reading time on a phone stays about what C279 measured; the gain is the engine start no longer repeating.
 - **Tests:** `import-check.mjs` ✓ with a new step (reload ⇒ Personal Accountant ⇒ the three engine workers start without opening Import; Import then opens ready: 1007 ⇒ 416 ms on desktop). The new step fails on the old code. `ui-check.mjs` ✓ · `projects-ui-check.mjs` ✓.
 - **Upload:** `app.p9.js` (254,839) ← `sw.js` (v476) last. No Worker change.
+
+## 🎛️ C294 — Emoji icons in calls become line icons · sawa-rtc · sw v477
+Follow-up to the review item "emoji used as icons". Emoji look different on Android, iOS and Windows.
+- **Call bar** (answer, voice-only, video, mute, end; group join/leave), **room bar** (mic, leave, lock), **mini bar** and the mic pill, **speaker / earpiece** button, **screen share**, **participant and room menus** (mute, mute everyone, lock, waiting room, audio only, low data, screen share, leave), and the two large call icons.
+- Implementation: `SVG_ICONS` + `ico(name, size)` in sawa-rtc. `el()` inserts SVG markup with `innerHTML` only for these constants (never user text). Drawn with `currentColor`, so buttons keep their colours.
+- **Not changed (still emoji):** message and status text (✓ ✗ ⚠ ⛔ 🎉 in toasts and sentences), the eye and 📞 markers in sawa-chat and app.p4/p8 (left for the next pass), and the reaction emoji (👍 😂 ❤ — they are content, not icons).
+- **Checks:** `node --check`; rendered the icon set at 2x to check drawing and size.
+- **Not tested here:** live calls (needs two devices), screen share, group calls.
+- **sw.js:** v474; `EXPECT` sawa-rtc.js = 463339 bytes; notes updated.
+- **Upload:** sawa-rtc.js, then sw.js (v477) last.

@@ -722,7 +722,23 @@
   //  واجهة المكالمة
   // ============================================================
   var ui = { root: null };
-  function el(tag, css, txt) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (txt != null) e.textContent = txt; return e; }
+  // C291: أيقوناتُ خطٍّ بدل الرموز التعبيريّة (تختلف شكلاً بين أندرويد وiOS وويندوز). مرسومة بخطٍّ بلون النصّ الحاليّ.
+  var SVG_ICONS = {
+    mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+    "mic-off": '<path d="M3 3l18 18"/><path d="M9 9v2a3 3 0 0 0 5.1 2.1M15 9.3V6a3 3 0 0 0-5.7-1.3"/><path d="M5 11a7 7 0 0 0 11.5 5.3M19 11a7 7 0 0 1-.6 2.8M12 18v3"/>',
+    video: '<rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/>',
+    phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>',
+    hangup: '<g transform="rotate(135 12 12)"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></g>',
+    screen: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
+    signal: '<path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 20V4"/>',
+    lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    door: '<path d="M4 22h16M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18"/><circle cx="14" cy="13" r="1"/>',
+    headphones: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1v-7h3zM3 19a2 2 0 0 0 2 2h1v-7H3z"/>',
+    eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    volume: '<path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/>'
+  };
+  function ico(name, size) { return '<svg viewBox="0 0 24 24" width="' + (size || 24) + '" height="' + (size || 24) + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (SVG_ICONS[name] || '') + '</svg>'; }
+  function el(tag, css, txt) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (txt != null) { if (typeof txt === "string" && txt.indexOf("<svg") === 0) e.innerHTML = txt; else e.textContent = txt; } return e; }
   function btn(icon, label, bg, onclick) {
     var w = el("div", "display:flex;flex-direction:column;align-items:center;gap:5px;min-width:54px;flex:1 1 0");
     var b = el("button", "width:54px;height:54px;border-radius:50%;border:0;font-size:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;background:" + bg, icon);
@@ -864,24 +880,24 @@
     if (c.state === "ended") return;
     if (c.state === "incoming") {
       // بالعربيّة (من اليمين): ردّ · بالصوت · رفض
-      bar.appendChild(btn(c.type === "video" ? "📹" : "📞", L("ردّ", "Answer"), "#21a366", function () { accept(false); }));
-      if (c.type === "video") bar.appendChild(btn("🎤", L("ردّ بالصوت", "Voice only"), "#3c6e5a", function () { accept(true); }));
+      bar.appendChild(btn(c.type === "video" ? ico("video") : ico("phone"), L("ردّ", "Answer"), "#21a366", function () { accept(false); }));
+      if (c.type === "video") bar.appendChild(btn(ico("mic"), L("ردّ بالصوت", "Voice only"), "#3c6e5a", function () { accept(true); }));
       bar.appendChild(btn("✕", L("رفض", "Decline"), "#d64545", decline));
       return;
     }
-    var mute = btn(c.muted ? "🔇" : "🎤", c.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), c.muted ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleMute);
+    var mute = btn(c.muted ? ico("mic-off") : ico("mic"), c.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), c.muted ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleMute);
     if (c.muted) mute._b.style.color = "#123";
     bar.appendChild(mute);
     if (c.type === "video" && c.hasCam) {
       bar.appendChild(btn(c.camOff ? "🚫" : "📷", c.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), c.camOff ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleCam));
       bar.appendChild(btn("🔄", L("تبديل", "Flip"), "rgba(255,255,255,.16)", switchCam));
     }
-    if (c.routes || (RB())) { var sp = c.out !== "ear"; var rb = btn(sp ? "🔊" : c.hs ? "🎧" : "👂", sp ? L("المكبّر", "Speaker") : c.hs ? L("سمّاعة الرأس", "Headset") : L("السمّاعة", "Earpiece"), sp ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
+    if (c.routes || (RB())) { var sp = c.out !== "ear"; var rb = btn(sp ? ico("volume") : c.hs ? ico("headphones") : ico("phone"), sp ? L("المكبّر", "Speaker") : c.hs ? L("سمّاعة الرأس", "Headset") : L("السمّاعة", "Earpiece"), sp ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
     // C111: تحويل المكالمة الصوتيّة إلى فيديو (بموافقة الطرف الآخر)
-    if (c.state === "connected" && c.type !== "video") bar.appendChild(btn("📹", c.vreqOut ? L("…بانتظاره", "…waiting") : L("فيديو", "Video"), "rgba(255,255,255,.16)", function () { askVideo(cur); }));
+    if (c.state === "connected" && c.type !== "video") bar.appendChild(btn(ico("video"), c.vreqOut ? L("…بانتظاره", "…waiting") : L("فيديو", "Video"), "rgba(255,255,255,.16)", function () { askVideo(cur); }));
     if (c.state === "connected") bar.appendChild(btn("➕", L("إضافة", "Add"), "rgba(255,255,255,.16)", function () { pickPerson(cur); }));
     if (c.held) bar.appendChild(btn("▶", L("استئناف", "Resume"), "#21a366", resumeHold));   // C234
-    bar.appendChild(btn("📞", L("إنهاء", "End"), "#d64545", function () { hangup(); }));
+    bar.appendChild(btn(ico("hangup"), L("إنهاء", "End"), "#d64545", function () { hangup(); }));
     bar.lastChild._b.style.transform = "rotate(135deg)";
   }
   function attachLocal(c) {
@@ -1328,7 +1344,7 @@
     if (ui.min) minimize(false);
     var box = el("div", "position:absolute;left:16px;right:16px;top:38%;z-index:6;background:rgba(8,30,21,.96);border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:18px 16px;text-align:center;box-shadow:0 10px 34px rgba(0,0,0,.55)");
     box.setAttribute("role", "dialog");
-    box.appendChild(el("div", "font:800 26px var(--sawa-font,system-ui);margin-bottom:6px", "📹"));
+    box.appendChild(el("div", "font:800 26px var(--sawa-font,system-ui);margin-bottom:6px", ico("video", 32)));
     box.appendChild(el("div", "font:700 15px var(--sawa-font,system-ui);margin-bottom:14px;line-height:1.6", L((c.name || "") + " يريد تحويل المكالمة إلى فيديو", (c.name || "") + " wants to switch to video")));
     var row = el("div", "display:flex;gap:10px;justify-content:center");
     var yes = el("button", "flex:1;max-width:150px;border:0;border-radius:14px;padding:11px;font:800 14px var(--sawa-font,system-ui);color:#fff;background:#21a366;cursor:pointer", L("قبول", "Accept"));
@@ -2651,12 +2667,12 @@
     var bar = gui.bar; bar.innerHTML = "";
     if (g.state === "ended") return;
     if (g.state === "incoming") {
-      bar.appendChild(btn(g.type === "video" ? "📹" : "📞", L("انضمام", "Join"), "#21a366", groupAccept));
+      bar.appendChild(btn(g.type === "video" ? ico("video") : ico("phone"), L("انضمام", "Join"), "#21a366", groupAccept));
       bar.appendChild(btn("✕", L("رفض", "Decline"), "#d64545", groupDecline));
       return;
     }
     if (g.local) {
-      var mute = btn(g.muted ? "🔇" : "🎤", g.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), g.muted ? "#e6f5ec" : "rgba(255,255,255,.16)", gToggleMute);
+      var mute = btn(g.muted ? ico("mic-off") : ico("mic"), g.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), g.muted ? "#e6f5ec" : "rgba(255,255,255,.16)", gToggleMute);
       if (g.muted) mute._b.style.color = "#123";
       bar.appendChild(mute);
       if (g.type === "video" && g.local.getVideoTracks().length) {
@@ -2665,7 +2681,7 @@
       }
     }
     if (g.state === "live") bar.appendChild(btn("➕", L("إضافة", "Add"), "rgba(255,255,255,.16)", function () { pickPerson(g); }));
-    bar.appendChild(btn("📞", g.state === "waiting" ? L("إلغاء", "Cancel") : L("مغادرة", "Leave"), "#d64545", groupLeave));
+    bar.appendChild(btn(ico("hangup"), g.state === "waiting" ? L("إلغاء", "Cancel") : L("مغادرة", "Leave"), "#d64545", groupLeave));
     bar.lastChild._b.style.transform = "rotate(135deg)";
   }
   function gPaintReqs(g) {
@@ -3668,7 +3684,7 @@
     sheet(L("مشاركة الشاشة؟", "Share your screen?"), function (body, close) {
       body.appendChild(el("div", "padding:4px 18px 12px;font:500 13px/1.8 var(--sawa-font,system-ui);color:#cbd5e1;text-align:center", L("سيرى كلُّ من في الغرفة ما على شاشتك — ومنه الإشعارات والرسائل التي تظهر أثناءها. أغلق ما لا تريد عرضه قبل البدء.", "Everyone in the room will see your screen — including notifications. Close anything private first.")));
       if (scrNative()) body.appendChild(el("div", "padding:0 18px 12px;font:500 12.5px/1.8 var(--sawa-font,system-ui);color:#94a3b8;text-align:center", L("سيطلب الهاتف إذن «البدء» — بعدها انتقل إلى أيّ تطبيقٍ تريد عرضه، والغرفة والصوت يستمرّان. للإيقاف: إشعار «تعرض شاشتك» ← «إيقاف»، أو الشريط الأحمر هنا.", "Your phone will ask to start — then switch to any app; the room keeps going. To stop: the notification’s Stop button, or the red bar here.")));
-      item(body, "🖥", L("ابدأ مشاركة الشاشة", "Start sharing"), function () { close(); rScreenStart(r); });
+      item(body, ico("screen"), L("ابدأ مشاركة الشاشة", "Start sharing"), function () { close(); rScreenStart(r); });
       item(body, "✕", L("إلغاء", "Cancel"), function () { close(); });
     });
   }
@@ -4028,7 +4044,7 @@
     var banners = el("div", "display:flex;flex-direction:column;gap:6px;margin:6px 12px 0");
     var grid = el("div", "flex:1;min-height:0;display:grid;gap:10px;padding:10px 12px;align-content:center");
     var center = el("div", "flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:0 24px");
-    var cIcon = el("div", "width:92px;height:92px;border-radius:30px;background:" + GRAD + ";box-shadow:0 10px 30px rgba(47,128,200,.35);display:flex;align-items:center;justify-content:center;font-size:40px", "🎥");
+    var cIcon = el("div", "width:92px;height:92px;border-radius:30px;background:" + GRAD + ";box-shadow:0 10px 30px rgba(47,128,200,.35);display:flex;align-items:center;justify-content:center;font-size:40px", ico("video", 40));
     var cT = el("div", "font:800 18px var(--sawa-font,system-ui)"), cS = el("div", "font:600 13px var(--sawa-font,system-ui);color:" + MUTED);
     center.appendChild(cIcon); center.appendChild(cT); center.appendChild(cS);
     var panel = el("div", "display:none;flex-direction:column;margin:0 12px 6px;border-radius:20px;background:" + CARD + ";box-shadow:0 6px 18px rgba(0,0,0,.25);max-height:45%;min-height:0;overflow:hidden");
@@ -4162,7 +4178,7 @@
       mini.av.style.display = "flex"; setAv(mini.av, src.name || "", src.uid || null);
     }
     mini.nm.textContent = src.name || ""; mini.sb.textContent = src.sub || "";
-    mini.mic.textContent = src.mic ? "🎤" : "🔇"; mini.mic.style.background = src.mic ? "rgba(0,0,0,.55)" : "#f59e0b";
+    mini.mic.innerHTML = src.mic ? ico("mic", 14) : ico("mic-off", 14); mini.mic.style.background = src.mic ? "rgba(0,0,0,.55)" : "#f59e0b";
     var w = mini.el;
     if (mini.pip) {   // إطار «صورة داخل صورة»: الصورة وحدها تملؤه
       w.style.transition = "none"; w.style.left = w.style.top = "0"; w.style.right = w.style.bottom = "0";
@@ -4211,20 +4227,20 @@
     var hb = rui.hostBtns; hb.innerHTML = "";
     if (r.state === "live" && amHost(r)) {
       var mk = function (txt, on, fn, lab) { var b = el("button", "background:" + (on ? "rgba(239,68,68,.35)" : "rgba(255,255,255,.18)") + ";border:0;color:#fff;border-radius:12px;width:34px;height:32px;font-size:15px", txt); b.setAttribute("aria-label", lab); b.onclick = fn; hb.appendChild(b); };
-      mk("🔒", r.meta.locked, function () { if (!r.meta.locked) { rLockConfirm(); return; } rSetMeta("locked", !r.meta.locked); toast(r.meta.locked ? L("فُتحت الغرفة", "Room unlocked") : L("قُفلت الغرفة — لا دخول جديد", "Room locked")); }, L("قفل", "Lock"));
+      mk(ico("lock"), r.meta.locked, function () { if (!r.meta.locked) { rLockConfirm(); return; } rSetMeta("locked", !r.meta.locked); toast(r.meta.locked ? L("فُتحت الغرفة", "Room unlocked") : L("قُفلت الغرفة — لا دخول جديد", "Room locked")); }, L("قفل", "Lock"));
       mk("⚙️", !!(r.meta.lobby || r.meta.pinOn || r.meta.audioOnly || r.meta.max || r.meta.endsAt), function () { rSettings(); }, L("إعدادات الغرفة", "Room settings"));
     }
     rPaintBanners(r);
     var bar = rui.bar; bar.innerHTML = "";
     if (r.state === "ended") return;
     if (r.state !== "live") { var lv = rb("✕", L("إلغاء", "Cancel"), function () { rLeave(r, "left"); }, { bg: "#ef4444" }); bar.appendChild(lv); return; }
-    var mic = rb(r.mic ? "🎤" : "🔇", r.mic ? L("كتم", "Mute") : L("الميكروفون", "Unmute"), function () { rToggleMic(r); }, { bg: r.mic ? LINE : "#ef4444" });
+    var mic = rb(r.mic ? ico("mic") : ico("mic-off"), r.mic ? L("كتم", "Mute") : L("الميكروفون", "Unmute"), function () { rToggleMic(r); }, { bg: r.mic ? LINE : "#ef4444" });
     bar.appendChild(mic);
     bar.appendChild(rb(r.camOn ? "📷" : "🚫", r.camOn ? L("الكاميرا", "Camera") : L("الكاميرا", "Camera"), function () { rToggleCam(r); }, { bg: r.camOn ? GRAD : LINE }));
     // خمسة أزرار فقط تتّسع لأصغر شاشة — «ارفع يدك» و«تفاعل» في «المزيد» (الزرّ يتلوّن حين تكون يدك مرفوعة)
     bar.appendChild(rb("💬", L("دردشة", "Chat"), function () { rOpenPanel(r.panel === "chat" ? null : "chat"); }, { bg: r.panel === "chat" ? GRAD : LINE, badge: r.unread }));
     bar.appendChild(rb(r.hand ? "✋" : "⋯", r.hand ? L("يدك مرفوعة", "Hand up") : L("المزيد", "More"), function () { rMore(); }, { bg: r.hand ? "#f59e0b" : LINE }));
-    bar.appendChild(rb("📞", L("مغادرة", "Leave"), function () { rLeaveConfirm(); }, { bg: "linear-gradient(135deg,#f87171,#ef4444)" }));
+    bar.appendChild(rb(ico("hangup"), L("مغادرة", "Leave"), function () { rLeaveConfirm(); }, { bg: "linear-gradient(135deg,#f87171,#ef4444)" }));
     bar.lastChild._b.style.transform = "rotate(135deg)";
   }
   function rPaintBanners(r) {
@@ -4308,7 +4324,7 @@
     t.tags.appendChild(el("span", "", (hostU ? "👑 " : "") + ((isMe ? r.hand : m.hand) ? "✋" : "")));
     var right = el("span", "display:flex;gap:4px;align-items:center");
     if (!isMe && p && p.state === "connected") { var qt = qTag(p.q); if (qt) right.appendChild(qt); }
-    right.appendChild(el("span", "background:" + (mic ? "#16a34a33" : "#ef444455") + ";border-radius:10px;padding:1px 5px", mic ? "🎤" : "🔇"));
+    right.appendChild(el("span", "background:" + (mic ? "#16a34a33" : "#ef444455") + ";border-radius:10px;padding:1px 5px;display:inline-flex", mic ? ico("mic", 13) : ico("mic-off", 13)));
     t.tags.appendChild(right);
     var speaking = r.speaker === uid && mic;
     t.box.style.borderColor = speaking ? "#16a34a" : isMe ? PRI + "99" : "transparent";
@@ -4377,7 +4393,7 @@
       item(body, r.view === "speaker" ? "▦" : "🗣", r.view === "speaker" ? L("عرض الشبكة", "Grid view") : L("المتحدّث يظهر كبيراً تلقائيّاً", "Active speaker view"), function () { r.pin = null; r.view = r.view === "speaker" ? "grid" : "speaker"; r.focusU = null; rLayout(r); close(); });
       if (!isMe && amHost(r)) {
         if (m.cam) item(body, "📷", L("إيقاف كاميرته (يُفسح لغيره)", "Turn off their camera"), function () { rCtl(uid, "camoff"); toast(L("طُلب إيقاف كاميرا ", "Camera off: ") + rName(r, uid)); close(); });
-        item(body, "🔇", m.mic !== false ? L("كتم المشارك", "Mute") : L("اطلب فتح الميكروفون", "Ask to unmute"), function () { rCtl(uid, m.mic !== false ? "mute" : "ask"); close(); });
+        item(body, ico("mic-off"), m.mic !== false ? L("كتم المشارك", "Mute") : L("اطلب فتح الميكروفون", "Ask to unmute"), function () { rCtl(uid, m.mic !== false ? "mute" : "ask"); close(); });
         if (m.hand) item(body, "✋", L("إنزال يده", "Lower hand"), function () { rCtl(uid, "lower"); close(); });
         item(body, "👑", L("اجعله المضيف", "Make host"), function () { rMakeHost(uid); close(); });
         item(body, "✕", L("إخراج من الغرفة", "Remove from room"), function () { rRemove(uid); close(); }, true);
@@ -4411,8 +4427,8 @@
     var r = rm; if (!r) return;
     var m = r.members[uid] || {};
     sheet(rName(r, uid), function (body, close) {
-      item(body, "🔇", m.mic !== false ? L("كتم المشارك", "Mute") : L("اطلب فتح الميكروفون", "Ask to unmute"), function () { rCtl(uid, m.mic !== false ? "mute" : "ask"); close(); });
-      item(body, "🔇", L("كتم الجميع", "Mute everyone"), function () { rMuteAll(); close(); });
+      item(body, ico("mic-off"), m.mic !== false ? L("كتم المشارك", "Mute") : L("اطلب فتح الميكروفون", "Ask to unmute"), function () { rCtl(uid, m.mic !== false ? "mute" : "ask"); close(); });
+      item(body, ico("mic-off"), L("كتم الجميع", "Mute everyone"), function () { rMuteAll(); close(); });
       if (m.hand) item(body, "✋", L("إنزال يده", "Lower hand"), function () { rCtl(uid, "lower"); close(); });
       item(body, "👑", L("اجعله المضيف", "Make host"), function () { rMakeHost(uid); close(); });
       item(body, "✕", L("إخراج من الغرفة", "Remove from room"), function () { rRemove(uid); close(); }, true);
@@ -4511,12 +4527,12 @@
       item(body, "😊", L("تفاعل", "React"), function () { close(); rReactBar(); });
       item(body, "➕", L("دعوة من جهات الاتّصال", "Invite contacts"), function () { close(); rInvite(); });
       item(body, "📝", L("المحضر: قرارات · مهامّ · نقاط", "Minutes: decisions · tasks · points"), function () { close(); rOpenPanel("notes"); });
-      item(body, r.low ? "🎥" : "📶", r.low ? L("إعادة الفيديو", "Video back on") : L("بيانات قليلة (صوتٌ فقط)", "Low data (audio only)"), function () { close(); rToggleLow(r); });
+      item(body, r.low ? ico("video") : ico("signal"), r.low ? L("إعادة الفيديو", "Video back on") : L("بيانات قليلة (صوتٌ فقط)", "Low data (audio only)"), function () { close(); rToggleLow(r); });
       if (r.camOn && !(r.scr && r.scrViaCam)) item(body, "🔄", L("تبديل الكاميرا", "Flip camera"), function () { close(); rFlip(r); });
-      item(body, "🖥", r.scr ? L("إيقاف مشاركة الشاشة", "Stop screen sharing") : L("مشاركة الشاشة", "Share screen"), function () { close(); rScreenAsk(r); }, !!r.scr);   // C115
+      item(body, ico("screen"), r.scr ? L("إيقاف مشاركة الشاشة", "Stop screen sharing") : L("مشاركة الشاشة", "Share screen"), function () { close(); rScreenAsk(r); }, !!r.scr);   // C115
       if (isAdm()) item(body, "🔧", L("تشخيص الاتّصال", "Connection diagnostics"), function () { close(); rDiag(); });   // C115: للمدير فقط
       if (amHost(r)) {
-        item(body, "🔇", L("كتم الجميع", "Mute everyone"), function () { close(); rMuteAll(); });
+        item(body, ico("mic-off"), L("كتم الجميع", "Mute everyone"), function () { close(); rMuteAll(); });
         item(body, "⏹", L("إنهاء الغرفة للجميع", "End room for everyone"), function () { close(); rEndAll(); }, true);
       }
     });
@@ -4526,14 +4542,14 @@
     var r = rm; if (!r || !amHost(r)) return;
     sheet(L("قفل الغرفة؟", "Lock the room?"), function (body, close) {
       body.appendChild(el("div", "padding:0 16px 8px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", L("لا يدخل أحدٌ جديد تلقائيّاً. من يفتح الرابط «يطرق الباب» وتراه هنا وتسمح له بضغطة.", "No one joins automatically. Anyone opening the link knocks, and you can admit them with a tap.")));
-      item(body, "🔒", L("قفل", "Lock"), function () { close(); rSetMeta("locked", true); toast(L("قُفلت الغرفة — القادمون يطرقون وأنت تسمح", "Room locked — newcomers knock, you admit")); }, true);
+      item(body, ico("lock"), L("قفل", "Lock"), function () { close(); rSetMeta("locked", true); toast(L("قُفلت الغرفة — القادمون يطرقون وأنت تسمح", "Room locked — newcomers knock, you admit")); }, true);
       item(body, "↩", L("إلغاء", "Cancel"), close);
     });
   }
   function rLeaveConfirm() {
     var r = rm; if (!r) return;
     sheet(L("مغادرة الغرفة؟", "Leave the room?"), function (body, close) {
-      item(body, "🚪", L("مغادرة (يمكنك الرجوع إليها)", "Leave (you can come back)"), function () { close(); rLeave(r, "left"); }, true);   // C119
+      item(body, ico("door"), L("مغادرة (يمكنك الرجوع إليها)", "Leave (you can come back)"), function () { close(); rLeave(r, "left"); }, true);   // C119
       if (amHost(r)) item(body, "⏹", L("إنهاء للجميع", "End for everyone"), function () { close(); rEndAll(); }, true);
       item(body, "↩", L("البقاء", "Stay"), close);
     });
@@ -4548,9 +4564,9 @@
         b.appendChild(el("span", "font:800 11px var(--sawa-font,system-ui);padding:3px 9px;border-radius:9px;background:" + (on ? "#16a34a33" : LINE) + ";color:" + (on ? "#4ade80" : "#cbd5e1"), on ? L("مفعّل", "On") : L("متوقّف", "Off")));
         if (sub) b.appendChild(el("div", "position:absolute", ""));
       };
-      tog("🔒", L("قفل الغرفة", "Lock room"), null, !!r.meta.locked, function () { rSetMeta("locked", !r.meta.locked); });
-      tog("🚪", L("غرفة الانتظار", "Waiting room"), null, !!r.meta.lobby, function () { rSetMeta("lobby", !r.meta.lobby); });
-      tog("🎧", L("صوتٌ فقط (بلا كاميرات)", "Audio only (no cameras)"), null, !!r.meta.audioOnly, function () { rSetMeta("audioOnly", !r.meta.audioOnly); });
+      tog(ico("lock"), L("قفل الغرفة", "Lock room"), null, !!r.meta.locked, function () { rSetMeta("locked", !r.meta.locked); });
+      tog(ico("door"), L("غرفة الانتظار", "Waiting room"), null, !!r.meta.lobby, function () { rSetMeta("lobby", !r.meta.lobby); });
+      tog(ico("headphones"), L("صوتٌ فقط (بلا كاميرات)", "Audio only (no cameras)"), null, !!r.meta.audioOnly, function () { rSetMeta("audioOnly", !r.meta.audioOnly); });
       // C45: غرفة كبيرة (حتى 30) عبر خادم الوسائط
       var bg = item(body, "🏟", L("غرفة كبيرة (حتى " + SFU_MAX + ")", "Large room (up to " + SFU_MAX + ")"), function () { close(); rBigToggle(); });
       bg.appendChild(el("span", "font:800 11px var(--sawa-font,system-ui);padding:3px 9px;border-radius:9px;background:" + (rBig(r) ? "#16a34a33" : LINE) + ";color:" + (rBig(r) ? "#4ade80" : "#cbd5e1"), rBig(r) ? L("مفعّل", "On") : L("متوقّف", "Off")));
