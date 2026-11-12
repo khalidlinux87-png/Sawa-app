@@ -2918,6 +2918,6 @@ First batch of the "hard-coded colours" review item: values that equal a theme t
   - Data lists with colours (wallet banks, fuel brands, Taqa tokens): module-level data without `colors` in scope would crash on render.
 - **Checks:** `node --check` on all parts. Light mode is pixel-identical to main on Account, Calls, Chats, Contacts, Explore and the sign-in error (the daily reminder differs only because it shows a random tip, which also differs between two runs of main). Dark mode on Account rendered with the same layout.
 - **Not tested here:** chats, group chats and the app lock with real data (not reachable offline).
-- **Remaining (next batches):** the slate and grey shades (#334155, #94A3B8, #1E293B, #475569, #E2E8F0) and the 28 other theme-equal hits in screens I can't reach offline (family tree, wallet, Taqa), reviewed one screen at a time.
+- **Remaining (next batches):** 77 theme-equal values still hard-coded (excluding #FFFFFF), mostly in screens I can't reach offline (family tree, wallet, Taqa, chats with data), plus the slate and grey shades (#334155, #94A3B8, #1E293B, #475569, #E2E8F0), reviewed one screen at a time.
 - **sw.js:** v478; notes updated.
 - **Upload:** app.p2.js, app.p5.js, then sw.js (v478) last.
