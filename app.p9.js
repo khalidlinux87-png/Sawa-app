@@ -1678,8 +1678,12 @@ const AccountantScreen = (function () {
         s.onload = () => res(window.SawaReader); s.onerror = () => { readerLoad = null; rej(new Error("ocr_load_failed")); };
         document.head.appendChild(s);
     }));
-    // C276: one set of OCR engines for the whole app session. Started when the Import sheet opens (while the user picks
-    // images), kept for 3 minutes after it closes, so reopening does not start them again (each start compiles a 4 MB engine).
+    // C276: one set of OCR engines for the whole app session (each start compiles a 4 MB engine three times).
+    // C292: they used to stop 3 minutes after the Import sheet closed, so the next import paid the whole start again.
+    // Now they stay while the app is in use and stop only after 10 minutes in the background (to give the phone its
+    // memory back). A device that has read receipts before also starts them quietly when Personal Accountant opens,
+    // so Import opens "ready".
+    const OCR_USED_KEY = "sawa_ocr_used";
     let ocrShared = null, ocrIdle = null, ocrProgress = null;
     const ocrStat = { ms: null };
     function startOcr() {
@@ -1687,14 +1691,26 @@ const AccountantScreen = (function () {
         if (!ocrShared) {
             const t0 = Date.now();
             ocrShared = loadReader().then((R) => R.makeOcr({ base: OCR_BASE, onProgress: (st, pr) => ocrProgress && ocrProgress(st, pr) }))
-                .then((o) => o.warm().then(() => { ocrStat.ms = Date.now() - t0; return o; }));   // C279: all three engines (each image uses them at once)
+                .then((o) => o.warm().then(() => { ocrStat.ms = Date.now() - t0; try { localStorage.setItem(OCR_USED_KEY, "1"); } catch (e) {} return o; }));   // C279: all three engines (each image uses them at once)
             ocrShared.catch(() => { ocrShared = null; });
         }
         return ocrShared;
     }
-    function releaseOcr() {
-        if (!ocrShared || ocrIdle) return;
-        ocrIdle = setTimeout(() => { const p = ocrShared; ocrShared = null; ocrIdle = null; if (p) p.then((o) => o.close()).catch(() => {}); }, 180000);
+    function stopOcr() {
+        if (ocrIdle) { clearTimeout(ocrIdle); ocrIdle = null; }
+        if (!ocrShared || imp.busy) return;
+        const p = ocrShared; ocrShared = null; p.then((o) => o.close()).catch(() => {});
+    }
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") { if (ocrShared && !ocrIdle) ocrIdle = setTimeout(stopOcr, 600000); }
+        else if (ocrIdle) { clearTimeout(ocrIdle); ocrIdle = null; }
+    });
+    // C292: Personal Accountant opened on a device that has used the reader: start it after the screen has loaded
+    function prewarmOcr() {
+        let used = false; try { used = localStorage.getItem(OCR_USED_KEY) === "1"; } catch (e) {}
+        if (!used || ocrShared) return;
+        const go = () => { if (document.visibilityState === "visible") startOcr().catch(() => {}); };
+        if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 6000 }); else setTimeout(go, 3000);
     }
     const secs = (ms) => (ms / 1000).toFixed(ms < 10000 ? 1 : 0);
     const digitsOf = (a) => String(a || "").replace(/\D/g, "");
@@ -1790,9 +1806,11 @@ const AccountantScreen = (function () {
                 impPatch(it.key, { state: "read" });
                 try {
                     const t0 = Date.now();
+                    // C292: the receipt photo is made while the engines read, not after (it held up the next image)
+                    const photoP = shrinkImage(it.file, 1280, true).catch(() => null);
                     const r = await R.readFile(it.file, ocr, ctx);
                     const ms = Date.now() - t0;
-                    const photo = await shrinkImage(it.file, 1280, true).catch(() => null);
+                    const photo = await photoP;
                     if (!r) { impPatch(it.key, { state: "none", photo, ms }); continue; }
                     // the same transfer twice in this batch: keep the first
                     const twin = r.transaction_id && imp.rows.find((x) => x.key !== it.key && x.r && x.r.transaction_id === r.transaction_id);
@@ -1805,7 +1823,6 @@ const AccountantScreen = (function () {
         }
         impN = 0; impI = 0;
         impSet({ stage: "", busy: false });
-        if (!imp.open) releaseOcr();   // read while the sheet was closed: the engines rest now
     }
     function useImport() {
         const [, tick] = useState(0);
@@ -1835,7 +1852,7 @@ const AccountantScreen = (function () {
             ocrProgress = (st, pr) => { if (/traineddata/.test(st || "") && pr != null) setEngine((e) => (e.state === "ready" ? e : { state: "starting", pct: Math.round(pr * 100) })); };
             startOcr().then(() => setEngine({ state: "ready", ms: ocrStat.ms }), () => setEngine({ state: "error" }));
             // closing does not cancel: a batch still reading keeps the engines until it ends; nothing left to do ⇒ cleared
-            return () => { ocrProgress = null; impSet({ open: false }); if (!imp.busy) { releaseOcr(); if (!impWaiting()) impClear(); } }; }, []);
+            return () => { ocrProgress = null; impSet({ open: false }); if (!imp.busy && !impWaiting()) impClear(); }; }, []);
         const patch = (key, p) => setRows((rs) => rs.map((r) => (r.key === key ? Object.assign({}, r, typeof p === "function" ? p(r) : p) : r)));
         const patchEdit = (key, p) => patch(key, (r) => ({ edit: Object.assign({}, r.edit, p) }));
         const pick = (e) => {
@@ -1986,6 +2003,7 @@ const AccountantScreen = (function () {
         const invChanged = () => { setInvTick((n) => n + 1); refresh(); };
         const load = () => { setBootErr(""); call("pfm.get").then((r) => { setBoot(r); if (r.settings) setMonth((m) => m || r.month); }, (e) => setBootErr(errText(e))); };
         useEffect(load, []);
+        useEffect(() => { const t = setTimeout(prewarmOcr, 2500); return () => clearTimeout(t); }, []);   // C292
         const refresh = useCallback(() => {
             if (!month) return;
             setSummary(null); setList(null);
