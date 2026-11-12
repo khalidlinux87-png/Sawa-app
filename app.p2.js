@@ -315,16 +315,18 @@ function ToastProvider({ children }) {
         React.createElement(ToastHost, { toasts: toasts, onDismiss: dismissToast })));
 }
 function ToastHost({ toasts, onDismiss }) {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
+    // C296: في الداكن لونا النجاح والخطأ فاتحان (5CD692 · E5695C) فالأبيض عليهما 1.8:1 و3.2:1 — النصّ داكنٌ هناك (10.4:1 و5.9:1)
+    const fg = isDark ? colors.bg : "#fff";
     if (toasts.length === 0)
         return null;
     return (React.createElement("div", { className: "absolute bottom-20 left-0 right-0 z-50 flex flex-col items-center gap-2 px-4 pointer-events-none" }, toasts.map((toast) => (React.createElement("div", { key: toast.id, className: `rounded-full px-4 py-2 text-xs font-bold shadow-lg flex ${rowStart()} items-center gap-1.5`, style: {
             backgroundColor: toast.type === "error" ? colors.danger : colors.success,
-            color: "#fff",
+            color: fg,
         } },
-        toast.type === "error" ? React.createElement(AlertCircle, { size: 13, color: "#fff" }) : React.createElement(Check, { size: 13, color: "#fff" }),
+        toast.type === "error" ? React.createElement(AlertCircle, { size: 13, color: fg }) : React.createElement(Check, { size: 13, color: fg }),
         toast.message,
-        toast.action && React.createElement("button", { onClick: () => { onDismiss && onDismiss(toast.id); toast.action.run(); }, className: "pointer-events-auto rounded-full px-2.5 py-1 text-[11px] font-extrabold shrink-0", style: { backgroundColor: "rgba(255,255,255,0.22)", color: "#fff", marginInlineStart: 6 } }, toast.action.label))))));
+        toast.action && React.createElement("button", { onClick: () => { onDismiss && onDismiss(toast.id); toast.action.run(); }, className: "pointer-events-auto rounded-full px-2.5 py-1 text-[11px] font-extrabold shrink-0", style: { backgroundColor: isDark ? "rgba(0,0,0,0.16)" : "rgba(255,255,255,0.22)", color: fg, marginInlineStart: 6 } }, toast.action.label))))));
 }
 function SkeletonBox({ height = 16, width = "100%", rounded = "rounded-md" }) {
     const { colors } = useTheme();
