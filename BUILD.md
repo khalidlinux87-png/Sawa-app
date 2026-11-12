@@ -2874,3 +2874,12 @@ Khalid: Android ⇒ iPhone video call, the iPhone side shows a black screen on A
 - **Tests:** two Chromium pages with fake camera/mic and a shared mock RTDB (scratch harness, not in the repo): 16/16 for video — connects, video shown, starts on tier 1, camera off ⇒ photo + text, back on ⇒ video, black frames ⇒ photo, real frames ⇒ video, ended camera reopened and sent, other side sees it, no ear-mode black screen, ICE restart reconnects, callee `rq` ⇒ one restart and the call stays up — plus audio-only regression 3/3. `node --check` sawa-rtc.js / sw.js; Android: Java parse check + manifest XML (build on GitHub). **Not tested on real phones:** the iPhone background camera and Android camera service — need a real Android ⇒ iPhone video call answered from the lock screen.
 - **Export check:** SawaRTC keys unchanged (163 before/after).
 - **Upload:** sawa-rtc.js ← sw.js (v474) last · Android: `sawa-native.zip` (c279) then Build.
+
+## 📡 C292 — Call route measured through the whole call · candidate summary in the call log · sawa-rtc (c292) · sw v475
+- **Why:** the call log showed "via TURN" for calls that may have moved to a direct path later. The route was read once, 0.8 s after connecting.
+- **Route:** `routeInfo()` now runs on every stats tick (every 3 s, from `cStatsTick`). `c.route` is the final route; `c.r0` keeps the first one measured, so a call that starts on TURN and goes direct shows `r0=relay, route=direct`.
+- **Candidates:** `candSum()` records per side what was gathered: `h` host · `s` srflx · `p` prflx · `r` relay · `v` public IPv6 · `m` mDNS `.local`. Stored as `cs = "<local>|<remote>"`, e.g. `h3s1p0r1v1m1|h0s0p1r1v0m0`. This shows whether Android's IPv6 address is gathered and whether it reaches iOS.
+- **Admin label:** the one-time "via relay / direct" line under the call is set once (no longer every 3 s, which would fight the network line).
+- **Telemetry:** `call.tel` carries `cs` and `r0`. `Sawa-deploy-test/worker-3.js` `opCallTel` whitelists them; **the worker must be deployed** or the fields are dropped.
+- **sw.js:** v475; `EXPECT` sawa-rtc.js = 460810 bytes.
+- **Upload:** sawa-rtc.js ← sw.js (v475) last. Worker: deploy `worker-3.js` first.
