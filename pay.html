@@ -126,7 +126,7 @@
   function day(d) { var p = d.split("-").map(Number); return new Intl.DateTimeFormat(loc(), { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(Date.UTC(p[0], p[1] - 1, p[2])); }
   function api(op, payload) {
     return fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: op, payload: payload }), referrerPolicy: "no-referrer" })
-      .then(function (r) { return r.json(); }).then(function (b) { if (!b || !b.ok) { var er = new Error((b && b.error) || "error"); er.detail = b && b.detail; throw er; } return b; });   // TEMP-DEBUG: detail
+      .then(function (r) { return r.json(); }).then(function (b) { if (!b || !b.ok) throw new Error((b && b.error) || "error"); return b; });
   }
   var KEY = "sawa_pay_" + TOKEN;   // remembers this browser's report, to show it again after a reload
   function mine() { try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { return null; } }
@@ -450,8 +450,7 @@
       var code = String(e.message || "").split(":")[0];
       // the worker answers 503 "server_error: busy" for a passing overload; say so instead of the generic line
       var msg = /^server_error: busy/.test(String(e.message || "")) ? t.errs.server_busy : t.errs[code] || t.tryLater;
-      // TEMP-DEBUG: show the raw server detail under the message (revert with the worker's detail field)
-      state.sending = false; state.err = msg + (e.detail ? " [debug: " + e.detail + "]" : ""); render(); restore(keep);
+      state.sending = false; state.err = msg; render(); restore(keep);
     });
   }
   function restore(k) { var f = document.getElementById("claim"); if (!f) return; ["name", "phone", "amount", "reference", "date"].forEach(function (n) { if (k[n] != null && f[n] && !f[n].readOnly) f[n].value = k[n]; }); }
