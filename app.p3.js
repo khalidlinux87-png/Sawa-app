@@ -1736,7 +1736,7 @@ function FamilyGroupDetailScreen({ onBatchParent, onSiblingType, onShowInTree, m
                             React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 flex-wrap` },
                                 React.createElement("span", { className: "font-extrabold text-[14.5px]", style: { color: colors.text } }, p.local_name),
                                 // C106: مربوطٌ بحساب سوا
-                                p.acctUid && React.createElement("span", { title: tl("في سوا", "On Sawa"), className: "text-[10px] font-extrabold rounded-full px-1.5 py-0.5", style: { backgroundColor: "#E3F3EA", color: "#187854" } }, p.acctMe ? tl("أنت", "You") : tl("سوا ✓", "Sawa ✓")),
+                                p.acctUid && React.createElement("span", { title: tl("في سوا", "On Sawa"), className: "text-[10px] font-extrabold rounded-full px-1.5 py-0.5", style: isDark ? { backgroundColor: "#143223", color: "#5CD692" } : { backgroundColor: "#E3F3EA", color: "#187854" } }, p.acctMe ? tl("أنت", "You") : tl("سوا ✓", "Sawa ✓")),
                                 hasContactSchedule(p) && React.createElement(FamChip, { tone: "muted", /* C202: عادةٌ ثابتة — الأحمر لسطر «آخر تواصل» وحده · C271: المدّة المرنة */ label: kinFreqLabel(contactEveryDays(p)) })),
                             React.createElement("div", { className: "text-[12px] mt-0.5", style: { color: colors.textMuted } },
                                 personKinLabel(p),
@@ -2807,7 +2807,7 @@ const MALE_COMMON = ["محمد", "أحمد", "احمد", "محمود", "علي",
 function looksMaleName(nm) { const w = String(nm || "").trim().split(/\s+/)[0] || ""; return MALE_COMMON.indexOf(w) >= 0 || /^عبد/.test(w); }
 function relCountLabel(n) { return n === 1 ? tl("إضافة قريبٍ واحد إلى الشجرة", "Add 1 relative to the tree") : n === 2 ? tl("إضافة قريبَين إلى الشجرة", "Add 2 relatives to the tree") : tl("إضافة " + n + (n <= 10 ? " أقارب" : " قريباً") + " إلى الشجرة", "Add " + n + " relatives to the tree"); }
 function QuickRelativesSheet({ person, existingPersons = [], relations = [], startRel, onSave, onClose }) {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
     // نُخفي ما لا يناسب جنس الشخص: لا زوجات لامرأة ولا زوج لرجل
     const REL_OPTIONS = REL_OPTIONS_STATIC.filter((r) => !r.forGender || r.forGender === (person.gender === "female" ? "female" : "male"));
     const [relIdx, setRelIdx] = useState(() => {
@@ -2958,7 +2958,7 @@ function QuickRelativesSheet({ person, existingPersons = [], relations = [], sta
                 const odd = names.filter((nm) => sel.gender === "male" ? looksFemaleName(nm) : sel.gender === "female" ? looksMaleName(nm) : false);
                 if (!odd.length) return null;
                 const other = REL_OPTIONS.find((r) => r.key === sel.key && r.gender !== sel.gender);
-                return React.createElement("p", { className: `text-[11px] font-bold ${textStart()} mb-3 rounded-lg px-2.5 py-2`, style: { color: "#8F420F", backgroundColor: "#FEF3C7" } },
+                return React.createElement("p", { className: `text-[11px] font-bold ${textStart()} mb-3 rounded-lg px-2.5 py-2`, style: isDark ? { color: "#F5B14C", backgroundColor: "#3A2A10" } : { color: "#8F420F", backgroundColor: "#FEF3C7" } },   // C296: تنبيهٌ كهرمانيّ داكن في الوضع الداكن (7.4:1)
                     tl("⚠️ «" + odd.join("، ") + "» " + (odd.length > 1 ? "تبدو أسماءً" : "يبدو اسماً") + (sel.gender === "male" ? " لأنثى" : " لذكر") + " — هذه الخانة لـ«" + t(sel.labelKey) + "» فقط" + (other ? "، واختر «" + t(other.labelKey) + "» لإضافتها." : "."),
                        "⚠️ “" + odd.join(", ") + "” look" + (odd.length > 1 ? "" : "s") + (sel.gender === "male" ? " female" : " male") + " — this is for “" + t(sel.labelKey) + "” only" + (other ? "; choose “" + t(other.labelKey) + "” for them." : ".")));
             })(),

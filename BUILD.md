@@ -2933,3 +2933,13 @@ Khalid: receipt attachment from the invoice link still not working — "File not
 - **Not changed:** the Worker, the 600 KB limit, the app.
 - **Tests:** `ui-check.mjs` ✓ with new steps: pick a PDF, send without a name ⇒ error and the receipt still attached; reload the tab ⇒ receipt, part amount and reference back; send ⇒ "Report another" starts without the old receipt; a photo then attaches and sends. The new steps fail on the old page.
 - **Upload:** `pay.html` (47,897) only. `sw.js` does not serve the pay page, so no new version is needed.
+
+## 🌳 C297 — Family screens in dark mode · readable toasts · app.p2 · app.p3 · sw v479
+Second colour batch, by screen: the family screens (صلة الرحم, family, person, tree), rendered with an 8-person sample family in light and dark.
+- **Finding:** the family screens already follow dark mode. The search boxes keep dark text on purpose: they sit on a fixed near-white box in both modes.
+- **Toasts (all screens):** in dark mode the success and error colours are light (#5CD692, #E5695C), so white text was 1.8:1 and 3.2:1. Text and icon are now dark there (10.4:1 and 5.9:1); light mode keeps white.
+- **"سوا ✓" pill** (members on Sawa): dark green in dark mode (#5CD692 on #143223, 7.6:1) instead of a light pill.
+- **Add-relatives warning** (name looks like the other gender): dark amber in dark mode (#F5B14C on #3A2A10, 7.4:1).
+- **Checks:** `node --check`. Light mode pixel-identical to main on Explore, صلة الرحم, family, person and tree. Dark mode identical except the toast and the pill, checked by eye.
+- **Not rendered:** the add-relatives warning (needs a mismatched name in the sheet).
+- **sw.js:** v479; notes updated. **Upload:** app.p2.js, app.p3.js, then sw.js (v479) last.
