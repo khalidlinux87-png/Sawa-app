@@ -2875,7 +2875,15 @@ Khalid: Android ⇒ iPhone video call, the iPhone side shows a black screen on A
 - **Export check:** SawaRTC keys unchanged (163 before/after).
 - **Upload:** sawa-rtc.js ← sw.js (v474) last · Android: `sawa-native.zip` (c279) then Build.
 
-## ⚡ C292 — Receipt reader: ready when you need it · photo no longer holds up the next receipt · app.p9 · sw v475
+## 📡 C292 — Call route measured through the whole call · candidate summary in the call log · sawa-rtc (c292) · sw v475
+- **Why:** the call log showed "via TURN" for calls that may have moved to a direct path later. The route was read once, 0.8 s after connecting.
+- **Route:** `routeInfo()` now runs on every stats tick (every 3 s, from `cStatsTick`). `c.route` is the final route; `c.r0` keeps the first one measured, so a call that starts on TURN and goes direct shows `r0=relay, route=direct`.
+- **Candidates:** `candSum()` records per side what was gathered: `h` host · `s` srflx · `p` prflx · `r` relay · `v` public IPv6 · `m` mDNS `.local`. Stored as `cs = "<local>|<remote>"`, e.g. `h3s1p0r1v1m1|h0s0p1r1v0m0`. This shows whether Android's IPv6 address is gathered and whether it reaches iOS.
+- **Admin label:** the one-time "via relay / direct" line under the call is set once (no longer every 3 s, which would fight the network line).
+- **Telemetry:** `call.tel` carries `cs` and `r0`. `Sawa-deploy-test/worker-3.js` `opCallTel` whitelists them; **the worker must be deployed** or the fields are dropped.
+- **sw.js:** v475; `EXPECT` sawa-rtc.js = 460810 bytes.
+- **Upload:** sawa-rtc.js ← sw.js (v475) last. Worker: deploy `worker-3.js` first.
+## ⚡ C293 — Receipt reader: ready when you need it · photo no longer holds up the next receipt · app.p9 · sw v476
 Khalid: reading receipts uploaded in Personal Accountant is slow.
 
 - **Causes found (`app.p9.js`):**
@@ -2888,4 +2896,4 @@ Khalid: reading receipts uploaded in Personal Accountant is slow.
   - The receipt photo is made while the engines read the image, not after.
 - **Not changed:** the reader itself (`ocr/sawa-reader-4.js`, `ocr/v1/`) — no new download. Per-image reading time on a phone stays about what C279 measured; the gain is the engine start no longer repeating.
 - **Tests:** `import-check.mjs` ✓ with a new step (reload ⇒ Personal Accountant ⇒ the three engine workers start without opening Import; Import then opens ready: 1007 ⇒ 416 ms on desktop). The new step fails on the old code. `ui-check.mjs` ✓ · `projects-ui-check.mjs` ✓.
-- **Upload:** `app.p9.js` (254,839) ← `sw.js` (v475, 17,772) last. No Worker change.
+- **Upload:** `app.p9.js` (254,839) ← `sw.js` (v476) last. No Worker change.
