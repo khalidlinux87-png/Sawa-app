@@ -1182,15 +1182,15 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
     const listItems = [
         // C10: رمز سوا وطلبات التواصل
         ...(cloudMe && SCm.codeSheet ? [
-            { key: "mycode", label: tl("رمزي في سوا", "My Sawa code"), icon: QrCode, onPress: () => SCm.codeSheet(), color: "#2774BA" },
+            { key: "mycode", label: tl("رمزي في سوا", "My Sawa code"), icon: QrCode, onPress: () => SCm.codeSheet(), color: colors.primary },
             // C59: الضيف يرى صفّاً بارزاً للربط (Google أو البريد) — كان مخفيّاً داخل «السحابة والمشاركة»
-            ...((window.SawaSync && window.SawaSync.authInfo && (window.SawaSync.authInfo() || {}).anon && SCm.linkSheet) ? [{ key: "link", label: tl("اربط حسابك بـGoogle أو البريد — حتى لا يضيع", "Link to Google or email — so it isn't lost"), icon: Lock, onPress: () => SCm.linkSheet(), color: "#B45309" }] : []),
+            ...((window.SawaSync && window.SawaSync.authInfo && (window.SawaSync.authInfo() || {}).anon && SCm.linkSheet) ? [{ key: "link", label: tl("اربط حسابك بـGoogle أو البريد — حتى لا يضيع", "Link to Google or email — so it isn't lost"), icon: Lock, onPress: () => SCm.linkSheet(), color: colors.warning }] : []),
             // C56: فحص الإشعارات والمكالمات في الخلفية — إشعارٌ تجريبيّ حقيقيّ وإرشادات الهاتف
             { key: "pushcheck", label: tl("الإشعارات والمكالمات في الخلفية", "Notifications & background calls"), icon: BellIcon, onPress: () => { if (SCm && SCm.pushCheckSheet) SCm.pushCheckSheet(); }, color: "#F59E0B" },
             { key: "requests", label: tl("طلبات التواصل", "Contact requests") + (reqCount ? " (" + reqCount + ")" : ""), icon: UserPlus, onPress: () => SCm.requestsSheet(), color: reqCount ? "#E11D48" : "#2774BA" },
         ] : []),
         // C39: تثبيت التطبيق على الشاشة الرئيسيّة — يظهر فقط حين يُفتح سوا من المتصفّح على هاتف
-        ...(SCm && SCm.installable && SCm.installable() ? [{ key: "install", label: tl("ثبّت سوا على هاتفك", "Install Sawa on your phone"), icon: Download, onPress: () => SCm.installSheet(), color: "#2774BA" }] : []),
+        ...(SCm && SCm.installable && SCm.installable() ? [{ key: "install", label: tl("ثبّت سوا على هاتفك", "Install Sawa on your phone"), icon: Download, onPress: () => SCm.installSheet(), color: colors.primary }] : []),
         { key: "feedback", label: t("me_arsl_mlahza"), icon: Send, onPress: onOpenFeedback, color: "#10B981" },
         { key: "settings", label: t("me_iadadat_almlf"), icon: SettingsIcon, onPress: onOpenSettings },   // C289: ترس الإعدادات (كانت «⋯» وهي تعني «المزيد»)
         { key: "notifications", label: RELEASE_UI ? tl("التذكيرات", "Reminders") : t("me_mrkz_altnbyhat"), icon: BellIcon, onPress: onOpenNotifications },
@@ -1209,7 +1209,7 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         ...(!window.SawaNativeBridge && !window.SawaIOS && !/iPhone|iPad|iPod/.test(navigator.userAgent || "") ? [{ key: "apk", label: tl("تنزيل تطبيق أندرويد (APK)", "Download the Android app (APK)"), icon: Download, onPress: () => { location.href = "/download"; }, color: "#16A34A" }] : []),
         // C131: نتائج تقييم المكالمات (المحرّك · النسخة · التأخير · الصدى…) — للمدير
         ...(isAdm && admRank >= 4 ? [{ key: "team", label: tl("فريق الإدارة", "Admin team"), icon: UsersRound, onPress: () => { if (window.SawaChat && window.SawaChat.adminTeam) window.SawaChat.adminTeam(); }, color: "#7C3AED" }] : []),   // C195: للمالك وحده
-        ...(isAdm && admRank >= 3 ? [{ key: "voip", label: tl("اختبار مكالمة الآيفون", "iPhone call test") + admTag, icon: Phone, onPress: () => { if (window.SawaChat && window.SawaChat.voipTest) window.SawaChat.voipTest(); }, color: "#2774BA" }] : []),   // C151
+        ...(isAdm && admRank >= 3 ? [{ key: "voip", label: tl("اختبار مكالمة الآيفون", "iPhone call test") + admTag, icon: Phone, onPress: () => { if (window.SawaChat && window.SawaChat.voipTest) window.SawaChat.voipTest(); }, color: colors.primary }] : []),   // C151
         ...(isAdm ? [{ key: "reports", label: tl("البلاغات", "Reports") + admTag, icon: Flag, onPress: () => { if (window.SawaChat && window.SawaChat.adminReports) window.SawaChat.adminReports(); }, color: "#EF4444" }] : []),   // C150
         ...(isAdm ? [{ key: "tel", label: tl("سجلّ المكالمات", "Call log") + admTag, icon: BarChart3, onPress: () => { if (window.SawaRTC && window.SawaRTC.telReport) window.SawaRTC.telReport(); } }] : []),   // C179
         ...(isAdm ? [{ key: "health", label: tl("حالة الخدمات", "Service health") + admTag, icon: Server, onPress: () => { if (window.SawaRTC && window.SawaRTC.healthSheet) window.SawaRTC.healthSheet(); } }] : []),   // C178
@@ -1445,7 +1445,7 @@ function NativeAppLockCard() {
                 ? tl("يُفتح سوا بالبصمة أو برمز قفل الهاتف. المكالمات والإشعارات تصلك وهو مقفل، والردّ على مكالمة لا ينتظر القفل.", "Sawa opens with your fingerprint or phone PIN. Calls and notifications still arrive while locked.")
                 : tl("يحتاج قفل شاشة على الهاتف (بصمة أو رمز أو نمط). فعّله من إعدادات الهاتف ثمّ عُد هنا.", "Needs a phone screen lock (fingerprint, PIN or pattern).")),
         st.on && React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mt-3` }, opts.map((o) => React.createElement("button", { key: o.v, onClick: () => { if (o.v !== st.after) ask(true, o.v); }, disabled: busy, className: "rounded-full px-3 py-1.5 text-xs border", style: { backgroundColor: st.after === o.v ? colors.primary : colors.card, color: st.after === o.v ? "#fff" : colors.text, borderColor: st.after === o.v ? colors.primary : colors.border } }, o.l))),
-        msg && React.createElement("p", { className: `text-[11px] mt-2 font-bold ${textStart()}`, style: { color: "#b42318" } }, msg));
+        msg && React.createElement("p", { className: `text-[11px] mt-2 font-bold ${textStart()}`, style: { color: colors.danger } }, msg));
 }
 function NotifAvatarRow() {
     const { colors } = useTheme();
