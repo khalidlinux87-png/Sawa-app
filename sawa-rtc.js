@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c291";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c292";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -1121,6 +1121,7 @@
         if (vt1 >= 2 && c.type === "video" && !c.camOff && !c.lowToast) { c.lowToast = true; toast(L("الشبكة ضعيفة — خفّضتُ جودة الصورة ليبقى الصوت واضحاً", "Weak network — lowered video quality to keep audio clear")); }
       }
       if (c === cur) paintStatus(c);
+      routeInfo(c);   // C292: المسار يُقرأ كلّ 3 ثوانٍ (كان مرّةً بعد 0.8 ث من الاتّصال — المكالمة تبدأ بالوسيط ثم تنتقل مباشرةً فتُسجَّل وسيطاً خطأً)
     }).catch(function () {});
   }
   // C110: تراكم التأخير (bufferbloat) — خالد: «شبكة 6274 ← 7203 مللي ث» تزيد كلّ دقيقة: نُرسل أكثر ممّا تحمله شبكة الجوّال
@@ -1169,6 +1170,18 @@
       (c.rtt != null ? " · ⏱ " + lag + L(" مللي ث", " ms") + " (" + L("شبكة ", "net ") + net + " + " + L("مخزن ", "buffer ") + jb + ")" : "") + (c.loss > 0.03 ? " · " + L("فقد ", "loss ") + Math.round(c.loss * 100) + "%" : "") + (c.abi ? " · 🎚" + Math.round(ABR[c.abi] / 1000) + "k" : "") + (c.native ? " · ⚡" : "") +
       (c.type === "video" && c.remoteVideo ? " · 📹 " + (c.vfps != null ? Math.round(c.vfps) + "fps" : "0fps") + (c.vh ? " " + c.vh + "p" : "") + (c.vBlack ? " ⬛" : "") + (c.peerCamOff ? " 🚫" : "") : "");   // C291
   }
+  // C292: ملخّص مرشّحي طرفٍ واحد من إحصاءات المحرّك: h = host · s = srflx · p = prflx · r = relay · v = IPv6 عامّ · m = عنوان .local (مخفيّ)
+  function candSum(cands, local) {
+    var n = { h: 0, s: 0, p: 0, r: 0, v: 0, m: 0 };
+    for (var k in cands) {
+      var x = cands[k], isL = x.type === "local-candidate";
+      if (isL !== !!local) continue;
+      var t = x.candidateType, ad = String(x.address || x.ip || "").toLowerCase();
+      if (t === "host") n.h++; else if (t === "srflx") n.s++; else if (t === "prflx") n.p++; else if (t === "relay") n.r++;
+      if (/\.local$/.test(ad)) n.m++; else if (ad.indexOf(":") >= 0 && !/^fe80:/.test(ad)) n.v++;
+    }
+    return "h" + n.h + "s" + n.s + "p" + n.p + "r" + n.r + "v" + n.v + "m" + n.m;
+  }
   function routeInfo(c) {
     try {
       c.pc.getStats().then(function (rep) {
@@ -1181,6 +1194,7 @@
         if (!pair) return;
         var lc = cands[pair.localCandidateId] || {}, rc = cands[pair.remoteCandidateId] || {};
         var relay = lc.candidateType === "relay" || rc.candidateType === "relay";
+        var first = !c.r0;   // C292: أوّل قياسٍ للمسار (يُحفظ في r0)
         c.route = relay ? "relay" : "direct"; c.proto = String(lc.relayProtocol || lc.protocol || "").toLowerCase() || null;
         c.lct = lc.candidateType || null; c.rct = rc.candidateType || null;   // C215: نوع العنوانين المختارين (host · srflx · prflx · relay)
         var la = String(lc.address || lc.ip || ""); c.fam = la ? (la.indexOf(":") >= 0 ? "6" : "4") : null;
@@ -1192,7 +1206,10 @@
         var rr = lc.candidateType === "relay" ? relayOfUrl(lc.url) : null; c.relayLbl = rr ? rr.label : null; c.relayId = rr ? rr.id : null;   // C94: أيّ وسيط
         if (!rr && rc.candidateType === "relay") c.relayLbl = L("وسيط الطرف الآخر", "peer's relay");   // C167: الوسيط من جهة الطرف الآخر (قد تكون نسخته أقدم)
         LOG.info("ice.pair", { local: lc.candidateType, remote: rc.candidateType, proto: c.proto });
-        if (ui.sub && c === cur && isAdm()) ui.sub.textContent = relay ? L("عبر خادم وسيط", "via relay") : L("اتّصال مباشر", "direct");   // C115: للمدير فقط
+        // C292: ما أرسله كلّ طرفٍ وما استقبله، والمسار الأوّل — يُكتب في السجلّ (المسار النهائيّ هو c.route)
+        c.cs = candSum(cands, true) + "|" + candSum(cands, false);
+        if (first) c.r0 = c.route;
+        if (first && ui.sub && c === cur && isAdm()) ui.sub.textContent = relay ? L("عبر خادم وسيط", "via relay") : L("اتّصال مباشر", "direct");   // C115: للمدير فقط · C292: مرّةً واحدة حتّى لا يتعارض مع سطر الشبكة
       }).catch(function () {});
     } catch (e) {}
   }
@@ -1729,7 +1746,8 @@
       lct: c.lct || "", rct: c.rct || "", fam: c.fam || "", nat: natTel().nat, nsx: natTel().nsx, v6: natTel().v6,   // C215
       v6l: c.v6l || 0, v6r: c.v6r || 0, pw: c.pw || 0,   // C217 · C218
       vb: c.darkS || 0, ch: c.camHeals || 0, pco: c.peerCamOff ? 1 : 0,   // C291: ثوانٍ بصورةٍ سوداء · مرّات إعادة فتح كاميرتي · كاميرا الطرف الآخر متوقّفة عند الانتهاء
-      rsel: c.rsel || "", psel: c.psel || "", rms: c.rms == null ? null : c.rms, pms: c.pms == null ? null : c.pms });   // C228
+      rsel: c.rsel || "", psel: c.psel || "", rms: c.rms == null ? null : c.rms, pms: c.pms == null ? null : c.pms,   // C228
+      cs: c.cs || "", r0: c.r0 || "" });   // C292: المرشّحات (طرفي|طرفٍ آخر) · المسار الأوّل
   }
   // C216: سجلّ المكالمة لا يضيع. كان يُرسل مرّةً واحدة ويُهمل الخطأ — فإن فشل الطلب (شبكةٌ مزدحمة، التطبيق في الخلفيّة، انتهاء المهلة)
   //        ضاع السجلّ بصمت (مكالمة 01:02: سجلّ المستقبِل ⚡ لم يصل). الآن: يُحفظ في الهاتف قبل الإرسال ويُحذف عند نجاحه،
