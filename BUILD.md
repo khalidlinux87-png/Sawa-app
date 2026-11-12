@@ -2943,3 +2943,14 @@ Second colour batch, by screen: the family screens (صلة الرحم, family, p
 - **Checks:** `node --check`. Light mode pixel-identical to main on Explore, صلة الرحم, family, person and tree. Dark mode identical except the toast and the pill, checked by eye.
 - **Not rendered:** the add-relatives warning (needs a mismatched name in the sheet).
 - **sw.js:** v479; notes updated. **Upload:** app.p2.js, app.p3.js, then sw.js (v479) last.
+
+## ⛽ C298 — Wallet and Taqa (fuel) in dark mode · app.p7 · sw v480
+Third colour batch, by screen: wallet (home, services, electricity) and Taqa fuel (home, history). These are admin-only demo screens; rendered offline as a test admin (test-only override, no app change).
+- **Finding:** wallet home, services and electricity already follow dark mode.
+- **Bug fixed (Taqa):** the fixed ink #1A1A2E disappeared on the dark card. In dark mode only:
+  - the active fuel token number and its dashed border use the theme text and muted colours (the number was invisible)
+  - the "عرض الرمز والـ QR" button and the selected history filter use the primary blue (were near-black on dark)
+  - the active bottom tab label and underline use the theme text colour (were invisible)
+- **Kept on purpose:** the QR code drawing (must stay dark on white), and the token number on the token screen, which sits on its own light box and stays readable.
+- **Checks:** `node --check`. Light mode pixel-identical to main on all 9 wallet/Taqa screens. Dark mode identical on wallet screens; Taqa home and history changed only as above, checked by eye.
+- **sw.js:** v480; notes updated. **Upload:** app.p7.js, then sw.js (v480) last.

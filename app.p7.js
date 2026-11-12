@@ -559,6 +559,9 @@ function TaqaTokenScreen({ token, colors, onBack, onHistory }) {
 // طاقة — مكوّن سجل الرموز
 // ══════════════════════════════════════════════════════════════════════════
 function TaqaHistoryScreen({ colors, onBack, onSelect }) {
+    // C298: في الوضع الداكن كان الحبر الثابت #1A1A2E يختفي على البطاقة الداكنة (رقم الرمز، التبويب النشط، الزرّ) — لونٌ من المظهر هناك، والفاتح كما هو
+    const { isDark } = useTheme();
+    const ink = isDark ? colors.text : "#1A1A2E", inkBg = isDark ? colors.primary : "#1A1A2E";
     const MOCK_HISTORY = [
         { token: "4729-8316", company: t("tq_nayl"), fuelType: t("tq_bnzyn"), fuelTag: "benzin", amount: 5000, liters: 20, status: "active", statusLabel: t("tq_nsht"), statusColor: "#1B7A43", ico: "⛽", icoBg: "#E8F5E9", refundOn: true, qrData: "TAQA-47298316-NILEOIL-BENZIN-5000SDG", expiresLabel: t("tq_aljma"), createdAt: Date.now() - 3600000 },
         { token: "8812-4407", company: t("tq_nayl"), fuelType: t("tq_bnzyn"), fuelTag: "benzin", amount: 1200, liters: 5, status: "refund", statusLabel: t("tq_rsyd_mtbqy_em"), statusColor: "#E65100", ico: "🔄", icoBg: "#FFF3E0", refundOn: false, qrData: "TAQA-88124407-NILEOIL-BENZIN-1200SDG", expiresLabel: t("tq_alsbt"), createdAt: Date.now() - 86400000 },
@@ -640,9 +643,9 @@ function TaqaHistoryScreen({ colors, onBack, onSelect }) {
                         React.createElement("div", { className: "text-[8px]", style: { color: isLatest ? "#fff" : "rgba(255,255,255,0.45)" } }, w.label)));
                 })))),
         React.createElement("div", { className: `flex ${isRTL() ? "flex-row" : "flex-row-reverse"} gap-2 px-4 pt-1 pb-2` }, FILTERS.map(f => (React.createElement("button", { key: f.id, onClick: () => setFilter(f.id), className: "rounded-full px-4 py-1.5 text-xs font-bold border", style: {
-                backgroundColor: filter === f.id ? "#1A1A2E" : colors.card,
+                backgroundColor: filter === f.id ? inkBg : colors.card,
                 color: filter === f.id ? "#fff" : colors.textMuted,
-                borderColor: filter === f.id ? "#1A1A2E" : colors.border,
+                borderColor: filter === f.id ? inkBg : colors.border,
             } }, f.label)))),
         React.createElement("div", { className: "px-4 pb-4" }, filtered.length === 0 ? (React.createElement("div", { className: "flex flex-col items-center py-12 gap-2" },
             React.createElement("span", { className: "text-3xl" }, "\u26FD"),
@@ -667,6 +670,9 @@ function TaqaHistoryScreen({ colors, onBack, onSelect }) {
 // TaqaScreen — الشاشة الرئيسية لخدمة الوقود بتبويب خاص (⛽ وقود | 🕒 سجلاتي)
 // ══════════════════════════════════════════════════════════════════════════
 function TaqaScreen({ balance, colors, onBack }) {
+    // C298: في الوضع الداكن كان الحبر الثابت #1A1A2E يختفي على البطاقة الداكنة (رقم الرمز، التبويب النشط، الزرّ) — لونٌ من المظهر هناك، والفاتح كما هو
+    const { isDark } = useTheme();
+    const ink = isDark ? colors.text : "#1A1A2E", inkBg = isDark ? colors.primary : "#1A1A2E";
     const [tab, setTab] = useState("fuel"); // fuel | history
     const [subView, setSubView] = useState("home"); // home | companies | purchase | token
     const [selectedCompany, setSelectedCompany] = useState(null);
@@ -699,8 +705,8 @@ function TaqaScreen({ balance, colors, onBack }) {
             return (React.createElement("button", { key: t.id, onClick: () => { setTab(t.id); if (t.id === "fuel")
                     setSubView("home"); }, className: "flex-1 flex flex-col items-center gap-1 py-2.5" },
                 React.createElement("span", { style: { fontSize: 20, lineHeight: 1 } }, t.emoji),
-                React.createElement("span", { className: "text-[10px] font-bold", style: { color: active ? "#1A1A2E" : colors.textMuted } }, t.label),
-                active && React.createElement("div", { className: "w-5 h-0.5 rounded-full", style: { backgroundColor: "#1A1A2E" } })));
+                React.createElement("span", { className: "text-[10px] font-bold", style: { color: active ? ink : colors.textMuted } }, t.label),
+                active && React.createElement("div", { className: "w-5 h-0.5 rounded-full", style: { backgroundColor: ink } })));
         })));
     }
     // ── تاب الوقود: الشاشة الرئيسية ──
@@ -713,11 +719,11 @@ function TaqaScreen({ balance, colors, onBack }) {
         return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
             React.createElement(TopBar, { title: t("wqwd"), onBack: onBack }),
             React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
-                activeToken ? (React.createElement("div", { className: "rounded-2xl border-2 border-dashed p-4 mb-4", style: { backgroundColor: colors.card, borderColor: "#1A1A2E" } },
+                activeToken ? (React.createElement("div", { className: "rounded-2xl border-2 border-dashed p-4 mb-4", style: { backgroundColor: colors.card, borderColor: isDark ? colors.textMuted : "#1A1A2E" } },
                     React.createElement("div", { className: `flex ${isRTL() ? "flex-row" : "flex-row-reverse"} justify-between items-center mb-2` },
                         React.createElement("div", { className: "text-xs font-bold", style: { color: colors.text } }, t("rmz_nsht")),
                         React.createElement("div", { className: "rounded-full px-2 py-0.5 text-[9px] font-bold", style: { backgroundColor: "#E8F5E9", color: "#1B7A43" } }, t("nsht_2"))),
-                    React.createElement("div", { className: "text-2xl font-black tracking-widest text-center mb-1", style: { color: "#1A1A2E", fontFamily: "monospace" } }, activeToken.token),
+                    React.createElement("div", { className: "text-2xl font-black tracking-widest text-center mb-1", style: { color: ink, fontFamily: "monospace" } }, activeToken.token),
                     React.createElement("div", { className: "text-center text-[10px] mb-3", style: { color: colors.textMuted } },
                         activeToken.company,
                         " \u00B7 ",
@@ -725,7 +731,7 @@ function TaqaScreen({ balance, colors, onBack }) {
                         " \u00B7 ",
                         activeToken.amount.toLocaleString(wLoc()),
                         t("tq_j_sfx")),
-                    React.createElement("button", { onClick: () => { setCurrentToken(activeToken); setSubView("token"); }, className: "w-full rounded-xl py-2 text-xs font-bold text-white", style: { backgroundColor: "#1A1A2E" } }, t("ard_alrmz_qr")))) : (React.createElement("div", { className: "rounded-2xl border border-dashed p-6 mb-4 text-center", style: { borderColor: colors.border, backgroundColor: colors.card } },
+                    React.createElement("button", { onClick: () => { setCurrentToken(activeToken); setSubView("token"); }, className: "w-full rounded-xl py-2 text-xs font-bold text-white", style: { backgroundColor: inkBg } }, t("ard_alrmz_qr")))) : (React.createElement("div", { className: "rounded-2xl border border-dashed p-6 mb-4 text-center", style: { borderColor: colors.border, backgroundColor: colors.card } },
                     React.createElement("div", { className: "text-3xl mb-2" }, "\u26FD"),
                     React.createElement("div", { className: "text-sm", style: { color: colors.textMuted } }, t("la_ywjd_rmz_wqwd")))),
                 React.createElement("button", { onClick: () => setSubView("companies"), className: "w-full rounded-2xl py-4 font-bold text-base text-white mb-4", style: { backgroundColor: "#EF4444" } }, t("tq_shra_jdyd")),
