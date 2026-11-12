@@ -2883,3 +2883,17 @@ Khalid: Android ⇒ iPhone video call, the iPhone side shows a black screen on A
 - **Telemetry:** `call.tel` carries `cs` and `r0`. `Sawa-deploy-test/worker-3.js` `opCallTel` whitelists them; **the worker must be deployed** or the fields are dropped.
 - **sw.js:** v475; `EXPECT` sawa-rtc.js = 460810 bytes.
 - **Upload:** sawa-rtc.js ← sw.js (v475) last. Worker: deploy `worker-3.js` first.
+## ⚡ C293 — Receipt reader: ready when you need it · photo no longer holds up the next receipt · app.p9 · sw v476
+Khalid: reading receipts uploaded in Personal Accountant is slow.
+
+- **Causes found (`app.p9.js`):**
+  1. The three OCR engines (Arabic+English, numbers, Arabic; each compiles the 4 MB engine and loads its language model) were **stopped 3 minutes** after the Import sheet closed. Any later import paid the whole start again — many seconds on a phone.
+  2. The engines only started when Import was tapped, so the first receipt always waited for them.
+  3. After each receipt was read, the 1280 px receipt photo was made **before** the next receipt started.
+- **Fixes:**
+  - The engines stay while the app is in use. They stop only after **10 minutes in the background** (gives the phone its memory back); coming back before that cancels the stop. A batch still reading is never stopped.
+  - A device that has read receipts before (`localStorage sawa_ocr_used`) starts the engines quietly ~2.5 s after Personal Accountant opens (idle time, only while the app is visible) ⇒ Import opens "Reader ready".
+  - The receipt photo is made while the engines read the image, not after.
+- **Not changed:** the reader itself (`ocr/sawa-reader-4.js`, `ocr/v1/`) — no new download. Per-image reading time on a phone stays about what C279 measured; the gain is the engine start no longer repeating.
+- **Tests:** `import-check.mjs` ✓ with a new step (reload ⇒ Personal Accountant ⇒ the three engine workers start without opening Import; Import then opens ready: 1007 ⇒ 416 ms on desktop). The new step fails on the old code. `ui-check.mjs` ✓ · `projects-ui-check.mjs` ✓.
+- **Upload:** `app.p9.js` (254,839) ← `sw.js` (v476) last. No Worker change.
