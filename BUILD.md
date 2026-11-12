@@ -2907,3 +2907,17 @@ Follow-up to the review item "emoji used as icons". Emoji look different on Andr
 - **Not tested here:** live calls (needs two devices), screen share, group calls.
 - **sw.js:** v474; `EXPECT` sawa-rtc.js = 463339 bytes; notes updated.
 - **Upload:** sawa-rtc.js, then sw.js (v477) last.
+
+## 🎨 C295 — Fixed colours follow the theme (first batch) · app.p2 · app.p5 · sw v478
+First batch of the "hard-coded colours" review item: values that equal a theme token now use the token, so dark mode follows the phone.
+- **Changed (10):** Account screen (sections and the Sawa code line, colours #2774BA, #B45309, #B42318 → `colors.primary`, `colors.warning`, `colors.danger`), app-lock card warning, chat and group-chat labels (#B45309 → `colors.warning`, #1B7A43 → `colors.success`).
+- **Not changed, on purpose:**
+  - `#FFFFFF`: it is usually white text on a coloured button; mapping it to the card colour would make it dark in dark mode.
+  - `SawaRoomScreen` `#111827`: a deliberately dark room background.
+  - `usePersistedState` (not a screen).
+  - Data lists with colours (wallet banks, fuel brands, Taqa tokens): module-level data without `colors` in scope would crash on render.
+- **Checks:** `node --check` on all parts. Light mode is pixel-identical to main on Account, Calls, Chats, Contacts, Explore and the sign-in error (the daily reminder differs only because it shows a random tip, which also differs between two runs of main). Dark mode on Account rendered with the same layout.
+- **Not tested here:** chats, group chats and the app lock with real data (not reachable offline).
+- **Remaining (next batches):** 77 theme-equal values still hard-coded (excluding #FFFFFF), mostly in screens I can't reach offline (family tree, wallet, Taqa, chats with data), plus the slate and grey shades (#334155, #94A3B8, #1E293B, #475569, #E2E8F0), reviewed one screen at a time.
+- **sw.js:** v478; notes updated.
+- **Upload:** app.p2.js, app.p5.js, then sw.js (v478) last.
