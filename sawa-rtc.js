@@ -140,7 +140,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c278";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c291";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -675,10 +675,10 @@
         }
       }
       var c = cur;
-      if (c && !c.done && c.type === "video" && c.local && !hidden) {
-        // الكاميرا انتهت في الخلفيّة ⇒ نفتحها من جديد بالاتّجاه نفسه
-        var vt = c.local.getVideoTracks()[0];
-        if (vt && vt.readyState === "ended" && !c.switching) { c.facing = c.facing === "user" ? "environment" : "user"; switchCam(); }
+      if (c && !c.done && c.type === "video" && c.local) {
+        // C291: الكاميرا «متوقّفة مؤقّتاً» (muted) أو منتهية بعد الخلفيّة/الردّ من شاشة النظام ⇒ نفتحها من جديد (كان يُعالَج «المنتهية» وحدها)
+        camMark(c);
+        if (!hidden) { c.camHealN = 0; setTimeout(function () { camHeal(c, "visible"); }, 1500); }
       }
     });
   } catch (e) {}
@@ -703,10 +703,10 @@
   function earArm() {
     clearTimeout(earT);
     if (RB()) {
-      if (cur && cur.out === "ear" && !cur.hs && !cur.done && cur.state === "connected") { try { earNative = !!RB().setProximity(true) || true; } catch (e) {} }   // C230: لا حسّاس قربٍ مع سمّاعة الرأس
+      if (cur && cur.out === "ear" && !cur.hs && !cur.done && cur.state === "connected" && cur.type !== "video") { try { earNative = !!RB().setProximity(true) || true; } catch (e) {} }   // C230: لا حسّاس قربٍ مع سمّاعة الرأس
       return;
     }
-    earT = setTimeout(function () { if (cur && cur.out === "ear" && !cur.done && cur.state === "connected") earOn(); }, 5000);
+    earT = setTimeout(function () { if (cur && cur.out === "ear" && !cur.done && cur.state === "connected" && cur.type !== "video") earOn(); }, 5000);   // C291: لا شاشة سوداء في مكالمة الفيديو
   }
   // C26: إشعارات المكالمات (فائتة · رنين) تُغلق حين تُفتح شاشة المكالمات أو تنتهي المكالمة
   function clearCallNotifications() {
@@ -847,8 +847,10 @@
   function paintStatus(c) {
     if (!ui.root || c !== cur && c.state !== "ended") return;
     ui.st.textContent = statusText(c);
-    var vid = c.type === "video" && c.remoteVideo && (c.state === "connected" || c.state === "reconnecting");
-    ui.rv.style.display = vid ? "block" : "none";
+    var vidOn = c.type === "video" && c.remoteVideo && (c.state === "connected" || c.state === "reconnecting");
+    var vid = vidOn && !c.peerCamOff && !c.vBlack;   // C291: صورةٌ حقيقيّة فقط — وإلّا صورة الحساب
+    ui.rv.style.display = vidOn ? "block" : "none"; ui.rv.style.opacity = vid ? "1" : "0";   // يبقى العنصر يعمل (شفّافاً) لنعرف متى تصل الصورة
+    if (c.type === "video" && c.state === "connected" && !vid && ui.sub) ui.sub.textContent = (c.peerCamOff ? L("الكاميرا متوقّفة عند الطرف الآخر", "Their camera is off") : c.remoteVideo && c.vSeen ? L("لا تصل الصورة الآن…", "No picture right now…") : "") + (isAdm() ? (c.peerCamOff || c.remoteVideo ? " · " : "") + callNetText(c) : "");
     ui.mid.style.visibility = vid && c.state === "connected" ? "hidden" : "visible";
     ui.topName.style.opacity = vid ? "1" : "0";
     if (vid && c.state === "connected") ui.topName.textContent = (c.name || "") + " · " + statusText(c) + (isAdm() ? (c.route ? " · " + callNetText(c) : "") + (c.q != null && c.q <= 1 ? " · " + (c.q === 0 ? L("شبكة سيّئة", "bad network") : L("شبكة ضعيفة", "weak network")) : "") : (netLine(c) ? " · " + netLine(c) : ""));   // C115   // C93: والتأخير في الفيديو أيضاً
@@ -890,6 +892,72 @@
     ui.lv.style.display = hasVid && !c.camOff ? "block" : "none";
     ui.lv.style.transform = c.facing === "environment" ? "none" : "scaleX(-1)";
     if (hasVid) try { ui.lv.play().catch(function () {}); } catch (e) {}
+    if (hasVid) { var vt0 = c.local.getVideoTracks()[0]; if (vt0 && !vt0.__c291) { vt0.__c291 = 1; vt0.addEventListener("mute", function () { camMark(c); }); vt0.addEventListener("unmute", function () { camMark(c); }); vt0.addEventListener("ended", function () { camMark(c); setTimeout(function () { camHeal(c, "ended"); }, 800); }); } }
+    camMark(c);
+  }
+  // C291: حالة كاميرتي للطرف الآخر (cam_caller / cam_callee): 1 تعمل · 0 متوقّفة (أطفأتُها، أو أوقفها النظام في الخلفيّة/قبل فتح التطبيق).
+  //       الطرف الآخر يعرض صورة الحساب بدل شاشةٍ سوداء. يُكتب عند التغيّر فقط.
+  function camState(c) {
+    if (!c.local || c.local.native) return null;
+    var vt = c.local.getVideoTracks()[0];
+    return vt && !c.camOff && vt.readyState === "live" && !vt.muted ? 1 : 0;
+  }
+  function camMark(c) {
+    try {
+      if (!c || c.done || c.type !== "video" || !c.ref || !c.live) return;
+      var v = camState(c); if (v == null || v === c.camSent) return;
+      c.camSent = v; var u = {}; u["cam_" + c.role] = v; c.ref.update(u).catch(function () {});
+      LOG.info("cam.state", { on: v });
+    } catch (e) {}
+  }
+  // C291: تطبيق أندرويد (c279+) — خدمة المكالمة تحمل نوع «الكاميرا» في مكالمة الفيديو، فلا يقطع النظام الكاميرا حين تخرج من سوا
+  function camFgs(c) { try { var n = NB(); if (n && n.callVideo && c && c.type === "video" && !c.done) n.callVideo(true); } catch (e) {} }
+  function camBits(c, v) {
+    var x = v["cam_" + (c.role === "caller" ? "callee" : "caller")];
+    var off = x === 0;
+    if (off !== !!c.peerCamOff) { c.peerCamOff = off; if (cur === c) paintStatus(c); }
+  }
+  // C291: الكاميرا متوقّفة مؤقّتاً (muted) أو منتهية والتطبيق أمامك ⇒ نلتقطها من جديد ونستبدل المسار بلا إعادة تفاوض (حتّى ٦ مرّات لكلّ عودة)
+  function camHeal(c, why) {
+    if (!c || c.done || cur !== c || c.native || !c.local || c.local.native || !c.pc || !c.pc.getSenders || c.camOff || c.switching || c.healing) return;
+    if (document.visibilityState !== "visible") return;
+    var vt = c.local.getVideoTracks()[0];
+    if (!vt || (vt.readyState === "live" && !vt.muted)) return;
+    if ((c.camHealN || 0) >= 6) return;
+    c.camHealN = (c.camHealN || 0) + 1; c.healing = true; c.camHeals = (c.camHeals || 0) + 1;
+    LOG.info("cam.heal", { why: why, st: vt.readyState + (vt.muted ? "/muted" : "") });
+    var snd = c.pc.getSenders().filter(function (x) { return x.track === vt || (x.track && x.track.kind === "video"); })[0];
+    try { vt.stop(); } catch (e) {}   // الآيفون لا يفتح الكاميرا مرّتين
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: c.facing || "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } }, audio: false })
+      .then(function (s) {
+        var nt = s.getVideoTracks()[0];
+        if (c.done || cur !== c || !nt) { stopStream(s); return null; }
+        nt.enabled = !c.camOff;
+        try { c.local.removeTrack(vt); } catch (e) {}
+        c.local.addTrack(nt); attachLocal(c); paint(c);
+        return snd ? snd.replaceTrack(nt) : null;
+      })
+      .catch(function (e) { LOG.warn("cam.heal", { err: e && (e.name || e.message) }); })
+      .then(function () { c.healing = false; camMark(c); });
+  }
+  // C291: الصورة الواردة سوداء تماماً (كاميرا الطرف الآخر متوقّفة لكنّ مساره يرسل إطاراتٍ سوداء) — عيّنة 16×12 من الإطار المعروض
+  var darkCv = null;
+  function rvDark() {
+    try {
+      var v = ui.rv; if (!v || !v.videoWidth || v.readyState < 2) return null;
+      darkCv = darkCv || document.createElement("canvas"); darkCv.width = 16; darkCv.height = 12;
+      var x = darkCv.getContext("2d", { willReadFrequently: true }); x.drawImage(v, 0, 0, 16, 12);
+      var d = x.getImageData(0, 0, 16, 12).data, mx = 0;
+      for (var i = 0; i < d.length; i += 4) { var l = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11; if (l > mx) mx = l; }
+      return mx < 8;
+    } catch (e) { return null; }
+  }
+  function vTick(c) {   // كلّ ثانية في مكالمة الفيديو
+    if (c.type !== "video" || !c.remoteVideo) { c.darkN = 0; return; }
+    var dk = rvDark();
+    if (dk === true) { c.darkN = (c.darkN || 0) + 1; c.darkS = (c.darkS || 0) + 1; }
+    else { c.darkN = 0; if (dk === false || (c.nullN = (c.nullN || 0) + 1) >= 2) c.vSeen = true; }   // لا نستطيع القياس ⇒ لا نُخفي الصورة
+    c.vBlack = !c.vSeen || c.darkN >= 3 || !!c.vStall;
   }
   function attachRemote(c) {
     if (!ui.root || !c.remote) return;
@@ -929,11 +997,12 @@
     o.timers = {}; o.offs = []; o.iceOut = []; o.iceIn = []; o.remoteSet = false;
     o.muted = false; o.camOff = false; o.facing = "user"; o.reN = 0; o.reSeen = 0;
     o.t0 = Date.now();   // C179: لزمن إنشاء الاتّصال
+    if (o.type === "video") o.vt = 1;   // C291: الفيديو يبدأ 480×360 · 350 ك ويرتفع حين تثبت الشبكة (كان يبدأ بأعلى درجة فيخنق الشبكة الضعيفة في الثواني الأولى)
     return o;
   }
   function setState(c, s) {
     c.state = s; paint(c);
-    if (s === "connected" && !c.tick) { var n = 0; c.tick = setInterval(function () { paintStatus(c); if (++n % 3 === 0) cStatsTick(c); }, 1000); }
+    if (s === "connected" && !c.tick) { var n = 0; c.tick = setInterval(function () { try { vTick(c); } catch (e) {} paintStatus(c); if (++n % 3 === 0) cStatsTick(c); }, 1000); }
   }
   function listen(c, ref, ev, fn, onErr) {
     var h = ref.on(ev, fn, onErr || function () {});
@@ -1001,11 +1070,11 @@
     if (c.done || !c.pc || c.state !== "connected") return;
     c.pc.getStats().then(function (rep) {
       if (c.done) return;
-      var rtt = null, lostIn = 0, recvIn = 0, lostOut = null, pair = null, jbD = 0, jbN = 0, jitS = null, fpsS = null, hS = null;
+      var rtt = null, lostIn = 0, recvIn = 0, lostOut = null, pair = null, jbD = 0, jbN = 0, jitS = null, fpsS = null, hS = null, fdS = null;
       rep.forEach(function (x) {
         if (x.type === "transport" && x.selectedCandidatePairId) pair = rep.get(x.selectedCandidatePairId);
         if (x.type === "inbound-rtp" && x.kind === "audio") { lostIn += x.packetsLost || 0; recvIn += x.packetsReceived || 0; jbD += x.jitterBufferDelay || 0; jbN += x.jitterBufferEmittedCount || 0; if (typeof x.jitter === "number") jitS = x.jitter * 1000; }
-        if (x.type === "inbound-rtp" && x.kind === "video") { if (typeof x.framesPerSecond === "number") fpsS = x.framesPerSecond; if (x.frameHeight) hS = x.frameHeight; }   // C179
+        if (x.type === "inbound-rtp" && x.kind === "video") { if (typeof x.framesPerSecond === "number") fpsS = x.framesPerSecond; if (x.frameHeight) hS = x.frameHeight; fdS = (fdS || 0) + (x.framesDecoded || 0); }   // C179 · C291
         if (x.type === "remote-inbound-rtp" && x.kind === "audio") { if (typeof x.fractionLost === "number") lostOut = x.fractionLost; if (typeof x.roundTripTime === "number") rtt = x.roundTripTime * 1000; }
       });
       if (!pair) rep.forEach(function (x) { if (x.type === "candidate-pair" && x.state === "succeeded" && (x.selected || x.nominated)) pair = pair || x; });
@@ -1025,6 +1094,15 @@
       qaSample(c, rtt, c.jb, loss, pair);   // C131
       c.snapN = (c.snapN || 0) + 1; if (c.snapN % 5 === 1) telLive(c);   // C216: لقطة كلّ ~15ث
       telSample(c, jitS, fpsS, hS);   // C179
+      if (c.type === "video") {   // C291: لا إطاراتٍ تُفكّ 6 ث ⇒ لا صورة (صورة الحساب) · كاميرتي متوقّفة والتطبيق أمامي ⇒ تُفتح من جديد
+        c.vfps = fpsS; c.vh = hS;
+        var fdD = fdS == null ? null : fdS - (c.sFd || 0); if (fdS != null) c.sFd = fdS;
+        c.fdZ = c.remoteVideo && fdD === 0 ? (c.fdZ || 0) + 1 : 0; c.vStall = c.fdZ >= 2;
+        var lv0 = c.local && !c.local.native && c.local.getVideoTracks()[0];
+        c.camMuteN = lv0 && !c.camOff && (lv0.muted || lv0.readyState === "ended") ? (c.camMuteN || 0) + 1 : 0;
+        if (c.camMuteN >= 2) camHeal(c, "stall");
+        camMark(c);
+      }
       if (c === cur && ui.sub && c.type !== "video") ui.sub.textContent = netLine(c);
       c.qHist = (c.qHist || []).concat([q]).slice(-6);
       var h = c.qHist, bad = h.length >= 2 && h.slice(-2).every(function (x) { return x <= 1; }), good = h.length >= 4 && h.slice(-4).every(function (x) { return x >= 2; });
@@ -1088,7 +1166,8 @@
     var net = Math.round((c.rtt || 0) / 2), jb = Math.round(c.jb || 0), lag = net + jb;
     var cf = !c.relayId || c.relayId === "cf";
     return (c.route === "relay" ? L("عبر وسيط", "relay") + (c.relayLbl ? " " + c.relayLbl : "") : c.route ? L("مباشر", "direct") : "") + (c.proto ? "/" + c.proto : "") + (cfColo && cf ? " " + cfColo : "") +
-      (c.rtt != null ? " · ⏱ " + lag + L(" مللي ث", " ms") + " (" + L("شبكة ", "net ") + net + " + " + L("مخزن ", "buffer ") + jb + ")" : "") + (c.loss > 0.03 ? " · " + L("فقد ", "loss ") + Math.round(c.loss * 100) + "%" : "") + (c.abi ? " · 🎚" + Math.round(ABR[c.abi] / 1000) + "k" : "") + (c.native ? " · ⚡" : "");
+      (c.rtt != null ? " · ⏱ " + lag + L(" مللي ث", " ms") + " (" + L("شبكة ", "net ") + net + " + " + L("مخزن ", "buffer ") + jb + ")" : "") + (c.loss > 0.03 ? " · " + L("فقد ", "loss ") + Math.round(c.loss * 100) + "%" : "") + (c.abi ? " · 🎚" + Math.round(ABR[c.abi] / 1000) + "k" : "") + (c.native ? " · ⚡" : "") +
+      (c.type === "video" && c.remoteVideo ? " · 📹 " + (c.vfps != null ? Math.round(c.vfps) + "fps" : "0fps") + (c.vh ? " " + c.vh + "p" : "") + (c.vBlack ? " ⬛" : "") + (c.peerCamOff ? " 🚫" : "") : "");   // C291
   }
   function routeInfo(c) {
     try {
@@ -1145,8 +1224,8 @@
   function onConn(c, s) {
     if (c.done) return;
     if (s === "connected") {
-      clearTimeout(c.timers.conn); clearTimeout(c.timers.lost); delete c.timers.lost;
-      if (!c.connectedAt) { c.connectedAt = Date.now(); engMark(c); softDrop(c); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); }); if (c.out === "ear" && RB()) setTimeout(earArm, 0);
+      clearTimeout(c.timers.conn); clearTimeout(c.timers.lost); delete c.timers.lost; clearTimeout(c.timers.rq); delete c.timers.rq; clearTimeout(c.timers.restart); delete c.timers.restart;   // C291
+      if (!c.connectedAt) { c.connectedAt = Date.now(); engMark(c); softDrop(c); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); }); camFgs(c); if (c.out === "ear" && RB()) setTimeout(earArm, 0);
         if (RB()) { nativeRoute(c, c.out || (c.type === "video" ? "spk" : "ear"), !c.userRoute);   // C92 · C196: يبقى اختيار المستخدم · C230: والتلقائيّ لا يغلب سمّاعة الرأس
           setTimeout(function () { if (cur === c && !c.done && RB()) nativeSpk(c.out === "spk", !c.userRoute); }, 1500); }   // C196: WebView يعيد المكبّر حين يبدأ صوت الطرف الآخر
         if (!c.native && !RB()) audioRoutes().then(function (rt) {   // C177: مع التطبيق الأصليّ التوجيه له وحده — تبديل الميكروفون كان يُرجع الوضع «عاديّاً» في بعض أندرويد   // C15: المكالمة الصوتيّة تبدأ على سمّاعة الأذن كالهاتف، والفيديو على المكبّر
@@ -1159,14 +1238,25 @@
       if (!c.connectedAt) { if (s === "failed") finish(c, "failed"); return; }
       setState(c, "reconnecting");
       // المتّصل يعيد التفاوض (ICE restart) — يفيد عند تبدّل الشبكة (واي فاي ↔ بيانات)
+      if (c.role === "callee" && !c.timers.rq) c.timers.rq = setTimeout(function () { delete c.timers.rq; if (!c.done && c.state === "reconnecting" && c.ref) c.ref.update({ rq: TS() }).catch(function () {}); }, 4000);   // C291: المستقبِل يطلب إعادة الربط (قد لا يرى المتّصل الانقطاع)
       if (c.role === "caller" && (s === "failed" || !c.timers.restart)) { clearTimeout(c.timers.restart); c.timers.restart = setTimeout(function () { iceRestart(c); }, s === "failed" ? 0 : 3000); }   // C229: «انقطع» ثمّ «فشل» كانا يطلقان إعادتين متتاليتين ⇒ عرضان يتسابقان عند الطرف الآخر فلا يُعاد الاتّصال
       if (!c.timers.lost) c.timers.lost = setTimeout(function () { finish(c, "lost"); }, LOST_MS);
     }
   }
-  function iceRestart(c) {
+  // C291: بعد كلّ محاولة: وصل الردّ ولم يعد الاتّصال ⇒ محاولةٌ جديدة؛ لم يصل الردّ بعد ⇒ ننتظره حتّى 12 ث (إشاراتٌ بطيئة) قبل أن نستبدله
+  function reRetry(c) {
+    c.timers.restart = setTimeout(function () {
+      if (c.done || c.state === "connected") { delete c.timers.restart; return; }
+      if (c.reSeen !== c.reN && Date.now() - c.reAt < 12000) { reRetry(c); return; }
+      iceRestart(c);
+    }, 4000);
+  }
+  function iceRestart(c, force) {
     delete c.timers.restart;
-    if (c.done || !c.pc || c.role !== "caller" || c.state === "connected") return;
+    if (c.done || !c.pc || c.role !== "caller" || (c.state === "connected" && !force)) return;
     var n = ++c.reN;
+    c.reAt = Date.now(); clearTimeout(c.timers.restart); reRetry(c);   // C291: محاولاتٌ متكرّرة حتّى «انقطع الاتّصال» (كانت محاولةً واحدة)
+    LOG.info("restart", { n: n });
     c.pc.createOffer({ iceRestart: true }).then(function (o) { return c.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); })
       .then(function (o) { return c.ref.update({ reoffer: { type: o.type, sdp: o.sdp, n: n } }); })
       .catch(function (e) { LOG.warn("restart", { err: e && e.message }); });
@@ -1183,7 +1273,7 @@
   function vInPlace(c) {
     if (c.vin || c.done || !c.pc) return;
     c.vin = true; c.vreqOut = 0; clearTimeout(c.timers.vreq);
-    c.type = "video"; c.camOff = false;
+    c.type = "video"; c.camOff = false; if (c.vt == null) c.vt = 1;   // C291
     c.vcamP = navigator.mediaDevices.getUserMedia({ video: VCAM, audio: false }).then(function (st) {
       var vt = st.getVideoTracks()[0];
       if (c.done) { try { vt.stop(); } catch (e) {} return null; }
@@ -1201,7 +1291,7 @@
         .then(function (o) { return c.ref.update({ reoffer: { type: o.type, sdp: o.sdp, n: n, v: 1 } }); });
     }).then(function () { capVideo(c); }).catch(function (e) { LOG.warn("vin.offer", { err: e && e.message }); });
     if (RB()) nativeRoute(c, "spk", true); else if (c.routes) setRoute(c, "spk", true);   // C230: تلقائيّ
-    wakeOn(); earOff(); paint(c);
+    wakeOn(); earOff(); paint(c); camFgs(c);   // C291
     toast(L("صارت مكالمة فيديو 📹", "Switched to video 📹"));
   }
   function askVideo(c) {
@@ -1321,7 +1411,9 @@
       c.answeringSeen = true; clearTimeout(c.timers.ring); stopTone(); setState(c, "connecting");
       c.timers.ring = setTimeout(function () { if (!c.accepted) finish(c, "noanswer"); }, ANSWERING_MS);
     }
-    holdBits(c, v);
+    holdBits(c, v); camBits(c, v);   // C291
+    if (c.rqSeen === undefined) c.rqSeen = v.rq || 0;
+    if (v.rq && v.rq !== c.rqSeen) { c.rqSeen = v.rq; if (c.connectedAt && !c.timers.restart) { LOG.info("restart.asked", {}); iceRestart(c, true); } }   // C291: المستقبِل لا يصله شيء
     if (v.acc && !c.accepted) {
       c.accepted = true; c.accAt = c.accAt || Date.now(); clearTimeout(c.timers.ring); stopTone();
       setState(c, "connecting");
@@ -1396,7 +1488,7 @@
     if (c.done) return;
     if (!v) { finish(c, c.connectedAt ? "remote" : "missed", { remote: true }); return; }
     if (videoBits(c, v) || c.done) return;
-    holdBits(c, v);   // C229
+    holdBits(c, v); camBits(c, v);   // C229 · C291
     if (v.acc && v.acc !== devId) { c.silent = true; finish(c, "elsewhere", { remote: true }); return; }   // ردّ جهازٌ آخر لي
     if (v.up && !c.upSeen && c.connectedAt) { c.upSeen = true; c.silent = true; finish(c, "upgraded", { remote: true }); groupJoinDirect(v.up, c.type, null, c.upgrading ? "starter" : "joiner"); return; }
     if (v.reoffer && v.reoffer.n > c.reSeen && c.pc && c.remoteSet) {
@@ -1584,7 +1676,7 @@
   function toggleCam() {
     var c = cur; if (!c || !c.local) return;
     c.camOff = !c.camOff; c.local.getVideoTracks().forEach(function (t) { t.enabled = !c.camOff; });
-    attachLocal(c); paint(c);
+    attachLocal(c); paint(c); camMark(c);   // C291
   }
   function switchCam() {
     var c = cur; if (!c || !c.local || !c.pc || c.switching) return;
@@ -1636,6 +1728,7 @@
       rtt: qaStat(S0.rtt), loss: qaStat(S0.loss), jb: qaStat(S0.jb), jit: qaStat(T0.jit), fps: qaStat(T0.fps), h: qaStat(T0.h),   // C179
       lct: c.lct || "", rct: c.rct || "", fam: c.fam || "", nat: natTel().nat, nsx: natTel().nsx, v6: natTel().v6,   // C215
       v6l: c.v6l || 0, v6r: c.v6r || 0, pw: c.pw || 0,   // C217 · C218
+      vb: c.darkS || 0, ch: c.camHeals || 0, pco: c.peerCamOff ? 1 : 0,   // C291: ثوانٍ بصورةٍ سوداء · مرّات إعادة فتح كاميرتي · كاميرا الطرف الآخر متوقّفة عند الانتهاء
       rsel: c.rsel || "", psel: c.psel || "", rms: c.rms == null ? null : c.rms, pms: c.pms == null ? null : c.pms });   // C228
   }
   // C216: سجلّ المكالمة لا يضيع. كان يُرسل مرّةً واحدة ويُهمل الخطأ — فإن فشل الطلب (شبكةٌ مزدحمة، التطبيق في الخلفيّة، انتهاء المهلة)

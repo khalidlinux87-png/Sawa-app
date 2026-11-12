@@ -2850,3 +2850,27 @@ Follow-up to C289, which converted 20 of 31.
 **Export check against main:** SawaChat 170 · SawaRTC 55 · SawaSync 55, identical.
 **Tests:** `node --check`; OK-only sheet shows one button and returns true. Not tested here: the family-sync flows and SMS on a real phone.
 **Upload:** sawa-chat.js + sawa-sync.js ← sw.js (v473) last.
+
+## 📹 C291 — Video calls: no more black screen, camera comes back, steadier reconnect · sawa-rtc (c291) · sw v474 · Android c279
+Khalid: Android ⇒ iPhone video call, the iPhone side shows a black screen on Android (screenshot: connected via relay, 93 ms, remote video shown but black, own preview fine). Also video calls drop.
+
+- **Causes found (code reading, `sawa-rtc.js`):**
+  1. The receiver showed the remote video as soon as its track was "unmuted". A paused camera (iPhone answered from the lock screen / CallKit, so the app was in the background; Android app in the background) keeps the track alive and sends **black frames** ⇒ full black screen.
+  2. Coming back to the app only reopened a camera that had **ended** (`readyState === "ended"`), never one that was **paused** (`muted`) — so it stayed black for the rest of the call. `resumeMedia` (which handles muted) only ran after another phone call.
+  3. Camera off (📷) only disabled the track locally; nothing told the other side ⇒ black frames shown full screen instead of the photo.
+  4. Earpiece "ear mode" (C28/C82) also armed in video calls ⇒ black screen after 5 s (browser) or proximity screen-off (Android app).
+  5. Android `CallService` was microphone-only ⇒ Android 11+ cuts the camera when Sawa goes to the background.
+  6. Drops: on disconnect the caller tried **one** ICE restart; the next try only came with "failed" (~30 s) while the call ends after 20 s (`LOST_MS`). The callee never asked for a restart. Video also started at the top tier (640×480 · 700 k) on weak mobile networks.
+- **Fixes (sawa-rtc):**
+  - `cam_caller` / `cam_callee` in `calls/{id}` (1 on · 0 off/paused), written on change by `camMark()` from the camera button, track mute/unmute/ended events, visibility and the 3 s stats tick. The other side (`camBits`) shows the profile photo + "Their camera is off" instead of black.
+  - Black-frame guard `vTick()` every second: a 16×12 sample of the shown frame; fully black 3 s, or no frames decoded for 6 s (`framesDecoded`), or no real frame yet ⇒ photo + "No picture right now…". The video element stays running (opacity 0) so the picture returns as soon as real frames arrive.
+  - `camHeal()`: camera paused or ended while the app is in front ⇒ reopen it (same facing) and `replaceTrack`, no renegotiation. Runs 1.5 s after returning to the app, on the track's `ended` event, and when the camera stays paused for two stats ticks. Up to 6 tries per return.
+  - Ear mode never in video calls (browser black overlay and native proximity).
+  - Reconnect: the caller keeps retrying ICE restart (`reRetry`): new attempt 4 s after an answer arrived without reconnecting; a slow answer is awaited up to 12 s before being replaced. The callee writes `rq` after 4 s of "reconnecting" ⇒ the caller restarts even if it still thinks it's connected. The pending retry timer is cleared on reconnect.
+  - Video starts at tier 1 (480×360 · 350 k) and moves up after 12 s of good network (also for audio ⇒ video in place).
+  - Admin line in video: `📹 fps · height` of the incoming video, ⬛ = black detected, 🚫 = their camera off. Call log (telemetry): `vb` seconds of black, `ch` camera reopenings, `pco` peer camera off at the end.
+- **Android c279:** `CallService` adds `FOREGROUND_SERVICE_TYPE_CAMERA` during video calls (new bridge `callVideo(true)`, called on connect and on audio ⇒ video), with `FOREGROUND_SERVICE_CAMERA` in the manifest and `microphone|camera` on the service. Android 14 refuses the camera type when started from the background (answer from the lock screen) ⇒ falls back to microphone only and asks again in `onResume`. ⚠️ Google Play: the camera foreground-service type must be declared in Play Console (App content ⇒ Foreground service permissions ⇒ "Video calls"), like the microphone one.
+- **Not fixed here:** if the iPhone's camera cannot open at all when answering from the lock screen, the call continues with audio from the iPhone (the photo shows on Android, no longer black); adding the camera later needs a renegotiation. iOS app code is unchanged.
+- **Tests:** two Chromium pages with fake camera/mic and a shared mock RTDB (scratch harness, not in the repo): 16/16 for video — connects, video shown, starts on tier 1, camera off ⇒ photo + text, back on ⇒ video, black frames ⇒ photo, real frames ⇒ video, ended camera reopened and sent, other side sees it, no ear-mode black screen, ICE restart reconnects, callee `rq` ⇒ one restart and the call stays up — plus audio-only regression 3/3. `node --check` sawa-rtc.js / sw.js; Android: Java parse check + manifest XML (build on GitHub). **Not tested on real phones:** the iPhone background camera and Android camera service — need a real Android ⇒ iPhone video call answered from the lock screen.
+- **Export check:** SawaRTC keys unchanged (163 before/after).
+- **Upload:** sawa-rtc.js ← sw.js (v474) last · Android: `sawa-native.zip` (c279) then Build.
