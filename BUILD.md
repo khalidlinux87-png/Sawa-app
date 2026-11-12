@@ -2922,7 +2922,19 @@ First batch of the "hard-coded colours" review item: values that equal a theme t
 - **sw.js:** v478; notes updated.
 - **Upload:** app.p2.js, app.p5.js, then sw.js (v478) last.
 
-## 🌳 C296 — Family screens in dark mode · readable toasts · app.p2 · app.p3 · sw v479
+## 📎 C296 — Pay page: the client's receipt stays attached · pay.html only (no sw change)
+Khalid: receipt attachment from the invoice link still not working — "File not chosen".
+
+- **Cause (`pay.html`):** the receipt lived only in the browser's file box, and the page redraws the whole form on every error (no name yet, a server error), on the language button and on "Report another". Each redraw emptied the box, so the browser showed "No file chosen" and the report went without the receipt. Phones that reload the tab after the camera or gallery (common on low-memory Android) lost the whole form.
+- **Fix:**
+  - The receipt is prepared as soon as it is picked (photo shrunk, PDF checked) and held by the page. The form shows "✓ Attached: name" with **Change** and **Remove**; the browser's own "No file chosen" box is hidden. Send waits while the receipt is being prepared.
+  - The form is a draft in this tab (`sessionStorage sawa_pay_draft_<token>`): fields, full/part choice, the receipt and the report key. It survives redraws and a tab reload, and is cleared once the report is sent. The same report key after a reload means a retry is never booked twice.
+  - A wrong receipt is reported when picked; the message now says "photo or PDF" (it said images only).
+- **Not changed:** the Worker, the 600 KB limit, the app.
+- **Tests:** `ui-check.mjs` ✓ with new steps: pick a PDF, send without a name ⇒ error and the receipt still attached; reload the tab ⇒ receipt, part amount and reference back; send ⇒ "Report another" starts without the old receipt; a photo then attaches and sends. The new steps fail on the old page.
+- **Upload:** `pay.html` (47,897) only. `sw.js` does not serve the pay page, so no new version is needed.
+
+## 🌳 C297 — Family screens in dark mode · readable toasts · app.p2 · app.p3 · sw v479
 Second colour batch, by screen: the family screens (صلة الرحم, family, person, tree), rendered with an 8-person sample family in light and dark.
 - **Finding:** the family screens already follow dark mode. The search boxes keep dark text on purpose: they sit on a fixed near-white box in both modes.
 - **Toasts (all screens):** in dark mode the success and error colours are light (#5CD692, #E5695C), so white text was 1.8:1 and 3.2:1. Text and icon are now dark there (10.4:1 and 5.9:1); light mode keeps white.
