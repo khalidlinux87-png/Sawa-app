@@ -50,6 +50,13 @@
   .primary[disabled]{opacity:.5;cursor:default}
   .err{color:var(--red);font-size:14px;margin:0}
   .hint{font-weight:400;font-size:12px;color:var(--muted)}
+  /* C294: the receipt is held by the page (a redraw or a tab reload no longer empties it); the browser's own file box is hidden */
+  .vh{position:absolute!important;width:1px!important;height:1px!important;min-height:0!important;padding:0!important;margin:0!important;opacity:0;overflow:hidden;pointer-events:none}
+  .pick{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px}
+  .pick label.copy{position:relative;display:inline-flex;align-items:center;color:var(--teal);font-size:14px;min-height:44px;cursor:pointer}
+  .pick .copy{min-height:44px}
+  .pick label.copy:focus-within{outline:3px solid var(--teal);outline-offset:2px}
+  .fname{flex:1 1 100%;min-width:0;color:var(--green);font-weight:700;font-size:14px;overflow-wrap:anywhere}
   /* C287: full / partial choice, the pay-state chip */
   fieldset.pt{border:0;margin:14px 0 0;padding:0}fieldset.pt legend{font-size:13px;font-weight:700;color:var(--muted);padding:0;margin-bottom:6px}
   .opt{display:flex;align-items:center;gap:10px;min-height:48px;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;margin-bottom:8px;color:var(--ink);font-size:15px;font-weight:700;cursor:pointer}
@@ -79,7 +86,22 @@
   var API = "https://sawa-deploy-test.khalidlinux87.workers.dev/pfm/pay";
   var TOKEN = (location.pathname.split("/pay/")[1] || "").replace(/\/+$/, "");
   var app = document.getElementById("app");
-  var state = { v: null, lang: null, sending: false, err: "", first: true };
+  var state = { v: null, lang: null, sending: false, err: "", first: true, proof: null, proofBusy: false };
+  // C294: the form is a draft kept in this tab (sessionStorage): every redraw (an error, the language button) used to
+  // empty the receipt box, and a phone that reloads the tab after the camera or gallery lost everything.
+  var DKEY = "sawa_pay_draft_" + ((location.pathname.split("/pay/")[1] || "").replace(/\/+$/, ""));
+  var draft = (function () { try { return JSON.parse(sessionStorage.getItem(DKEY) || "null"); } catch (e) { return null; } })() || {};
+  draft.f = draft.f || {};
+  if (draft.proof && draft.proof.data) state.proof = draft.proof;
+  if (draft.ptype) state.ptype = draft.ptype;
+  function saveDraft() {
+    var f = document.getElementById("claim");
+    if (f) ["name", "phone", "amount", "reference", "date"].forEach(function (n) { if (f[n] && !f[n].readOnly) draft.f[n] = f[n].value; });
+    draft.ptype = state.ptype || null; draft.proof = state.proof; draft.idem = idem;
+    try { sessionStorage.setItem(DKEY, JSON.stringify(draft)); }
+    catch (e) { try { sessionStorage.setItem(DKEY, JSON.stringify({ f: draft.f, ptype: draft.ptype })); } catch (x) {} }   // too big to keep: the fields at least
+  }
+  function clearDraft() { draft = { f: {} }; state.proof = null; try { sessionStorage.removeItem(DKEY); } catch (e) {} }
   var STRINGS = {
     ar: { owe: "مطلوب منك ", from: "فاتورة {n} من {i}", due: "، تستحقّ في {d}.", overdue: "، كان استحقاقها في {d}.", paidAll: "دُفعت هذه الفاتورة كاملةً.", thanks: "شكراً لك.",
       cancelled: "أُلغيت هذه الفاتورة.", noLink: "هذا الرابط غير صحيح أو انتهى.", tryLater: "تعذّر التحميل. تحقّق من الاتصال وأعد المحاولة.", retry: "إعادة المحاولة",
@@ -87,13 +109,13 @@
       reference: "اكتب {n} في خانة البيان أو الملاحظة عند التحويل.", noAccounts: "لم يضف المُصدِر حسابات دفع لهذه الفاتورة. تواصل معه مباشرة.",
       details: "تفاصيل الفاتورة", total: "الإجماليّ", paid: "المدفوع", view: "عرض الفاتورة كاملةً أو طباعتها", print: "طباعة أو PDF", close: "إغلاق",
       claimH: "دفعتَ؟ أبلغ {i}", name: "اسمك", phoneOpt: "هاتفك (اختياريّ)", amount: "المبلغ الذي حوّلته", account: "إلى أيّ حساب", refOpt: "رقم العمليّة أو المرجع (اختياريّ)",
-      date: "تاريخ التحويل", proof: "إيصال الدفع — صورة أو PDF (اختياريّ)", proofHint: "الصور تُصغَّر على جهازك، وملفّ PDF حتّى 600 كيلوبايت", send: "أبلغ عن الدفع", sending: "جارٍ الإرسال…",
+      date: "تاريخ التحويل", proof: "إيصال الدفع — صورة أو PDF (اختياريّ)", pick: "اختر صورة أو ملفّ PDF", change: "تغيير", remove: "إزالة", preparing: "جارٍ تجهيز الإيصال…", attached: "مُرفق: ", proofHint: "الصور تُصغَّر على جهازك، وملفّ PDF حتّى 600 كيلوبايت", send: "أبلغ عن الدفع", sending: "جارٍ الإرسال…",
       payType: "ماذا دفعت؟", full: "المبلغ كاملاً", fullHint: "كلّ المتبقّي: {a}", part: "دفعة جزئيّة", partHint: "جزء من المبلغ، والباقي لاحقاً", partAmt: "المبلغ الذي دفعته الآن",
       stPartial: "مدفوعة جزئيّاً", stPending: "مدفوعة — بانتظار تحقّق {i}", pendingAll: "أبلغتَ عن دفع المبلغ كاملاً. ينتظر {i} وصوله إلى حسابه ليؤكّده.",
       another: "الإبلاغ عن دفعة أخرى", pdf: "تنزيل PDF", pdfBusy: "جارٍ التجهيز…", pdfFail: "تعذّر تجهيز الملفّ. استعمل «طباعة» واختر «حفظ PDF».",
       sent: "وصل بلاغك. سيتحقّق {i} من حسابه ويؤكّد الدفعة.", pending: "بلاغات دفعٍ بانتظار تأكيد المُصدِر: {a}", fixed: "المبلغ كاملاً (لا تُقبل دفعات جزئيّة)",
       errs: { overpay: "المبلغ أكبر من المتبقّي بعد البلاغات السابقة.", partial_not_allowed: "هذه الفاتورة تُدفع كاملةً دفعةً واحدة.", claim_pending: "هناك بلاغاتٌ سابقة لم يُردّ عليها بعد. انتظر رداً من المُصدِر.",
-        rate_limited: "محاولاتٌ كثيرة. انتظر قليلاً ثمّ أعد المحاولة.", bad_payer: "اكتب اسمك.", bad_amount: "اكتب المبلغ.", too_precise: "عدد الخانات العشريّة أكثر من المسموح.", bad_proof: "الصورة يجب أن تكون JPEG أو PNG أو WebP.",
+        rate_limited: "محاولاتٌ كثيرة. انتظر قليلاً ثمّ أعد المحاولة.", bad_payer: "اكتب اسمك.", bad_amount: "اكتب المبلغ.", too_precise: "عدد الخانات العشريّة أكثر من المسموح.", bad_proof: "تعذّر قراءة الإيصال. اختر صورة (JPEG أو PNG أو WebP) أو ملفّ PDF.",
         not_payable: "لم تعد هذه الفاتورة تقبل الدفع.", bad_account: "اختر الحساب الذي حوّلت إليه.",
         partial_is_full: "هذا هو المبلغ كاملاً — اختر «المبلغ كاملاً».", bad_pay_type: "اختر: المبلغ كاملاً أو دفعة جزئيّة.", proof_big: "ملفّ PDF أكبر من 600 كيلوبايت. أرسل صورة للإيصال بدلاً منه.", proof_type: "الإيصال صورة أو ملفّ PDF فقط.", server_busy: "الخادم مشغول الآن. انتظر دقيقة ثم أعد المحاولة." },
       footer: "فواتير عبر سوا.", privacy: "الخصوصيّة", lang: "English" },
@@ -103,13 +125,13 @@
       reference: "Put {n} in the transfer's reference or note.", noAccounts: "The issuer added no payment accounts to this invoice. Contact them directly.",
       details: "Invoice details", total: "Total", paid: "Paid", view: "View or print the full invoice", print: "Print or PDF", close: "Close",
       claimH: "Paid? Let {i} know", name: "Your name", phoneOpt: "Your phone (optional)", amount: "Amount you sent", account: "To which account", refOpt: "Transaction number or reference (optional)",
-      date: "Date of the transfer", proof: "Payment receipt — photo or PDF (optional)", proofHint: "Photos are shrunk on your device; PDFs up to 600 KB", send: "Report payment", sending: "Sending…",
+      date: "Date of the transfer", proof: "Payment receipt — photo or PDF (optional)", pick: "Choose a photo or PDF", change: "Change", remove: "Remove", preparing: "Preparing the receipt…", attached: "Attached: ", proofHint: "Photos are shrunk on your device; PDFs up to 600 KB", send: "Report payment", sending: "Sending…",
       payType: "What did you pay?", full: "The full amount", fullHint: "Everything left: {a}", part: "A part payment", partHint: "Part of the amount, the rest later", partAmt: "Amount you paid now",
       stPartial: "Partially paid", stPending: "Paid — waiting for {i} to check", pendingAll: "You reported paying in full. {i} will confirm once it reaches their account.",
       another: "Report another payment", pdf: "Download PDF", pdfBusy: "Preparing…", pdfFail: "Couldn't make the file. Use Print and choose Save as PDF.",
       sent: "Your report arrived. {i} will check their account and confirm the payment.", pending: "Payment reports waiting for the issuer: {a}", fixed: "The full amount (no part payments)",
       errs: { overpay: "That's more than is left after earlier reports.", partial_not_allowed: "This invoice is paid in one full payment.", claim_pending: "Earlier reports haven't been answered yet. Wait for the issuer.",
-        rate_limited: "Too many attempts. Wait a little and try again.", bad_payer: "Enter your name.", bad_amount: "Enter the amount.", too_precise: "Too many decimal places.", bad_proof: "The image must be JPEG, PNG or WebP.",
+        rate_limited: "Too many attempts. Wait a little and try again.", bad_payer: "Enter your name.", bad_amount: "Enter the amount.", too_precise: "Too many decimal places.", bad_proof: "Couldn't read the receipt. Choose a photo (JPEG, PNG or WebP) or a PDF.",
         not_payable: "This invoice no longer accepts payment.", bad_account: "Choose the account you sent to.",
         partial_is_full: "That's the full amount — choose “The full amount”.", bad_pay_type: "Choose: the full amount or a part payment.", proof_big: "The PDF is over 600 KB. Send a photo of the receipt instead.", proof_type: "The receipt must be a photo or a PDF.", server_busy: "The server is busy right now. Wait a minute and try again." },
       footer: "Invoices with Sawa.", privacy: "Privacy", lang: "العربيّة" }
@@ -204,9 +226,13 @@
           : '<input type="hidden" name="account" value="' + esc(v.accounts[0].id) + '">') +
         '<label>' + t.refOpt + '<input name="reference" maxlength="80" dir="auto"></label>' +
         '<label>' + t.date + '<input name="date" type="date" max="' + today + '" value="' + today + '"></label>' +
-        '<label>' + t.proof + ' <span class="hint">' + t.proofHint + '</span><input name="proof" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf"></label>' +
+        '<div><span style="font-size:13px;font-weight:700;color:var(--muted)">' + t.proof + ' <span class="hint">' + t.proofHint + '</span></span><div class="pick">' +
+          (state.proof ? '<span class="fname">✓ ' + t.attached + '<bdi>' + esc(state.proof.name || "") + "</bdi></span>" : "") +
+          '<label class="copy">' + (state.proofBusy ? t.preparing : state.proof ? t.change : t.pick) +
+            '<input class="vh" name="proof" type="file" aria-label="' + esc(t.proof) + '" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf"' + (state.proofBusy ? " disabled" : "") + '></label>' +
+          (state.proof && !state.proofBusy ? '<button class="copy" type="button" id="rmProof">' + t.remove + "</button>" : "") + "</div></div>" +
         (state.err ? '<p class="err" role="alert">' + esc(state.err) + "</p>" : "") +
-        '<button class="primary" type="submit"' + (state.sending ? " disabled" : "") + ">" + (state.sending ? t.sending : t.send) + "</button></form>");
+        '<button class="primary" type="submit"' + (state.sending || state.proofBusy ? " disabled" : "") + ">" + (state.sending ? t.sending : t.send) + "</button></form>");
     }
     h.push("<footer>" + t.footer + ' <a href="/privacy.html">' + t.privacy + "</a></footer>");
     app.innerHTML = h.join("");
@@ -221,10 +247,13 @@
         (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(function () { b.textContent = t.copied; setTimeout(function () { b.textContent = t.copy; }, 1500); }, function () {}); };
     });
     var vb = document.getElementById("viewBtn"); if (vb) vb.onclick = openInvoice;
-    var f = document.getElementById("claim"); if (f) f.onsubmit = submit;
+    var f = document.getElementById("claim");
+    if (f) { f.onsubmit = submit; restore(draft.f); f.oninput = saveDraft; f.onchange = saveDraft; }
+    var pf = f && f.proof; if (pf) pf.onchange = function (ev) { ev.stopPropagation(); pickProof(pf.files && pf.files[0]); };
+    var rm = document.getElementById("rmProof"); if (rm) rm.onclick = function () { saveDraft(); state.proof = null; state.err = ""; saveDraft(); render(); };
     var ab = document.getElementById("anotherBtn"); if (ab) ab.onclick = function () { state.another = true; idem = key(); render(); var c = document.getElementById("claim"); if (c && c.name) c.name.focus(); };
     Array.prototype.forEach.call(document.querySelectorAll('input[name="ptype"][type="radio"]'), function (r) {
-      r.onchange = function () { state.ptype = r.value; var row = document.getElementById("amtRow"); if (row) { row.hidden = r.value !== "partial"; if (!row.hidden) row.querySelector("input").focus(); } };
+      r.onchange = function () { state.ptype = r.value; saveDraft(); var row = document.getElementById("amtRow"); if (row) { row.hidden = r.value !== "partial"; if (!row.hidden) row.querySelector("input").focus(); } };
     });
   }
 
@@ -429,10 +458,19 @@
     if (!/^image\//.test(file.type || "")) return Promise.reject(new Error("proof_type"));
     return shrinkToFit(file, 0);
   }
+  function pickProof(file) {
+    if (!file) return;
+    saveDraft(); state.proofBusy = true; state.err = ""; render();
+    proofOf(file).then(function (d) {
+      state.proof = { data: d, name: String(file.name || "").slice(0, 120) || (/^data:application\/pdf/.test(d) ? "receipt.pdf" : "receipt.jpg") };
+      state.proofBusy = false; saveDraft(); render();
+    }, function (e) { var t = S(); state.proofBusy = false; state.err = t.errs[String(e && e.message || "")] || t.errs.bad_proof; render(); });
+  }
   function key() { try { return crypto.randomUUID(); } catch (e) { return "k" + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); } }
-  var idem = key();
+  var idem = draft.idem || key();   // C294: the same report after a reload keeps its key, so it is never booked twice
   function submit(ev) {
     ev.preventDefault();
+    saveDraft();
     var f = ev.target, t = S();
     var ptEl = f.querySelector('input[name="ptype"]:checked') || f.querySelector('input[name="ptype"]');
     var ptype = ptEl ? ptEl.value : "full";
@@ -440,10 +478,11 @@
       paidAt: f.date.value || null, payer: { name: f.name.value.trim(), phone: f.phone.value.trim() || null } };
     if (!p.payer.name) { state.err = t.errs.bad_payer; render(); f = document.getElementById("claim"); f.name.focus(); return; }
     if (ptype === "partial" && !(Number(String(p.amount || "").replace(/,/g, "")) > 0)) { state.err = t.errs.bad_amount; render(); f = document.getElementById("claim"); if (f.amount) f.amount.focus(); return; }
-    var file = f.proof.files && f.proof.files[0];
     var keep = { name: f.name.value, phone: f.phone.value, amount: f.amount ? f.amount.value : "", reference: f.reference.value, date: f.date.value };
-    state.sending = true; state.err = ""; render(); restore(keep);
-    (file ? proofOf(file) : Promise.resolve(null)).then(function (proof) { if (proof) { p.proof = proof; p.proofName = String(file.name || "").slice(0, 120) || null; } return api("pay.claim", p); }).then(function () {
+    saveDraft(); state.sending = true; state.err = ""; render(); restore(keep);
+    if (state.proof) { p.proof = state.proof.data; p.proofName = state.proof.name || null; }
+    api("pay.claim", p).then(function () {
+      clearDraft();
       try { localStorage.setItem(KEY, JSON.stringify({ at: Date.now() })); } catch (e) {}
       state.sending = false; state.another = false; state.ptype = null; idem = key(); return load();
     }, function (e) {
