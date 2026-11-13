@@ -2084,7 +2084,7 @@ function WalletScreen({ balance, transactions, cardNumber, walletPinForConfirm, 
     const limitNearing = spendingLimit && !limitExceeded && monthlySpent >= spendingLimit * 0.8;
     const LOW_BALANCE_THRESHOLD = 2000;
     // ── شاشات الـ view (تُعالَج قبل navTab) ──
-    if (view === "pfm") return React.createElement(AccountantScreen, { onBack: () => setView("home") });   // C263
+    if (view === "pfm") return React.createElement(AccountantScreen, { onBack: () => setView("home"), walletTx: transactions });   // C263 · wallet payments can be added as entries
     if (view === "topup") {
         const TOPUP_AMOUNTS = [5000, 10000, 20000, 50000];
         return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col" },
