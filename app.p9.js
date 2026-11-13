@@ -5,6 +5,9 @@
 const AccountantScreen = (function () {
     const h = React.createElement;
     const TEAL = "#0f766e";
+    // Teal as text/icon colour: #0f766e is only 3.2:1 on the dark card, so dark mode uses a light teal (≥ 4.5:1).
+    // Read from the root's data-theme (set by the theme provider); callers re-render on theme change via useTheme.
+    const tealInk = () => { try { return document.documentElement.getAttribute("data-theme") === "dark" ? "#5EEAD4" : TEAL; } catch (e) { return TEAL; } };
     const L = window.__L || {};
     const Repeat = L.Repeat || L.RefreshCw;   // not in the shared icon list of app.p1
     const ICONS = { cart: "ShoppingBag", home: "Home", bolt: "Zap", car: "Car", phone: "Smartphone", heart: "Heart", book: "Bookmark", users: "Users",
@@ -99,6 +102,10 @@ const AccountantScreen = (function () {
         if (!f) { try { f = new Intl.NumberFormat(locale(), Object.assign({ style: "currency", currency: cur, currencyDisplay: "narrowSymbol" }, opts && opts.compact ? { notation: "compact", maximumFractionDigits: 1 } : {})); } catch (e) { f = new Intl.NumberFormat(locale(), { style: "currency", currency: cur }); } fmtCache[k] = f; }
         return f.format((minor || 0) / Math.pow(10, expOf(cur))).replace(/[‎‏؜]/g, "");
     }
+    // Typed numbers: Arabic-Indic (٠-٩) and Persian (۰-۹) digits become 0-9 and the Arabic decimal mark (٫) a dot, so an
+    // Arabic keyboard works in every amount field and Number() can read the value (it returns NaN for ٠-٩, which kept Save disabled).
+    const numIn = (v) => String(v || "").replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6F0))
+        .replace(/٫/g, ".").replace(/[^0-9.]/g, "");   // commas (thousands) are dropped, as before
     const pct = (bp) => (bp == null ? "—" : (bp / 100).toFixed(Math.abs(bp) >= 1000 ? 0 : 1) + "%");
     const monthName = (m) => { const [y, mo] = m.split("-").map(Number); return new Intl.DateTimeFormat(locale(), { month: "long", year: "numeric", timeZone: "UTC" }).format(Date.UTC(y, mo - 1, 1)); };
     const monthShort = (m) => { const [y, mo] = m.split("-").map(Number); return new Intl.DateTimeFormat(locale(), { month: "short", timeZone: "UTC" }).format(Date.UTC(y, mo - 1, 1)); };
@@ -152,12 +159,14 @@ const AccountantScreen = (function () {
     const ofLimit = (a, b, cur) => h("span", { style: { whiteSpace: "nowrap" } }, h("bdi", null, money(a, cur)), " / ", h("bdi", null, money(b, cur)));
     function Check({ checked, onChange, children }) {
         const { colors } = useTheme();
-        return h("label", { style: { display: "flex", alignItems: "center", gap: 10, minHeight: 40, marginBottom: 8, fontSize: 13, color: colors.text, cursor: "pointer" } },
+        return h("label", { style: { display: "flex", alignItems: "center", gap: 10, minHeight: 44, marginBottom: 8, fontSize: 13, color: colors.text, cursor: "pointer" } },
             h("input", { type: "checkbox", checked: !!checked, onChange: (e) => onChange(e.target.checked), style: { width: 20, height: 20, accentColor: TEAL } }), h("span", { dir: "auto" }, children));
     }
-    function Meter({ usedBp, colors }) {
+    // label: what the meter measures, e.g. "Food: 320 of 500" — without it a screen reader hears only "meter 64".
+    function Meter({ usedBp, colors, label }) {
         const c = usedBp >= 10000 ? colors.danger : usedBp >= 8000 ? colors.warning : colors.success;
-        return h("div", { role: "meter", "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": Math.round(usedBp / 100), style: { height: 8, borderRadius: 4, backgroundColor: colors.bg, overflow: "hidden", border: "1px solid " + colors.border } },
+        const now = Math.round(usedBp / 100);
+        return h("div", { role: "meter", "aria-label": label, "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": Math.min(100, now), "aria-valuetext": now + "%", style: { height: 8, borderRadius: 4, backgroundColor: colors.bg, overflow: "hidden", border: "1px solid " + colors.border } },
             h("div", { style: { width: Math.min(100, usedBp / 100) + "%", height: "100%", backgroundColor: c, borderRadius: 4 } }));
     }
 
@@ -166,10 +175,10 @@ const AccountantScreen = (function () {
         const { colors } = useTheme();
         return h("div", { style: Object.assign({ backgroundColor: colors.card, border: "1px solid " + colors.border, borderRadius: 16, padding: 14 }, style) }, children);
     }
-    function Btn({ children, onClick, kind, disabled, style, label }) {
+    function Btn({ children, onClick, kind, disabled, style, label, describedBy }) {
         const { colors } = useTheme();
         const primary = kind !== "ghost" && kind !== "danger";
-        return h("button", { type: "button", onClick, disabled, "aria-label": label, style: Object.assign({
+        return h("button", { type: "button", onClick, disabled, "aria-label": label, "aria-describedby": describedBy, style: Object.assign({
             minHeight: 44, padding: "10px 16px", borderRadius: 12, border: primary ? 0 : "1px solid " + (kind === "danger" ? colors.danger : colors.border),
             backgroundColor: primary ? colors.primary : "transparent", color: primary ? "#fff" : kind === "danger" ? colors.danger : colors.text,
             fontWeight: 700, fontSize: 14, opacity: disabled ? 0.5 : 1, cursor: disabled ? "default" : "pointer" }, style) }, children);
@@ -180,27 +189,82 @@ const AccountantScreen = (function () {
         return h(group ? "div" : "label", group ? { role: "group", "aria-label": label, style: { display: "block", marginBottom: 12 } } : { style: { display: "block", marginBottom: 12 } },
             h("div", { style: { fontSize: 12, fontWeight: 700, color: colors.textMuted, marginBottom: 6 } }, label),
             children,
-            hint && h("div", { style: { fontSize: 11, color: colors.textMuted, marginTop: 4 } }, hint));
+            hint && h("div", { style: { fontSize: 12, color: colors.textMuted, marginTop: 4 } }, hint));
     }
     const inputStyle = (colors) => ({ width: "100%", minHeight: 44, padding: "10px 12px", borderRadius: 12, border: "1px solid " + colors.border, backgroundColor: colors.bg, color: colors.text, fontSize: 15, boxSizing: "border-box" });
-    function Seg({ options, value, onChange }) {
+    // A segmented control. tabs: it switches views (tablist/tab; idBase links each tab to its panel, see panelProps).
+    // Otherwise it's a choice (radiogroup/radio), e.g. Spending | Income. Either way: one tab stop, arrow keys move (mirrored in Arabic), Home/End.
+    function Seg({ options, value, onChange, tabs, idBase, label }) {
         const { colors } = useTheme();
-        return h("div", { role: "tablist", style: { display: "flex", gap: 4, padding: 4, borderRadius: 12, backgroundColor: colors.bg, border: "1px solid " + colors.border } },
-            options.map((o) => h("button", { key: o.value, role: "tab", "aria-selected": value === o.value, type: "button", onClick: () => onChange(o.value),
-                style: { flex: 1, minHeight: 36, borderRadius: 9, border: 0, fontWeight: 700, fontSize: 13, cursor: "pointer",
+        const ref = useRef(null);
+        const onKey = (e) => {
+            const i = options.findIndex((o) => o.value === value); let j = -1;
+            const fwd = ar() ? "ArrowLeft" : "ArrowRight", back = ar() ? "ArrowRight" : "ArrowLeft";
+            if (e.key === fwd || e.key === "ArrowDown") j = (i + 1) % options.length;
+            else if (e.key === back || e.key === "ArrowUp") j = (i - 1 + options.length) % options.length;
+            else if (e.key === "Home") j = 0; else if (e.key === "End") j = options.length - 1;
+            if (j < 0) return;
+            e.preventDefault(); onChange(options[j].value);
+            const b = ref.current && ref.current.querySelectorAll("button")[j]; if (b) b.focus();
+        };
+        return h("div", { ref, role: tabs ? "tablist" : "radiogroup", "aria-label": label, onKeyDown: onKey, style: { display: "flex", gap: 4, padding: 4, borderRadius: 12, backgroundColor: colors.bg, border: "1px solid " + colors.border } },
+            options.map((o) => h("button", Object.assign({ key: o.value, type: "button", onClick: () => onChange(o.value), tabIndex: value === o.value ? 0 : -1 },
+                tabs ? { role: "tab", "aria-selected": value === o.value, id: idBase ? idBase + "-tab-" + o.value : undefined, "aria-controls": idBase ? idBase + "-panel" : undefined }
+                    : { role: "radio", "aria-checked": value === o.value }, {
+                style: { flex: 1, minHeight: 44, borderRadius: 9, border: 0, fontWeight: 700, fontSize: 13, cursor: "pointer",
                     backgroundColor: value === o.value ? colors.card : "transparent", color: value === o.value ? (o.color || colors.text) : colors.textMuted,
-                    boxShadow: value === o.value ? "0 1px 2px rgba(0,0,0,.12)" : "none" } }, o.label)));
+                    boxShadow: value === o.value ? "0 1px 2px rgba(0,0,0,.12)" : "none" } }), o.label)));
     }
-    function Sheet({ title, onClose, children }) {
+    // An in-app "are you sure?" row. Replaces window.confirm, which the Android/iOS WebViews may block and which isn't laid out right-to-left.
+    function ConfirmRow({ text, confirmLabel, onConfirm, onCancel, danger = true }) {
         const { colors } = useTheme();
-        useEffect(() => { const k = (e) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose]);
-        return h("div", { role: "dialog", "aria-modal": true, "aria-label": title, dir: ar() ? "rtl" : "ltr", onClick: (e) => { if (e.target === e.currentTarget) onClose(); },
+        const yes = useRef(null);
+        useEffect(() => { if (yes.current) yes.current.focus(); }, []);
+        return h("div", { role: "alertdialog", "aria-label": text, style: { padding: 12, marginBottom: 12, borderRadius: 12, border: "1px solid " + (danger ? colors.danger : colors.border), backgroundColor: colors.bg } },
+            h("div", { style: { fontSize: 14, fontWeight: 700, marginBottom: 10, color: colors.text } }, text),
+            h("div", { style: { display: "flex", gap: 8 } },
+                h(Btn, { kind: "ghost", onClick: onCancel, style: { flex: 1 } }, tl("إلغاء", "Cancel")),
+                h("button", { ref: yes, type: "button", onClick: onConfirm, style: { flex: 1, minHeight: 44, borderRadius: 12, border: 0, fontWeight: 700, fontSize: 14, cursor: "pointer",
+                    backgroundColor: danger ? colors.danger : colors.primary, color: "#fff" } }, confirmLabel)));
+    }
+    // ask(text, confirmLabel, fn) shows a ConfirmRow; `node` is where it renders.
+    function useConfirm() {
+        const [q, setQ] = useState(null);
+        const node = q && h(ConfirmRow, { text: q.text, confirmLabel: q.label, onCancel: () => setQ(null), onConfirm: () => { const fn = q.fn; setQ(null); fn(); } });
+        return [(text, label, fn) => setQ({ text, label, fn }), node];
+    }
+    const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
+    // dirty: the form has unsaved input — closing by backdrop, Escape or ✕ asks first instead of dropping it.
+    function Sheet({ title, onClose, children, dirty }) {
+        const { colors } = useTheme();
+        const panel = useRef(null);
+        const [asking, setAsking] = useState(false);
+        const tryClose = () => { if (dirty) setAsking(true); else onClose(); };
+        const closeRef = useRef(tryClose); closeRef.current = tryClose;
+        useEffect(() => {
+            const prev = document.activeElement;
+            // focus moves into the sheet (unless a field took it with autoFocus) and returns where it was on close
+            const p = panel.current; if (p && !p.contains(document.activeElement)) { const f = p.querySelector(FOCUSABLE); (f || p).focus(); }
+            const k = (e) => {
+                if (e.key === "Escape") { e.stopPropagation(); closeRef.current(); return; }
+                if (e.key !== "Tab" || !panel.current) return;
+                const els = Array.from(panel.current.querySelectorAll(FOCUSABLE)).filter((el) => el.offsetParent !== null);
+                if (!els.length) return;
+                const first = els[0], last = els[els.length - 1];
+                if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+                else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+            };
+            window.addEventListener("keydown", k);
+            return () => { window.removeEventListener("keydown", k); try { if (prev && prev.focus) prev.focus(); } catch (e) {} };
+        }, []);
+        return h("div", { role: "dialog", "aria-modal": true, "aria-label": title, dir: ar() ? "rtl" : "ltr", onClick: (e) => { if (e.target === e.currentTarget) tryClose(); },
             style: { position: "fixed", inset: 0, zIndex: 60, backgroundColor: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end", justifyContent: "center" } },
-            h("div", { style: { width: "100%", maxWidth: 560, maxHeight: "92vh", overflowY: "auto", backgroundColor: colors.card, color: colors.text,
+            h("div", { ref: panel, tabIndex: -1, style: { width: "100%", maxWidth: 560, maxHeight: "92vh", overflowY: "auto", backgroundColor: colors.card, color: colors.text, outline: "none",
                 borderRadius: "20px 20px 0 0", padding: "16px 16px calc(env(safe-area-inset-bottom,0px) + 16px)" } },
                 h("div", { style: { display: "flex", alignItems: "center", marginBottom: 12 } },
                     h("div", { style: { flex: 1, fontWeight: 800, fontSize: 17 } }, title),
-                    h("button", { type: "button", onClick: onClose, "aria-label": tl("إغلاق", "Close"), style: { width: 40, height: 40, border: 0, borderRadius: 20, backgroundColor: colors.bg, color: colors.text, cursor: "pointer" } }, h(X, { size: 18 }))),
+                    h("button", { type: "button", onClick: tryClose, "aria-label": tl("إغلاق", "Close"), style: { width: 44, height: 44, border: 0, borderRadius: 22, backgroundColor: colors.bg, color: colors.text, cursor: "pointer" } }, h(X, { size: 18 }))),
+                asking && h(ConfirmRow, { text: tl("تجاهل ما كتبته؟", "Discard what you've entered?"), confirmLabel: tl("تجاهل", "Discard"), onCancel: () => setAsking(false), onConfirm: onClose }),
                 children));
     }
 
@@ -283,7 +347,18 @@ const AccountantScreen = (function () {
                 h("h3", { style: { flex: 1, margin: 0, fontSize: T.h2, fontWeight: 800, color: colors.text } }, title), action || null),
             children);
     }
-    const linkBtn = (label, onClick) => h("button", { type: "button", onClick, style: { border: 0, background: "none", color: TEAL, fontWeight: 700, fontSize: T.small, minHeight: 40, padding: "0 4px", cursor: "pointer" } }, label);
+    // The figures behind a chart, as a list: the chart's values are otherwise reachable only by mouse or tap.
+    // rows: [{ key, label, value }] — value is a node (keep figures inside <bdi>).
+    function DataList({ rows }) {
+        const { colors } = useTheme();
+        if (!rows.length) return null;
+        return h("details", { style: { marginTop: 8, fontSize: T.small, color: colors.text } },
+            h("summary", { style: { cursor: "pointer", color: tealInk(), fontWeight: 700, minHeight: 44, display: "flex", alignItems: "center" } }, tl("عرض الأرقام", "Show the numbers")),
+            h("ul", { style: { listStyle: "none", margin: 0, padding: 0 } },
+                rows.map((r) => h("li", { key: r.key, style: { display: "flex", gap: 8, padding: "6px 0", borderTop: "1px solid " + colors.border } },
+                    h("span", { style: { flex: 1, color: colors.textMuted } }, r.label), h("span", { style: { fontWeight: 700 } }, r.value)))));
+    }
+    const linkBtn = (label, onClick) => h("button", { type: "button", onClick, style: { border: 0, background: "none", color: tealInk(), fontWeight: 700, fontSize: T.small, minHeight: 44, padding: "0 4px", cursor: "pointer" } }, label);
     function CashFlow({ days, cur, month }) {
         const { colors } = useTheme();
         const [y, m] = month.split("-").map(Number); const n = new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -293,7 +368,7 @@ const AccountantScreen = (function () {
         const [tip, setTip] = useState(null);
         const ink = colors.textMuted;   // spending is normal: ink, not red
         return h(Section, { title: tl("الداخل والخارج يوماً بيوم", "Money in and out, day by day") },
-            h("svg", { viewBox: `0 0 ${W} ${H + 16}`, width: "100%", role: "img", "aria-label": tl("الدخل والمصروف لكلّ يوم", "Income and spending per day"), style: { display: "block", direction: "ltr" } },
+            h("svg", { viewBox: `0 0 ${W} ${H + 18}`, width: "100%", role: "img", "aria-label": tl("الدخل والمصروف لكلّ يوم", "Income and spending per day"), style: { display: "block", direction: "ltr" } },
                 h("line", { x1: 0, x2: W, y1: H / 2, y2: H / 2, stroke: colors.border }),
                 Array.from({ length: n }, (_, i) => { const d = by[i + 1] || { income: 0, expense: 0 }, x = i * bw;
                     const hi = (d.income / max) * (H / 2 - 4), he = (d.expense / max) * (H / 2 - 4);
@@ -301,12 +376,15 @@ const AccountantScreen = (function () {
                         h("rect", { x: x, y: 0, width: bw, height: H, fill: "transparent" }),
                         hi > 0 && h("rect", { x: x + 1, y: H / 2 - hi, width: Math.max(bw - 2, 1), height: hi, rx: 1.5, fill: colors.success }),
                         he > 0 && h("rect", { x: x + 1, y: H / 2, width: Math.max(bw - 2, 1), height: he, rx: 1.5, fill: ink })); }),
-                [1, 10, 20, n].map((d) => h("text", { key: d, x: (d - 0.5) * bw, y: H + 12, fontSize: 9, fill: colors.textMuted, textAnchor: "middle" }, String(d)))),
+                [1, 10, 20, n].map((d) => h("text", { key: d, x: (d - 0.5) * bw, y: H + 15, fontSize: 12, fill: colors.textMuted, textAnchor: "middle" }, String(d)))),
             h("div", { style: { display: "flex", gap: 14, fontSize: 12, color: colors.textMuted, marginTop: 6, flexWrap: "wrap" } },
                 h("span", null, h("span", { style: { display: "inline-block", width: 8, height: 8, borderRadius: 2, backgroundColor: colors.success, marginInlineEnd: 6 } }), tl("داخل", "In")),
                 h("span", null, h("span", { style: { display: "inline-block", width: 8, height: 8, borderRadius: 2, backgroundColor: ink, marginInlineEnd: 6 } }), tl("خارج", "Out")),
                 tip && h("span", { dir: "auto", style: { marginInlineStart: "auto", color: colors.text, fontWeight: 600 } },
-                    `${tip}: +${money((by[tip] || {}).income || 0, cur)} / −${money((by[tip] || {}).expense || 0, cur)}`)));
+                    `${tip}: +${money((by[tip] || {}).income || 0, cur)} / −${money((by[tip] || {}).expense || 0, cur)}`)),
+            h(DataList, { rows: (days || []).filter((d) => d.income || d.expense).map((d) => ({ key: d.day,
+                label: dayLabel(month + "-" + String(d.day).padStart(2, "0")),
+                value: h("span", { style: { whiteSpace: "nowrap" } }, d.income ? h("bdi", { style: { color: colors.success } }, "+" + money(d.income, cur)) : null, d.income && d.expense ? "  " : null, d.expense ? h("bdi", null, "−" + money(d.expense, cur)) : null) })) }));
     }
     function Categories({ rows, cats, cur, onPick }) {
         const { colors } = useTheme();
@@ -330,21 +408,23 @@ const AccountantScreen = (function () {
         const max = Math.max(1, ...months.map((m) => Math.abs(m.net)));
         const W = 320, H = 110, bw = W / months.length;
         return h(Section, { title: tl("ما بقي في آخر الشهور", "What was left, month by month") },
-            h("svg", { viewBox: `0 0 ${W} ${H + 18}`, width: "100%", role: "img", "aria-label": tl("صافي كلّ شهر", "Net per month"), style: { display: "block", direction: "ltr" } },
+            h("svg", { viewBox: `0 0 ${W} ${H + 20}`, width: "100%", role: "img", "aria-label": tl("صافي كلّ شهر", "Net per month"), style: { display: "block", direction: "ltr" } },
                 h("line", { x1: 0, x2: W, y1: H / 2, y2: H / 2, stroke: colors.border }),
                 months.map((m, i) => { const v = (Math.abs(m.net) / max) * (H / 2 - 6), pos = m.net >= 0;
                     return h("g", { key: m.month },
                         h("title", null, monthName(m.month) + ": " + money(m.net, cur)),
                         v > 0 && h("rect", { x: i * bw + bw * 0.2, y: pos ? H / 2 - v : H / 2, width: bw * 0.6, height: v, rx: 3, fill: pos ? colors.success : colors.textMuted }),
-                        h("text", { x: i * bw + bw / 2, y: H + 13, fontSize: 9.5, fill: colors.textMuted, textAnchor: "middle" }, monthShort(m.month))); })));
+                        h("text", { x: i * bw + bw / 2, y: H + 15, fontSize: 12, fill: colors.textMuted, textAnchor: "middle" }, monthShort(m.month))); })),
+            h(DataList, { rows: months.map((m) => ({ key: m.month, label: monthName(m.month),
+                value: h("bdi", { style: { color: m.net >= 0 ? colors.success : colors.text, fontVariantNumeric: "tabular-nums" } }, (m.net >= 0 ? "+" : "−") + money(Math.abs(m.net), cur)) })) }));
     }
-    function Overview({ data, cats, cur, onPickCat, onAdd, alerts, suggestedCount, budgets, onDismissAlerts, onGoSuggested, onGoBudgets, onGoLedger, ruler, claimsCount, onGoInvoices }) {
+    function Overview({ data, cats, cur, onPickCat, onAdd, alerts, suggestedCount, budgets, onDismissAlerts, onGoSuggested, onGoBudgets, onGoLedger, ruler, claimsCount, onGoInvoices, walletCount, onGoWallet }) {
         const { colors } = useTheme();
         if (!data) return h(Loading);
         const f = data.focus, past = f.month < data.currentMonth;
         const top = (budgets || []).slice().sort((a, b) => b.usedBp - a.usedBp).slice(0, 3);
         const al = topAlerts(alerts || []);
-        const needs = al.length > 0 || suggestedCount > 0 || f.ratePending > 0 || claimsCount > 0;
+        const needs = al.length > 0 || suggestedCount > 0 || f.ratePending > 0 || claimsCount > 0 || walletCount > 0;
         const row = (key, text, onClick, tone) => h("button", { key, type: "button", onClick, style: { display: "flex", alignItems: "center", gap: 8, width: "100%", minHeight: 44, padding: "6px 0",
             border: 0, background: "none", color: tone || colors.text, fontSize: T.body, textAlign: "start", cursor: onClick ? "pointer" : "default" } },
             h("span", { dir: "auto", style: { flex: 1, lineHeight: 1.5, textAlign: ar() ? "right" : "left" } }, text),
@@ -355,6 +435,7 @@ const AccountantScreen = (function () {
             h("div", { style: { display: "flex", alignItems: "center" } },
                 h("h3", { style: { flex: 1, margin: 0, fontSize: T.h2, fontWeight: 800, color: colors.text } }, tl("يحتاجك", "Needs you")),
                 al.length > 0 && linkBtn(tl("إخفاء التنبيهات", "Clear alerts"), onDismissAlerts)),
+            walletCount > 0 && row("wl", tl(`${walletCount} ${walletCount === 1 ? "عمليّة" : "عمليّات"} من محفظة سوا لم تُسجَّل هنا — أضفها`, `${walletCount} Sawa Wallet ${walletCount === 1 ? "payment isn't" : "payments aren't"} recorded here — add ${walletCount === 1 ? "it" : "them"}`), onGoWallet),
             claimsCount > 0 && row("cl", tl(`${claimsCount} ${claimsCount === 1 ? "بلاغ دفع" : "بلاغات دفع"} من عملائك — تحقّق وأكّد`, `${claimsCount} payment ${claimsCount === 1 ? "report" : "reports"} from clients to check`), onGoInvoices),
             al.slice(0, 3).map((a) => row(a.id, alertLine(a, cats, cur), onGoBudgets, a.bp >= 10000 || a.spent > a.limit ? colors.danger : colors.text)),
             suggestedCount > 0 && row("sg", tl(`${suggestedCount} ${suggestedCount === 1 ? "حركة متكرّرة" : "حركات متكرّرة"} للتأكيد`, `${suggestedCount} recurring ${suggestedCount === 1 ? "entry" : "entries"} to confirm`), onGoSuggested),
@@ -368,7 +449,7 @@ const AccountantScreen = (function () {
                 top.map((b) => h("div", { key: b.categoryId, style: { marginBottom: 12 } },
                     h("div", { style: { display: "flex", fontSize: T.small, marginBottom: 6 } }, h("span", { style: { flex: 1, fontWeight: 600 } }, budgetName(b.categoryId, cats)),
                         h("span", { style: { color: b.remaining < 0 ? colors.danger : colors.textMuted } }, ofLimit(b.spent, b.limit, cur))),
-                    h(Meter, { usedBp: b.usedBp, colors })))),
+                    h(Meter, { usedBp: b.usedBp, colors, label: budgetName(b.categoryId, cats) + tl(": ", ": ") + money(b.spent, cur) + tl(" من ", " of ") + money(b.limit, cur) })))),
             h(Categories, { rows: f.byCategory, cats, cur, onPick: onPickCat }),
             h(CashFlow, { days: f.days, cur, month: f.month }),
             h(Trend, { months: data.months, cur }));
@@ -377,7 +458,7 @@ const AccountantScreen = (function () {
     function Empty({ onAdd }) {
         const { colors } = useTheme();
         return h(Card, { style: { textAlign: "center", padding: 24 } },
-            h(BarChart3, { size: 32, color: TEAL }),
+            h(BarChart3, { size: 32, color: tealInk() }),
             h("div", { style: { fontWeight: 800, marginTop: 8 } }, tl("لا حركات في هذا الشهر", "No entries this month")),
             h("p", { style: { fontSize: 13, color: colors.textMuted, margin: "6px 0 14px" } }, tl("سجّل دخلك ومصروفاتك لترى أين يذهب مالك.", "Record income and spending to see where your money goes.")),
             h(Btn, { onClick: onAdd }, tl("سجّل أوّل حركة", "Add your first entry")));
@@ -386,19 +467,29 @@ const AccountantScreen = (function () {
     // ── ledger ──
     function Ledger({ list, cats, base, filter, onClearFilter, onOpen, onAdd, onConfirm, onSkip, recurringCount, rulesCount, onRecurring, onRules, onExport, onImport, importCount }) {
         const { colors } = useTheme();
+        const [q, setQ] = useState(""), [skipId, setSkipId] = useState(null);   // search text · the suggested entry awaiting "skip?" confirmation
         if (!list) return h(Loading);
-        const items = filter ? list.items.filter((t) => t.categoryId === filter) : list.items;
-        const tools = h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+        // search this month's entries by payee, note, category or amount (same text folding as the rules: hamza, taa marbuta, diacritics)
+        const nq = normText(q);
+        const hit = (t) => !nq || normText([t.counterparty, t.note, catName(cats[t.categoryId]), money(t.amount, t.currency), String(t.amount / Math.pow(10, expOf(t.currency)))].join(" | ")).indexOf(nq) >= 0;
+        const items = (filter ? list.items.filter((t) => t.categoryId === filter) : list.items).filter(hit);
+        // auto-fit: four across on wide screens, two rows of two on phones (labels and counts never squeeze)
+        const tools = h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, marginBottom: 12 } },
             [[Repeat, tl("المتكرّرة", "Recurring"), recurringCount, onRecurring], [SlidersHorizontal, tl("القواعد", "Rules"), rulesCount, onRules], [Download, tl("تصدير", "Export"), 0, onExport], [Upload, tl("استيراد", "Import"), importCount || 0, onImport]].map(([I, label, n, fn], i) =>
-                h("button", { key: i, type: "button", onClick: fn, style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 40, borderRadius: 12,
+                h("button", { key: i, type: "button", onClick: fn, style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 44, borderRadius: 12,
                     border: "1px solid " + colors.border, backgroundColor: colors.card, color: colors.text, fontWeight: 700, fontSize: 13, cursor: "pointer" } },
-                    h(I, { size: 15, color: TEAL }), label, n > 0 && h("span", { style: { fontSize: 11, color: colors.textMuted } }, "(" + n + ")"))));
+                    h(I, { size: 15, color: tealInk() }), label, n > 0 && h("span", { style: { fontSize: 12, color: colors.textMuted } }, "(" + n + ")"))));
         if (!list.items.length) return h("div", null, tools, h(Empty, { onAdd }));
         const groups = []; items.forEach((t) => { const g = groups[groups.length - 1]; if (g && g.date === t.date) g.items.push(t); else groups.push({ date: t.date, items: [t] }); });
-        return h("div", null, tools,
+        const search = h("div", { role: "search", style: { position: "relative", marginBottom: 12 } },
+            h(Search, { size: 16, color: colors.textMuted, "aria-hidden": true, style: { position: "absolute", insetInlineStart: 12, top: 14, pointerEvents: "none" } }),
+            h("input", { type: "search", dir: "auto", value: q, onChange: (e) => setQ(e.target.value), "aria-label": tl("ابحث في حركات هذا الشهر", "Search this month's entries"),
+                placeholder: tl("ابحث بالاسم أو الملاحظة أو المبلغ", "Search by name, note or amount"), style: Object.assign(inputStyle(colors), { paddingInlineStart: 36 }) }));
+        return h("div", null, tools, search,
+            nq && !items.length && h("p", { role: "status", style: { fontSize: 14, color: colors.textMuted, textAlign: "center", margin: "20px 0" } }, tl("لا نتائج في هذا الشهر", "No matches this month")),
             filter && h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 13 } },
                 h("span", { style: { color: colors.textMuted } }, tl("الفئة:", "Category:")), h("b", null, catName(cats[filter])),
-                h("button", { type: "button", onClick: onClearFilter, style: { marginInlineStart: "auto", border: 0, background: "none", color: TEAL, fontWeight: 700, cursor: "pointer", minHeight: 36 } }, tl("عرض الكلّ", "Show all"))),
+                h("button", { type: "button", onClick: onClearFilter, style: { marginInlineStart: "auto", border: 0, background: "none", color: tealInk(), fontWeight: 700, cursor: "pointer", minHeight: 44 } }, tl("عرض الكلّ", "Show all"))),
             groups.map((g) => h("div", { key: g.date, style: { marginBottom: 12 } },
                 h("div", { style: { fontSize: 12, fontWeight: 700, color: colors.textMuted, margin: "0 4px 6px" } }, dayLabel(g.date)),
                 h(Card, { style: { padding: 0 } }, g.items.map((t, i) => {
@@ -412,16 +503,18 @@ const AccountantScreen = (function () {
                                 t.hasReceipt && h(Paperclip, { size: 11, "aria-label": tl("عليها إيصال", "Has a receipt"), style: { display: "inline-block", verticalAlign: "-1px", marginInlineEnd: 4 } }),
                                 t.counterparty ? catName(c) + (t.note ? " · " + t.note : "") : t.note || "")),
                         h("span", { style: { textAlign: "end", flexShrink: 0 } },
-                            h("div", { dir: "ltr", style: { fontWeight: 800, fontSize: 14, color: inc ? colors.success : colors.text } }, (inc ? "+" : "−") + money(t.amount, t.currency)),
-                            t.currency !== base && h("div", { dir: "ltr", style: { fontSize: 11, color: t.baseAmount == null ? colors.warning : colors.textMuted } },
+                            h("div", { dir: "ltr", style: { fontWeight: 800, fontSize: 14, fontVariantNumeric: "tabular-nums", color: inc ? colors.success : colors.text } }, (inc ? "+" : "−") + money(t.amount, t.currency)),
+                            t.currency !== base && h("div", { dir: "ltr", style: { fontSize: 12, fontVariantNumeric: "tabular-nums", color: t.baseAmount == null ? colors.warning : colors.textMuted } },
                                 t.baseAmount == null ? tl("بانتظار السعر", "rate needed") : "≈ " + money(t.baseAmount, base))));
                     if (!sug) return row;
                     // suggested by a recurring entry: not in the totals until confirmed
                     return h("div", { key: t.id, style: { borderTop: i ? "1px solid " + colors.border : 0, outline: "1.5px dashed " + TEAL, outlineOffset: -4, borderRadius: i ? 0 : 16 } }, row,
+                        skipId === t.id ? h("div", { style: { padding: "0 14px 4px" } }, h(ConfirmRow, { text: tl("تخطّي هذه الحركة؟ لن تُسجَّل.", "Skip this one? It won't be recorded."), confirmLabel: tl("تخطّي", "Skip"),
+                            onCancel: () => setSkipId(null), onConfirm: () => { setSkipId(null); onSkip(t); } })) :
                         h("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "0 14px 12px" } },
-                            h("span", { style: { flex: 1, fontSize: 12, color: TEAL, fontWeight: 700 } }, tl("مقترحة — لم تُحسب بعد", "Suggested — not counted yet")),
-                            h(Btn, { kind: "ghost", onClick: () => onSkip(t), style: { minHeight: 36, padding: "6px 12px", fontSize: 13 } }, tl("تخطّي", "Skip")),
-                            h(Btn, { onClick: () => onConfirm(t), style: { minHeight: 36, padding: "6px 14px", fontSize: 13 } }, tl("تأكيد", "Confirm"))));
+                            h("span", { style: { flex: 1, fontSize: 12, color: tealInk(), fontWeight: 700 } }, tl("مقترحة — لم تُحسب بعد", "Suggested — not counted yet")),
+                            h(Btn, { kind: "ghost", onClick: () => setSkipId(t.id), style: { minHeight: 44, padding: "6px 12px", fontSize: 13 } }, tl("تخطّي", "Skip")),
+                            h(Btn, { onClick: () => onConfirm(t), style: { minHeight: 44, padding: "6px 14px", fontSize: 13 } }, tl("تأكيد", "Confirm"))));
                 })))));
     }
 
@@ -479,42 +572,47 @@ const AccountantScreen = (function () {
                 const txId = (r && r.tx && r.tx.id) || (tx && tx.id);
                 if (photo && txId) after.push(call("pfm.tx.receipt.set", { id: txId, data: photo }));
                 else if (dropReceipt && txId) after.push(call("pfm.tx.receipt.delete", { id: txId }));
-                return Promise.all(after).then(() => onSaved(r.tx), (e) => { setErr(tl("حُفظت الحركة، لكن: ", "Entry saved, but: ") + errText(e)); setBusy(false); });
+                return Promise.all(after).then(() => onSaved((r && r.tx) || true), (e) => { setErr(tl("حُفظت الحركة، لكن: ", "Entry saved, but: ") + errText(e)); setBusy(false); });
             }, (e) => { setErr(errText(e)); setBusy(false); });
         };
-        const del = () => {
-            if (!suggested && !window.confirm(tl("حذف هذه الحركة؟", "Delete this entry?"))) return;
-            setBusy(true); call("pfm.tx.delete", { id: tx.id, rev: tx.rev }).then(() => onSaved(null), (e) => { setErr(errText(e)); setBusy(false); });
-        };
+        const [ask, confirmNode] = useConfirm();
+        const doDel = () => { setBusy(true); call("pfm.tx.delete", { id: tx.id, rev: tx.rev }).then(() => onSaved(null), (e) => { setErr(errText(e)); setBusy(false); }); };
+        const del = () => (suggested ? doDel() : ask(tl("حذف هذه الحركة؟ لا يمكن التراجع.", "Delete this entry? This can't be undone."), tl("حذف", "Delete"), doDel));
+        // unsaved input: closing the sheet asks first
+        const snap = [kind, amount, cur, rate, catId, date, note, who, !!photo, dropReceipt].join("|");
+        const snap0 = useRef(snap);
+        const dirty = !busy && snap !== snap0.current;
         const addCat = () => {
             const name = (newCat || "").trim(); if (!name) return;
             call("pfm.cat.upsert", { name, nameAr: name, kind }).then((r) => { cats[r.category.id] = r.category; setCatId(r.category.id); setNewCat(null); }, (e) => setErr(errText(e)));
         };
         const canSave = !busy && Number(amount) > 0 && catId && date;
+        // say why Save is unavailable instead of only greying it out
+        const missing = busy ? "" : !(Number(amount) > 0) ? tl("أدخل المبلغ للحفظ", "Enter an amount to save") : !catId ? tl("اختر فئة للحفظ", "Choose a category to save") : !date ? tl("اختر التاريخ", "Pick a date") : "";
         const showRemember = who.trim().length >= 2 && catId && !(autoRule && autoRule.categoryId === catId && normText(autoRule.contains) && normText(who).indexOf(normText(autoRule.contains)) >= 0);
-        return h(Sheet, { title: suggested ? tl("تأكيد حركة متكرّرة", "Confirm recurring entry") : editing ? tl("تعديل الحركة", "Edit entry") : tl("حركة جديدة", "New entry"), onClose },
-            h("div", { style: { marginBottom: 14 } }, h(Seg, { value: kind, onChange: (v) => { setKind(v); setCatId(""); }, options: [
+        return h(Sheet, { title: suggested ? tl("تأكيد حركة متكرّرة", "Confirm recurring entry") : editing ? tl("تعديل الحركة", "Edit entry") : tl("حركة جديدة", "New entry"), onClose, dirty },
+            h("div", { style: { marginBottom: 14 } }, h(Seg, { label: tl("نوع الحركة", "Entry type"), value: kind, onChange: (v) => { setKind(v); setCatId(""); }, options: [
                 { value: "expense", label: tl("مصروف", "Spending"), color: colors.danger }, { value: "income", label: tl("دخل", "Income"), color: colors.success }] })),
             h("div", { style: { display: "flex", gap: 8 } },
                 h("div", { style: { flex: 2 } }, h(Field, { label: tl("المبلغ", "Amount") },
-                    h("input", { dir: "ltr", inputMode: "decimal", autoFocus: !editing, value: amount, placeholder: "0", onChange: (e) => setAmount(e.target.value.replace(/[^0-9.٠-٩٫]/g, "")),   // no commas: the server reads "," as a thousands separator
+                    h("input", { dir: "ltr", inputMode: "decimal", autoFocus: !editing, value: amount, placeholder: "0", onChange: (e) => setAmount(numIn(e.target.value)),   // no commas: the server reads "," as a thousands separator
                         style: Object.assign(inputStyle(colors), { fontSize: 22, fontWeight: 800 }) }))),
                 h("div", { style: { flex: 1 } }, h(Field, { label: tl("العملة", "Currency") },
                     h("select", { value: cur, onChange: (e) => { setCur(e.target.value); setRate(""); }, style: inputStyle(colors), "aria-label": tl("العملة", "Currency") },
                         curs.map((c) => h("option", { key: c.code, value: c.code }, c.code)))))),
             cur !== base && h(Field, { label: tl("سعر الصرف: ", "Exchange rate: ") + "\u2066" + `1 ${cur} = ? ${base}` + "\u2069",   // LRI…PDI: the formula stays left-to-right inside Arabic
                 hint: preview || tl("اكتب السعر الذي حصلت عليه فعلاً. اتركه فارغاً لتضيفه لاحقاً", "Type the rate you actually got. Leave empty to add it later") },
-                h("input", { dir: "ltr", inputMode: "decimal", value: rate, placeholder: "0.00", onChange: (e) => setRate(e.target.value.replace(/[^0-9.]/g, "")), style: inputStyle(colors) })),
-            autoRule && catId === autoRule.categoryId && h("div", { style: { fontSize: 12, color: TEAL, fontWeight: 700, margin: "-4px 0 6px" } },
+                h("input", { dir: "ltr", inputMode: "decimal", value: rate, placeholder: "0.00", onChange: (e) => setRate(numIn(e.target.value)), style: inputStyle(colors) })),
+            autoRule && catId === autoRule.categoryId && h("div", { style: { fontSize: 12, color: tealInk(), fontWeight: 700, margin: "-4px 0 6px" } },
                 tl(`اختيرت الفئة بقاعدة «${autoRule.contains}»`, `Category picked by your rule “${autoRule.contains}”`)),
             h(Field, { label: tl("الفئة", "Category"), group: true },
                 h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
                     list.map((c) => { const I = iconOf(c.icon), on = c.id === catId;
-                        return h("button", { key: c.id, type: "button", "aria-pressed": on, onClick: () => { setCatId(c.id); setAutoRule(null); }, style: { display: "flex", alignItems: "center", gap: 6, minHeight: 38, padding: "6px 12px",
-                            borderRadius: 19, border: "1.5px solid " + (on ? c.color : colors.border), backgroundColor: on ? c.color + "1f" : "transparent", color: colors.text, fontSize: 13, fontWeight: 600, cursor: "pointer" } },
+                        return h("button", { key: c.id, type: "button", "aria-pressed": on, onClick: () => { setCatId(c.id); setAutoRule(null); }, style: { display: "flex", alignItems: "center", gap: 6, minHeight: 44, padding: "6px 12px",
+                            borderRadius: 22, border: "1.5px solid " + (on ? c.color : colors.border), backgroundColor: on ? c.color + "1f" : "transparent", color: colors.text, fontSize: 13, fontWeight: 600, cursor: "pointer" } },
                             h(I, { size: 15, color: c.color }), catName(c)); }),
                     newCat == null
-                        ? h("button", { type: "button", onClick: () => setNewCat(""), style: { minHeight: 38, padding: "6px 12px", borderRadius: 19, border: "1.5px dashed " + colors.border, background: "none", color: TEAL, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "＋ " + tl("فئة جديدة", "New category"))
+                        ? h("button", { type: "button", onClick: () => setNewCat(""), style: { minHeight: 44, padding: "6px 12px", borderRadius: 22, border: "1.5px dashed " + colors.border, background: "none", color: tealInk(), fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "＋ " + tl("فئة جديدة", "New category"))
                         : h("span", { style: { display: "flex", gap: 6, width: "100%" } },
                             h("input", { autoFocus: true, value: newCat, maxLength: 40, placeholder: tl("اسم الفئة", "Category name"), onChange: (e) => setNewCat(e.target.value), onKeyDown: (e) => { if (e.key === "Enter") addCat(); }, style: inputStyle(colors) }),
                             h(Btn, { onClick: addCat }, tl("إضافة", "Add"))))),
@@ -529,8 +627,8 @@ const AccountantScreen = (function () {
                 h("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
                     photo && h("button", { type: "button", onClick: () => setView(photo), "aria-label": tl("عرض الإيصال الجديد", "View the new receipt"), style: { padding: 0, border: "1px solid " + colors.border, borderRadius: 8, background: "none", cursor: "pointer", lineHeight: 0 } },
                         h("img", { src: photo, alt: "", style: { width: 52, height: 52, objectFit: "cover", borderRadius: 8 } })),
-                    hasReceipt && !photo && h(Btn, { kind: "ghost", onClick: showReceipt, style: { display: "inline-flex", alignItems: "center", gap: 6, minHeight: 38, padding: "6px 12px", fontSize: 13 } }, h(Paperclip, { size: 14 }), tl("عرض الإيصال", "View receipt")),
-                    h(Btn, { kind: "ghost", onClick: () => fileRef.current && fileRef.current.click(), style: { display: "inline-flex", alignItems: "center", gap: 6, minHeight: 38, padding: "6px 12px", fontSize: 13 } },
+                    hasReceipt && !photo && h(Btn, { kind: "ghost", onClick: showReceipt, style: { display: "inline-flex", alignItems: "center", gap: 6, minHeight: 44, padding: "6px 12px", fontSize: 13 } }, h(Paperclip, { size: 14 }), tl("عرض الإيصال", "View receipt")),
+                    h(Btn, { kind: "ghost", onClick: () => fileRef.current && fileRef.current.click(), style: { display: "inline-flex", alignItems: "center", gap: 6, minHeight: 44, padding: "6px 12px", fontSize: 13 } },
                         h(Camera, { size: 14 }), photo || hasReceipt ? tl("استبدال", "Replace") : tl("إضافة صورة", "Add photo")),
                     (photo || hasReceipt) && linkBtn(tl("إزالة", "Remove"), () => { setPhoto(null); if (editing && tx.hasReceipt) setDropReceipt(true); }))),
             view && h(PhotoView, { src: view, onClose: () => setView(null) }),
@@ -542,9 +640,11 @@ const AccountantScreen = (function () {
                     h("option", { value: "yearly" }, tl("سنويّاً", "Yearly")))),
             !editing && repeat !== "none" && h(Check, { checked: autoBook, onChange: setAutoBook }, tl("سجّلها تلقائيّاً دون أن تسألني", "Record it automatically, don't ask me")),
             err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13, marginBottom: 10 } }, err),
+            confirmNode,
+            missing && h("div", { id: "pfm-save-why", style: { fontSize: 13, color: colors.textMuted, marginBottom: 8, textAlign: "center" } }, missing),
             h("div", { style: { display: "flex", gap: 8 } },
                 editing && h(Btn, { kind: suggested ? "ghost" : "danger", onClick: del, disabled: busy }, suggested ? tl("تخطّي", "Skip") : tl("حذف", "Delete")),
-                h(Btn, { onClick: save, disabled: !canSave, style: { flex: 1 } }, busy ? tl("جارٍ الحفظ…", "Saving…") : suggested ? tl("تأكيد", "Confirm") : tl("حفظ", "Save"))));
+                h(Btn, { onClick: save, disabled: !canSave, describedBy: missing ? "pfm-save-why" : undefined, style: { flex: 1 } }, busy ? tl("جارٍ الحفظ…", "Saving…") : suggested ? tl("تأكيد", "Confirm") : tl("حفظ", "Save"))));
     }
 
     // ── budgets ──
@@ -552,7 +652,7 @@ const AccountantScreen = (function () {
         const { colors } = useTheme();
         if (!data) return h(Loading);
         if (!data.budgets.length) return h(Card, { style: { textAlign: "center", padding: 24 } },
-            h(Target, { size: 32, color: TEAL }),
+            h(Target, { size: 32, color: tealInk() }),
             h("div", { style: { fontWeight: 800, marginTop: 8 } }, tl("لا ميزانيّات بعد", "No budgets yet")),
             h("p", { style: { fontSize: 13, color: colors.textMuted, margin: "6px 0 14px", lineHeight: 1.6 } },
                 tl("ضع حدّاً شهريّاً لفئة أو لكلّ مصروفاتك، ونُنبّهك عند 50% و80% و100%، وإن كان إنفاقك أسرع من المتوقّع.", "Set a monthly limit for a category or all spending. We'll alert you at 50%, 80% and 100%, and if you're spending faster than planned.")),
@@ -566,7 +666,7 @@ const AccountantScreen = (function () {
                     h("div", { style: { display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 } },
                         h("b", { style: { flex: 1, fontSize: 15 } }, budgetName(b.categoryId, cats)),
                         h("span", { dir: "ltr", style: { fontSize: 13, color: colors.textMuted } }, pct(b.usedBp))),
-                    h(Meter, { usedBp: b.usedBp, colors }),
+                    h(Meter, { usedBp: b.usedBp, colors, label: budgetName(b.categoryId, cats) + tl(": ", ": ") + money(b.spent, cur) + tl(" من ", " of ") + money(b.limit, cur) }),
                     h("div", { style: { display: "flex", gap: 8, marginTop: 8, fontSize: 13 } },
                         h("span", { style: { flex: 1 } }, ofLimit(b.spent, b.limit, cur)),
                         h("span", { style: { fontWeight: 700, color: over ? colors.danger : colors.success } },
@@ -585,18 +685,21 @@ const AccountantScreen = (function () {
         const [th, setTh] = useState(editing ? budget.alertsBp : [5000, 8000, 10000]);
         const [busy, setBusy] = useState(false), [err, setErr] = useState("");
         const save = () => { setBusy(true); setErr(""); call("pfm.budget.set", { categoryId: catId, limit: limit.trim(), alertsBp: th }).then(onSaved, (e) => { setErr(errText(e)); setBusy(false); }); };
-        const del = () => { if (!window.confirm(tl("حذف هذه الميزانيّة؟", "Delete this budget?"))) return; setBusy(true); call("pfm.budget.delete", { categoryId: catId }).then(onSaved, (e) => { setErr(errText(e)); setBusy(false); }); };
-        return h(Sheet, { title: editing ? tl("تعديل الميزانيّة", "Edit budget") : tl("ميزانيّة جديدة", "New budget"), onClose },
+        const [ask, confirmNode] = useConfirm();
+        const del = () => ask(tl("حذف هذه الميزانيّة؟", "Delete this budget?"), tl("حذف", "Delete"), () => { setBusy(true); call("pfm.budget.delete", { categoryId: catId }).then(onSaved, (e) => { setErr(errText(e)); setBusy(false); }); });
+        const snap = [catId, limit, th.join(",")].join("|"), snap0 = useRef(snap);
+        return h(Sheet, { title: editing ? tl("تعديل الميزانيّة", "Edit budget") : tl("ميزانيّة جديدة", "New budget"), onClose, dirty: !busy && snap !== snap0.current },
             h(Field, { label: tl("الفئة", "Category") },
                 h("select", { value: catId, disabled: editing, onChange: (e) => setCatId(e.target.value), style: inputStyle(colors) },
                     free.map((c) => h("option", { key: c.id, value: c.id }, budgetName(c.id, cats))))),
             h(Field, { label: tl("الحدّ الشهريّ", "Monthly limit") + " (" + cur + ")" },
-                h("input", { dir: "ltr", inputMode: "decimal", value: limit, placeholder: "0", onChange: (e) => setLimit(e.target.value.replace(/[^0-9.٠-٩٫]/g, "")), style: Object.assign(inputStyle(colors), { fontSize: 20, fontWeight: 800 }) })),
+                h("input", { dir: "ltr", inputMode: "decimal", value: limit, placeholder: "0", onChange: (e) => setLimit(numIn(e.target.value)), style: Object.assign(inputStyle(colors), { fontSize: 20, fontWeight: 800 }) })),
             h(Field, { label: tl("نبّهني عند", "Alert me at"), group: true },
                 h("div", { style: { display: "flex", gap: 8 } }, [5000, 8000, 10000].map((b) => { const on = th.indexOf(b) >= 0;
                     return h("button", { key: b, type: "button", "aria-pressed": on, onClick: () => setTh(on ? th.filter((x) => x !== b) : th.concat(b).sort((a, c) => a - c)),
-                        style: { flex: 1, minHeight: 40, borderRadius: 12, border: "1.5px solid " + (on ? TEAL : colors.border), backgroundColor: on ? TEAL + "1f" : "transparent", color: colors.text, fontWeight: 700, cursor: "pointer" } }, b / 100 + "%"); }))),
+                        style: { flex: 1, minHeight: 44, borderRadius: 12, border: "1.5px solid " + (on ? TEAL : colors.border), backgroundColor: on ? TEAL + "1f" : "transparent", color: colors.text, fontWeight: 700, cursor: "pointer" } }, b / 100 + "%"); }))),
             err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13, marginBottom: 10 } }, err),
+            confirmNode,
             h("div", { style: { display: "flex", gap: 8 } },
                 editing && h(Btn, { kind: "danger", onClick: del, disabled: busy }, tl("حذف", "Delete")),
                 h(Btn, { onClick: save, disabled: busy || !(Number(limit) > 0) || !catId, style: { flex: 1 } }, busy ? tl("جارٍ الحفظ…", "Saving…") : tl("حفظ", "Save"))));
@@ -606,8 +709,11 @@ const AccountantScreen = (function () {
     function RecurringSheet({ items, cats, onClose, onChanged }) {
         const { colors } = useTheme();
         const [busy, setBusy] = useState(""), [err, setErr] = useState("");
-        const act = (id, op, payload, ask) => { if (ask && !window.confirm(ask)) return; setBusy(id); setErr(""); call(op, payload).then(() => { setBusy(""); onChanged(); }, (e) => { setErr(errText(e)); setBusy(""); }); };
+        const [askConfirm, confirmNode] = useConfirm();
+        const run = (id, op, payload) => { setBusy(id); setErr(""); call(op, payload).then(() => { setBusy(""); onChanged(); }, (e) => { setErr(errText(e)); setBusy(""); }); };
+        const act = (id, op, payload, ask) => (ask ? askConfirm(ask, tl("حذف", "Delete"), () => run(id, op, payload)) : run(id, op, payload));
         return h(Sheet, { title: tl("الحركات المتكرّرة", "Recurring entries"), onClose },
+            confirmNode,
             !items.length && h("p", { style: { fontSize: 13, color: colors.textMuted, lineHeight: 1.6 } },
                 tl("لا شيء بعد. عند إضافة حركة اختر «التكرار» (الراتب، الإيجار، الاشتراكات…)، فتظهر القادمة مقترحةً في موعدها.", "Nothing yet. When adding an entry, choose “Repeat” (salary, rent, subscriptions…) and the next one appears as a suggestion on its date.")),
             items.map((r) => { const c = cats[r.categoryId], I = iconOf(c && c.icon);
@@ -620,8 +726,8 @@ const AccountantScreen = (function () {
                         h("div", { dir: "ltr", style: { fontWeight: 800, color: r.kind === "income" ? colors.success : colors.text } }, (r.kind === "income" ? "+" : "−") + money(r.amount, r.currency))),
                     h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 10 } },
                         h("span", { style: { flex: 1, fontSize: 12, color: colors.textMuted } }, r.paused ? tl("متوقّفة", "Paused") : tl("القادمة: ", "Next: ") + dayLabel(r.nextDate)),
-                        h(Btn, { kind: "ghost", disabled: busy === r.id, onClick: () => act(r.id, "pfm.recurring.pause", { id: r.id, paused: !r.paused }), style: { minHeight: 36, padding: "6px 12px", fontSize: 13 } }, r.paused ? tl("استئناف", "Resume") : tl("إيقاف", "Pause")),
-                        h(Btn, { kind: "danger", disabled: busy === r.id, onClick: () => act(r.id, "pfm.recurring.delete", { id: r.id }, tl("حذف هذا التكرار؟ الحركات المسجّلة تبقى.", "Delete this repeat? Entries already recorded stay.")), style: { minHeight: 36, padding: "6px 12px", fontSize: 13 } }, tl("حذف", "Delete")))); }),
+                        h(Btn, { kind: "ghost", disabled: busy === r.id, onClick: () => act(r.id, "pfm.recurring.pause", { id: r.id, paused: !r.paused }), style: { minHeight: 44, padding: "6px 12px", fontSize: 13 } }, r.paused ? tl("استئناف", "Resume") : tl("إيقاف", "Pause")),
+                        h(Btn, { kind: "danger", disabled: busy === r.id, onClick: () => act(r.id, "pfm.recurring.delete", { id: r.id }, tl("حذف هذا التكرار؟ الحركات المسجّلة تبقى.", "Delete this repeat? Entries already recorded stay.")), style: { minHeight: 44, padding: "6px 12px", fontSize: 13 } }, tl("حذف", "Delete")))); }),
             err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13 } }, err));
     }
     function RulesSheet({ rules, cats, onClose, onChanged }) {
@@ -633,7 +739,7 @@ const AccountantScreen = (function () {
             !rules.length && h("p", { style: { fontSize: 13, color: colors.textMuted } }, tl("لا قواعد بعد.", "No rules yet.")),
             rules.map((r) => h(Card, { key: r.id, style: { marginBottom: 8, padding: 12, display: "flex", alignItems: "center", gap: 10 } },
                 h("span", { dir: "auto", style: { flex: 1, fontSize: 14 } }, h("b", null, "«" + r.contains + "»"), "  →  ", catName(cats[r.categoryId])),
-                h(Btn, { kind: "danger", onClick: () => call("pfm.rule.delete", { id: r.id }).then(onChanged, (e) => setErr(errText(e))), style: { minHeight: 36, padding: "6px 12px", fontSize: 13 } }, tl("حذف", "Delete")))),
+                h(Btn, { kind: "danger", onClick: () => call("pfm.rule.delete", { id: r.id }).then(onChanged, (e) => setErr(errText(e))), style: { minHeight: 44, padding: "6px 12px", fontSize: 13 } }, tl("حذف", "Delete")))),
             err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13 } }, err));
     }
 
@@ -759,7 +865,7 @@ const AccountantScreen = (function () {
                         items.length > 1 && h("button", { type: "button", "aria-label": tl("حذف البند", "Remove line"), onClick: () => setItems(items.filter((_, j) => j !== i)), style: { width: 40, height: 40, border: 0, background: "none", color: colors.textMuted, cursor: "pointer", flex: "none" } }, h(X, { size: 18 }))),
                     it.tax.mode === "custom" && h("input", { dir: "ltr", inputMode: "decimal", value: it.tax.rate, placeholder: tl("النسبة %", "Rate %"), "aria-label": tl("نسبة الضريبة", "Tax rate"), onChange: (e) => setItem(i, { tax: { mode: "custom", rate: e.target.value.replace(/[^0-9.]/g, "") } }), style: Object.assign({}, small, { marginTop: 6, width: 120 }) }))),
                 h("button", { type: "button", onClick: () => setItems(items.concat({ k: newKey(), d: "", q: "1", p: "", tax: B.taxRegistered && B.defaultTaxRateId ? { mode: "saved", id: B.defaultTaxRateId } : { mode: "none" } })),
-                    style: { minHeight: 40, border: 0, background: "none", color: TEAL, fontWeight: 700, cursor: "pointer", padding: 0 } }, "＋ " + tl("بند آخر", "Another line"))),
+                    style: { minHeight: 40, border: 0, background: "none", color: tealInk(), fontWeight: 700, cursor: "pointer", padding: 0 } }, "＋ " + tl("بند آخر", "Another line"))),
             !B.taxRegistered && h("p", { style: { fontSize: T.tiny, color: colors.textMuted, margin: "-6px 0 12px" } }, tl("لا ضريبة على فواتيرك. إن كنت تفرضها، فعّلها في بيانات النشاط.", "Your invoices carry no tax. If you charge tax, turn it on in business details.")),
             h(Field, { label: tl("خصمٌ على الفاتورة كلّها (%)", "Discount on the whole invoice (%)") }, h("input", { dir: "ltr", inputMode: "decimal", value: disc, placeholder: "0", onChange: (e) => setDisc(e.target.value.replace(/[^0-9.]/g, "")), style: inputStyle(colors) })),
             h("div", { style: { display: "flex", gap: 8 } },
@@ -1121,7 +1227,7 @@ const AccountantScreen = (function () {
             h(Field, { label: tl("رمز سوا", "Sawa ID"), hint: tl("يظهر على الفاتورة ليصل إليك العميل في سوا", "Shown on the invoice so the client can reach you on Sawa") },
                 h("div", { style: { display: "flex", gap: 8 } },
                     h("input", { dir: "ltr", inputMode: "numeric", value: form.sawaId || "", maxLength: 14, placeholder: "136-860-8541", "aria-label": tl("رمز سوا", "Sawa ID"), onChange: (e) => set("sawaId", e.target.value.replace(/[^\d-]/g, "")), style: Object.assign(inputStyle(colors), { flex: 1, textAlign: ar() ? "right" : "left" }) }),
-                    myCode && myCode !== String(form.sawaId || "").replace(/\D/g, "") && h("button", { type: "button", onClick: () => set("sawaId", myCode), style: { minHeight: 40, padding: "0 12px", borderRadius: 12, border: "1px solid " + colors.border, background: "none", color: TEAL, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" } }, tl("رمزي", "My code")))),
+                    myCode && myCode !== String(form.sawaId || "").replace(/\D/g, "") && h("button", { type: "button", onClick: () => set("sawaId", myCode), style: { minHeight: 40, padding: "0 12px", borderRadius: 12, border: "1px solid " + colors.border, background: "none", color: tealInk(), fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" } }, tl("رمزي", "My code")))),
             h(Check, { checked: form.taxRegistered, onChange: (v) => set("taxRegistered", v) }, tl("أفرض ضريبة على فواتيري", "I charge tax on my invoices")),
             form.taxRegistered && h("div", { style: { paddingInlineStart: 30, marginBottom: 8 } },
                 inp("taxId", tl("رقمي الضريبيّ", "My tax ID"), { dir: "ltr", maxLength: 40 }),
@@ -1132,7 +1238,7 @@ const AccountantScreen = (function () {
                         h("input", { dir: "ltr", inputMode: "decimal", value: r.rate, placeholder: "%", "aria-label": tl("النسبة", "Rate"), onChange: (e) => set("taxRates", form.taxRates.map((x, j) => (j === i ? Object.assign({}, x, { rate: e.target.value.replace(/[^0-9.]/g, "") }) : x))), style: Object.assign(inputStyle(colors), { width: 90 }) }),
                         h("label", { style: { display: "flex", alignItems: "center", gap: 4, fontSize: T.tiny } }, h("input", { type: "radio", name: "deftax", checked: form.defaultTaxRateId === r.id, onChange: () => set("defaultTaxRateId", r.id) }), tl("افتراضيّة", "Default")),
                         h("button", { type: "button", "aria-label": tl("حذف", "Remove"), onClick: () => set("taxRates", form.taxRates.filter((_, j) => j !== i)), style: { width: 40, border: 0, background: "none", color: colors.textMuted, cursor: "pointer" } }, h(X, { size: 16 })))),
-                    h("button", { type: "button", onClick: () => set("taxRates", form.taxRates.concat({ id: "r" + Date.now().toString(36), label: "", rate: "" })), style: { minHeight: 40, border: 0, background: "none", color: TEAL, fontWeight: 700, cursor: "pointer", padding: 0 } }, "＋ " + tl("نسبة", "Rate")))),
+                    h("button", { type: "button", onClick: () => set("taxRates", form.taxRates.concat({ id: "r" + Date.now().toString(36), label: "", rate: "" })), style: { minHeight: 40, border: 0, background: "none", color: tealInk(), fontWeight: 700, cursor: "pointer", padding: 0 } }, "＋ " + tl("نسبة", "Rate")))),
             h("div", { style: { display: "flex", gap: 8 } },
                 h("div", { style: { flex: 1 } }, inp("invoicePrefix", tl("بادئة رقم الفاتورة", "Invoice number prefix"), { dir: "ltr", maxLength: 8, onChange: (e) => set("invoicePrefix", e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "")) })),
                 h("div", { style: { flex: 1 } }, h(Field, { label: tl("الاستحقاق بعد (أيّام)", "Due after (days)") }, h("input", { dir: "ltr", inputMode: "numeric", value: String(form.defaultDueDays), onChange: (e) => set("defaultDueDays", e.target.value.replace(/[^0-9]/g, "")), style: inputStyle(colors) })))),
@@ -1145,7 +1251,7 @@ const AccountantScreen = (function () {
                 h("p", { style: { margin: "0 0 10px", fontSize: T.small, color: colors.textMuted, lineHeight: 1.6 } }, tl("تظهر على الفاتورة حين تختارها. الأرقام مشفّرة، ونُعلمك إن تغيّر رقم حساب.", "Shown on an invoice when you pick them. Numbers are encrypted, and you're told if a number changes.")),
                 (b.accounts || []).map((a) => h("div", { key: a.id, style: { display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid " + colors.border, opacity: a.archived ? 0.5 : 1 } },
                     h("span", { style: { flex: 1, fontSize: T.body } }, h("b", null, a.bankName || a.provider || a.label), " ", h("bdi", { style: { color: colors.textMuted } }, a.number), " ", h("span", { style: { fontSize: T.tiny, color: colors.textMuted } }, a.currency === "ANY" ? "" : a.currency)),
-                    h("button", { type: "button", onClick: () => call("pfm.account.archive", { id: a.id, archived: !a.archived }).then(load, (e) => setErr(errText(e))), style: { border: 0, background: "none", color: TEAL, fontWeight: 700, minHeight: 40, cursor: "pointer" } }, a.archived ? tl("إعادة", "Restore") : tl("إخفاء", "Hide")))),
+                    h("button", { type: "button", onClick: () => call("pfm.account.archive", { id: a.id, archived: !a.archived }).then(load, (e) => setErr(errText(e))), style: { border: 0, background: "none", color: tealInk(), fontWeight: 700, minHeight: 40, cursor: "pointer" } }, a.archived ? tl("إعادة", "Restore") : tl("إخفاء", "Hide")))),
                 acct && h("div", { style: { padding: "10px 0" } },
                     h(Seg, { value: acct.type, onChange: (v) => setAcct(Object.assign({}, acct, { type: v })), options: [{ value: "bank", label: tl("بنك", "Bank") }, { value: "mobile_money", label: tl("محفظة جوّال", "Mobile money") }, { value: "other", label: tl("أخرى", "Other") }] }),
                     h("div", { style: { height: 10 } }),
@@ -1422,7 +1528,7 @@ const AccountantScreen = (function () {
                 h("div", { style: { fontWeight: 800, fontSize: 16, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, p.name)),
             h("div", { style: { padding: 16 } },
                 err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, marginBottom: 12 } }, err),
-                h("div", { style: { marginBottom: 14 } }, h(Seg, { value: tab, onChange: setTab, options: tabs.map((t) => ({ value: t[0], label: t[1] })) })),
+                h("div", { style: { marginBottom: 14 } }, h(Seg, { tabs: true, value: tab, onChange: setTab, options: tabs.map((t) => ({ value: t[0], label: t[1] })) })),
                 tab === "overview" ? overview : tab === "estimate" ? estimate : tab === "ledger" ? ledger : people),
             sheet && sheet.k === "files" && h(PjFiles, { pid, target: sheet.target, title: sheet.title, canEdit, cur, today, onClose: () => setSheet(null), onChanged: reload }),
             sheet && sheet.k === "prices" && h(PjPrices, { pid, lineKey: sheet.lineKey, name: sheet.name, cur, onClose: () => setSheet(null) }));
@@ -1962,13 +2068,13 @@ const AccountantScreen = (function () {
             h("input", { ref: fileRef, type: "file", accept: "image/*", multiple: true, onChange: pick, style: { display: "none" } }),
             h(Btn, { onClick: () => fileRef.current && fileRef.current.click(), disabled: busy || !prefs, style: { width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12 } },
                 h(Upload, { size: 18 }), rows.length ? tl("إضافة صور أخرى", "Add more images") : tl("اختيار الصور", "Choose images")),
-            engine.state === "starting" && h("div", { role: "status", style: { fontSize: 13, color: TEAL, fontWeight: 700, marginBottom: 10 } },
+            engine.state === "starting" && h("div", { role: "status", style: { fontSize: 13, color: tealInk(), fontWeight: 700, marginBottom: 10 } },
                 tl("تجهيز القارئ…", "Getting the reader ready…") + (engine.pct != null ? ` ${engine.pct}%` : "") +
                 tl(" (أوّل مرّة فقط: تنزيل نحو 9 ميغابايت)", " (first time only: about 9 MB to download)")),
             engine.state === "ready" && engine.ms != null && h("div", { style: { fontSize: 12, color: colors.textMuted, marginBottom: 10 } },
                 tl(`القارئ جاهز (${secs(engine.ms)} ث)`, `Reader ready (${secs(engine.ms)} s)`)),
             engine.state === "error" && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13, marginBottom: 10 } }, tl("تعذّر تجهيز القارئ — تحقّق من الاتّصال", "Couldn't get the reader ready — check your connection")),
-            stage && engine.state !== "starting" && h("div", { role: "status", style: { fontSize: 13, color: TEAL, fontWeight: 700, marginBottom: 10 } }, stage),
+            stage && engine.state !== "starting" && h("div", { role: "status", style: { fontSize: 13, color: tealInk(), fontWeight: 700, marginBottom: 10 } }, stage),
             err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13, marginBottom: 10 } }, err),
             Object.keys(hints).map((a) => h(Card, { key: a, style: { marginBottom: 10, borderColor: TEAL } },
                 h("div", { style: { fontSize: 13, marginBottom: 8, lineHeight: 1.6 } },
@@ -1992,7 +2098,69 @@ const AccountantScreen = (function () {
             view && h(PhotoView, { src: view, onClose: () => setView(null) }));
     }
 
-    function Screen({ onBack }) {
+    // ── Sawa Wallet payments → entries. The wallet keeps its own history; here the user picks which ones to record and their
+    // category (rules pre-fill it). Handled ones (added or hidden) are remembered on this device; the idemKey stops a double add.
+    const WALLET_DONE_KEY = "pfmWalletDone";
+    const walletDone = () => { try { return JSON.parse(localStorage.getItem(WALLET_DONE_KEY) || "[]"); } catch (e) { return []; } };
+    const markWalletDone = (ids) => { try { const d = walletDone(); localStorage.setItem(WALLET_DONE_KEY, JSON.stringify(d.concat(ids.filter((x) => d.indexOf(x) < 0)).slice(-500))); } catch (e) {} };
+    // A stable, UUID-shaped key per wallet payment (same shape as newKey()), so adding the same payment twice is a server no-op.
+    function walletKey(id) {
+        let hex = "";
+        for (let seed = 0; seed < 4; seed++) { let x = (0x811c9dc5 ^ (seed * 0x9e3779b1)) >>> 0;
+            for (const ch of "wallet:" + id) { x ^= ch.codePointAt(0); x = Math.imul(x, 0x01000193) >>> 0; }
+            hex += x.toString(16).padStart(8, "0"); }
+        return hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-4" + hex.slice(13, 16) + "-a" + hex.slice(17, 20) + "-" + hex.slice(20, 32);
+    }
+    const WALLET_DAYS = 60;   // offer the last two months only
+    function walletPending(walletTx, today) {
+        const since = Date.parse(today + "T00:00:00Z") - WALLET_DAYS * 86400000, done = walletDone();
+        return (walletTx || []).filter((w) => w && w.id && Number(w.amount) > 0 && w.ts >= since && done.indexOf(w.id) < 0);
+    }
+    function WalletSheet({ items, cats, rules, tz, today, onClose, onDone }) {
+        const { colors } = useTheme();
+        const dateOf = (ts) => { try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(ts); } catch (e) { return new Date(ts).toISOString().slice(0, 10); } };
+        const kindOf = (w) => (w.type === "credit" ? "income" : "expense");
+        const [rows, setRows] = useState(() => items.map((w) => { const r = matchRule(rules, kindOf(w), w.to || "", w.note || "");
+            return { w, on: true, catId: r && cats[r.categoryId] ? r.categoryId : "" }; }));
+        const [busy, setBusy] = useState(false), [err, setErr] = useState("");
+        const patch = (id, p) => setRows((rs) => rs.map((r) => (r.w.id === id ? Object.assign({}, r, p) : r)));
+        const chosen = rows.filter((r) => r.on), ready = chosen.length > 0 && chosen.every((r) => r.catId);
+        const add = async () => {
+            setBusy(true); setErr(""); const added = [];
+            try {
+                for (const r of chosen) {
+                    const d = dateOf(r.w.ts);
+                    await call("pfm.tx.add", { idemKey: walletKey(r.w.id), kind: kindOf(r.w), amount: String(r.w.amount), currency: "SDG", categoryId: r.catId,
+                        date: d > today ? today : d, note: r.w.note || null, counterparty: r.w.to || null });
+                    added.push(r.w.id);
+                }
+                markWalletDone(added); onDone(added.length);
+            } catch (e) { markWalletDone(added); setErr((added.length ? tl(`أُضيف ${added.length}، ثمّ: `, `Added ${added.length}, then: `) : "") + errText(e)); setBusy(false); }
+        };
+        const hide = () => { markWalletDone(rows.filter((r) => !r.on).map((r) => r.w.id)); setRows((rs) => rs.filter((r) => r.on)); };
+        return h(Sheet, { title: tl("من محفظة سوا", "From Sawa Wallet"), onClose },
+            h("p", { style: { fontSize: 13, color: colors.textMuted, lineHeight: 1.6, marginTop: 0 } },
+                tl("عمليّات المحفظة في آخر شهرين ولم تُسجَّل هنا. اختر فئة كلٍّ منها ثمّ أضفها. ما لا تريده ألغِ تحديده.", "Wallet payments from the last two months that aren't recorded here. Pick a category for each and add them. Untick any you don't want.")),
+            !rows.length && h("p", { style: { fontSize: 14, color: colors.textMuted } }, tl("لا شيء جديد.", "Nothing new.")),
+            rows.map((r) => { const inc = r.w.type === "credit";
+                const list = Object.values(cats).filter((c) => c.kind === kindOf(r.w) && !c.archived).sort((a, b) => a.order - b.order);
+                return h(Card, { key: r.w.id, style: { marginBottom: 10, padding: 12, opacity: r.on ? 1 : 0.6 } },
+                    h(Check, { checked: r.on, onChange: (v) => patch(r.w.id, { on: v }) },
+                        h("span", { style: { display: "flex", gap: 8, width: "100%" } },
+                            h("span", { dir: "auto", style: { flex: 1, fontWeight: 700 } }, r.w.note || r.w.to || tl("عمليّة محفظة", "Wallet payment")),
+                            h("bdi", { style: { fontWeight: 800, fontVariantNumeric: "tabular-nums", color: inc ? colors.success : colors.text } }, (inc ? "+" : "−") + money(r.w.amount * Math.pow(10, expOf("SDG")), "SDG")))),
+                    h("div", { style: { fontSize: 12, color: colors.textMuted, margin: "-4px 0 8px" } }, dayLabel(dateOf(r.w.ts))),
+                    r.on && h("select", { value: r.catId, "aria-label": tl("الفئة", "Category"), onChange: (e) => patch(r.w.id, { catId: e.target.value }), style: inputStyle(colors) },
+                        h("option", { value: "" }, tl("اختر فئة…", "Choose a category…")),
+                        list.map((c) => h("option", { key: c.id, value: c.id }, catName(c))))); }),
+            err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13, marginBottom: 10 } }, err),
+            chosen.length > 0 && !ready && h("div", { id: "pfm-wallet-why", style: { fontSize: 13, color: colors.textMuted, marginBottom: 8, textAlign: "center" } }, tl("اختر فئة لكلّ عمليّة محدّدة", "Choose a category for each ticked payment")),
+            rows.length > 0 && h("div", { style: { display: "flex", gap: 8 } },
+                rows.some((r) => !r.on) && h(Btn, { kind: "ghost", onClick: hide, disabled: busy }, tl("إخفاء غير المحدّدة", "Hide unticked")),
+                h(Btn, { onClick: add, disabled: busy || !ready, describedBy: chosen.length > 0 && !ready ? "pfm-wallet-why" : undefined, style: { flex: 1 } },
+                    busy ? tl("جارٍ الإضافة…", "Adding…") : tl(`أضف ${chosen.length}`, `Add ${chosen.length}`))));
+    }
+    function Screen({ onBack, walletTx }) {
         const { colors } = useTheme();
         const [boot, setBoot] = useState(null), [bootErr, setBootErr] = useState("");
         const [tab, setTab] = useState("overview");
@@ -2005,13 +2173,18 @@ const AccountantScreen = (function () {
         const load = () => { setBootErr(""); call("pfm.get").then((r) => { setBoot(r); if (r.settings) setMonth((m) => m || r.month); }, (e) => setBootErr(errText(e))); };
         useEffect(load, []);
         useEffect(() => { const t = setTimeout(prewarmOcr, 2500); return () => clearTimeout(t); }, []);   // C292
+        // Refreshing the same month keeps what's on screen until the new figures arrive (no "Loading…" flash, scroll kept);
+        // only a different month clears it. Late replies for a month no longer shown are dropped.
+        const shown = useRef(null);
         const refresh = useCallback(() => {
             if (!month) return;
-            setSummary(null); setList(null);
-            call("pfm.summary", { from: shiftMonth(month, -5), to: month, focus: month }).then(setSummary, (e) => setBootErr(errText(e)));
-            call("pfm.tx.list", { month }).then(setList, (e) => setBootErr(errText(e)));
-            call("pfm.budget.list", { month }).then(setBudgets, () => setBudgets({ budgets: [] }));
+            if (shown.current !== month) { setSummary(null); setList(null); setBudgets(null); shown.current = month; }
+            const still = (fn) => (r) => { if (shown.current === month) fn(r); };
+            call("pfm.summary", { from: shiftMonth(month, -5), to: month, focus: month }).then(still(setSummary), (e) => setBootErr(errText(e)));
+            call("pfm.tx.list", { month }).then(still(setList), (e) => setBootErr(errText(e)));
+            call("pfm.budget.list", { month }).then(still(setBudgets), () => setBudgets({ budgets: [] }));
         }, [month]);
+        const { showToast } = useToast();
         const reloadAll = () => { load(); refresh(); };
         imp.onSaved = reloadAll;   // a batch saved while this screen is open refreshes it (a screen opened later loads anyway)
         useEffect(() => () => { imp.onSaved = null; }, []);
@@ -2025,6 +2198,8 @@ const AccountantScreen = (function () {
         imp.cats = cats;
         useEffect(() => { if (s) impRestore(); }, [!!s]);   // C281: a batch kept from before the app restarted
         const cur = s && s.baseCurrency;
+        const [walletTick, setWalletTick] = useState(0);   // re-reads the "handled" list after the wallet sheet adds or hides
+        const walletItems = useMemo(() => (boot && boot.today ? walletPending(walletTx, boot.today) : []), [walletTx, boot, walletTick]);
         const body = bootErr ? h(Card, { style: { margin: 16 } }, h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, marginBottom: 10 } }, bootErr), h(Btn, { onClick: () => { load(); refresh(); } }, tl("إعادة المحاولة", "Try again")))
             : !boot ? h(Loading)
             : !s ? h(Onboarding, { onDone: (r) => { setBoot(r); setMonth(r.month); } })
@@ -2032,20 +2207,21 @@ const AccountantScreen = (function () {
                 (job.busy || jobWaiting > 0) && !(sheet && sheet.type === "import") && h("button", { type: "button", onClick: () => setSheet({ type: "import" }),
                     style: { width: "100%", display: "flex", alignItems: "center", gap: 10, marginBottom: 12, padding: "10px 14px", borderRadius: 12, border: "1px solid " + TEAL,
                         backgroundColor: TEAL + "14", color: colors.text, fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "start" } },
-                    h(Upload, { size: 18, color: TEAL, style: { flexShrink: 0 } }),
+                    h(Upload, { size: 18, color: tealInk(), style: { flexShrink: 0 } }),
                     h("span", { "aria-live": "polite", style: { flex: 1 } }, job.busy && job.stage ? tl("استيراد الإيصالات: ", "Importing receipts: ") + job.stage
                         : tl(`استيراد الإيصالات: ${jobWaiting} بانتظار المراجعة والإضافة`, `Importing receipts: ${jobWaiting} waiting for review`)),
-                    h("span", { style: { color: TEAL, whiteSpace: "nowrap" } }, tl("فتح", "Open"))),
+                    h("span", { style: { color: tealInk(), whiteSpace: "nowrap" } }, tl("فتح", "Open"))),
                 h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 } },
                     h("button", { type: "button", "aria-label": tl("الشهر السابق", "Previous month"), onClick: () => setMonth(shiftMonth(month, -1)), style: navBtn(colors) }, h(ar() ? ChevronRight : ChevronLeft, { size: 20 })),
                     h("div", { style: { flex: 1, textAlign: "center", fontWeight: 800, fontSize: 16 } }, monthName(month)),
                     h("button", { type: "button", "aria-label": tl("الشهر التالي", "Next month"), disabled: month >= boot.month, onClick: () => setMonth(shiftMonth(month, 1)), style: Object.assign(navBtn(colors), { opacity: month >= boot.month ? 0.35 : 1 }) }, h(ar() ? ChevronLeft : ChevronRight, { size: 20 }))),
-                h("div", { style: { marginBottom: 14 } }, h(Seg, { value: tab, onChange: setTab, options: [{ value: "overview", label: tl("نظرة عامّة", "Overview") }, { value: "ledger", label: tl("السجلّ", "Ledger") }, { value: "budgets", label: tl("الميزانيّات", "Budgets") }, { value: "business", label: tl("الأعمال", "Business") }] })),
-                tab === "business" && h("div", { style: { marginBottom: 14 } }, h(Seg, { value: bizTab, onChange: setBizTab, options: [{ value: "invoices", label: tl("الفواتير", "Invoices") }, { value: "projects", label: tl("المشاريع", "Projects") }] })),
+                h("div", { style: { marginBottom: 14 } }, h(Seg, { tabs: true, idBase: "pfm", label: tl("أقسام المحاسب", "Accountant sections"), value: tab, onChange: setTab, options: [{ value: "overview", label: tl("نظرة عامّة", "Overview") }, { value: "ledger", label: tl("السجلّ", "Ledger") }, { value: "budgets", label: tl("الميزانيّات", "Budgets") }, { value: "business", label: tl("الأعمال", "Business") }] })),
+                h("div", { role: "tabpanel", id: "pfm-panel", "aria-labelledby": "pfm-tab-" + tab },
+                tab === "business" && h("div", { style: { marginBottom: 14 } }, h(Seg, { tabs: true, idBase: "pfm-biz", label: tl("الأعمال", "Business"), value: bizTab, onChange: setBizTab, options: [{ value: "invoices", label: tl("الفواتير", "Invoices") }, { value: "projects", label: tl("المشاريع", "Projects") }] })),
                 tab === "overview"
                     ? h(Overview, { data: summary, cats, cur, onAdd: () => setSheet({}), onPickCat: (id) => { setFilter(id); setTab("ledger"); },
                         alerts: boot.month === month ? boot.alerts : [], suggestedCount: boot.suggestedCount, budgets: budgets && budgets.budgets,
-                        onDismissAlerts: dismissAlerts, onGoSuggested: goSuggested, onGoBudgets: () => setTab("budgets"), onGoLedger: () => setTab("ledger"), claimsCount: boot.claimsCount || 0, onGoInvoices: () => { setBizTab("invoices"); setTab("business"); },
+                        onDismissAlerts: dismissAlerts, onGoSuggested: goSuggested, onGoBudgets: () => setTab("budgets"), onGoLedger: () => setTab("ledger"), claimsCount: boot.claimsCount || 0, onGoInvoices: () => { setBizTab("invoices"); setTab("business"); }, walletCount: walletItems.length, onGoWallet: () => setSheet({ type: "wallet" }),
                         ruler: (() => { const per = periodOf(month, s.monthStartDay), past = month < boot.month;
                             const t = Date.parse(boot.today + "T00:00:00Z"); const el = past ? per.days : Math.min(per.days, Math.max(0, Math.round((t - per.start) / 86400000) + 1));
                             return month > boot.month ? null : { days: per.days, elapsed: el, past }; })() })
@@ -2055,9 +2231,9 @@ const AccountantScreen = (function () {
                         onRecurring: () => setSheet({ type: "recurring" }), onRules: () => setSheet({ type: "rules" }), onExport: () => setSheet({ type: "export" }), onImport: () => setSheet({ type: "import" }), importCount: jobWaiting })
                     : tab === "budgets"
                     ? h(Budgets, { data: budgets, cats, cur, onAdd: () => setSheet({ type: "budget" }), onEdit: (b) => setSheet({ type: "budget", budget: b }) })
-                    : bizTab === "projects"
+                    : h("div", { role: "tabpanel", id: "pfm-biz-panel", "aria-labelledby": "pfm-biz-tab-" + bizTab }, bizTab === "projects"
                     ? h(ProjectsView, { base: cur, today: boot.today, cats })
-                    : h(Invoices, { key: invTick, cur, today: boot.today, onOpen: (id) => setSheet({ type: "invoice", id }), onNew: () => setSheet({ type: "editor" }), onBiz: () => setSheet({ type: "biz" }) }));
+                    : h(Invoices, { key: invTick, cur, today: boot.today, onOpen: (id) => setSheet({ type: "invoice", id }), onNew: () => setSheet({ type: "editor" }), onBiz: () => setSheet({ type: "biz" }) }))));
         return h(ServiceTheme, { color: TEAL },
             h("div", { dir: ar() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col", style: { color: colors.text } },
                 h(TopBar, { title: tl("المحاسب الشخصيّ", "Personal accountant"), subtitle: cur ? tl("المجاميع بـ", "Totals in ") + cur : undefined, onBack }),
@@ -2066,9 +2242,9 @@ const AccountantScreen = (function () {
                     style: { position: "fixed", insetInlineEnd: 20, bottom: "calc(env(safe-area-inset-bottom,0px) + 24px)", width: 56, height: 56, borderRadius: 28, border: 0,
                         backgroundColor: TEAL, color: "#fff", boxShadow: "0 6px 16px rgba(15,118,110,.35)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 40 } }, h(Plus, { size: 26 })),
                 sheet && s && !sheet.type && h(TxSheet, { tx: sheet.tx, settings: s, cats, today: boot.today, rules: boot.rules, onClose: () => setSheet(null),
-                    onSaved: () => { setSheet(null); reloadAll(); } }),
+                    onSaved: (t) => { setSheet(null); reloadAll(); showToast(t ? tl("حُفظت الحركة", "Entry saved") : tl("حُذفت الحركة", "Entry deleted")); } }),
                 sheet && s && sheet.type === "budget" && h(BudgetSheet, { budget: sheet.budget, existing: ((budgets && budgets.budgets) || []).map((b) => b.categoryId), cats, cur,
-                    onClose: () => setSheet(null), onSaved: () => { setSheet(null); refresh(); } }),
+                    onClose: () => setSheet(null), onSaved: () => { setSheet(null); refresh(); showToast(tl("حُفظت الميزانيّات", "Budgets updated")); } }),
                 sheet && s && sheet.type === "recurring" && h(RecurringSheet, { items: boot.recurring || [], cats, onClose: () => setSheet(null), onChanged: reloadAll }),
                 sheet && s && sheet.type === "invoice" && h(InvoiceDetail, { id: sheet.id, base: cur, today: boot.today, onClose: () => setSheet(null), onChanged: invChanged,
                     onEdit: (inv) => setSheet({ type: "editor", inv }) }),
@@ -2077,9 +2253,12 @@ const AccountantScreen = (function () {
                 sheet && s && sheet.type === "biz" && h(BizSheet, { base: cur, onClose: () => { setSheet(null); invChanged(); }, onSaved: () => { setSheet(null); invChanged(); } }),
                 sheet && s && sheet.type === "export" && h(ExportSheet, { month, latest: boot.month, onClose: () => setSheet(null) }),
                 sheet && s && sheet.type === "import" && h(ImportSheet, { cats, onClose: () => setSheet(null) }),
+                sheet && s && sheet.type === "wallet" && h(WalletSheet, { items: walletItems, cats, rules: boot.rules || [], tz: s.tz, today: boot.today,
+                    onClose: () => { setSheet(null); setWalletTick((n) => n + 1); },
+                    onDone: (n) => { setSheet(null); setWalletTick((x) => x + 1); reloadAll(); showToast(tl(`أُضيفت ${n} من المحفظة`, `Added ${n} from the wallet`)); } }),
                 sheet && s && sheet.type === "rules" && h(RulesSheet, { rules: boot.rules || [], cats, onClose: () => setSheet(null), onChanged: reloadAll })));
     }
-    const navBtn = (colors) => ({ width: 40, height: 40, borderRadius: 20, border: "1px solid " + colors.border, backgroundColor: colors.card, color: colors.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" });
+    const navBtn = (colors) => ({ width: 44, height: 44, borderRadius: 22, border: "1px solid " + colors.border, backgroundColor: colors.card, color: colors.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" });
     return Screen;
 })();
 
