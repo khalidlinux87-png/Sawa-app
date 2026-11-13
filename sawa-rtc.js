@@ -113,7 +113,8 @@
   // ---------- خوادم ICE (STUN + TURN إن وُجد) ----------
   // C65: هل في القائمة خادم TURN؟ (هاتفان على 4G لا يتّصلان مباشرةً غالباً — بدونه لا يرى أحدهما الآخر)
   function hasTurn(list) { return (list || []).some(function (x) { return [].concat(x.urls || x.url || []).some(function (u) { return /^turns?:/.test(String(u)); }); }); }
-  var STUN = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
+  // C300: خوادم STUN: مزيج IPv4 و IPv6 لتفضيل الاتّصال المباشر — خادمان يكفيان لفحص نوع NAT (eim/sym)
+  var STUN = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }, { urls: "stun:stun.cloudflare.com:3478" }];
   var iceWarm = false;
   var iceBusy = null;
   function getIce(waitMs) {
@@ -140,7 +141,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c292";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c300";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -426,6 +427,8 @@
       });
       else sdp = sdp.replace(m[0], m[0] + "\r\na=fmtp:" + pt + " " + want);
       // C113: أُلغيت إطارات 40 مللي ث (C110) — ضياع حزمةٍ كان يُسقط ضعف المدّة فيُسمع تقطّعاً
+      // C300: رفع أولويّة المرشّحين المباشرين (srflx) في العرض والردّ — الأزواج المباشرة تُفحص قبل الوسيط
+      sdp = boostDirectCandidates(sdp);
       if (typeof d.sdp === "string" && !(d instanceof global.RTCSessionDescription)) { d.sdp = sdp; return d; }
       return { type: d.type, sdp: sdp };
     } catch (e) { return d; }
@@ -1010,7 +1013,40 @@
   }
   function clearTimers(c) { for (var k in c.timers) { clearTimeout(c.timers[k]); } c.timers = {}; if (c.tick) clearInterval(c.tick); c.tick = null; }
 
+  // C300: تضمين TURN-over-TLS على المنفذ 443 — شبكاتٌ تحجب UDP وTCP العاديّ لكنّ 443 يمرّ (4% من المكالمات)
+  function ensureTurnTls(iceList) {
+    if (!iceList || !iceList.length) return iceList;
+    var hasTls443 = false;
+    iceList.forEach(function (s) { [].concat(s.urls || []).forEach(function (u) { if (/^turns:/.test(u) && /:443(\?|$)/.test(u)) hasTls443 = true; }); });
+    if (hasTls443) return iceList;
+    // أنشئ turns:443 من أوّل turn: في القائمة
+    var out = iceList.slice();
+    for (var i = 0; i < iceList.length; i++) {
+      var s = iceList[i], urls = [].concat(s.urls || []);
+      for (var j = 0; j < urls.length; j++) {
+        var u = urls[j];
+        if (/^turn:/.test(u) && !/^turns:/.test(u)) {
+          var host = u.replace(/^turn:/, "").split(/[:?]/)[0];
+          if (host) { out.push({ urls: "turns:" + host + ":443?transport=tcp", username: s.username, credential: s.credential }); return out; }
+        }
+      }
+    }
+    return out;
+  }
+  // C300: تحسين ترتيب أولويّة المرشّحين في SDP — رفع أولويّة المباشر (srflx/prflx) فيُجرّبه المحرّك أوّلاً قبل الوسيط
+  // يفيد حين يكون أحد الطرفين «ثابتاً» (EIM) — ثانيةٌ أبكر في الوصول المباشر
+  function boostDirectCandidates(sdp) {
+    if (!sdp) return sdp;
+    // المحرّك يرتّب الأزواج حسب الأولويّة: نرفع أولويّة srflx بـ 65536 (نقلةٌ واحدة في المكوّن المحلّيّ)
+    // آمن: لا يغيّر عدد المرشّحين ولا يحذف — يُعيد الترتيب فقط
+    return sdp.replace(/^a=candidate:(\S+) (\d+) (\S+) (\d+) (\S+) (\d+) typ srflx (.*)$/gm, function (line, foundation, component, proto, priority, addr, port, rest) {
+      var p = parseInt(priority, 10);
+      if (isNaN(p) || p > 2147000000) return line;   // بالفعل عالٍ جدّاً
+      return "a=candidate:" + foundation + " " + component + " " + proto + " " + Math.min(p + 65536, 2147483647) + " " + addr + " " + port + " typ srflx " + rest;
+    });
+  }
   function makePc(c, ice, pre) {
+    ice = ensureTurnTls(ice);   // C300: ضمان وجود TURN-over-TLS/443
     var pc = pre || (c.native ? new NativePC(ice) : new global.RTCPeerConnection({ iceServers: ice }));   // C95 · C218: أو اتّصالٌ جُهِّز أثناء الرنين
     var side = c.role === "caller" ? "ic_caller" : "ic_callee";
     // C66: المرشّحات دفعةً كلّ 120 ms بدل كتابةٍ لكلّ مرشّح
@@ -1238,6 +1274,24 @@
     }, 15000);
     return true;
   }
+  // C300: ترقية الوسيط → مباشر — إن اتّصلت المكالمة عبر وسيط وأحد الطرفين على الأقلّ «ثابت» (EIM)، أعد التفاوض بعد 8 ث:
+  // ICE restart يجمع مرشّحين جُدداً وقد يجد طريقاً مباشراً لم يكن متاحاً (تأخّر STUN أو مرشّح prflx).
+  // مرّةً واحدة فقط (لا تكرار)، ولا يقطع المكالمة: إن لم يعمل يبقى الوسيط.
+  function tryRelayUpgrade(c) {
+    if (!c || c.done || c.role !== "caller" || c.relayUpTried) return;
+    c.timers.relayUp = setTimeout(function () {
+      delete c.timers.relayUp;
+      if (c.done || c.state !== "connected" || !c.pc) return;
+      // هل نحن فعلاً على وسيط؟
+      if (c.route !== "relay") return;
+      // هل NAT المحلّيّ يسمح بالمباشر (eim أو v6)؟
+      var canDirect = (natInfo && natInfo.t === "eim") || (natInfo && natInfo.v6) || (c.v6l && c.v6r);
+      if (!canDirect) return;
+      c.relayUpTried = true;
+      LOG.info("relay.upgrade", { nat: natInfo && natInfo.t, v6l: c.v6l, v6r: c.v6r });
+      iceRestart(c, true);
+    }, 8000);
+  }
   function onConn(c, s) {
     if (c.done) return;
     if (s === "connected") {
@@ -1250,7 +1304,7 @@
           c.routes = rt; c.out = "spk";
           if (c.type !== "video") setRoute(c, "ear", true); else paint(c);
         }); }
-      setState(c, "connected"); setTimeout(function () { routeInfo(c); }, 800); loadColo();
+      setState(c, "connected"); setTimeout(function () { routeInfo(c); tryRelayUpgrade(c); }, 800); loadColo();
     } else if (s === "disconnected" || s === "failed") {
       if (!c.connectedAt) { if (s === "failed") finish(c, "failed"); return; }
       setState(c, "reconnecting");
@@ -1541,6 +1595,7 @@
       if (!nativePreOk()) return;
       getIceFor(c, 2500).then(function (ice) {   // C228: وسيط المتّصل المختار
         if (c.done || c.pre || c.pc || c.state !== "incoming") return;
+        ice = ensureTurnTls(ice);   // C300
         var nid = "p" + Date.now().toString(36) + rid(5);
         try { RTCB().rtcPre(nid, JSON.stringify(ice || [])); } catch (e) { return; }
         c.pre = { nid: nid, native: true, ice: ice, at: Date.now(), ok: true };
@@ -1550,7 +1605,8 @@
     }
     getIceFor(c, 2500).then(function (ice) {   // C228
       if (c.done || c.pre || c.pc || c.state !== "incoming") return;
-      var pc; try { pc = new global.RTCPeerConnection({ iceServers: ice, iceCandidatePoolSize: 1 }); } catch (e) { return; }
+      ice = ensureTurnTls(ice);   // C300
+      var pc; try { pc = new global.RTCPeerConnection({ iceServers: ice, iceCandidatePoolSize: 2 }); } catch (e) { return; }   // C300: حجز عنوانين (UDP + TLS) بالتوازي
       c.preTracks = [];
       pc.ontrack = function (e) { if (c.preTracks) c.preTracks.push(e); };
       var pre = c.pre = { pc: pc, ice: ice, at: Date.now() };
@@ -1747,7 +1803,7 @@
       v6l: c.v6l || 0, v6r: c.v6r || 0, pw: c.pw || 0,   // C217 · C218
       vb: c.darkS || 0, ch: c.camHeals || 0, pco: c.peerCamOff ? 1 : 0,   // C291: ثوانٍ بصورةٍ سوداء · مرّات إعادة فتح كاميرتي · كاميرا الطرف الآخر متوقّفة عند الانتهاء
       rsel: c.rsel || "", psel: c.psel || "", rms: c.rms == null ? null : c.rms, pms: c.pms == null ? null : c.pms,   // C228
-      cs: c.cs || "", r0: c.r0 || "" });   // C292: المرشّحات (طرفي|طرفٍ آخر) · المسار الأوّل
+      cs: c.cs || "", r0: c.r0 || "", rup: c.relayUpTried ? 1 : 0 });   // C292: المرشّحات (طرفي|طرفٍ آخر) · المسار الأوّل · C300: هل حاول ترقية الوسيط→مباشر
   }
   // C216: سجلّ المكالمة لا يضيع. كان يُرسل مرّةً واحدة ويُهمل الخطأ — فإن فشل الطلب (شبكةٌ مزدحمة، التطبيق في الخلفيّة، انتهاء المهلة)
   //        ضاع السجلّ بصمت (مكالمة 01:02: سجلّ المستقبِل ⚡ لم يصل). الآن: يُحفظ في الهاتف قبل الإرسال ويُحذف عند نجاحه،
@@ -2384,7 +2440,7 @@
   function gPeer(g, uid, sess, offerer) {
     var me = myUid();
     var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: null };
-    var pc = p.pc = new global.RTCPeerConnection({ iceServers: g.ice || STUN });
+    var pc = p.pc = new global.RTCPeerConnection({ iceServers: ensureTurnTls(g.ice || STUN) });   // C300
     g.local.getTracks().forEach(function (t) { var st = ownStream(t); if (st) pc.addTrack(t, st); else pc.addTrack(t, g.local); });   // C112
     pc.onicecandidate = function (e) { if (e.candidate && e.candidate.candidate) gSend(g, uid, sess, { t: "ice", cand: iceJson(e.candidate) }); };
     pc.ontrack = function (e) {
@@ -3216,7 +3272,7 @@
   function sfuStart(r) {
     if (r.sfu || r.done || !r.live) return;
     var s = r.sfu = { pulled: {}, byMid: {}, fails: {}, state: "new", gen: (r.sfuGen = (r.sfuGen || 0) + 1) };
-    var pc = s.pc = new global.RTCPeerConnection({ iceServers: (r.ice && r.ice.length ? r.ice : []).concat(SFU_STUN), bundlePolicy: "max-bundle" });
+    var pc = s.pc = new global.RTCPeerConnection({ iceServers: ensureTurnTls((r.ice && r.ice.length ? r.ice : []).concat(SFU_STUN)), bundlePolicy: "max-bundle" });   // C300
     pc.ontrack = function (e) {
       var x = s.byMid[e.transceiver && e.transceiver.mid]; if (!x || r.sfu !== s) return;
       x.track = e.track;
@@ -3456,7 +3512,7 @@
   }
   function rPeer(r, uid, sess, offerer) {
     var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: new global.MediaStream(), pid: rid(6), t0: Date.now() };   // C63: pid يميّز اتّصالاً جديداً عن إعادة تفاوض
-    var pc = p.pc = new global.RTCPeerConnection({ iceServers: r.ice || STUN });
+    var pc = p.pc = new global.RTCPeerConnection({ iceServers: ensureTurnTls(r.ice || STUN) });   // C300
     if (offerer) { p.at = pc.addTransceiver("audio", { direction: "sendrecv" }); p.vt = pc.addTransceiver("video", { direction: "sendrecv" }); p.sct = pc.addTransceiver("video", { direction: "sendrecv" }); rSenders(r, p); }   // C120: sct = الشاشة
     // C66: المرشّحات تُجمَّع وتُرسل دفعةً كلّ 120 ms (كانت كتابةً لكلّ مرشّح — 10 إلى 20 كتابةً لكلّ طرف على شبكةٍ بطيئة)
     p.iceOut = [];
