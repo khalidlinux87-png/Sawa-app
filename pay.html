@@ -477,7 +477,7 @@
     var p = { token: TOKEN, idemKey: idem, payType: ptype, amount: ptype === "partial" ? f.amount.value.trim() : undefined, payoutAccountId: f.account.value, reference: f.reference.value.trim() || null,
       paidAt: f.date.value || null, payer: { name: f.name.value.trim(), phone: f.phone.value.trim() || null } };
     if (!p.payer.name) { state.err = t.errs.bad_payer; render(); f = document.getElementById("claim"); f.name.focus(); return; }
-    if (ptype === "partial" && !(Number(String(p.amount || "").replace(/,/g, "")) > 0)) { state.err = t.errs.bad_amount; render(); f = document.getElementById("claim"); if (f.amount) f.amount.focus(); return; }
+    if (ptype === "partial" && !(Number(String(p.amount || "").replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x0660); }).replace(/٫/g, ".").replace(/[,\s٬]/g, "")) > 0)) { state.err = t.errs.bad_amount; render(); f = document.getElementById("claim"); if (f.amount) f.amount.focus(); return; }
     var keep = { name: f.name.value, phone: f.phone.value, amount: f.amount ? f.amount.value : "", reference: f.reference.value, date: f.date.value };
     saveDraft(); state.sending = true; state.err = ""; render(); restore(keep);
     if (state.proof) { p.proof = state.proof.data; p.proofName = state.proof.name || null; }

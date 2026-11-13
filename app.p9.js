@@ -13,6 +13,9 @@ const AccountantScreen = (function () {
     const iconOf = (name) => L[ICONS[name]] || L.Circle || L.Bookmark;
     const ar = () => isRTL();
     const locale = () => (ar() ? "ar-u-nu-latn" : "en");
+    // An amount as the user typed it, as a number for the "is it > 0" checks. The inputs let Arabic digits (٠-٩) and
+    // the Arabic decimal mark (٫) through, which Number() reads as NaN. The server parses the text itself (toMinor).
+    const num = (v) => Number(String(v == null ? "" : v).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/٫/g, ".").replace(/[,\s٬]/g, ""));
     const call = (op, payload) => {
         if (!window.SawaSync || !SawaSync.call) return Promise.reject(new Error(tl("الخدمة غير متاحة دون اتصال", "Not available offline")));
         return SawaSync.call(op, payload || {});
@@ -34,6 +37,7 @@ const AccountantScreen = (function () {
         not_draft: ["الفاتورة المُرسلة لا تُعدَّل — ألغها وأصدر جديدة", "A sent invoice can't be edited — cancel it and issue a new one"],
         has_payments: ["عليها دفعات مسجّلة، فلا تُلغى", "It has recorded payments, so it can't be cancelled"],
         overpay: ["المبلغ أكبر من المستحقّ", "That's more than the amount due"],
+        claims_open: ["هناك بلاغات دفع من العميل لم تُراجعها — أكّدها أو ارفضها أوّلاً", "A payer reported payments you haven't checked — confirm or reject them first"],
         not_payable: ["لا يمكن تسجيل دفعة على هذه الفاتورة", "Payments can't be recorded on this invoice"],
         bad_items: ["أكمل وصف كلّ بندٍ وسعره", "Give every line a description and a price"],
         bad_client: ["اكتب اسم العميل", "Enter the client's name"],
@@ -463,7 +467,7 @@ const AccountantScreen = (function () {
             call("pfm.fx.last", { from: cur }).then((r) => { if (r && r.rate) setRate((v) => v || r.rate); }, () => {});
         }, [cur]);
         const list = Object.values(cats).filter((c) => c.kind === kind && (!c.archived || c.id === catId)).sort((a, b) => a.order - b.order);
-        const preview = cur !== base && rate && Number(amount) > 0 && Number(rate) > 0 ? "≈ " + money(Math.round(Number(amount) * Number(rate) * Math.pow(10, expOf(base))), base) : "";
+        const preview = cur !== base && rate && num(amount) > 0 && num(rate) > 0 ? "≈ " + money(Math.round(num(amount) * num(rate) * Math.pow(10, expOf(base))), base) : "";
         const save = () => {
             setBusy(true); setErr("");
             const p = { kind, amount: amount.trim(), currency: cur, categoryId: catId, date, note: note.trim() || null, counterparty: who.trim() || null };
@@ -490,7 +494,7 @@ const AccountantScreen = (function () {
             const name = (newCat || "").trim(); if (!name) return;
             call("pfm.cat.upsert", { name, nameAr: name, kind }).then((r) => { cats[r.category.id] = r.category; setCatId(r.category.id); setNewCat(null); }, (e) => setErr(errText(e)));
         };
-        const canSave = !busy && Number(amount) > 0 && catId && date;
+        const canSave = !busy && num(amount) > 0 && catId && date;
         const showRemember = who.trim().length >= 2 && catId && !(autoRule && autoRule.categoryId === catId && normText(autoRule.contains) && normText(who).indexOf(normText(autoRule.contains)) >= 0);
         return h(Sheet, { title: suggested ? tl("تأكيد حركة متكرّرة", "Confirm recurring entry") : editing ? tl("تعديل الحركة", "Edit entry") : tl("حركة جديدة", "New entry"), onClose },
             h("div", { style: { marginBottom: 14 } }, h(Seg, { value: kind, onChange: (v) => { setKind(v); setCatId(""); }, options: [
@@ -599,7 +603,7 @@ const AccountantScreen = (function () {
             err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13, marginBottom: 10 } }, err),
             h("div", { style: { display: "flex", gap: 8 } },
                 editing && h(Btn, { kind: "danger", onClick: del, disabled: busy }, tl("حذف", "Delete")),
-                h(Btn, { onClick: save, disabled: busy || !(Number(limit) > 0) || !catId, style: { flex: 1 } }, busy ? tl("جارٍ الحفظ…", "Saving…") : tl("حفظ", "Save"))));
+                h(Btn, { onClick: save, disabled: busy || !(num(limit) > 0) || !catId, style: { flex: 1 } }, busy ? tl("جارٍ الحفظ…", "Saving…") : tl("حفظ", "Save"))));
     }
 
     // ── recurring entries and rules ──
@@ -718,10 +722,10 @@ const AccountantScreen = (function () {
         const B = biz && biz.biz;
         const payloadItems = () => (items || []).map((it) => Object.assign({ description: it.d.trim() || "—", qty: it.q || "1", unitPrice: it.p || "0" },
             it.tax.mode === "saved" ? { taxRateId: it.tax.id } : it.tax.mode === "custom" ? { taxRate: it.tax.rate || "0" } : {}));
-        const discount = () => (disc && Number(disc) > 0 ? { type: "pct", rate: disc } : null);
+        const discount = () => (disc && num(disc) > 0 ? { type: "pct", rate: disc } : null);
         // live totals, debounced
         useEffect(() => { if (!items || !cur) return; const t = setTimeout(() => {
-            if (!items.some((it) => Number(it.p) > 0)) { setTotals(null); return; }
+            if (!items.some((it) => num(it.p) > 0)) { setTotals(null); return; }
             call("inv.preview", { currency: cur, items: payloadItems(), invoiceDiscount: discount() }).then((r) => { setTotals(r.totals); setErr(""); }, (e) => setErr(errText(e))); }, 300);
             return () => clearTimeout(t); }, [items, cur, disc]);
         if (!biz || !items) return h(Sheet, { title: tl("فاتورة", "Invoice"), onClose }, err ? h("div", { role: "alert", style: { color: colors.danger } }, err) : h(Loading));
@@ -979,7 +983,7 @@ const AccountantScreen = (function () {
                 h("input", { dir: "ltr", inputMode: "decimal", value: pay.fxRate, onChange: (e) => setPay(Object.assign({}, pay, { fxRate: e.target.value.replace(/[^0-9.]/g, "") })), style: inputStyle(colors) })),
             h("div", { style: { display: "flex", gap: 8 } },
                 h(Btn, { kind: "ghost", onClick: () => setPay(null) }, tl("إلغاء", "Cancel")),
-                h(Btn, { style: { flex: 1 }, disabled: busy || !(Number(pay.amount) > 0), onClick: () => run(call("inv.markPaid", { id, amount: pay.amount, method: pay.method, paidAt: pay.date, reference: pay.reference || null, fxRate: pay.fxRate || undefined, idemKey: pay.key }), () => setPay(null)) },
+                h(Btn, { style: { flex: 1 }, disabled: busy || !(num(pay.amount) > 0), onClick: () => run(call("inv.markPaid", { id, amount: pay.amount, method: pay.method, paidAt: pay.date, reference: pay.reference || null, fxRate: pay.fxRate || undefined, idemKey: pay.key }), () => setPay(null)) },
                     tl("سجّل الدفعة", "Record payment"))));
         return h(Sheet, { title: inv.number || tl("مسوّدة فاتورة", "Draft invoice"), onClose },
             h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6 } }, h(Badge, { status: st, payState: inv.payState }),
@@ -1029,7 +1033,7 @@ const AccountantScreen = (function () {
                 (st === "sent" || st === "overdue") && h(Btn, { kind: "ghost", onClick: () => withLink().then((iv) => { if (!iv.payLinkToken) { setErr(tl("تعذّر تجهيز رابط الدفع. أعد المحاولة.", "Couldn't make the pay link. Try again.")); return; } const u = payLink(iv);
                     (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => setMsg(tl("نُسخ رابط الدفع — يفتحه العميل دون حساب", "Pay link copied — the client opens it without an account")), () => setMsg(u)); }) }, tl("نسخ رابط الدفع", "Copy pay link")),
                 st === "draft" && h(Btn, { kind: "danger", disabled: busy, onClick: () => { if (window.confirm(tl("حذف المسوّدة؟", "Delete this draft?"))) run(call("inv.delete", { id }), () => onClose()); } }, tl("حذف المسوّدة", "Delete draft")),
-                (st === "sent" || st === "overdue") && !(t0.amountPaid > 0) && h(Btn, { kind: "danger", disabled: busy, onClick: () => { const r = window.prompt(tl("سبب الإلغاء (اختياريّ)", "Reason for cancelling (optional)"), ""); if (r !== null) run(call("inv.cancel", { id, reason: r })); } }, tl("إلغاء الفاتورة", "Cancel invoice"))));
+                (st === "sent" || st === "overdue") && !(t0.amountPaid > 0) && !(inv.claimedAmount > 0) && h(Btn, { kind: "danger", disabled: busy, onClick: () => { const r = window.prompt(tl("سبب الإلغاء (اختياريّ)", "Reason for cancelling (optional)"), ""); if (r !== null) run(call("inv.cancel", { id, reason: r })); } }, tl("إلغاء الفاتورة", "Cancel invoice"))));
     }
 
     // CSV of the ledger (booked entries) for a range of budget months, saved as a file. The server builds the file.
@@ -1878,7 +1882,7 @@ const AccountantScreen = (function () {
                     { include: r.state === "done" && fresh.include }) });
             }));
         };
-        const ready = (r) => { const e = r.edit; return e && Number(e.amount) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && e.catId && cats[e.catId] && cats[e.catId].kind === e.kind; };
+        const ready = (r) => { const e = r.edit; return e && num(e.amount) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && e.catId && cats[e.catId] && cats[e.catId].kind === e.kind; };
         const chosen = rows.filter((r) => r.edit && r.edit.include && !r.saved);
         const save = async () => {
             setBusy(true); setErr("");
