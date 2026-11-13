@@ -2561,8 +2561,9 @@ function ChatComposerInput({ value, onChange, placeholder, disabled, onEnter, on
         },
         placeholder: placeholder,
         disabled: disabled,
-        className: "flex-1 min-w-0 border rounded-2xl px-4 py-2 text-sm resize-none leading-5",
-        style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg, minWidth: 0, maxHeight: 116 },
+        className: "sawa-composer flex-1 min-w-0 border rounded-2xl px-4 py-2 text-sm resize-none leading-5",
+        // C299: إطار التركيز بلون المظهر (كان إطار المتصفّح الأسود)
+        style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg, minWidth: 0, maxHeight: 116, "--sawa-ring": colors.primary },
     });
 }
 

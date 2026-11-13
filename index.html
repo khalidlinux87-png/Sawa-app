@@ -66,6 +66,8 @@ window.__sawaParts=(function(){var N=9,jobs=[];for(var i=1;i<=N;i++)(function(k)
   :root[data-theme=dark] .spin{border-color:#173049;border-top-color:#5AA9E6}
   /* C192: إطار التركيز — يظهر مع لوحة المفاتيح فقط (لا مع اللمس)، بلون المظهر. كانت 44 عنصراً تُخفيه (outline-none). الحقول مستثناة: فيها المؤشّر. */
   :is(button,a,summary,select,[role=button],[role=tab],[role=switch],[role=menuitem],[tabindex]):focus-visible{outline:2px solid var(--sawa-primary,#2774BA)!important;outline-offset:2px}
+  /* C299: خانة كتابة الرسالة — إطار تركيزٍ بلون المظهر بدل إطار المتصفّح الأسود. */
+  .sawa-composer:focus-visible{outline:2px solid var(--sawa-ring,#2774BA);outline-offset:0}
   /* C192: مساحة لمسٍ حول الأزرار الصغيرة دون تغيير شكلها: طبقةٌ شفّافة حولها.
      C289: رُفعت من 40 إلى 44 بكسل (الحدّ الأدنى في إرشادات Apple وWCAG)، وشملت أزرار 36 و40 بكسل (أزرار الرأس: بحث وخيارات). */
   button:where(.w-5,.w-6,.w-7,.w-8,.w-9,.w-10,.sawa-hit):not(.absolute):not(.fixed):not(.sticky){position:relative}
