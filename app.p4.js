@@ -2557,7 +2557,8 @@ function ChatComposerInput({ value, onChange, placeholder, disabled, onEnter, on
         onPaste: onPasteFiles ? (e) => { try { const fs = Array.from((e.clipboardData && e.clipboardData.files) || []).filter((f) => /^(image|video)\//.test(f.type)); if (fs.length) { e.preventDefault(); onPasteFiles(fs); } } catch (x) { } } : undefined,
         onKeyDown: function (e) {
             // Enter يُرسل، و Shift+Enter سطر جديد — كما اعتاد المستخدم
-            if (e.key === "Enter" && !e.shiftKey && onEnter && enterSends()) { e.preventDefault(); onEnter(); }
+            // C300: Enter أثناء تركيب الحروف (لوحات الصينيّة/اليابانيّة/الكوريّة) يثبّت الحروف ولا يُرسل؛ والضغط المطوّل لا يكرّر الإرسال
+            if (e.key === "Enter" && !e.shiftKey && onEnter && enterSends()) { if (e.isComposing || e.keyCode === 229) return; e.preventDefault(); if (!e.repeat) onEnter(); }
         },
         placeholder: placeholder,
         disabled: disabled,

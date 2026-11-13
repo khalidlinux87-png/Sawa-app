@@ -2964,3 +2964,13 @@ Rendered the saved-messages chat at 375px in RTL (guest mode) and checked it aga
 - **Not checked:** delivered vs read ticks, typing, online/last seen (need a second signed-in device); dark mode of the chat.
 - **Checks:** `node --check`; `lint.sh` shows the same 3 errors / 6 warnings as before the change; `chat.test.js` 20 passed. In the browser: time colour rgb(255,255,255), message box focus `solid 2px #2774BA`.
 - **sw.js:** v485; notes updated. **Upload:** app.p4.js, app.p5.js, index.html, then sw.js (v485) last.
+
+## 💬 C301 — Chat: 12px time · new messages announced · Enter safe while composing · fix sawa-rtc size check · app.p4 · app.p5 · sw v486
+Follows C299 (the items it noted but left).
+- **Message time:** 10px → 12px, in private bubbles and group rows.
+- **New messages announced:** `NewMessageAnnouncer` (app.p5) — a hidden `aria-live="polite"` region in private and group chats. It reads "رسالة جديدة من <name>: <text>" (attachments: «مرفق») for incoming messages only: not your own, not deleted ones, and not what was already there when the chat opened.
+- **Enter while composing** (Chinese/Japanese/Korean keyboards): confirms the characters instead of sending; holding Enter no longer repeats the send. Only matters where Enter sends (desktop).
+- **Bug fixed — "files on the server are not the required version: sawa-rtc.js (457 KB instead of 452)":** C300 changed `sawa-rtc.js` (463,339 → 467,616 bytes) but not `EXPECT` in `sw.js`, so every phone on v485 showed the warning even though the server file was right. `EXPECT` now 467,616.
+- **Checks:** `node --check`; `lint.sh` same 3 errors / 6 warnings as main; `chat.test.js` 20 passed. Browser (desktop 1024px): time 12px; Enter sends; Enter with `isComposing` does not; the live region stays empty after your own message.
+- **Not checked:** an actual incoming message being announced (needs a second signed-in device); chat in dark mode.
+- **sw.js:** v486; notes updated. **Upload:** app.p4.js, app.p5.js, then sw.js (v486) last. `sawa-rtc.js` on the server is already correct — no re-upload.
