@@ -2954,3 +2954,13 @@ Third colour batch, by screen: wallet (home, services, electricity) and Taqa fue
 - **Kept on purpose:** the QR code drawing (must stay dark on white), and the token number on the token screen, which sits on its own light box and stays readable.
 - **Checks:** `node --check`. Light mode pixel-identical to main on all 9 wallet/Taqa screens. Dark mode identical on wallet screens; Taqa home and history changed only as above, checked by eye.
 - **sw.js:** v480; notes updated. **Upload:** app.p7.js, then sw.js (v480) last.
+
+## 💬 C299 — Chat: readable bubble time · themed focus on the message box · app.p4 · app.p5 · index.html · sw v485
+Rendered the saved-messages chat at 375px in RTL (guest mode) and checked it against the chat design list.
+- **Time on your own bubbles** (private chats): 75% white on the blue bubble was 3.5:1. Now plain white, 4.9:1. Group chats were already fine: their time sits outside the bubble.
+- **Message box focus:** showed the browser's black ring. Now a 2px ring in the theme's primary colour (`.sawa-composer`, colour passed as `--sawa-ring`, so dark mode gets its own blue).
+- **Already met, no change:** all chat buttons have labels; small buttons get a 44px tap area (C289); app-wide reduced motion (C289); read ticks have a label ("تمت القراءة") and 3.5:1 on the bubble (icon minimum 3:1); no horizontal scroll at 375px.
+- **Not changed, noted:** the time is 10px; the message list is not an `aria-live` region, so screen readers do not announce new messages; the composer's Enter handler has no IME-composition guard.
+- **Not checked:** delivered vs read ticks, typing, online/last seen (need a second signed-in device); dark mode of the chat.
+- **Checks:** `node --check`; `lint.sh` shows the same 3 errors / 6 warnings as before the change; `chat.test.js` 20 passed. In the browser: time colour rgb(255,255,255), message box focus `solid 2px #2774BA`.
+- **sw.js:** v485; notes updated. **Upload:** app.p4.js, app.p5.js, index.html, then sw.js (v485) last.
