@@ -89,6 +89,7 @@ const AccountantScreen = (function () {
         confirm_required: ["تأكيد الحذف غير مكتمل", "The deletion wasn't confirmed"],
         bad_idem_key: ["أعد المحاولة", "Try again"],
         bad_qty: ["الكمّيّة يجب أن تكون أكبر من صفر", "The quantity must be more than zero"],
+        bad_unit: ["اكتب وحدة القياس لكلّ بند", "Enter the unit for every line"],
         bad_category: ["اختر فئة", "Choose a category"],
     };
     const errText = (e) => { const m = String((e && e.message) || e || ""); const k = m.split(":")[0]; return ERR[k] ? tl(ERR[k][0], ERR[k][1]) : m; };
@@ -1611,6 +1612,7 @@ const AccountantScreen = (function () {
         const save = () => {
             if (busy || !rows) return;
             if (rows.some((r) => !r.name.trim() || !r.qty.trim() || !r.price.trim())) { setErr(tl("أكمل اسم كلّ بند وكمّيته وسعره", "Give every line a name, quantity and price")); return; }
+            if (rows.some((r) => !r.unit.trim())) { setErr(tl("اكتب وحدة القياس لكلّ بند (مثلاً كيس، م²، ساعة)", "Enter the unit for every line (for example bag, m², hour)")); return; }
             setBusy(true); setErr("");
             act(call("pfm.proj.estimate.lines", { pid, eid: draft.id, rev: draft.rev, lines: rows.map((r) => ({ lineKey: r.k, category: r.category, name: r.name.trim(), unit: r.unit.trim(), estQty: r.qty.trim(), estUnitPrice: r.price.trim(),
                 priceDate: r.priceDate || undefined, supplier: r.supplier.trim() || undefined })) }))
