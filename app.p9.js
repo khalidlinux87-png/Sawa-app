@@ -404,7 +404,7 @@ const AccountantScreen = (function () {
                 h(Card, { style: { padding: 0 } }, g.items.map((t, i) => {
                     const c = cats[t.categoryId], I = iconOf(c && c.icon), inc = t.kind === "income", sug = t.status === "suggested";
                     const row = h("button", { key: t.id, type: "button", onClick: () => onOpen(t), style: { display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 14px", border: 0,
-                        borderTop: i && !sug ? "1px solid " + colors.border : 0, background: "none", color: colors.text, textAlign: "start", cursor: "pointer", minHeight: 56, opacity: sug ? 0.8 : 1 } },
+                        borderTop: i && !sug ? "1px solid " + colors.border : 0, background: "none", color: colors.text, textAlign: "start", cursor: "pointer", minHeight: 56 } },   // suggested rows: the dashed outline marks them; no opacity (it dropped grey text below 4.5:1)
                         h("span", { style: { width: 36, height: 36, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: ((c && c.color) || TEAL) + "22", flexShrink: 0 } }, h(I, { size: 17, color: (c && c.color) || TEAL })),
                         h("span", { style: { flex: 1, minWidth: 0 } },
                             h("div", { dir: "auto", style: { fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: ar() ? "right" : "left" } }, t.counterparty || catName(c)),   // Latin names in Arabic stay on the start side
@@ -1996,6 +1996,7 @@ const AccountantScreen = (function () {
         const { colors } = useTheme();
         const [boot, setBoot] = useState(null), [bootErr, setBootErr] = useState("");
         const [tab, setTab] = useState("overview");
+        const [bizTab, setBizTab] = useState("invoices");   // inside the Business tab: invoices | projects (kept out of the personal tabs)
         const [month, setMonth] = useState(null);
         const [summary, setSummary] = useState(null), [list, setList] = useState(null), [budgets, setBudgets] = useState(null);
         const [sheet, setSheet] = useState(null), [filter, setFilter] = useState(null), [invTick, setInvTick] = useState(0);
@@ -2039,11 +2040,12 @@ const AccountantScreen = (function () {
                     h("button", { type: "button", "aria-label": tl("الشهر السابق", "Previous month"), onClick: () => setMonth(shiftMonth(month, -1)), style: navBtn(colors) }, h(ar() ? ChevronRight : ChevronLeft, { size: 20 })),
                     h("div", { style: { flex: 1, textAlign: "center", fontWeight: 800, fontSize: 16 } }, monthName(month)),
                     h("button", { type: "button", "aria-label": tl("الشهر التالي", "Next month"), disabled: month >= boot.month, onClick: () => setMonth(shiftMonth(month, 1)), style: Object.assign(navBtn(colors), { opacity: month >= boot.month ? 0.35 : 1 }) }, h(ar() ? ChevronLeft : ChevronRight, { size: 20 }))),
-                h("div", { style: { marginBottom: 14 } }, h(Seg, { value: tab, onChange: setTab, options: [{ value: "overview", label: tl("نظرة عامّة", "Overview") }, { value: "ledger", label: tl("السجلّ", "Ledger") }, { value: "budgets", label: tl("الميزانيّات", "Budgets") }, { value: "invoices", label: tl("الفواتير", "Invoices") }, { value: "projects", label: tl("المشاريع", "Projects") }] })),
+                h("div", { style: { marginBottom: 14 } }, h(Seg, { value: tab, onChange: setTab, options: [{ value: "overview", label: tl("نظرة عامّة", "Overview") }, { value: "ledger", label: tl("السجلّ", "Ledger") }, { value: "budgets", label: tl("الميزانيّات", "Budgets") }, { value: "business", label: tl("الأعمال", "Business") }] })),
+                tab === "business" && h("div", { style: { marginBottom: 14 } }, h(Seg, { value: bizTab, onChange: setBizTab, options: [{ value: "invoices", label: tl("الفواتير", "Invoices") }, { value: "projects", label: tl("المشاريع", "Projects") }] })),
                 tab === "overview"
                     ? h(Overview, { data: summary, cats, cur, onAdd: () => setSheet({}), onPickCat: (id) => { setFilter(id); setTab("ledger"); },
                         alerts: boot.month === month ? boot.alerts : [], suggestedCount: boot.suggestedCount, budgets: budgets && budgets.budgets,
-                        onDismissAlerts: dismissAlerts, onGoSuggested: goSuggested, onGoBudgets: () => setTab("budgets"), onGoLedger: () => setTab("ledger"), claimsCount: boot.claimsCount || 0, onGoInvoices: () => setTab("invoices"),
+                        onDismissAlerts: dismissAlerts, onGoSuggested: goSuggested, onGoBudgets: () => setTab("budgets"), onGoLedger: () => setTab("ledger"), claimsCount: boot.claimsCount || 0, onGoInvoices: () => { setBizTab("invoices"); setTab("business"); },
                         ruler: (() => { const per = periodOf(month, s.monthStartDay), past = month < boot.month;
                             const t = Date.parse(boot.today + "T00:00:00Z"); const el = past ? per.days : Math.min(per.days, Math.max(0, Math.round((t - per.start) / 86400000) + 1));
                             return month > boot.month ? null : { days: per.days, elapsed: el, past }; })() })
@@ -2053,14 +2055,14 @@ const AccountantScreen = (function () {
                         onRecurring: () => setSheet({ type: "recurring" }), onRules: () => setSheet({ type: "rules" }), onExport: () => setSheet({ type: "export" }), onImport: () => setSheet({ type: "import" }), importCount: jobWaiting })
                     : tab === "budgets"
                     ? h(Budgets, { data: budgets, cats, cur, onAdd: () => setSheet({ type: "budget" }), onEdit: (b) => setSheet({ type: "budget", budget: b }) })
-                    : tab === "projects"
+                    : bizTab === "projects"
                     ? h(ProjectsView, { base: cur, today: boot.today, cats })
                     : h(Invoices, { key: invTick, cur, today: boot.today, onOpen: (id) => setSheet({ type: "invoice", id }), onNew: () => setSheet({ type: "editor" }), onBiz: () => setSheet({ type: "biz" }) }));
         return h(ServiceTheme, { color: TEAL },
             h("div", { dir: ar() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col", style: { color: colors.text } },
                 h(TopBar, { title: tl("المحاسب الشخصيّ", "Personal accountant"), subtitle: cur ? tl("المجاميع بـ", "Totals in ") + cur : undefined, onBack }),
                 h("div", { className: "flex-1 overflow-y-auto", style: { backgroundColor: colors.bg } }, body),
-                s && tab !== "budgets" && tab !== "invoices" && tab !== "projects" && h("button", { type: "button", "aria-label": tl("حركة جديدة", "New entry"), onClick: () => setSheet({}),
+                s && tab !== "budgets" && tab !== "business" && h("button", { type: "button", "aria-label": tl("حركة جديدة", "New entry"), onClick: () => setSheet({}),
                     style: { position: "fixed", insetInlineEnd: 20, bottom: "calc(env(safe-area-inset-bottom,0px) + 24px)", width: 56, height: 56, borderRadius: 28, border: 0,
                         backgroundColor: TEAL, color: "#fff", boxShadow: "0 6px 16px rgba(15,118,110,.35)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 40 } }, h(Plus, { size: 26 })),
                 sheet && s && !sheet.type && h(TxSheet, { tx: sheet.tx, settings: s, cats, today: boot.today, rules: boot.rules, onClose: () => setSheet(null),
