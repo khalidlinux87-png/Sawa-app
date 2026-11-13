@@ -2974,3 +2974,20 @@ Follows C299 (the items it noted but left).
 - **Checks:** `node --check`; `lint.sh` same 3 errors / 6 warnings as main; `chat.test.js` 20 passed. Browser (desktop 1024px): time 12px; Enter sends; Enter with `isComposing` does not; the live region stays empty after your own message.
 - **Not checked:** an actual incoming message being announced (needs a second signed-in device); chat in dark mode.
 - **sw.js:** v486; notes updated. **Upload:** app.p4.js, app.p5.js, then sw.js (v486) last. `sawa-rtc.js` on the server is already correct — no re-upload.
+
+## 🌙 C302 — Dark mode: two shades of the accent instead of one · app.p2–p9 · sawa-chat.js · sw v487
+In dark mode one accent shade (C192, e.g. #2B81CE) served both as text on the dark background and as a fill under white text, at ~4.1:1 both ways — below 4.5. Measured on the main tabs: 11 failures (bubbles, chat header, selected chips, «إضافة جهة اتّصال», active tab labels, the account code and links).
+- **Two shades per accent (dark only):** `accentOnDark` is now the text/icon shade (≥ 4.6 even on `btnFill`, ~6.3 on cards); new `accentFillDark` is the fill under white text (≥ 4.6, and ~4:1 against the background so it still stands out).
+
+  | accent | text (was) | fill |
+  |---|---|---|
+  | sawa | #5FA2DE (#2B81CE) | #2877BE |
+  | orange | #E8813B (#C85F18) | #BB5916 |
+  | purple | #AE8EC2 (#966DB0) | #8F63AB |
+  | navy | #769DD5 (#4A7EC8) | #3B74C4 |
+  | green | #23B37E (#1C8E64) | #1A845D |
+- **New token `colors.primaryFill`** (also `--sawa-primary-fill`). Light mode: equal to `primary`, so nothing changes. Added to `lightColors`/`darkColors` too, so it is never undefined.
+- **Switched to `primaryFill`:** every solid `backgroundColor`/`background`/`bg` that used `primary` (229, by script), borders in the same style object (26), and by hand: the filled button, `famGrad`, the chat-bubble fallback, a status gradient, the Taqa token background, and `sawa-chat.js` primary sheet buttons. Kept on `primary`: text, icons, links, standalone borders, alpha tints, shadows, the story ring, canvas strokes, the browser theme colour.
+- **Checks:** `node --check` all parts; `lint.sh` same 3 errors / 6 warnings as main; `chat.test.js` 20 passed. Light mode pixel-identical to main on the 5 tabs and the chat (only the random guest code differs). Dark mode contrast audit (every visible text vs its real background): main tabs + chat 11 failures → 0; chat with a sent bubble, emoji, menu and info: 0.
+- **Not checked:** the other four accents rendered (values are computed, not viewed); screens beyond the 5 tabs and chat in dark mode (family, wallet, rooms, calls) — same token change applies.
+- **sw.js:** v487; `EXPECT` for `sawa-chat.js` 582,869; notes updated. **Upload:** app.p2–p9.js, sawa-chat.js, then sw.js (v487) last.

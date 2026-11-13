@@ -185,7 +185,7 @@ const AccountantScreen = (function () {
         const primary = kind !== "ghost" && kind !== "danger";
         return h("button", { type: "button", onClick, disabled, "aria-label": label, "aria-describedby": describedBy, style: Object.assign({
             minHeight: 44, padding: "10px 16px", borderRadius: 12, border: primary ? 0 : "1px solid " + (kind === "danger" ? colors.danger : colors.border),
-            backgroundColor: primary ? colors.primary : "transparent", color: primary ? "#fff" : kind === "danger" ? colors.danger : colors.text,
+            backgroundColor: primary ? colors.primaryFill : "transparent", color: primary ? "#fff" : kind === "danger" ? colors.danger : colors.text,
             fontWeight: 700, fontSize: 14, opacity: disabled ? 0.5 : 1, cursor: disabled ? "default" : "pointer" }, style) }, children);
     }
     // A <label> wrapping several buttons would name (and click) only the first one, so groups get role="group".
@@ -232,7 +232,7 @@ const AccountantScreen = (function () {
             h("div", { style: { display: "flex", gap: 8 } },
                 h(Btn, { kind: "ghost", onClick: onCancel, style: { flex: 1 } }, tl("إلغاء", "Cancel")),
                 h("button", { ref: yes, type: "button", onClick: onConfirm, style: { flex: 1, minHeight: 44, borderRadius: 12, border: 0, fontWeight: 700, fontSize: 14, cursor: "pointer",
-                    backgroundColor: danger ? colors.danger : colors.primary, color: danger ? onDangerInk(colors, isDark) : "#fff" } }, confirmLabel)));
+                    backgroundColor: danger ? colors.danger : colors.primaryFill, color: danger ? onDangerInk(colors, isDark) : "#fff" } }, confirmLabel)));
     }
     // ask(text, confirmLabel, fn) shows a ConfirmRow; `node` is where it renders.
     function useConfirm() {
@@ -283,7 +283,7 @@ const AccountantScreen = (function () {
                 h("div", { style: { display: "flex", gap: 8 } },
                     h("button", { ref: inp ? null : first, type: "button", onClick: () => finish(false), style: { flex: 1, minHeight: 44, borderRadius: 12, border: "1px solid " + colors.border, backgroundColor: "transparent", color: colors.text, fontWeight: 700, fontSize: 14, cursor: "pointer" } }, d.cancelLabel || tl("إلغاء", "Cancel")),
                     h("button", { type: "button", disabled: !ok, onClick: () => finish(true), style: { flex: 1, minHeight: 44, borderRadius: 12, border: 0, fontWeight: 700, fontSize: 14, cursor: ok ? "pointer" : "default", opacity: ok ? 1 : 0.5,
-                        backgroundColor: d.danger ? colors.danger : colors.primary, color: d.danger ? onDangerInk(colors, isDark) : "#fff" } }, d.confirmLabel || tl("متابعة", "Continue")))));
+                        backgroundColor: d.danger ? colors.danger : colors.primaryFill, color: d.danger ? onDangerInk(colors, isDark) : "#fff" } }, d.confirmLabel || tl("متابعة", "Continue")))));
     }
     function DialogHost() {
         const [d, setD] = useState(null);
@@ -1490,7 +1490,7 @@ const AccountantScreen = (function () {
                     return h("div", { key: c.category, style: { marginBottom: 10 } },
                         h("div", { style: { fontSize: 12, marginBottom: 4 } }, pjName(PJ_BOQ, c.category)),
                         h("div", { style: { height: 8, borderRadius: 4, backgroundColor: colors.border, marginBottom: 3 } }, h("div", { title: tl("التقدير", "Estimate"), style: { width: (c.estimated / max * 100) + "%", height: "100%", borderRadius: 4, backgroundColor: "#94a3b8" } })),
-                        h("div", { style: { height: 8, borderRadius: 4, backgroundColor: colors.border } }, h("div", { title: tl("الفعلي", "Actual"), style: { width: (c.actual / max * 100) + "%", height: "100%", borderRadius: 4, backgroundColor: c.actual > c.estimated ? "#b91c1c" : colors.primary } })),
+                        h("div", { style: { height: 8, borderRadius: 4, backgroundColor: colors.border } }, h("div", { title: tl("الفعلي", "Actual"), style: { width: (c.actual / max * 100) + "%", height: "100%", borderRadius: 4, backgroundColor: c.actual > c.estimated ? "#b91c1c" : colors.primaryFill } })),
                         h("div", { style: { fontSize: 11, color: colors.textMuted, marginTop: 2 } }, money(c.actual, cur) + " / " + money(c.estimated, cur)));
                 }),
                 h("div", { style: { display: "flex", gap: 12, fontSize: 11, color: colors.textMuted, marginTop: 4 } }, h("span", null, "■ ", tl("التقدير", "Estimate")), h("span", { style: { color: colors.primary } }, "■ ", tl("الفعلي", "Actual")))),
@@ -1795,7 +1795,7 @@ const AccountantScreen = (function () {
                     tl("ما دُفع فعلاً ", "What was actually paid is ") + sign(d.actualVsEstimateBp) + tl(" عن السعر المقدَّر في يوم الشراء.", " against the estimate in force on the day of purchase.")),
                 ev.length === 0 ? h("div", { style: { fontSize: 13, color: colors.textMuted } }, tl("لا أسعار بعد.", "No prices yet."))
                     : h("ol", { style: { listStyle: "none", margin: 0, padding: 0 } }, ev.map((e, i) => h("li", { key: i, style: { display: "flex", gap: 10, padding: "10px 0", borderTop: i ? "1px solid " + colors.border : 0 } },
-                        h("span", { "aria-hidden": true, style: { width: 8, height: 8, borderRadius: 4, marginTop: 6, flexShrink: 0, backgroundColor: e.kind === "paid" ? colors.text : e.kind === "quote" ? colors.warning : colors.primary } }),
+                        h("span", { "aria-hidden": true, style: { width: 8, height: 8, borderRadius: 4, marginTop: 6, flexShrink: 0, backgroundColor: e.kind === "paid" ? colors.text : e.kind === "quote" ? colors.warning : colors.primaryFill } }),
                         h("div", { style: { flex: 1, minWidth: 0 } },
                             h("div", { style: { display: "flex", justifyContent: "space-between", gap: 8 } }, h("span", { style: { fontWeight: 700, fontSize: 14 } }, pjDay(e.day)), h("span", { style: { fontWeight: 800, fontSize: 14 } }, money(e.price, cur))),
                             h("div", { dir: "auto", style: { fontSize: 12, color: colors.textMuted, marginTop: 2 } }, e.text + " · " + e.sub)))))));
@@ -2365,7 +2365,8 @@ function App() {
     const base = isDark ? darkColors : lightColors;
     const colors = {
         ...base,
-        primary: isDark ? (accent.accentOnDark || accent.accent) : accent.accent,   // C192
+        primary: isDark ? (accent.accentOnDark || accent.accent) : accent.accent,   // C192 · C302: في الداكن للنصّ والأيقونات
+        primaryFill: isDark ? (accent.accentFillDark || accent.accent) : accent.accent,   // C302: تعبئةٌ تحت نصٍّ أبيض (‎--sawa-primary-fill‎)
         primaryDark: accent.accentDark,
         // C193: نصٌّ على الخلفيّة الملوّنة الفاتحة (primaryLight). في الفاتح = primaryDark كما كان؛ في الداكن الخلفيّة داكنة فيصير فاتحاً — كان الحرف في صور المحادثات لا يُرى.
         primaryInk: isDark ? accent.accentTint : accent.accentDark,

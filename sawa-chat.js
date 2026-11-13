@@ -4383,7 +4383,7 @@
   function mk(tag, css, text) { var e = document.createElement(tag); if (css) e.style.cssText = fsx(css); if (text != null) e.textContent = text; return e; }
   function mkBtn(text, kind) {
     // C196: الزرّ الأساسيّ وزرّ الرابط بلون المظهر في كلّ النوافذ (كان الأساسيّ أخضر ثابتاً والرابط أزرق ثابتاً)
-    var css = kind === "primary" ? "background:var(--sawa-primary,#2774BA);color:#fff;border:0"
+    var css = kind === "primary" ? "background:var(--sawa-primary-fill,var(--sawa-primary,#2774BA));color:#fff;border:0"   /* C302 */
       : kind === "danger" ? "background:#fdecec;color:#b42318;border:0"
       : kind === "ghost" ? "background:transparent;color:var(--sawa-primary,#2774BA);border:0"
       : "background:var(--sawa-btn-fill,#E7ECF2);color:var(--sawa-text,#1A1A2E);border:0";   // C204: ثانويٌّ صلب بلا حدٍّ رفيع
