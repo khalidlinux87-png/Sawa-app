@@ -93,6 +93,7 @@ const AccountantScreen = (function () {
         confirm_required: ["تأكيد الحذف غير مكتمل", "The deletion wasn't confirmed"],
         bad_idem_key: ["أعد المحاولة", "Try again"],
         bad_qty: ["الكمّيّة يجب أن تكون أكبر من صفر", "The quantity must be more than zero"],
+        bad_unit: ["اكتب وحدة القياس لكلّ بند", "Enter the unit for every line"],
         bad_category: ["اختر فئة", "Choose a category"],
     };
     const errText = (e) => { const m = String((e && e.message) || e || ""); const k = m.split(":")[0]; return ERR[k] ? tl(ERR[k][0], ERR[k][1]) : m; };
@@ -1615,6 +1616,7 @@ const AccountantScreen = (function () {
         const save = () => {
             if (busy || !rows) return;
             if (rows.some((r) => !r.name.trim() || !r.qty.trim() || !r.price.trim())) { setErr(tl("أكمل اسم كلّ بند وكمّيته وسعره", "Give every line a name, quantity and price")); return; }
+            if (rows.some((r) => !r.unit.trim())) { setErr(tl("اكتب وحدة القياس لكلّ بند (مثلاً كيس، م²، ساعة)", "Enter the unit for every line (for example bag, m², hour)")); return; }
             setBusy(true); setErr("");
             act(call("pfm.proj.estimate.lines", { pid, eid: draft.id, rev: draft.rev, lines: rows.map((r) => ({ lineKey: r.k, category: r.category, name: r.name.trim(), unit: r.unit.trim(), estQty: r.qty.trim(), estUnitPrice: r.price.trim(),
                 priceDate: r.priceDate || undefined, supplier: r.supplier.trim() || undefined })) }))
@@ -2177,22 +2179,26 @@ const AccountantScreen = (function () {
         const since = Date.parse(today + "T00:00:00Z") - WALLET_DAYS * 86400000, done = walletDone();
         return (walletTx || []).filter((w) => w && w.id && Number(w.amount) > 0 && w.ts >= since && done.indexOf(w.id) < 0);
     }
-    function WalletSheet({ items, cats, rules, tz, today, onClose, onDone }) {
+    // base: the account's reporting currency. Wallet payments are SDG; when the account reports in another currency the
+    // user gives one rate (1 SDG = ? base) and each payment is recorded in SDG with it, so the totals count it in base.
+    function WalletSheet({ items, cats, rules, tz, today, base, onClose, onDone }) {
         const { colors } = useTheme();
         const dateOf = (ts) => { try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(ts); } catch (e) { return new Date(ts).toISOString().slice(0, 10); } };
         const kindOf = (w) => (w.type === "credit" ? "income" : "expense");
         const [rows, setRows] = useState(() => items.map((w) => { const r = matchRule(rules, kindOf(w), w.to || "", w.note || "");
             return { w, on: true, catId: r && cats[r.categoryId] ? r.categoryId : "" }; }));
         const [busy, setBusy] = useState(false), [err, setErr] = useState("");
+        const needRate = !!base && base !== "SDG", [rate, setRate] = useState("");
+        const rateOk = !needRate || Number(numIn(rate)) > 0;
         const patch = (id, p) => setRows((rs) => rs.map((r) => (r.w.id === id ? Object.assign({}, r, p) : r)));
-        const chosen = rows.filter((r) => r.on), ready = chosen.length > 0 && chosen.every((r) => r.catId);
+        const chosen = rows.filter((r) => r.on), ready = chosen.length > 0 && chosen.every((r) => r.catId) && rateOk;
         const add = async () => {
             setBusy(true); setErr(""); const added = [];
             try {
                 for (const r of chosen) {
                     const d = dateOf(r.w.ts);
                     await call("pfm.tx.add", { idemKey: walletKey(r.w.id), kind: kindOf(r.w), amount: String(r.w.amount), currency: "SDG", categoryId: r.catId,
-                        date: d > today ? today : d, note: r.w.note || null, counterparty: r.w.to || null });
+                        date: d > today ? today : d, note: r.w.note || null, counterparty: r.w.to || null, ...(needRate ? { fxRate: numIn(rate) } : {}) });
                     added.push(r.w.id);
                 }
                 markWalletDone(added); onDone(added.length);
@@ -2202,6 +2208,9 @@ const AccountantScreen = (function () {
         return h(Sheet, { title: tl("من محفظة سوا", "From Sawa Wallet"), onClose },
             h("p", { style: { fontSize: 13, color: colors.textMuted, lineHeight: 1.6, marginTop: 0 } },
                 tl("عمليّات المحفظة في آخر شهرين ولم تُسجَّل هنا. اختر فئة كلٍّ منها ثمّ أضفها. ما لا تريده ألغِ تحديده.", "Wallet payments from the last two months that aren't recorded here. Pick a category for each and add them. Untick any you don't want.")),
+            needRate && rows.length > 0 && h(Field, { label: tl(`سعر الصرف: 1 ج.س = ؟ ${base}`, `Exchange rate: 1 SDG = ? ${base}`),
+                hint: tl("يُطبَّق على كلّ العمليّات المحدّدة. المبالغ تبقى بالجنيه كما دفعتها.", "Applies to every ticked payment. The amounts stay in SDG, as paid.") },
+                h("input", { dir: "ltr", inputMode: "decimal", value: rate, placeholder: "0.00", onChange: (e) => setRate(numIn(e.target.value)), style: inputStyle(colors) })),
             !rows.length && h("p", { style: { fontSize: 14, color: colors.textMuted } }, tl("لا شيء جديد.", "Nothing new.")),
             rows.map((r) => { const inc = r.w.type === "credit";
                 const list = Object.values(cats).filter((c) => c.kind === kindOf(r.w) && !c.archived).sort((a, b) => a.order - b.order);
@@ -2215,7 +2224,7 @@ const AccountantScreen = (function () {
                         h("option", { value: "" }, tl("اختر فئة…", "Choose a category…")),
                         list.map((c) => h("option", { key: c.id, value: c.id }, catName(c))))); }),
             err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 13, marginBottom: 10 } }, err),
-            chosen.length > 0 && !ready && h("div", { id: "pfm-wallet-why", style: { fontSize: 13, color: colors.textMuted, marginBottom: 8, textAlign: "center" } }, tl("اختر فئة لكلّ عمليّة محدّدة", "Choose a category for each ticked payment")),
+            chosen.length > 0 && !ready && h("div", { id: "pfm-wallet-why", style: { fontSize: 13, color: colors.textMuted, marginBottom: 8, textAlign: "center" } }, !rateOk ? tl("اكتب سعر الصرف أوّلاً", "Enter the exchange rate first") : tl("اختر فئة لكلّ عمليّة محدّدة", "Choose a category for each ticked payment")),
             rows.length > 0 && h("div", { style: { display: "flex", gap: 8 } },
                 rows.some((r) => !r.on) && h(Btn, { kind: "ghost", onClick: hide, disabled: busy }, tl("إخفاء غير المحدّدة", "Hide unticked")),
                 h(Btn, { onClick: add, disabled: busy || !ready, describedBy: chosen.length > 0 && !ready ? "pfm-wallet-why" : undefined, style: { flex: 1 } },
@@ -2315,7 +2324,7 @@ const AccountantScreen = (function () {
                 sheet && s && sheet.type === "biz" && h(BizSheet, { base: cur, onClose: () => { setSheet(null); invChanged(); }, onSaved: () => { setSheet(null); invChanged(); } }),
                 sheet && s && sheet.type === "export" && h(ExportSheet, { month, latest: boot.month, onClose: () => setSheet(null) }),
                 sheet && s && sheet.type === "import" && h(ImportSheet, { cats, onClose: () => setSheet(null) }),
-                sheet && s && sheet.type === "wallet" && h(WalletSheet, { items: walletItems, cats, rules: boot.rules || [], tz: s.tz, today: boot.today,
+                sheet && s && sheet.type === "wallet" && h(WalletSheet, { items: walletItems, cats, rules: boot.rules || [], tz: s.tz, today: boot.today, base: cur,
                     onClose: () => { setSheet(null); setWalletTick((n) => n + 1); },
                     onDone: (n) => { setSheet(null); setWalletTick((x) => x + 1); reloadAll(); showToast(tl(`أُضيفت ${n} من المحفظة`, `Added ${n} from the wallet`)); } }),
                 sheet && s && sheet.type === "rules" && h(RulesSheet, { rules: boot.rules || [], cats, onClose: () => setSheet(null), onChanged: reloadAll })));
