@@ -1569,6 +1569,26 @@ function MsgSelectBar({ colors, count, onClose, actions }) {
         React.createElement("div", { className: "flex flex-row items-center gap-0.5 shrink-0" }, actions.filter(Boolean).map((a) => React.createElement("button", { key: a.label, "aria-label": a.label, title: a.label, disabled: !!a.disabled, onClick: a.act, className: "w-10 h-10 rounded-full flex items-center justify-center", style: { opacity: a.disabled ? 0.4 : 1 } },
             React.createElement(a.icon, { size: 19, color: "#fff" })))));
 }
+// C300: قارئ الشاشة يعلن الرسائل الواردة الجديدة فقط (لا رسائلك، ولا ما كان ظاهراً عند فتح المحادثة).
+const VISUALLY_HIDDEN = { position: "absolute", width: 1, height: 1, margin: -1, padding: 0, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: 0 };
+function NewMessageAnnouncer({ messages, isMine, nameOf }) {
+    const seenRef = useRef(null);
+    const [say, setSay] = useState("");
+    const last = messages && messages.length ? messages[messages.length - 1] : null;
+    const lastId = last ? last.id : "";
+    useEffect(function () {
+        if (seenRef.current === null) { seenRef.current = lastId; return; }   // أوّل رسم: لا إعلان
+        if (!last || lastId === seenRef.current) return;
+        seenRef.current = lastId;
+        if (last.deleted || isMine(last)) return;
+        const who = (nameOf && nameOf(last)) || "";
+        const isText = !last.type || last.type === "text" || last.type === "sticker";
+        const body = isText ? String(last.text || "").slice(0, 200) : tl("مرفق", "Attachment");
+        setSay(tl("رسالة جديدة", "New message") + (who ? " " + tl("من", "from") + " " + who : "") + ": " + body);
+    }, [lastId]);
+    return React.createElement("div", { "aria-live": "polite", "aria-atomic": "true", style: VISUALLY_HIDDEN }, say);
+}
+
 function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSendSticker, onSendFile, onSendVoice, onEditMessage, onMarkViewedOnce, onTogglePin, onToggleStar, onOpenInfo, disappearing, setDisappearing, background, onBack, myUserId, isBlocked, allConversations, allGroups, isTyping, onLogCall, isOnline, callSettings, groupPersons = {}, onDeleteMessage, onOpenFamilyProfile, draft = "", onSaveDraft, unreadCount = 0, onTyping, contactsForForward, }) {
     var _a, _b;
     const { colors } = useTheme();
@@ -1750,6 +1770,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
         })(),
         !online && React.createElement(OfflineBar, null),
         React.createElement(PinnedBar, { ids: pinIdsOf(conversation), messages, win, colors }),   // C227
+        React.createElement(NewMessageAnnouncer, { messages, isMine: (m) => m.senderUserId === myUserId, nameOf: () => conversation && conversation.name }),   // C300
         React.createElement("div", { style: { position: "relative", flex: 1, minHeight: 0 } },
             React.createElement("div", { ref: scrollContainerRef, className: "flex-1 overflow-y-auto p-4", style: { background: bgGradient || colors.bg, height: "100%", overflowY: "auto" }, onScroll: (e) => {
                     const el = e.currentTarget;
@@ -1798,7 +1819,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                                 renderRichText(m.text, { mine, colors }),
                                 m.edited && React.createElement("span", { className: "text-[10px] opacity-70" }, t("ch_madla")),
                                 (!m.type || m.type === "text") && urlsIn(m.text).length ? React.createElement(LinkCard, { text: m.text, mine }) : null)),
-                                (["image", "video", "file"].includes(m.type) && m.extra && m.extra.cap && !m.viewOnce && !m.deleted) ? React.createElement("p", { className: "text-sm rounded-xl px-3 py-2 mt-1", dir: "auto", style: { ...BIDI_TEXT_STYLE,  backgroundColor: mine ? myBubbleColor : colors.card, color: mine ? "#fff" : colors.text, direction: textDir(m.extra.cap), maxWidth: 320 } }, m.extra.cap) : null, React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 justify-end`, style: { marginTop: 2, marginBottom: -2 } }, mine && m.status && (React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : m.status === "pending" ? t("c2_pending") : m.status === "failed" ? t("c2_failed") : t("ch_tm_alirsal") }, m.status === "pending" ? (m.uploadPct != null ? React.createElement("span", { className: "text-[10px] font-bold", style: { color: onTint ? "rgba(255,255,255,0.9)" : colors.textMuted } }, "⏫ " + m.uploadPct + "%") : React.createElement(Clock, { size: 11, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted })) : m.status === "failed" ? React.createElement("button", { onClick: (e) => { e.stopPropagation(); if (window.SawaChat && window.SawaChat.failedSheet) window.SawaChat.failedSheet(m.id); }, className: "inline-flex items-center gap-1", style: { color: colors.danger, fontSize: 10, fontWeight: 700 } }, React.createElement(AlertCircle, { size: 12, color: colors.danger }), tl("لم تُرسل · اضغط", "Not sent · tap")) : m.status === "sent" ? React.createElement(Check, { size: 12, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted }) : React.createElement(CheckCheck, { size: 12, color: m.status === "read" ? (onTint ? "#BFE0F5" : colors.primary) : (onTint ? "rgba(255,255,255,0.85)" : colors.textMuted) }))), React.createElement("span", { className: "text-[10px]", style: { color: onTint ? "#fff" : colors.textMuted } }, m.time || (m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "numeric", minute: "2-digit" }) : "")))),
+                                (["image", "video", "file"].includes(m.type) && m.extra && m.extra.cap && !m.viewOnce && !m.deleted) ? React.createElement("p", { className: "text-sm rounded-xl px-3 py-2 mt-1", dir: "auto", style: { ...BIDI_TEXT_STYLE,  backgroundColor: mine ? myBubbleColor : colors.card, color: mine ? "#fff" : colors.text, direction: textDir(m.extra.cap), maxWidth: 320 } }, m.extra.cap) : null, React.createElement("div", { className: `flex ${rowStart()} items-center gap-1 justify-end`, style: { marginTop: 2, marginBottom: -2 } }, mine && m.status && (React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : m.status === "pending" ? t("c2_pending") : m.status === "failed" ? t("c2_failed") : t("ch_tm_alirsal") }, m.status === "pending" ? (m.uploadPct != null ? React.createElement("span", { className: "text-[10px] font-bold", style: { color: onTint ? "rgba(255,255,255,0.9)" : colors.textMuted } }, "⏫ " + m.uploadPct + "%") : React.createElement(Clock, { size: 11, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted })) : m.status === "failed" ? React.createElement("button", { onClick: (e) => { e.stopPropagation(); if (window.SawaChat && window.SawaChat.failedSheet) window.SawaChat.failedSheet(m.id); }, className: "inline-flex items-center gap-1", style: { color: colors.danger, fontSize: 10, fontWeight: 700 } }, React.createElement(AlertCircle, { size: 12, color: colors.danger }), tl("لم تُرسل · اضغط", "Not sent · tap")) : m.status === "sent" ? React.createElement(Check, { size: 12, color: onTint ? "rgba(255,255,255,0.85)" : colors.textMuted }) : React.createElement(CheckCheck, { size: 12, color: m.status === "read" ? (onTint ? "#BFE0F5" : colors.primary) : (onTint ? "rgba(255,255,255,0.85)" : colors.textMuted) }))), React.createElement("span", { style: { fontSize: 12, color: onTint ? "#fff" : colors.textMuted } }, m.time || (m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "numeric", minute: "2-digit" }) : "")))),
                         m.reaction && React.createElement(ReactionChip, { m, colors, nameOf: () => conversation.name, onSet: (e) => onReact(m.id, e) }))));
                 }),
                 // C147: «يكتب…» في جهة الطرف الآخر (حيث تظهر رسائله) في اللغتين — كانت items-end فتنقلب في الإنجليزيّة
@@ -2669,6 +2690,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
         viewSender && React.createElement(PhotoViewer, { photo: viewSender.photo, hdId: viewSender.hdId, title: viewSender.title, onClose: () => setViewSender(null) }),
         !online && React.createElement(OfflineBar, null),
         React.createElement(PinnedBar, { ids: pinIdsOf(group), messages, win, colors }),   // C227
+        React.createElement(NewMessageAnnouncer, { messages, isMine: (m) => m.senderId === myUserId, nameOf: (m) => ((group.members || []).find((x) => x.uid === m.senderId) || {}).name }),   // C300
         React.createElement("div", { style: { position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } },   // C174: لزرّ «إلى آخر المحادثة»
         React.createElement("div", { ref: scrollContainerRef, className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg }, onScroll: (e) => { if (win.hidden > 0 && e.currentTarget.scrollTop < 80 && stickRef.recent()) win.more(); } },
             messages.length === 0 && React.createElement(EmptyChatState, { icon: UsersRound }),
@@ -2821,7 +2843,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
                 // التوجيه والتعديل في قائمة الضغط المطوّل — إظهارهما تحت كل
                 // رسالة يزدحم ويكرّر ما هو متاح أصلاً. الوقت مكانهما كما في الخاص.
                 React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mt-0.5` },
-                    React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } },
+                    React.createElement("span", { style: { fontSize: 12, color: colors.textMuted } },   // C300: 12px (was 10px)
                         m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "numeric", minute: "2-digit" }) : ""),
                     m.uploadPct != null && React.createElement("span", { className: "text-[10px] font-bold", style: { color: colors.textMuted } }, "⏫ " + m.uploadPct + "%"),
                     // C149: علامات الوصول في المجموعات كالخاصّ — ✓ أُرسلت · ✓✓ وصلت للجميع · ✓✓ زرقاء قرأها الجميع (كانت لا تظهر)
