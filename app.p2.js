@@ -517,7 +517,7 @@ function TopBar({ title, subtitle, onBack, actions, avatar, photo, onTitlePress 
     //       العربيّة: رجوع يميناً والأزرار يساراً · الإنجليزيّة: العكس. (كان flex-row-reverse داخل صفحةٍ عربيّة يقلبه فيصير الرجوع يساراً)
     const rtl = isRTL();
     return (React.createElement("div", { dir: rtl ? "rtl" : "ltr", className: "flex flex-row items-center px-3 pb-2.5", style: { backgroundColor: colors.header || colors.primary,   /* C195: لون الخدمة داخل شاشاتها (ServiceTheme) */ paddingTop: "calc(env(safe-area-inset-top,0px) + 12px)", minHeight: 60 } },   // C117: كان pt-10 ثابتاً
-        onBack && React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack, className: "w-9 h-9 rounded-full flex items-center justify-center shrink-0", style: { marginInlineEnd: 4 } },
+        onBack && React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack, className: "w-11 h-11 rounded-full flex items-center justify-center shrink-0", style: { margin: "-4px 0", marginInlineStart: -4, marginInlineEnd: 0 } },   // 44px tap target; the -4px margins keep the chevron and the header height exactly as before
             React.createElement(rtl ? ChevronRight : ChevronLeft, { color: "#fff", size: 22 })),
         React.createElement("div", { className: "flex-1 min-w-0 flex flex-row items-center justify-start gap-2", onClick: onTitlePress || undefined, style: Object.assign({ marginInlineEnd: 12 }, onTitlePress ? { cursor: "pointer" } : {}) },
             avatar && React.createElement(Pic, { photo: photo || null, letter: ((avatar === true ? title : avatar) || "?").charAt(0), size: 36, bg: "rgba(255,255,255,0.22)", color: "#fff" }),

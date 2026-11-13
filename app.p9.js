@@ -104,8 +104,8 @@ const AccountantScreen = (function () {
     }
     // Typed numbers: Arabic-Indic (٠-٩) and Persian (۰-۹) digits become 0-9 and the Arabic decimal mark (٫) a dot, so an
     // Arabic keyboard works in every amount field and Number() can read the value (it returns NaN for ٠-٩, which kept Save disabled).
-    const numIn = (v) => String(v || "").replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6F0))
-        .replace(/٫/g, ".").replace(/[^0-9.]/g, "");   // commas (thousands) are dropped, as before
+    const numIn = (v, keepCommas) => String(v || "").replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6F0))
+        .replace(/٫/g, ".").replace(/٬/g, keepCommas ? "," : "").replace(keepCommas ? /[^0-9.,]/g : /[^0-9.]/g, "");   // commas (thousands) are dropped unless the field keeps them
     const pct = (bp) => (bp == null ? "—" : (bp / 100).toFixed(Math.abs(bp) >= 1000 ? 0 : 1) + "%");
     const monthName = (m) => { const [y, mo] = m.split("-").map(Number); return new Intl.DateTimeFormat(locale(), { month: "long", year: "numeric", timeZone: "UTC" }).format(Date.UTC(y, mo - 1, 1)); };
     const monthShort = (m) => { const [y, mo] = m.split("-").map(Number); return new Intl.DateTimeFormat(locale(), { month: "short", timeZone: "UTC" }).format(Date.UTC(y, mo - 1, 1)); };
@@ -216,8 +216,10 @@ const AccountantScreen = (function () {
                     boxShadow: value === o.value ? "0 1px 2px rgba(0,0,0,.12)" : "none" } }), o.label)));
     }
     // An in-app "are you sure?" row. Replaces window.confirm, which the Android/iOS WebViews may block and which isn't laid out right-to-left.
+    // dark mode's danger red is light (#E5695C): white on it is 3.2:1, so the label is dark there (as the app's toasts do)
+    const onDangerInk = (colors, isDark) => (isDark ? colors.bg : "#fff");
     function ConfirmRow({ text, confirmLabel, onConfirm, onCancel, danger = true }) {
-        const { colors } = useTheme();
+        const { colors, isDark } = useTheme();
         const yes = useRef(null);
         useEffect(() => { if (yes.current) yes.current.focus(); }, []);
         return h("div", { role: "alertdialog", "aria-label": text, style: { padding: 12, marginBottom: 12, borderRadius: 12, border: "1px solid " + (danger ? colors.danger : colors.border), backgroundColor: colors.bg } },
@@ -225,13 +227,63 @@ const AccountantScreen = (function () {
             h("div", { style: { display: "flex", gap: 8 } },
                 h(Btn, { kind: "ghost", onClick: onCancel, style: { flex: 1 } }, tl("إلغاء", "Cancel")),
                 h("button", { ref: yes, type: "button", onClick: onConfirm, style: { flex: 1, minHeight: 44, borderRadius: 12, border: 0, fontWeight: 700, fontSize: 14, cursor: "pointer",
-                    backgroundColor: danger ? colors.danger : colors.primary, color: "#fff" } }, confirmLabel)));
+                    backgroundColor: danger ? colors.danger : colors.primary, color: danger ? onDangerInk(colors, isDark) : "#fff" } }, confirmLabel)));
     }
     // ask(text, confirmLabel, fn) shows a ConfirmRow; `node` is where it renders.
     function useConfirm() {
         const [q, setQ] = useState(null);
         const node = q && h(ConfirmRow, { text: q.text, confirmLabel: q.label, onCancel: () => setQ(null), onConfirm: () => { const fn = q.fn; setQ(null); fn(); } });
         return [(text, label, fn) => setQ({ text, label, fn }), node];
+    }
+    // ask({ text, confirmLabel, danger, input: { label, required, decimal } }) → Promise: the typed text (or true), or null if cancelled.
+    // An in-app replacement for window.confirm / window.prompt (blocked or unstyled in the Android/iOS WebViews, never right-to-left).
+    // Rendered by the DialogHost inside the accountant screen; without one it falls back to the browser dialogs.
+    let dlgSet = null;
+    function ask(o) {
+        return new Promise((res) => {
+            if (!dlgSet) { const v = o.input ? window.prompt(o.text, "") : window.confirm(o.text); res(o.input ? v : v ? true : null); return; }
+            dlgSet(Object.assign({}, o, { res }));
+        });
+    }
+    function AskDialog({ d, done }) {
+        const { colors, isDark } = useTheme();
+        const box = useRef(null), first = useRef(null);
+        const [v, setV] = useState("");
+        const inp = d.input, ok = !inp || !inp.required || v.trim().length > 0;
+        const finish = (yes) => done(yes ? (inp ? (inp.decimal ? numIn(v) : v.trim()) : true) : null);
+        useEffect(() => {
+            const prev = document.activeElement; if (first.current) first.current.focus();
+            // capture on window: runs before the sheet's own Escape/Tab handlers and stops them
+            const k = (e) => {
+                if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); finish(false); return; }
+                if (e.key !== "Tab" || !box.current) return;
+                e.stopPropagation();
+                const els = Array.from(box.current.querySelectorAll(FOCUSABLE)).filter((el) => el.offsetParent !== null); if (!els.length) return;
+                const a = els[0], z = els[els.length - 1];
+                if (e.shiftKey && document.activeElement === a) { e.preventDefault(); z.focus(); } else if (!e.shiftKey && document.activeElement === z) { e.preventDefault(); a.focus(); }
+            };
+            window.addEventListener("keydown", k, true);
+            return () => { window.removeEventListener("keydown", k, true); try { if (prev && prev.focus) prev.focus(); } catch (e) {} };
+        }, []);
+        const tid = "pfm-ask-text";
+        return h("div", { dir: ar() ? "rtl" : "ltr", onClick: (e) => { if (e.target === e.currentTarget) finish(false); },
+            style: { position: "fixed", inset: 0, zIndex: 80, backgroundColor: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 } },
+            h("div", { ref: box, role: "alertdialog", "aria-modal": true, "aria-labelledby": tid, style: { width: "100%", maxWidth: 400, backgroundColor: colors.card, color: colors.text, borderRadius: 16, padding: 18,
+                border: "1px solid " + (d.danger ? colors.danger : colors.border) } },
+                h("div", { id: tid, style: { fontSize: 15, fontWeight: 700, lineHeight: 1.6, marginBottom: 14 } }, d.text),
+                inp && h("label", { style: { display: "block", marginBottom: 14 } },
+                    h("div", { style: { fontSize: 12, fontWeight: 700, color: colors.textMuted, marginBottom: 6 } }, inp.label + (inp.required ? "" : tl(" (اختياريّ)", " (optional)"))),
+                    h("input", { ref: first, value: v, dir: inp.decimal ? "ltr" : "auto", inputMode: inp.decimal ? "decimal" : undefined, maxLength: 300,
+                        onChange: (e) => setV(inp.decimal ? numIn(e.target.value) : e.target.value), onKeyDown: (e) => { if (e.key === "Enter" && ok) finish(true); }, style: inputStyle(colors) })),
+                h("div", { style: { display: "flex", gap: 8 } },
+                    h("button", { ref: inp ? null : first, type: "button", onClick: () => finish(false), style: { flex: 1, minHeight: 44, borderRadius: 12, border: "1px solid " + colors.border, backgroundColor: "transparent", color: colors.text, fontWeight: 700, fontSize: 14, cursor: "pointer" } }, d.cancelLabel || tl("إلغاء", "Cancel")),
+                    h("button", { type: "button", disabled: !ok, onClick: () => finish(true), style: { flex: 1, minHeight: 44, borderRadius: 12, border: 0, fontWeight: 700, fontSize: 14, cursor: ok ? "pointer" : "default", opacity: ok ? 1 : 0.5,
+                        backgroundColor: d.danger ? colors.danger : colors.primary, color: d.danger ? onDangerInk(colors, isDark) : "#fff" } }, d.confirmLabel || tl("متابعة", "Continue")))));
+    }
+    function DialogHost() {
+        const [d, setD] = useState(null);
+        useEffect(() => { dlgSet = setD; return () => { if (dlgSet === setD) dlgSet = null; }; }, []);
+        return d ? h(AskDialog, { key: d.text, d, done: (val) => { setD(null); d.res(val); } }) : null;
     }
     const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
     // dirty: the form has unsaved input — closing by backdrop, Escape or ✕ asks first instead of dropping it.
@@ -785,7 +837,7 @@ const AccountantScreen = (function () {
             h("div", { role: "tablist", "aria-label": tl("الحالة", "Status"), style: { display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, marginBottom: 10 } },
                 ["all", "draft", "sent", "overdue", "paid", "cancelled"].map((k) => { const on = f === k, n = k === "all" ? data.items.length : data.items.filter((i) => i.status === k).length;
                     if (k !== "all" && !n) return null;
-                    return h("button", { key: k, role: "tab", "aria-selected": on, type: "button", onClick: () => setF(k), style: { flexShrink: 0, minHeight: 36, padding: "4px 12px", borderRadius: 18,
+                    return h("button", { key: k, role: "tab", "aria-selected": on, type: "button", onClick: () => setF(k), style: { flexShrink: 0, minHeight: 44, padding: "4px 12px", borderRadius: 18,
                         border: "1.5px solid " + (on ? colors.primary : colors.border), backgroundColor: on ? colors.primary + "1f" : "transparent", color: colors.text, fontWeight: 700, fontSize: T.small, cursor: "pointer" } },
                         (k === "all" ? tl("الكلّ", "All") : tl(STATUS[k][0][0], STATUS[k][0][1])) + " " + n); })),
             !data.items.length ? h("p", { style: { color: colors.textMuted, fontSize: T.body, lineHeight: 1.6 } }, tl("لم تُصدر فواتير بعد. أنشئ أوّل فاتورة لعميلك، وستظهر هنا مع حالتها.", "No invoices yet. Create your first one and it shows here with its status."))
@@ -833,8 +885,8 @@ const AccountantScreen = (function () {
         if (!biz || !items) return h(Sheet, { title: tl("فاتورة", "Invoice"), onClose }, err ? h("div", { role: "alert", style: { color: colors.danger } }, err) : h(Loading));
         const setItem = (i, patch) => setItems(items.map((it, j) => (j === i ? Object.assign({}, it, patch) : it)));
         const accounts = (biz.accounts || []).filter((a) => !a.archived && (a.currency === "ANY" || a.currency === cur));
-        const save = (andSend) => {
-            if (andSend && !window.confirm(tl("ستأخذ الفاتورة رقماً ولن تُعدَّل بعد الإرسال. متابعة؟", "The invoice gets its number and can't be edited after sending. Continue?"))) return;
+        const save = async (andSend) => {
+            if (andSend && !(await ask({ text: tl("ستأخذ الفاتورة رقماً ولن تُعدَّل بعد الإرسال. متابعة؟", "The invoice gets its number and can't be edited after sending. Continue?"), confirmLabel: tl("إرسال", "Send") }))) return;
             setBusy(true); setErr("");
             const p = { currency: cur, client: { name: client.name.trim(), contact: (client.contact || "").trim(), taxId: (client.taxId || "").trim(), address: (client.address || "").trim(), phone: (client.phone || "").trim(), sawaId: (client.sawaId || "").trim() }, items: payloadItems(), invoiceDiscount: discount(),
                 issueDate: issue, dueDate: due, allowPartial: partial, payoutAccountIds: accts, notes: notes.trim(), lang };
@@ -844,7 +896,7 @@ const AccountantScreen = (function () {
         };
         const rateOpts = [h("option", { key: "n", value: "none" }, tl("بلا ضريبة", "No tax"))].concat((B.taxRates || []).map((r) => h("option", { key: r.id, value: "saved:" + r.id, title: r.label || undefined }, "\u200E" + r.rate + "%\u200E")),   // rate only (the menu is narrow); LRM marks keep "15%" in order — dropdowns ignore isolates
             [h("option", { key: "c", value: "custom" }, tl("نسبة أخرى…", "Other rate…"))]);
-        const small = Object.assign(inputStyle(colors), { minHeight: 40, padding: "8px 10px", fontSize: 14 });
+        const small = Object.assign(inputStyle(colors), { minHeight: 44, padding: "8px 10px", fontSize: 14 });
         return h(Sheet, { title: inv ? tl("تعديل المسوّدة", "Edit draft") : tl("فاتورة جديدة", "New invoice"), onClose },
             h(Field, { label: tl("العميل", "Client") },
                 h("input", { dir: "auto", value: client.name, maxLength: 120, placeholder: tl("الاسم", "Name"), onChange: (e) => setClient(Object.assign({}, client, { name: e.target.value })), style: Object.assign(inputStyle(colors), { marginBottom: 8 }) }),
@@ -858,25 +910,25 @@ const AccountantScreen = (function () {
                 items.map((it, i) => h("div", { key: it.k, style: { padding: "10px 0", borderTop: i ? "1px solid " + colors.border : 0 } },
                     h("input", { dir: "auto", value: it.d, maxLength: 200, placeholder: tl("الوصف", "Description"), "aria-label": tl("الوصف", "Description"), onChange: (e) => setItem(i, { d: e.target.value }), style: Object.assign({}, small, { marginBottom: 6 }) }),
                     h("div", { style: { display: "flex", gap: 6, alignItems: "center" } },
-                        h("input", { dir: "ltr", inputMode: "decimal", value: it.q, "aria-label": tl("الكمّيّة", "Quantity"), onChange: (e) => setItem(i, { q: e.target.value.replace(/[^0-9.]/g, "") }), style: Object.assign({}, small, { width: 64, flex: "none" }) }),
+                        h("input", { dir: "ltr", inputMode: "decimal", value: it.q, "aria-label": tl("الكمّيّة", "Quantity"), onChange: (e) => setItem(i, { q: numIn(e.target.value) }), style: Object.assign({}, small, { width: 64, flex: "none" }) }),
                         h("span", { "aria-hidden": true, style: { color: colors.textMuted } }, "×"),
-                        h("input", { dir: "ltr", inputMode: "decimal", value: it.p, placeholder: tl("سعر الوحدة", "Unit price"), "aria-label": tl("سعر الوحدة", "Unit price"), onChange: (e) => setItem(i, { p: e.target.value.replace(/[^0-9.٠-٩٫]/g, "") }), style: Object.assign({}, small, { flex: 1 }) }),
+                        h("input", { dir: "ltr", inputMode: "decimal", value: it.p, placeholder: tl("سعر الوحدة", "Unit price"), "aria-label": tl("سعر الوحدة", "Unit price"), onChange: (e) => setItem(i, { p: numIn(e.target.value) }), style: Object.assign({}, small, { flex: 1 }) }),
                         B.taxRegistered && h("select", { "aria-label": B.taxLabel || tl("الضريبة", "Tax"), value: it.tax.mode === "saved" ? "saved:" + it.tax.id : it.tax.mode, onChange: (e) => { const v = e.target.value; setItem(i, { tax: v === "none" ? { mode: "none" } : v === "custom" ? { mode: "custom", rate: "" } : { mode: "saved", id: v.slice(6) } }); }, style: Object.assign({}, small, { width: 110, flex: "none" }) }, rateOpts),
-                        items.length > 1 && h("button", { type: "button", "aria-label": tl("حذف البند", "Remove line"), onClick: () => setItems(items.filter((_, j) => j !== i)), style: { width: 40, height: 40, border: 0, background: "none", color: colors.textMuted, cursor: "pointer", flex: "none" } }, h(X, { size: 18 }))),
-                    it.tax.mode === "custom" && h("input", { dir: "ltr", inputMode: "decimal", value: it.tax.rate, placeholder: tl("النسبة %", "Rate %"), "aria-label": tl("نسبة الضريبة", "Tax rate"), onChange: (e) => setItem(i, { tax: { mode: "custom", rate: e.target.value.replace(/[^0-9.]/g, "") } }), style: Object.assign({}, small, { marginTop: 6, width: 120 }) }))),
+                        items.length > 1 && h("button", { type: "button", "aria-label": tl("حذف البند", "Remove line"), onClick: () => setItems(items.filter((_, j) => j !== i)), style: { width: 44, height: 44, border: 0, background: "none", color: colors.textMuted, cursor: "pointer", flex: "none" } }, h(X, { size: 18 }))),
+                    it.tax.mode === "custom" && h("input", { dir: "ltr", inputMode: "decimal", value: it.tax.rate, placeholder: tl("النسبة %", "Rate %"), "aria-label": tl("نسبة الضريبة", "Tax rate"), onChange: (e) => setItem(i, { tax: { mode: "custom", rate: numIn(e.target.value) } }), style: Object.assign({}, small, { marginTop: 6, width: 120 }) }))),
                 h("button", { type: "button", onClick: () => setItems(items.concat({ k: newKey(), d: "", q: "1", p: "", tax: B.taxRegistered && B.defaultTaxRateId ? { mode: "saved", id: B.defaultTaxRateId } : { mode: "none" } })),
-                    style: { minHeight: 40, border: 0, background: "none", color: tealInk(), fontWeight: 700, cursor: "pointer", padding: 0 } }, "＋ " + tl("بند آخر", "Another line"))),
+                    style: { minHeight: 44, border: 0, background: "none", color: tealInk(), fontWeight: 700, cursor: "pointer", padding: 0 } }, "＋ " + tl("بند آخر", "Another line"))),
             !B.taxRegistered && h("p", { style: { fontSize: T.tiny, color: colors.textMuted, margin: "-6px 0 12px" } }, tl("لا ضريبة على فواتيرك. إن كنت تفرضها، فعّلها في بيانات النشاط.", "Your invoices carry no tax. If you charge tax, turn it on in business details.")),
-            h(Field, { label: tl("خصمٌ على الفاتورة كلّها (%)", "Discount on the whole invoice (%)") }, h("input", { dir: "ltr", inputMode: "decimal", value: disc, placeholder: "0", onChange: (e) => setDisc(e.target.value.replace(/[^0-9.]/g, "")), style: inputStyle(colors) })),
+            h(Field, { label: tl("خصمٌ على الفاتورة كلّها (%)", "Discount on the whole invoice (%)") }, h("input", { dir: "ltr", inputMode: "decimal", value: disc, placeholder: "0", onChange: (e) => setDisc(numIn(e.target.value)), style: inputStyle(colors) })),
             h("div", { style: { display: "flex", gap: 8 } },
                 h("div", { style: { flex: 1 } }, h(Field, { label: tl("تاريخ الإصدار", "Issue date") }, h("input", { type: "date", value: issue, onChange: (e) => setIssue(e.target.value), style: inputStyle(colors) }))),
                 h("div", { style: { flex: 1 } }, h(Field, { label: tl("يستحقّ في", "Due on") }, h("input", { type: "date", value: due || "", min: issue, onChange: (e) => setDue(e.target.value), style: inputStyle(colors) })))),
             h("div", { style: { display: "flex", gap: 6, margin: "-4px 0 12px", flexWrap: "wrap" } }, [0, 7, 14, 30].map((n) => h("button", { key: n, type: "button", onClick: () => setDue(addDaysISO(issue, n)),
-                style: { minHeight: 34, padding: "4px 10px", borderRadius: 17, border: "1px solid " + colors.border, background: "none", color: colors.text, fontSize: T.small, cursor: "pointer" } },
+                style: { minHeight: 44, padding: "4px 10px", borderRadius: 17, border: "1px solid " + colors.border, background: "none", color: colors.text, fontSize: T.small, cursor: "pointer" } },
                 n === 0 ? tl("عند الاستلام", "On receipt") : tl(`بعد ${n} يوماً`, `In ${n} days`)))),
             h(Field, { label: tl("يدفع لك العميل في", "The client pays you into"), group: true, hint: accounts.length ? null : tl("لا حسابات بهذه العملة — أضفها في بيانات النشاط، أو اترك الفاتورة للدفع نقداً.", "No accounts in this currency — add them in business details, or leave it for cash payment.") },
                 h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } }, accounts.map((a) => { const on = accts.indexOf(a.id) >= 0;
-                    return h("button", { key: a.id, type: "button", "aria-pressed": on, onClick: () => setAccts(on ? accts.filter((x) => x !== a.id) : accts.concat(a.id)), style: { minHeight: 38, padding: "6px 12px", borderRadius: 19,
+                    return h("button", { key: a.id, type: "button", "aria-pressed": on, onClick: () => setAccts(on ? accts.filter((x) => x !== a.id) : accts.concat(a.id)), style: { minHeight: 44, padding: "6px 12px", borderRadius: 19,
                         border: "1.5px solid " + (on ? colors.primary : colors.border), backgroundColor: on ? colors.primary + "1f" : "transparent", color: colors.text, fontSize: T.small, fontWeight: 600, cursor: "pointer" } },
                         (a.bankName || a.provider || a.label) + " ", h("bdi", null, a.number)); }))),
             h(Check, { checked: partial, onChange: setPartial }, tl("يجوز للعميل الدفع على دفعات", "The client may pay in parts")),
@@ -1075,14 +1127,14 @@ const AccountantScreen = (function () {
             if (navigator.share) navigator.share({ title: iv.number, text }).catch(() => {});
             else if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => setMsg(tl("نُسخ نصّ الفاتورة — الصقه في المحادثة", "Invoice text copied — paste it in a chat")), () => {}); });
         const payForm = pay && h("section", { "aria-label": tl("تسجيل دفعة", "Record a payment"), style: { padding: "12px 0", margin: "12px 0", borderTop: "1px solid " + colors.border } },
-            h(Field, { label: tl("المبلغ المستلم", "Amount received") + " (" + cur + ")" }, h("input", { dir: "ltr", inputMode: "decimal", value: pay.amount, onChange: (e) => setPay(Object.assign({}, pay, { amount: e.target.value.replace(/[^0-9.٠-٩٫]/g, "") })), style: inputStyle(colors) })),
+            h(Field, { label: tl("المبلغ المستلم", "Amount received") + " (" + cur + ")" }, h("input", { dir: "ltr", inputMode: "decimal", value: pay.amount, onChange: (e) => setPay(Object.assign({}, pay, { amount: numIn(e.target.value) })), style: inputStyle(colors) })),
             h(Field, { label: tl("كيف وصلك", "How it arrived") }, h("select", { value: pay.method, onChange: (e) => setPay(Object.assign({}, pay, { method: e.target.value })), style: inputStyle(colors) },
                 [["bank_transfer", "تحويل بنكيّ", "Bank transfer"], ["mobile_money", "محفظة جوّال", "Mobile money"], ["cash", "نقداً", "Cash"], ["other", "أخرى", "Other"]].map(([v, a, b]) => h("option", { key: v, value: v }, tl(a, b))))),
             h("div", { style: { display: "flex", gap: 8 } },
                 h("div", { style: { flex: 1 } }, h(Field, { label: tl("التاريخ", "Date") }, h("input", { type: "date", value: pay.date, max: today, onChange: (e) => setPay(Object.assign({}, pay, { date: e.target.value })), style: inputStyle(colors) }))),
                 h("div", { style: { flex: 1 } }, h(Field, { label: tl("المرجع (اختياريّ)", "Reference (optional)") }, h("input", { dir: "auto", value: pay.reference, maxLength: 80, onChange: (e) => setPay(Object.assign({}, pay, { reference: e.target.value })), style: inputStyle(colors) })))),
             cur !== base && h(Field, { label: tl("سعر الصرف: ", "Exchange rate: ") + "\u2066" + `1 ${cur} = ? ${base}` + "\u2069", hint: tl("لتدخل الدفعة مجاميعك. اتركه فارغاً لتضيفه لاحقاً", "So the payment counts in your totals. Leave empty to add it later") },
-                h("input", { dir: "ltr", inputMode: "decimal", value: pay.fxRate, onChange: (e) => setPay(Object.assign({}, pay, { fxRate: e.target.value.replace(/[^0-9.]/g, "") })), style: inputStyle(colors) })),
+                h("input", { dir: "ltr", inputMode: "decimal", value: pay.fxRate, onChange: (e) => setPay(Object.assign({}, pay, { fxRate: numIn(e.target.value) })), style: inputStyle(colors) })),
             h("div", { style: { display: "flex", gap: 8 } },
                 h(Btn, { kind: "ghost", onClick: () => setPay(null) }, tl("إلغاء", "Cancel")),
                 h(Btn, { style: { flex: 1 }, disabled: busy || !(Number(pay.amount) > 0), onClick: () => run(call("inv.markPaid", { id, amount: pay.amount, method: pay.method, paidAt: pay.date, reference: pay.reference || null, fxRate: pay.fxRate || undefined, idemKey: pay.key }), () => setPay(null)) },
@@ -1110,10 +1162,12 @@ const AccountantScreen = (function () {
                             if (!r.data) return;
                             // C287: a PDF receipt opens as a file (an <img> cannot show it)
                             if (/^data:application\/pdf;/.test(r.data)) saveFileOut(pdfBlob(r.data.split(",")[1]), (r.name && /\.pdf$/i.test(r.name) ? r.name : "receipt-" + (inv.number || "invoice") + ".pdf").replace(/[\\/:*?"<>|]+/g, "-"), "application/pdf");
-                            else setProof(r.data); }, (e) => setErr(errText(e))), style: { minHeight: 38, padding: "6px 12px", fontSize: T.small } }, p.proofType === "application/pdf" ? tl("الإيصال (PDF)", "Receipt (PDF)") : tl("الإيصال", "Receipt")),
-                        h(Btn, { kind: "danger", disabled: busy, onClick: () => { const r = window.prompt(tl("سبب الرفض (يراه العميل لاحقاً؛ اختياريّ)", "Why reject (optional)"), ""); if (r !== null) run(call("inv.claim.decide", { id, payId: p.id, decision: "reject", note: r || null })); }, style: { minHeight: 38, padding: "6px 12px", fontSize: T.small } }, tl("لم يصل", "Not received")),
-                        h(Btn, { disabled: busy, onClick: () => { let fx; if (cur !== base) { fx = window.prompt(tl(`سعر الصرف: 1 ${cur} = ? ${base} (اتركه فارغاً لاحقاً)`, `Exchange rate: 1 ${cur} = ? ${base} (leave empty for later)`), ""); if (fx === null) return; }
-                            run(call("inv.claim.decide", { id, payId: p.id, decision: "confirm", fxRate: fx || undefined })); }, style: { flex: 1, minHeight: 38, fontSize: T.small } }, tl("وصل — أكّد", "Received — confirm")))); }),
+                            else setProof(r.data); }, (e) => setErr(errText(e))), style: { minHeight: 44, padding: "6px 12px", fontSize: T.small } }, p.proofType === "application/pdf" ? tl("الإيصال (PDF)", "Receipt (PDF)") : tl("الإيصال", "Receipt")),
+                        h(Btn, { kind: "danger", disabled: busy, onClick: async () => { const r = await ask({ text: tl("لم يصلك هذا الدفع؟", "This payment didn't arrive?"), confirmLabel: tl("لم يصل", "Not received"), danger: true,
+                            input: { label: tl("السبب — يراه العميل لاحقاً", "Reason — the client sees it later") } }); if (r !== null) run(call("inv.claim.decide", { id, payId: p.id, decision: "reject", note: r || null })); }, style: { minHeight: 44, padding: "6px 12px", fontSize: T.small } }, tl("لم يصل", "Not received")),
+                        h(Btn, { disabled: busy, onClick: async () => { let fx; if (cur !== base) { fx = await ask({ text: tl("وصل الدفع — أكّد الاستلام", "Payment received — confirm it"), confirmLabel: tl("تأكيد", "Confirm"),
+                            input: { label: tl("سعر الصرف: ", "Exchange rate: ") + "\u2066" + `1 ${cur} = ? ${base}` + "\u2069" + tl(" — اتركه فارغاً لتضيفه لاحقاً", " — leave empty to add later"), decimal: true } }); if (fx === null) return; }
+                            run(call("inv.claim.decide", { id, payId: p.id, decision: "confirm", fxRate: fx || undefined })); }, style: { flex: 1, minHeight: 44, fontSize: T.small } }, tl("وصل — أكّد", "Received — confirm")))); }),
             proof && h("div", { role: "dialog", "aria-modal": true, "aria-label": tl("الإيصال", "Receipt"), onClick: () => setProof(null), style: { position: "fixed", inset: 0, zIndex: 70, backgroundColor: "rgba(0,0,0,.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 } },
                 h("img", { src: proof, alt: tl("صورة الإيصال", "Receipt photo"), style: { maxWidth: "100%", maxHeight: "90vh", objectFit: "contain" } })),
             (inv.payments || []).filter((p) => p.state !== "claimed").length > 0 && h(Section, { title: tl("الدفعات", "Payments") },
@@ -1125,7 +1179,7 @@ const AccountantScreen = (function () {
             err && h("div", { role: "alert", style: { color: colors.danger, fontSize: T.small, margin: "8px 0" } }, err),
             h("div", { style: { display: "grid", gap: 8, marginTop: 16 } },
                 st === "draft" && [
-                    h(Btn, { key: "s", disabled: busy, onClick: () => { if (window.confirm(tl("ستأخذ الفاتورة رقماً ولن تُعدَّل بعد الإرسال. متابعة؟", "The invoice gets its number and can't be edited after sending. Continue?"))) run(call("inv.send", { id })); } }, tl("إرسال", "Send")),
+                    h(Btn, { key: "s", disabled: busy, onClick: async () => { if (await ask({ text: tl("ستأخذ الفاتورة رقماً ولن تُعدَّل بعد الإرسال. متابعة؟", "The invoice gets its number and can't be edited after sending. Continue?"), confirmLabel: tl("إرسال", "Send") })) run(call("inv.send", { id })); } }, tl("إرسال", "Send")),
                     h(Btn, { key: "e", kind: "ghost", onClick: () => onEdit(inv) }, tl("تعديل", "Edit"))],
                 (st === "sent" || st === "overdue") && !pay && h(Btn, { onClick: () => setPay({ amount: minorToText(t0.amountDue, cur), method: "bank_transfer", date: today, reference: "", fxRate: "", key: newKey() }) }, tl("تسجيل دفعة", "Record a payment")),
                 h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
@@ -1134,8 +1188,9 @@ const AccountantScreen = (function () {
                     st !== "draft" && st !== "cancelled" && h(Btn, { kind: "ghost", onClick: doShare, style: { flex: 1 } }, tl("مشاركة", "Share"))),
                 (st === "sent" || st === "overdue") && h(Btn, { kind: "ghost", onClick: () => withLink().then((iv) => { if (!iv.payLinkToken) { setErr(tl("تعذّر تجهيز رابط الدفع. أعد المحاولة.", "Couldn't make the pay link. Try again.")); return; } const u = payLink(iv);
                     (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => setMsg(tl("نُسخ رابط الدفع — يفتحه العميل دون حساب", "Pay link copied — the client opens it without an account")), () => setMsg(u)); }) }, tl("نسخ رابط الدفع", "Copy pay link")),
-                st === "draft" && h(Btn, { kind: "danger", disabled: busy, onClick: () => { if (window.confirm(tl("حذف المسوّدة؟", "Delete this draft?"))) run(call("inv.delete", { id }), () => onClose()); } }, tl("حذف المسوّدة", "Delete draft")),
-                (st === "sent" || st === "overdue") && !(t0.amountPaid > 0) && h(Btn, { kind: "danger", disabled: busy, onClick: () => { const r = window.prompt(tl("سبب الإلغاء (اختياريّ)", "Reason for cancelling (optional)"), ""); if (r !== null) run(call("inv.cancel", { id, reason: r })); } }, tl("إلغاء الفاتورة", "Cancel invoice"))));
+                st === "draft" && h(Btn, { kind: "danger", disabled: busy, onClick: async () => { if (await ask({ text: tl("حذف المسوّدة؟", "Delete this draft?"), confirmLabel: tl("حذف", "Delete"), danger: true })) run(call("inv.delete", { id }), () => onClose()); } }, tl("حذف المسوّدة", "Delete draft")),
+                (st === "sent" || st === "overdue") && !(t0.amountPaid > 0) && h(Btn, { kind: "danger", disabled: busy, onClick: async () => { const r = await ask({ text: tl("إلغاء هذه الفاتورة؟", "Cancel this invoice?"), confirmLabel: tl("إلغاء الفاتورة", "Cancel invoice"), cancelLabel: tl("رجوع", "Back"), danger: true,
+                    input: { label: tl("سبب الإلغاء", "Reason for cancelling") } }); if (r !== null) run(call("inv.cancel", { id, reason: r })); } }, tl("إلغاء الفاتورة", "Cancel invoice"))));
     }
 
     // CSV of the ledger (booked entries) for a range of budget months, saved as a file. The server builds the file.
@@ -1161,7 +1216,7 @@ const AccountantScreen = (function () {
                     "A CSV file for Excel, Google Sheets or Numbers: date, type, category, amount and currency, the amount in your reporting currency, payee and note. Suggested entries you haven't confirmed are left out.")),
             h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 } },
                 [[tl("هذا الشهر", "This month"), 0], [tl("آخر 3 أشهر", "Last 3 months"), 2], [tl("آخر 12 شهراً", "Last 12 months"), 11]].map(([label, n]) =>
-                    h(Btn, { key: n, kind: from === shiftMonth(latest, -n) && to === latest ? undefined : "ghost", onClick: () => preset(n), style: { minHeight: 36, padding: "6px 12px", fontSize: 13 } }, label))),
+                    h(Btn, { key: n, kind: from === shiftMonth(latest, -n) && to === latest ? undefined : "ghost", onClick: () => preset(n), style: { minHeight: 44, padding: "6px 12px", fontSize: 13 } }, label))),
             h("div", { style: { display: "flex", gap: 8 } },
                 h("div", { style: { flex: 1 } }, monthInput(from, setFrom, tl("من", "From"))),
                 h("div", { style: { flex: 1 } }, monthInput(to, setTo, tl("إلى", "To")))),
@@ -1217,9 +1272,9 @@ const AccountantScreen = (function () {
                 h("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
                     b.logo ? h("img", { src: b.logo, alt: tl("الشعار الحاليّ", "Current logo"), style: { maxHeight: 56, maxWidth: 140, objectFit: "contain", border: "1px solid " + colors.border, borderRadius: 8, padding: 4, backgroundColor: "#fff" } })
                         : h("span", { style: { fontSize: T.small, color: colors.textMuted } }, tl("بلا شعار", "No logo")),
-                    h("label", { style: { minHeight: 40, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: 12, border: "1px solid " + colors.border, cursor: "pointer", fontWeight: 700, fontSize: T.small } },
+                    h("label", { style: { minHeight: 44, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: 12, border: "1px solid " + colors.border, cursor: "pointer", fontWeight: 700, fontSize: T.small } },
                         b.logo ? tl("تغيير", "Change") : tl("اختر صورة", "Choose image"), h("input", { type: "file", accept: "image/png,image/jpeg,image/webp", onChange: pickLogo, style: { display: "none" } })),
-                    b.logo && h("button", { type: "button", onClick: () => call("pfm.logo.delete").then(load), style: { border: 0, background: "none", color: colors.danger, fontWeight: 700, minHeight: 40, cursor: "pointer" } }, tl("إزالة", "Remove")))),
+                    b.logo && h("button", { type: "button", onClick: () => call("pfm.logo.delete").then(load), style: { border: 0, background: "none", color: colors.danger, fontWeight: 700, minHeight: 44, cursor: "pointer" } }, tl("إزالة", "Remove")))),
             inp("name", tl("اسم النشاط", "Business name"), { maxLength: 80 }),
             inp("phone", tl("الهاتف", "Phone"), { dir: "ltr", type: "tel", inputMode: "tel", maxLength: 30, placeholder: "+249…", style: Object.assign(inputStyle(colors), { textAlign: ar() ? "right" : "left" }) }),
             inp("contact", tl("البريد الإلكترونيّ (اختياريّ)", "Email (optional)"), { maxLength: 120 }),
@@ -1227,7 +1282,7 @@ const AccountantScreen = (function () {
             h(Field, { label: tl("رمز سوا", "Sawa ID"), hint: tl("يظهر على الفاتورة ليصل إليك العميل في سوا", "Shown on the invoice so the client can reach you on Sawa") },
                 h("div", { style: { display: "flex", gap: 8 } },
                     h("input", { dir: "ltr", inputMode: "numeric", value: form.sawaId || "", maxLength: 14, placeholder: "136-860-8541", "aria-label": tl("رمز سوا", "Sawa ID"), onChange: (e) => set("sawaId", e.target.value.replace(/[^\d-]/g, "")), style: Object.assign(inputStyle(colors), { flex: 1, textAlign: ar() ? "right" : "left" }) }),
-                    myCode && myCode !== String(form.sawaId || "").replace(/\D/g, "") && h("button", { type: "button", onClick: () => set("sawaId", myCode), style: { minHeight: 40, padding: "0 12px", borderRadius: 12, border: "1px solid " + colors.border, background: "none", color: tealInk(), fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" } }, tl("رمزي", "My code")))),
+                    myCode && myCode !== String(form.sawaId || "").replace(/\D/g, "") && h("button", { type: "button", onClick: () => set("sawaId", myCode), style: { minHeight: 44, padding: "0 12px", borderRadius: 12, border: "1px solid " + colors.border, background: "none", color: tealInk(), fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" } }, tl("رمزي", "My code")))),
             h(Check, { checked: form.taxRegistered, onChange: (v) => set("taxRegistered", v) }, tl("أفرض ضريبة على فواتيري", "I charge tax on my invoices")),
             form.taxRegistered && h("div", { style: { paddingInlineStart: 30, marginBottom: 8 } },
                 inp("taxId", tl("رقمي الضريبيّ", "My tax ID"), { dir: "ltr", maxLength: 40 }),
@@ -1235,10 +1290,10 @@ const AccountantScreen = (function () {
                 h(Field, { label: tl("نِسَبي المحفوظة (تكتبها بنفسك)", "My saved rates (you type them)"), group: true },
                     form.taxRates.map((r, i) => h("div", { key: r.id || i, style: { display: "flex", gap: 6, marginBottom: 6 } },
                         h("input", { dir: "auto", value: r.label, maxLength: 24, placeholder: tl("الاسم", "Name"), "aria-label": tl("اسم النسبة", "Rate name"), onChange: (e) => set("taxRates", form.taxRates.map((x, j) => (j === i ? Object.assign({}, x, { label: e.target.value }) : x))), style: Object.assign(inputStyle(colors), { flex: 1 }) }),
-                        h("input", { dir: "ltr", inputMode: "decimal", value: r.rate, placeholder: "%", "aria-label": tl("النسبة", "Rate"), onChange: (e) => set("taxRates", form.taxRates.map((x, j) => (j === i ? Object.assign({}, x, { rate: e.target.value.replace(/[^0-9.]/g, "") }) : x))), style: Object.assign(inputStyle(colors), { width: 90 }) }),
+                        h("input", { dir: "ltr", inputMode: "decimal", value: r.rate, placeholder: "%", "aria-label": tl("النسبة", "Rate"), onChange: (e) => set("taxRates", form.taxRates.map((x, j) => (j === i ? Object.assign({}, x, { rate: numIn(e.target.value) }) : x))), style: Object.assign(inputStyle(colors), { width: 90 }) }),
                         h("label", { style: { display: "flex", alignItems: "center", gap: 4, fontSize: T.tiny } }, h("input", { type: "radio", name: "deftax", checked: form.defaultTaxRateId === r.id, onChange: () => set("defaultTaxRateId", r.id) }), tl("افتراضيّة", "Default")),
                         h("button", { type: "button", "aria-label": tl("حذف", "Remove"), onClick: () => set("taxRates", form.taxRates.filter((_, j) => j !== i)), style: { width: 40, border: 0, background: "none", color: colors.textMuted, cursor: "pointer" } }, h(X, { size: 16 })))),
-                    h("button", { type: "button", onClick: () => set("taxRates", form.taxRates.concat({ id: "r" + Date.now().toString(36), label: "", rate: "" })), style: { minHeight: 40, border: 0, background: "none", color: tealInk(), fontWeight: 700, cursor: "pointer", padding: 0 } }, "＋ " + tl("نسبة", "Rate")))),
+                    h("button", { type: "button", onClick: () => set("taxRates", form.taxRates.concat({ id: "r" + Date.now().toString(36), label: "", rate: "" })), style: { minHeight: 44, border: 0, background: "none", color: tealInk(), fontWeight: 700, cursor: "pointer", padding: 0 } }, "＋ " + tl("نسبة", "Rate")))),
             h("div", { style: { display: "flex", gap: 8 } },
                 h("div", { style: { flex: 1 } }, inp("invoicePrefix", tl("بادئة رقم الفاتورة", "Invoice number prefix"), { dir: "ltr", maxLength: 8, onChange: (e) => set("invoicePrefix", e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "")) })),
                 h("div", { style: { flex: 1 } }, h(Field, { label: tl("الاستحقاق بعد (أيّام)", "Due after (days)") }, h("input", { dir: "ltr", inputMode: "numeric", value: String(form.defaultDueDays), onChange: (e) => set("defaultDueDays", e.target.value.replace(/[^0-9]/g, "")), style: inputStyle(colors) })))),
@@ -1251,7 +1306,7 @@ const AccountantScreen = (function () {
                 h("p", { style: { margin: "0 0 10px", fontSize: T.small, color: colors.textMuted, lineHeight: 1.6 } }, tl("تظهر على الفاتورة حين تختارها. الأرقام مشفّرة، ونُعلمك إن تغيّر رقم حساب.", "Shown on an invoice when you pick them. Numbers are encrypted, and you're told if a number changes.")),
                 (b.accounts || []).map((a) => h("div", { key: a.id, style: { display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid " + colors.border, opacity: a.archived ? 0.5 : 1 } },
                     h("span", { style: { flex: 1, fontSize: T.body } }, h("b", null, a.bankName || a.provider || a.label), " ", h("bdi", { style: { color: colors.textMuted } }, a.number), " ", h("span", { style: { fontSize: T.tiny, color: colors.textMuted } }, a.currency === "ANY" ? "" : a.currency)),
-                    h("button", { type: "button", onClick: () => call("pfm.account.archive", { id: a.id, archived: !a.archived }).then(load, (e) => setErr(errText(e))), style: { border: 0, background: "none", color: tealInk(), fontWeight: 700, minHeight: 40, cursor: "pointer" } }, a.archived ? tl("إعادة", "Restore") : tl("إخفاء", "Hide")))),
+                    h("button", { type: "button", onClick: () => call("pfm.account.archive", { id: a.id, archived: !a.archived }).then(load, (e) => setErr(errText(e))), style: { border: 0, background: "none", color: tealInk(), fontWeight: 700, minHeight: 44, cursor: "pointer" } }, a.archived ? tl("إعادة", "Restore") : tl("إخفاء", "Hide")))),
                 acct && h("div", { style: { padding: "10px 0" } },
                     h(Seg, { value: acct.type, onChange: (v) => setAcct(Object.assign({}, acct, { type: v })), options: [{ value: "bank", label: tl("بنك", "Bank") }, { value: "mobile_money", label: tl("محفظة جوّال", "Mobile money") }, { value: "other", label: tl("أخرى", "Other") }] }),
                     h("div", { style: { height: 10 } }),
@@ -1500,7 +1555,8 @@ const AccountantScreen = (function () {
                     h(Btn, { kind: "ghost", style: Object.assign({ marginTop: 8, marginInlineEnd: 8 }, pjSmallBtn), onClick: () => setSheet({ k: "files", target: { type: "tx", txId: t.id }, title: t.description || pjName(PJ_KINDS, t.kind) }) },
                         tl("المرفقات", "Attachments") + (t.files ? " (" + t.files + ")" : "")),
                     voided ? h("div", { style: { fontSize: 12, color: colors.danger, marginTop: 4 } }, tl("ملغاة: ", "Voided: ") + (t.voidReason || ""))
-                        : canEdit && h(Btn, { kind: "ghost", style: Object.assign({ marginTop: 8 }, pjSmallBtn), onClick: () => { const r = window.prompt(tl("سبب الإلغاء", "Reason for voiding")); if (r && r.trim()) act(call("pfm.proj.tx.void", { pid, txId: t.id, reason: r.trim() })); } }, tl("إلغاء الحركة", "Void entry")));
+                        : canEdit && h(Btn, { kind: "ghost", style: Object.assign({ marginTop: 8 }, pjSmallBtn), onClick: async () => { const r = await ask({ text: tl("إلغاء هذه الحركة؟ تبقى في السجلّ ملغاة.", "Void this entry? It stays in the record as voided."), confirmLabel: tl("إلغاء الحركة", "Void entry"), cancelLabel: tl("رجوع", "Back"), danger: true,
+                            input: { label: tl("سبب الإلغاء", "Reason for voiding"), required: true } }); if (r && r.trim()) act(call("pfm.proj.tx.void", { pid, txId: t.id, reason: r.trim() })); } }, tl("إلغاء الحركة", "Void entry")));
             }),
             sheet && sheet.k === "entry" && h(ProjectEntrySheet, { pid, cur, base, cats, lines: linesOfBase, today,
                 onClose: () => setSheet(null), onSaved: () => { setSheet(null); reload(); } }));
@@ -1514,11 +1570,11 @@ const AccountantScreen = (function () {
                     m.role === "owner" || !isOwner
                         ? h("span", { style: { fontSize: 12, color: colors.textMuted } }, tl(pjPeople[m.role][0], pjPeople[m.role][1]))
                         : h("div", { style: { display: "flex", gap: 6, alignItems: "center" } },
-                            h("select", { "aria-label": tl("الدور", "Role"), value: m.role, onChange: (e) => act(call("pfm.proj.members.role", { pid, uid: m.uid, role: e.target.value })), style: Object.assign({}, inputStyle(colors), { minHeight: 36, width: "auto" }) },
+                            h("select", { "aria-label": tl("الدور", "Role"), value: m.role, onChange: (e) => act(call("pfm.proj.members.role", { pid, uid: m.uid, role: e.target.value })), style: Object.assign({}, inputStyle(colors), { minHeight: 44, width: "auto" }) },
                                 ["editor", "viewer"].map((r) => h("option", { key: r, value: r }, tl(pjPeople[r][0], pjPeople[r][1])))),
-                            h(Btn, { kind: "danger", onClick: () => { if (window.confirm(tl("إزالة هذا العضو؟", "Remove this member?"))) act(call("pfm.proj.members.remove", { pid, uid: m.uid })); } }, tl("إزالة", "Remove")))))),
+                            h(Btn, { kind: "danger", onClick: async () => { if (await ask({ text: tl("إزالة هذا العضو؟", "Remove this member?"), confirmLabel: tl("إزالة", "Remove"), danger: true })) act(call("pfm.proj.members.remove", { pid, uid: m.uid })); } }, tl("إزالة", "Remove")))))),
             isOwner && h(InviteBox, { pid, call, colors }),
-            !isOwner && h(Btn, { kind: "danger", style: { marginTop: 12 }, onClick: () => { if (window.confirm(tl("مغادرة المشروع؟", "Leave this project?"))) call("pfm.proj.members.remove", { pid }).then(onBack, (e) => setErr(errText(e))); } }, tl("مغادرة المشروع", "Leave project")),
+            !isOwner && h(Btn, { kind: "danger", style: { marginTop: 12 }, onClick: async () => { if (await ask({ text: tl("مغادرة المشروع؟", "Leave this project?"), confirmLabel: tl("مغادرة", "Leave"), danger: true })) call("pfm.proj.members.remove", { pid }).then(onBack, (e) => setErr(errText(e))); } }, tl("مغادرة المشروع", "Leave project")),
             isOwner && h(DeleteBox, { pid, call, onDeleted: onBack, colors }));
 
         const tabs = [["overview", tl("الملخّص", "Summary")], ["estimate", tl("التقدير", "Estimate")], ["ledger", tl("الحركات", "Ledger")], ["people", tl("الأعضاء", "People")]];
@@ -1580,7 +1636,7 @@ const AccountantScreen = (function () {
             err && h("div", { role: "alert", style: { color: colors.danger, fontSize: 14, marginBottom: 10 } }, err),
             h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
                 h(Btn, { onClick: save, disabled: busy }, tl("حفظ المسوّدة", "Save draft")),
-                h(Btn, { kind: "ghost", disabled: busy, onClick: () => { if (window.confirm(tl("اعتماد هذا التقدير؟ يصبح الأساس ولا يُعدَّل إلّا بمراجعة جديدة.", "Approve this estimate? It becomes the baseline and changes only through a new revision."))) act(call("pfm.proj.estimate.approve", { pid, eid: draft.id, rev: draft.rev })); } }, tl("اعتماد التقدير", "Approve estimate"))));
+                h(Btn, { kind: "ghost", disabled: busy, onClick: async () => { if (await ask({ text: tl("اعتماد هذا التقدير؟ يصبح الأساس ولا يُعدَّل إلّا بمراجعة جديدة.", "Approve this estimate? It becomes the baseline and changes only through a new revision."), confirmLabel: tl("اعتماد", "Approve") })) act(call("pfm.proj.estimate.approve", { pid, eid: draft.id, rev: draft.rev })); } }, tl("اعتماد التقدير", "Approve estimate"))));
     }
 
     // ── a ledger entry: expense on a line or unbudgeted, optional copy to the personal ledger ──
@@ -1640,7 +1696,7 @@ const AccountantScreen = (function () {
     // ── C287: attachments with fixed dates, and the price history of a BOQ line ──
     const PJ_FILE_KINDS = [["photo", "صورة", "Photo"], ["quote", "عرض سعر", "Quote"], ["supplier_invoice", "فاتورة مورّد", "Supplier invoice"], ["receipt", "إيصال", "Receipt"], ["other", "أخرى", "Other"]];
     const PJ_FILE_MAX = 4 * 1024 * 1024;
-    const pjSmallBtn = { minHeight: 36, padding: "4px 12px", fontSize: 13 };
+    const pjSmallBtn = { minHeight: 44, padding: "4px 12px", fontSize: 13 };
     const pjDay = (d) => { if (!d) return ""; const [y, mo, da] = d.split("-").map(Number); return new Intl.DateTimeFormat(locale(), { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(Date.UTC(y, mo - 1, da)); };
     const pjStamp = (iso) => { try { return new Intl.DateTimeFormat(locale(), { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso)); } catch (e) { return iso; } };
     const pjFileErr = (e) => (e && e.message === "too_big" ? tl("الملفّ أكبر من 4 ميغابايت", "The file is over 4 MB") : e && e.message === "bad_type" ? tl("اختر صورة أو ملفّ PDF", "Choose a photo or a PDF") : errText(e));
@@ -1675,7 +1731,8 @@ const AccountantScreen = (function () {
         const open = (it) => call("pfm.proj.file.get", { pid, fid: it.id }).then((r) => {
             if (it.type === "application/pdf") saveFileOut(pdfBlob(r.data.split(",")[1]), (it.name && /\.pdf$/i.test(it.name) ? it.name : "attachment-" + it.docDate + ".pdf").replace(/[\\/:*?"<>|]+/g, "-"), "application/pdf");
             else setView(r.data); }, (e) => setErr(errText(e)));
-        const remove = (it) => { const r = window.prompt(tl("سبب الإزالة (يبقى المرفق في السجلّ بلا محتواه)", "Why remove it? (The record stays, without the file)"), "");
+        const remove = async (it) => { const r = await ask({ text: tl("إزالة هذا المرفق؟ يبقى في السجلّ بلا محتواه.", "Remove this attachment? The record stays, without the file."), confirmLabel: tl("إزالة", "Remove"), danger: true,
+                input: { label: tl("سبب الإزالة", "Why remove it"), required: true } });
             if (r == null) return; if (!r.trim()) { setErr(ERR.reason_required ? tl(ERR.reason_required[0], ERR.reason_required[1]) : "reason"); return; }
             call("pfm.proj.file.remove", { pid, fid: it.id, reason: r.trim() }).then(() => { load(); if (onChanged) onChanged(); }, (e) => setErr(errText(e))); };
         const live = (items || []).filter((x) => !x.removedAt), gone = (items || []).filter((x) => x.removedAt);
@@ -1698,7 +1755,7 @@ const AccountantScreen = (function () {
                     h(Field, { label: tl("تاريخ المستند", "Document date"), hint: tl("التاريخ المكتوب على العرض أو الإيصال", "The date printed on the quote or receipt") },
                         h("input", { type: "date", value: f.docDate, max: today || undefined, onChange: (e) => set("docDate")(e.target.value), style: inputStyle(colors) }))),
                 f.kind === "quote" && target.type === "line" && h(Field, { label: tl("سعر الوحدة في العرض (اختياري)", "Unit price on the quote (optional)") + " (" + cur + ")", hint: tl("يدخل سجلّ أسعار البند بتاريخ العرض", "Goes into the line's price history on the quote's date") },
-                    h("input", { inputMode: "decimal", dir: "ltr", value: f.price, onChange: (e) => set("price")(e.target.value.replace(/[^0-9.,]/g, "")), style: inputStyle(colors) })),
+                    h("input", { inputMode: "decimal", dir: "ltr", value: f.price, onChange: (e) => set("price")(numIn(e.target.value, true)), style: inputStyle(colors) })),
                 h(Field, { label: tl("ملاحظة (اختياري)", "Note (optional)") }, h("input", { value: f.note, maxLength: 300, onChange: (e) => set("note")(e.target.value), style: inputStyle(colors) })),
                 h("label", { style: { position: "relative", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 44, borderRadius: 10, border: "1.5px dashed " + colors.primary, color: colors.primary, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 } },
                     busy ? tl("جارٍ الرفع…", "Uploading…") : tl("اختر صورة أو PDF", "Choose a photo or PDF"),
@@ -2010,7 +2067,7 @@ const AccountantScreen = (function () {
             if (added && imp.onSaved) imp.onSaved();
         };
         const chip = (text, color) => h("span", { style: { fontSize: 11, fontWeight: 800, color, border: "1px solid " + color, borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap" } }, text);
-        const small = (style) => Object.assign(inputStyle(colors), { minHeight: 40, padding: "8px 10px", fontSize: 14 }, style);
+        const small = (style) => Object.assign(inputStyle(colors), { minHeight: 44, padding: "8px 10px", fontSize: 14 }, style);
         const rowView = (row) => {
             const r = row.r, e = row.edit;
             const head = (status) => h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 } },
@@ -2081,8 +2138,8 @@ const AccountantScreen = (function () {
                     tl(`الحساب `, `Account `), h("b", { dir: "ltr", style: { unicodeBidi: "isolate" } }, a),
                     tl(` دُفع منه ${hints[a]} من هذه العمليّات. هل هو حسابك؟ (يُسأل مرّة واحدة، وبه يُعرف الدخل من المصروف)`, ` paid ${hints[a]} of these. Is it yours? (Asked once; it tells income from spending)`)),
                 h("div", { style: { display: "flex", gap: 8 } },
-                    h(Btn, { onClick: () => confirmOwn(a), style: { flex: 1, minHeight: 40 } }, tl("نعم، حسابي", "Yes, mine")),
-                    h(Btn, { kind: "ghost", onClick: () => setNoHint(Object.assign({}, noHint, { [a]: true })), style: { flex: 1, minHeight: 40 } }, tl("لا", "No"))))),
+                    h(Btn, { onClick: () => confirmOwn(a), style: { flex: 1, minHeight: 44 } }, tl("نعم، حسابي", "Yes, mine")),
+                    h(Btn, { kind: "ghost", onClick: () => setNoHint(Object.assign({}, noHint, { [a]: true })), style: { flex: 1, minHeight: 44 } }, tl("لا", "No"))))),
             rows.length > 0 && h("div", { style: { fontSize: 12, color: colors.textMuted, marginBottom: 8 } },
                 tl(`${rows.length} صورة · ${counts.ready} جاهزة · ${counts.check} تحتاج مراجعة`, `${rows.length} images · ${counts.ready} ready · ${counts.check} need checking`)),
             rows.map((row) => h(Card, { key: row.key, style: { marginBottom: 10, padding: 12, opacity: row.saved === "dup" || row.state === "twin" ? 0.7 : 1 } }, rowView(row))),
@@ -2236,6 +2293,7 @@ const AccountantScreen = (function () {
                     : h(Invoices, { key: invTick, cur, today: boot.today, onOpen: (id) => setSheet({ type: "invoice", id }), onNew: () => setSheet({ type: "editor" }), onBiz: () => setSheet({ type: "biz" }) }))));
         return h(ServiceTheme, { color: TEAL },
             h("div", { dir: ar() ? "rtl" : "ltr", className: "flex-1 min-h-0 flex flex-col", style: { color: colors.text } },
+                h(DialogHost),
                 h(TopBar, { title: tl("المحاسب الشخصيّ", "Personal accountant"), subtitle: cur ? tl("المجاميع بـ", "Totals in ") + cur : undefined, onBack }),
                 h("div", { className: "flex-1 overflow-y-auto", style: { backgroundColor: colors.bg } }, body),
                 s && tab !== "budgets" && tab !== "business" && h("button", { type: "button", "aria-label": tl("حركة جديدة", "New entry"), onClick: () => setSheet({}),
