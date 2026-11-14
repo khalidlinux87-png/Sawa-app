@@ -2999,3 +2999,12 @@ In dark mode one accent shade (C192, e.g. #2B81CE) served both as text on the da
 - **Checks:** `node --check` on worker-3.js, sawa-chat.js, sw.js. Gating tested in isolation: owner ✓, team admin ✓, moderator ✗, user ✗, owner with unconfirmed email ✗, guest ✗; owner with no `WA_*` secrets ⇒ card shows «قيد التجهيز».
 - **Not checked:** the full flow on a device (needs the deployed Worker and a signed-in manager account).
 - **sw.js:** v488; `EXPECT` for `sawa-chat.js` 583,470. **Upload:** Worker (v116-otpmgr) first, then sawa-chat.js, then sw.js (v488) last.
+
+## ✉️ C304 — SMS code (OTP) verification for the manager only · Worker v117-sms · sawa-chat.js (c304) · sw v489
+- **Provider:** Twilio Verify — it generates, sends and checks the code; Sawa stores no code, only `smsPhone`/`smsExp` (10 min) in `accounts/{uid}`.
+- **Worker secrets (type Secret, values never in chat):** `TWILIO_SID` · `TWILIO_TOKEN` · `TWILIO_VERIFY_SID`. Missing any ⇒ the card shows «قيد التجهيز».
+- **Server:** `phone.smsStart` sends a code to the account's phone; `phone.smsCheck { code }` checks it and sets `phoneVerified`, `verifiedBy: "sms"`, `phones/{phone}` (`by: "sms"`), and un-verifies any previous owner of the number (same rule as WhatsApp). Both refuse non-managers with `manager_only` (same rule as C303: owner + team admins). Limits: 5 sends/hour, 10/day; 10 checks/hour. Arabic digits accepted. If the phone changed after sending ⇒ `sms_expired`. `profile.get` returns `verify.sms`.
+- **App:** «توثيق رقمك» ⇒ new card «✉️ عبر رسالة SMS (رمز تحقّق)» with «للمدير فقط», manager only ⇒ «أرسل الرمز» ⇒ code box (`one-time-code`, numeric) ⇒ «تحقّق» / «أرسل رمزاً جديداً».
+- **Checks:** `node --check` on all three files. Worker ops tested with mocked Twilio/Firestore: non-manager refused; send uses +249 form; wrong code ⇒ not verified; right code (Arabic digits) ⇒ verified with the 3 writes; no secrets ⇒ `enabled:false`; expired ⇒ `sms_expired`.
+- **Not checked:** a real SMS (needs a Twilio account + secrets) and the sheet rendered on a device.
+- **sw.js:** v489; `EXPECT` for `sawa-chat.js` 588177. **Upload:** Worker secrets, then Worker (v117-sms), then sawa-chat.js, then sw.js (v489) last.
