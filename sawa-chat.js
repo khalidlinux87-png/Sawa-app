@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c311";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c312";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -4368,7 +4368,8 @@
     if (/not_contact/.test(m)) return L("لستما جهتي اتّصال", "You're not contacts");
     if (/no_fb_phone/.test(m)) return L("لم يُربط الرقم بعد — أعد المحاولة", "The number isn't linked yet — try again");   // C308
     if (/sms_expired/.test(m)) return L("انتهت صلاحيّة الرمز — اطلب رمزاً جديداً", "Code expired — request a new one");   // C304
-    if (/sms_auth/.test(m)) return L("Twilio رفض المفاتيح — راجع TWILIO_SID وTWILIO_TOKEN", "Twilio rejected the keys — check TWILIO_SID and TWILIO_TOKEN");   // C306
+    if (/sms_auth/.test(m)) return L("مزوّد الرسائل رفض بيانات الدخول — راجع SMSGATE_USER وSMSGATE_PASS (أو مفاتيح Twilio)", "The SMS provider rejected the credentials — check SMSGATE_USER and SMSGATE_PASS (or the Twilio keys)");   // C306 · C312
+    if (/sms_failed:net/.test(m)) return L("تعذّر الوصول إلى بوّابة الرسائل — حاول بعد قليل", "Couldn't reach the SMS gateway — try again shortly");
     if (/sms_failed/.test(m)) { var tc = (m.match(/sms_failed:(\w+)/) || [])[1]; return L("تعذّر إرسال الرسالة", "Couldn't send the SMS") + (tc ? " (Twilio " + tc + ")" : L(" — حاول لاحقاً", " — try later")); }
     if (/manager_only/.test(m)) return L("التحقّق بالرمز للمدير فقط", "Code verification is for the manager only");   // C303
     // C198
