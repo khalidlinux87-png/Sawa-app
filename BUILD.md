@@ -3059,3 +3059,10 @@ In dark mode one accent shade (C192, e.g. #2B81CE) served both as text on the da
 - **Checks:** `node --check`; Worker (mocked gateway + Firestore): request URL/auth/body/text correct, code never stored in Firestore, wrong code ⇒ `left:4`, right code in Arabic digits ⇒ verified and hash cleared, 6th try after 5 wrong ⇒ `sms_expired`, 401 ⇒ `sms_auth`, 500 ⇒ `sms_failed:500`, Twilio still preferred when present, nothing configured ⇒ `enabled:false`; Twilio and Firebase tests still pass; `kin.test.js` 17/17, `marriage.test.js` 9/9. Browser harness (gateway configured): send ⇒ code box, wrong ⇒ «الرمز غير صحيح», right ⇒ «تمّ توثيق رقمك ✓», no Firebase/reCAPTCHA calls.
 - **Not checked:** the real sms-gate.app cloud API (response body unverified; any 2xx is accepted) and delivery from a real phone.
 - **sw.js:** v496; `EXPECT` for `sawa-chat.js` 599,041.
+
+## 🔢 C313 — Gateway answered 400: catch a malformed Sudanese number first, and show the gateway's reason · Worker v133-smsfix · sawa-chat.js (c313) · sw v497
+- **Seen on device:** with `SMSGATE_*` set, «أرسل الرمز» gave «تعذّر إرسال الرسالة (Twilio 400)». The label "Twilio" was wrong (it was the gateway), and the account number was +2499125806556 — 10 digits after 249 instead of 9.
+- **Worker:** `phone.smsStart` rejects a +249 number that is not exactly 9 digits after the code with `bad_phone_sd` before contacting any provider. Gateway errors now carry the gateway's own reason (`sms_failed:<status>:<message>`, printable ASCII, 100 chars max).
+- **App:** «رقمك السودانيّ غير صحيح: بعد ‎+249 يجب ٩ أرقام…» (checked before the generic `bad_phone` text, which also matched); send errors show «تعذّر إرسال الرسالة (<status>: <reason>)» without the Twilio label.
+- **Checks:** `node --check`; error texts for `bad_phone_sd`, `bad_phone`, `sms_failed:400:…`, `sms_failed:500`, `sms_failed:net`; number check: +249912580655 ok, +2499125806556 and +24991258065 rejected, +966… unaffected; gateway mocks pass; `kin.test.js` 17/17, `marriage.test.js` 9/9.
+- **sw.js:** v497; `EXPECT` for `sawa-chat.js` 599415.
