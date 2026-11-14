@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c308";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c309";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -4931,8 +4931,10 @@
       return /^\+\d{8,15}$/.test(t) ? t : null;
     }
     function fbErr(e) {
-      var c = (e && e.code) || "", m = (e && e.message) || "";
-      if (/operation-not-allowed/.test(c)) return L("فعّل «Phone» في Firebase ← Authentication ← Sign-in method", "Enable Phone in Firebase → Authentication → Sign-in method");
+      var c = (e && e.code) || "", m = (e && e.message) || "", tag = " (" + (c || "?") + ")";
+      // C309: Firebase يعيد operation-not-allowed لسببين — البلد محجوب في SMS region policy، أو مزوّد Phone معطَّل. نصّ الخطأ يفرّق بينهما.
+      if (/region/i.test(m)) return L("Firebase لا يسمح بإرسال SMS إلى هذا البلد — فعّل السودان في Authentication ← Settings ← SMS region policy", "SMS to this country is blocked — allow Sudan in Authentication → Settings → SMS region policy") + tag;
+      if (/operation-not-allowed/.test(c)) return L("Firebase رفض الإرسال: فعّل «Phone» في Authentication ← Sign-in method واحفظ، ثمّ تأكّد من السماح بالسودان في Settings ← SMS region policy", "Firebase refused: enable Phone in Sign-in method and save, then allow Sudan in SMS region policy") + tag + (m ? "\n" + m.replace(/^Firebase:\s*/, "").slice(0, 160) : "");
       if (/invalid-verification-code/.test(c)) return L("الرمز غير صحيح", "Wrong code");
       if (/code-expired|session-expired/.test(c)) return L("انتهت صلاحيّة الرمز — اطلب رمزاً جديداً", "Code expired — request a new one");
       if (/credential-already-in-use|account-exists/.test(c)) return L("هذا الرقم مربوطٌ بحسابٍ آخر في سوا", "This number is linked to another Sawa account");

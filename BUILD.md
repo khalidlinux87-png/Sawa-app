@@ -3031,3 +3031,8 @@ In dark mode one accent shade (C192, e.g. #2B81CE) served both as text on the da
 - **Checks:** `node --check`. Browser (Chromium, real sawa-chat.js with stubbed Firebase/Worker): manager sees three cards, non-manager only «عبر معارفك»; send ⇒ reCAPTCHA + SMS to +249923467702; wrong code ⇒ «الرمز غير صحيح»; right code in Arabic digits ⇒ link ⇒ fresh token ⇒ `phone.fbCheck` ⇒ «تمّ توثيق رقمك ✓», reCAPTCHA cleared. Worker (mocked): non-manager refused, no phone claim ⇒ `no_fb_phone`, client-sent phone ignored; Twilio tests still pass; `kin.test.js` 17/17, `marriage.test.js` 9/9.
 - **Not checked:** a real Firebase SMS, and reCAPTCHA inside the iOS app's WKWebView (app-bound domains may block it; Android WebView and browsers should be fine).
 - **sw.js:** v492; `EXPECT` for `sawa-chat.js` 595491.
+
+## 🧭 C309 — Firebase SMS error told the manager to enable Phone even when the real cause may be the SMS region · sawa-chat.js (c309) · sw v493
+- Firebase returns `auth/operation-not-allowed` both when the Phone provider is off and when the country is blocked by the SMS region policy; C308 always showed «فعّل Phone». Now a message containing "region" ⇒ «Firebase لا يسمح بإرسال SMS إلى هذا البلد — فعّل السودان…»; otherwise «Firebase رفض الإرسال: فعّل Phone… ثمّ تأكّد من السماح بالسودان…» plus Firebase's own message. Every Firebase error now ends with its code.
+- **Checks:** `node --check`; browser harness: region error ⇒ region message, provider-off error ⇒ provider message + raw text, button re-enabled; success still opens the code box.
+- **sw.js:** v493; `EXPECT` for `sawa-chat.js` 596245.
