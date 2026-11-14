@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c304";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c305";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -4804,7 +4804,8 @@
   function verifySheet() {
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
     var p = profile();
-    if (p.phoneVerified) { toast(L("رقمك موثَّق ✓", "Your number is verified ✓")); return true; }
+    var mgrHint = adminAtLeast("admin");   // C305: المدير يفتح الورقة ولو كان رقمه موثَّقاً — ليصل إلى خيارات الرمز (واتساب/SMS)
+    if (p.phoneVerified && !mgrHint) { toast(L("رقمك موثَّق ✓", "Your number is verified ✓")); return true; }
     var s = sheet(L("توثيق رقمك", "Verify your number"));
     if (!p.phone) { s.box.appendChild(note(L("أضف رقم هاتفك أوّلاً من «حسابي» ← القلم.", "Add your phone number first (Me → pencil)."), "#8a6d00", "#fff7e0")); var ab = mkBtn(L("أضف رقمي", "Add my number"), "primary"); ab.onclick = function () { s.close(); editProfile(); }; s.box.appendChild(ab); return true; }
     var body = mk("div"); s.box.appendChild(body);
@@ -4820,8 +4821,9 @@
         state.waReady = wa;
         body.innerHTML = "";
         body.appendChild(mk("div", "font:600 13px var(--sawa-font,system-ui);color:#5b6b7c;direction:ltr;text-align:center;margin:2px 0 8px", p.phone));
-        if (st.phoneVerified) { state.me = Object.assign({}, state.me || {}, { phoneVerified: true, verifiedBy: st.verifiedBy || "whatsapp" }); publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} body.appendChild(note(L("رقمك موثَّق ✓", "Verified ✓"), "#187854", "#e6f5ec")); return; }
+        if (st.phoneVerified) { state.me = Object.assign({}, state.me || {}, { phoneVerified: true, verifiedBy: st.verifiedBy || "whatsapp" }); publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} body.appendChild(note(L("رقمك موثَّق ✓", "Verified ✓"), "#187854", "#e6f5ec")); if (!mgr) return; body.appendChild(note(L("للمدير: يمكنك إعادة التوثيق بالرمز.", "Manager: you can re-verify with a code."), "#5b6b7c")); }
         // 1) عبر المعارف
+        if (!st.phoneVerified) {
         var c1 = mk("div", "border:1px solid #e2e5e9;border-radius:16px;padding:12px;margin:8px 0");
         c1.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui)", L("👥 عبر معارفك", "👥 Through people you know")));
         c1.appendChild(note(L("اطلب من اثنين من جهات اتّصالك (بحساب Google أو بريدٍ مؤكَّد) أن يؤكّدا أنّ هذا رقمك. بلا رسائل ولا تكلفة.", "Ask two of your contacts (with a Google or confirmed-email account) to confirm this is your number. No messages, no cost.")));
@@ -4834,6 +4836,7 @@
         var ask = mkBtn(L("اطلب من معارفك", "Ask my contacts"), "primary"); c1.appendChild(ask);
         ask.onclick = function () { pickVouchers(function () { home(); }); };
         body.appendChild(c1);
+        }
         // 2) عبر واتساب (رمز OTP) — C303: للمدير فقط؛ لا يظهر لغيره
         if (!mgr) return;
         var c2 = mk("div", "border:1px solid #e2e5e9;border-radius:16px;padding:12px;margin:8px 0");
@@ -4889,7 +4892,6 @@
       body.appendChild(note(L("جارٍ الإرسال…", "Sending…")));
       call("phone.smsStart", {}).then(function (r) {
         if (!r.enabled) { body.innerHTML = ""; body.appendChild(note(L("التحقّق برسالة SMS قيد التجهيز — سيُفعَّل قريباً.", "SMS verification is being set up — coming soon."), "#8a6d00", "#fff7e0")); return; }
-        if (r.already) { toast(L("رقمك موثَّق أصلاً ✓", "Already verified ✓")); s.close(); return; }
         smsStage(r);
       }, function (e) { home(); toast(codeErr(e)); });
     }
@@ -4948,7 +4950,7 @@
         if (Date.now() > r.exp || n > 100) { stopPoll(); st.textContent = L("انتهت صلاحيّة الرمز — اطلب رمزاً جديداً.", "Code expired — request a new one."); st.style.color = "#b42318"; var again = mkBtn(L("رمز جديد", "New code"), "primary"); again.onclick = intro; body.appendChild(again); return; }
         if (document.visibilityState !== "visible" && n % 5) return;
         call("phone.status", {}).then(function (q) {
-          if (!q.phoneVerified) return;
+          if (!q.phoneVerified || q.otpOpen) return;   // C305: رمزٌ ما زال معلَّقاً ⇒ لم يصل بعد (للمدير الموثَّق أصلاً)
           stopPoll();
           state.me = Object.assign({}, state.me || {}, { phone: q.phone, phoneVerified: true, verifiedBy: q.verifiedBy || "whatsapp" });
           lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
