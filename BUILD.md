@@ -2991,3 +2991,11 @@ In dark mode one accent shade (C192, e.g. #2B81CE) served both as text on the da
 - **Checks:** `node --check` all parts; `lint.sh` same 3 errors / 6 warnings as main; `chat.test.js` 20 passed. Light mode pixel-identical to main on the 5 tabs and the chat (only the random guest code differs). Dark mode contrast audit (every visible text vs its real background): main tabs + chat 11 failures → 0; chat with a sent bubble, emoji, menu and info: 0.
 - **Not checked:** the other four accents rendered (values are computed, not viewed); screens beyond the 5 tabs and chat in dark mode (family, wallet, rooms, calls) — same token change applies.
 - **sw.js:** v487; `EXPECT` for `sawa-chat.js` 582,869; notes updated. **Upload:** app.p2–p9.js, sawa-chat.js, then sw.js (v487) last.
+
+## 🔐 C303 — WhatsApp code (OTP) verification for the manager only · Worker v116-otpmgr · sawa-chat.js (c303) · sw v488
+- **Who gets it:** the owner (`ADMIN_EMAIL`) and team members with the **admin** role (`adminCan(…, "admin")`). Moderators, viewers, regular users and guests do not.
+- **Server (Worker `worker-3.js`):** new `otpManager(env, claims)`. `verifyConfig(env, mgr)` reports `whatsapp: true` only for a manager (and only when the `WA_*` secrets are set) and adds `mgr`. `phone.start` now refuses everyone else with `manager_only`, so no code is created that `/wa/webhook` could accept. `phone.status` and the contacts route (vouch) are unchanged.
+- **App (`sawa-chat.js`):** in «توثيق رقمك» the «💬 عبر واتساب (رمز تحقّق)» card shows only when `verify.mgr` is true, with a «للمدير فقط» badge. Everyone else sees «عبر معارفك» only. New error text for `manager_only`.
+- **Checks:** `node --check` on worker-3.js, sawa-chat.js, sw.js. Gating tested in isolation: owner ✓, team admin ✓, moderator ✗, user ✗, owner with unconfirmed email ✗, guest ✗; owner with no `WA_*` secrets ⇒ card shows «قيد التجهيز».
+- **Not checked:** the full flow on a device (needs the deployed Worker and a signed-in manager account).
+- **sw.js:** v488; `EXPECT` for `sawa-chat.js` 583,470. **Upload:** Worker (v116-otpmgr) first, then sawa-chat.js, then sw.js (v488) last.
