@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c305";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c306";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -4367,7 +4367,8 @@
     if (/not_eligible/.test(m)) return L("لتأكيد الآخرين يلزم حسابٌ بـGoogle أو بريدٍ مؤكَّد أو رقمٍ موثَّق", "To confirm others you need a Google / confirmed-email account or a verified number");
     if (/not_contact/.test(m)) return L("لستما جهتي اتّصال", "You're not contacts");
     if (/sms_expired/.test(m)) return L("انتهت صلاحيّة الرمز — اطلب رمزاً جديداً", "Code expired — request a new one");   // C304
-    if (/sms_failed/.test(m)) return L("تعذّر إرسال الرسالة — حاول لاحقاً", "Couldn't send the SMS — try later");
+    if (/sms_auth/.test(m)) return L("Twilio رفض المفاتيح — راجع TWILIO_SID وTWILIO_TOKEN", "Twilio rejected the keys — check TWILIO_SID and TWILIO_TOKEN");   // C306
+    if (/sms_failed/.test(m)) { var tc = (m.match(/sms_failed:(\w+)/) || [])[1]; return L("تعذّر إرسال الرسالة", "Couldn't send the SMS") + (tc ? " (Twilio " + tc + ")" : L(" — حاول لاحقاً", " — try later")); }
     if (/manager_only/.test(m)) return L("التحقّق بالرمز للمدير فقط", "Code verification is for the manager only");   // C303
     // C198
     if (/guest_limited/.test(m)) return L("البحث بالرقم أو البريد يحتاج ربط حسابك بـGoogle أو Apple أو بريد — ويمكنك البحث بالرمز الآن", "Searching by phone or email needs a linked Google / Apple / email account — you can search by code now");
@@ -4817,7 +4818,9 @@
       body.appendChild(mk("div", "font:600 13px var(--sawa-font,system-ui);color:#5b6b7c;direction:ltr;text-align:center;margin:2px 0 8px", p.phone));
       body.appendChild(note(L("جارٍ التحميل…", "Loading…")));
       Promise.all([call("phone.status", {}), call("profile.get", {}).catch(function () { return {}; })]).then(function (rr) {
-        var st = rr[0] || {}, wa = !!(rr[1] && rr[1].verify && rr[1].verify.whatsapp), mgr = !!(rr[1] && rr[1].verify && rr[1].verify.mgr), sms = !!(rr[1] && rr[1].verify && rr[1].verify.sms);   // C303: الرمز للمدير فقط
+        var st = rr[0] || {}, wa = !!(rr[1] && rr[1].verify && rr[1].verify.whatsapp), mgr = !!(rr[1] && rr[1].verify && rr[1].verify.mgr), sms = !!(rr[1] && rr[1].verify && rr[1].verify.sms), vc = (rr[1] && rr[1].verify) || {};
+        // C306: للمدير — ما الذي ينقص الخادم (أسماء فقط)
+        var missNote = function (miss) { if (!miss || !miss.length) return null; var n = note(L("ينقص في أسرار الـWorker: ", "Missing Worker secrets: ") + miss.join("، ") + "\n" + L("يراها الخادم الآن: ", "The Worker sees: ") + ((vc.envSeen && vc.envSeen.length) ? vc.envSeen.join("، ") : L("لا شيء", "none")), "#5b6b7c"); n.style.whiteSpace = "pre-line"; return n; };   // C303: الرمز للمدير فقط
         state.waReady = wa;
         body.innerHTML = "";
         body.appendChild(mk("div", "font:600 13px var(--sawa-font,system-ui);color:#5b6b7c;direction:ltr;text-align:center;margin:2px 0 8px", p.phone));
@@ -4843,14 +4846,14 @@
         c2.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui)", L("💬 عبر واتساب (رمز تحقّق)", "💬 Via WhatsApp (verification code)")));
         c2.appendChild(mk("div", "display:inline-block;font:700 11px var(--sawa-font,system-ui);color:#8a6d00;background:#fff7e0;border-radius:8px;padding:2px 8px;margin:4px 0", L("للمدير فقط", "Manager only")));
         if (wa) { c2.appendChild(note(L("ترسل رمزاً قصيراً إلى رقم سوا على واتساب فيُوثَّق رقمك فوراً.", "Send a short code to Sawa's WhatsApp and your number is verified instantly."))); var g2 = mkBtn(L("ابدأ — افتح واتساب", "Start — open WhatsApp")); g2.onclick = intro; c2.appendChild(g2); }
-        else c2.appendChild(note(L("قيد التجهيز — سيُفعَّل قريباً.", "Coming soon."), "#8a6d00", "#fff7e0"));
+        else { c2.appendChild(note(L("قيد التجهيز — سيُفعَّل قريباً.", "Coming soon."), "#8a6d00", "#fff7e0")); var m2 = missNote(vc.waMissing); if (m2) c2.appendChild(m2); }
         body.appendChild(c2);
         // 3) C304: عبر رسالة SMS — للمدير فقط
         var c3 = mk("div", "border:1px solid #e2e5e9;border-radius:16px;padding:12px;margin:8px 0");
         c3.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui)", L("✉️ عبر رسالة SMS (رمز تحقّق)", "✉️ Via SMS (verification code)")));
         c3.appendChild(mk("div", "display:inline-block;font:700 11px var(--sawa-font,system-ui);color:#8a6d00;background:#fff7e0;border-radius:8px;padding:2px 8px;margin:4px 0", L("للمدير فقط", "Manager only")));
         if (sms) { c3.appendChild(note(L("نرسل رمزاً إلى رقمك برسالة نصّيّة، فتكتبه هنا.", "We text a code to your number; you type it here."))); var g3 = mkBtn(L("أرسل الرمز", "Send the code")); g3.onclick = smsSend; c3.appendChild(g3); }
-        else c3.appendChild(note(L("قيد التجهيز — سيُفعَّل قريباً.", "Coming soon."), "#8a6d00", "#fff7e0"));
+        else { c3.appendChild(note(L("قيد التجهيز — سيُفعَّل قريباً.", "Coming soon."), "#8a6d00", "#fff7e0")); var m3 = missNote(vc.smsMissing); if (m3) c3.appendChild(m3); }
         body.appendChild(c3);
       }).catch(function (e) { body.innerHTML = ""; body.appendChild(note(codeErr(e), "#b42318")); });
     }

@@ -3016,3 +3016,9 @@ In dark mode one accent shade (C192, e.g. #2B81CE) served both as text on the da
 - **Checks:** `node --check` on all changed files; Worker `kin.test.js` 17/17, `marriage.test.js` 9/9; mocked SMS ops still pass.
 - **Not checked:** the sheet on a device.
 - **sw.js:** v490; `EXPECT` for `sawa-chat.js` 588589. **Upload:** Worker (v128-otp), then app.p2.js and sawa-chat.js, then sw.js (v490) last.
+
+## 🔑 C306 — SMS card stayed «قيد التجهيز» after adding Twilio secrets: accept Twilio's own names + show the manager what is missing · sawa-chat.js (c306) · sw v491 · Worker v129-twl
+- **Worker:** new `twilioCfg(env)` also accepts `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID` / `TWILIO_SERVICE_SID` / `TWILIO_VERIFY_SERVICE`, and trims pasted spaces/newlines. For managers only, `profile.get → verify` adds `smsMissing`, `waMissing` and `envSeen` — secret **names** only (never values) that the Worker sees matching `TWILIO*` / `WA_*`. Twilio 401 ⇒ `sms_auth`; other Twilio errors ⇒ `sms_failed:<code>`.
+- **App:** under «قيد التجهيز» the manager sees «ينقص في أسرار الـWorker: …» and «يراها الخادم الآن: …». Errors show «Twilio رفض المفاتيح» or the Twilio error code.
+- **Checks:** `node --check`; config detection tested (alternative names ✓, trimmed values ✓, typo name ⇒ listed as missing and seen, non-manager gets no names); mocked SMS ops pass; `kin.test.js` 17/17, `marriage.test.js` 9/9.
+- **sw.js:** v491; `EXPECT` for `sawa-chat.js` 589535.
