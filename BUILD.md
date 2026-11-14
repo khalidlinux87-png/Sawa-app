@@ -3022,3 +3022,12 @@ In dark mode one accent shade (C192, e.g. #2B81CE) served both as text on the da
 - **App:** under «قيد التجهيز» the manager sees «ينقص في أسرار الـWorker: …» and «يراها الخادم الآن: …». Errors show «Twilio رفض المفاتيح» or the Twilio error code.
 - **Checks:** `node --check`; config detection tested (alternative names ✓, trimmed values ✓, typo name ⇒ listed as missing and seen, non-manager gets no names); mocked SMS ops pass; `kin.test.js` 17/17, `marriage.test.js` 9/9.
 - **sw.js:** v491; `EXPECT` for `sawa-chat.js` 589535.
+
+## 📲 C308 — SMS code through Firebase Phone Auth (Blaze), no Twilio · sawa-chat.js (c308) · sw v492 · Worker v130-fbsms
+- **Why:** Twilio needs an international card; the project already has Blaze, so Firebase sends the SMS.
+- **App:** the «✉️ عبر رسالة SMS» card (manager only) now always shows «أرسل الرمز». If the Twilio secrets are set, it uses Twilio as before (C304); otherwise Firebase: invisible reCAPTCHA in a hidden container ⇒ `PhoneAuthProvider.verifyPhoneNumber` ⇒ 6-digit box ⇒ `linkWithCredential` (or `updatePhoneNumber` if the Firebase account already has another number) ⇒ `getIdToken(true)` ⇒ `phone.fbCheck`. Firebase error codes map to clear Arabic messages (Phone provider off, SMS region blocked, wrong/expired code, number on another account, reCAPTCHA failure).
+- **Worker:** `phone.fbCheck` (manager only) trusts only `phone_number` from the signature-verified ID token, never a client value, then marks the number verified (`verifiedBy: "sms"`). The verification writes are now shared by Twilio and Firebase as `markPhoneVerified()`.
+- **Firebase Console (once):** Authentication ⇒ Sign-in method ⇒ **Phone** enabled · Authentication ⇒ Settings ⇒ **SMS region policy** allows **Sudan (SD)** · Authorized domains include `www.sawaaap.com`.
+- **Checks:** `node --check`. Browser (Chromium, real sawa-chat.js with stubbed Firebase/Worker): manager sees three cards, non-manager only «عبر معارفك»; send ⇒ reCAPTCHA + SMS to +249923467702; wrong code ⇒ «الرمز غير صحيح»; right code in Arabic digits ⇒ link ⇒ fresh token ⇒ `phone.fbCheck` ⇒ «تمّ توثيق رقمك ✓», reCAPTCHA cleared. Worker (mocked): non-manager refused, no phone claim ⇒ `no_fb_phone`, client-sent phone ignored; Twilio tests still pass; `kin.test.js` 17/17, `marriage.test.js` 9/9.
+- **Not checked:** a real Firebase SMS, and reCAPTCHA inside the iOS app's WKWebView (app-bound domains may block it; Android WebView and browsers should be fine).
+- **sw.js:** v492; `EXPECT` for `sawa-chat.js` 595491.
