@@ -26,7 +26,7 @@ function DialPadScreen({ onCall, onBack }) {
             React.createElement("div", { dir: "ltr", className: "grid grid-cols-3 gap-4 w-full max-w-xs" }, keys.map(   /* C198: لوحة الأرقام بترتيبها المعتاد (1 يساراً) في كلّ اللغات — كانت تنقلب في العربيّة */(k, i) => k === "" ? React.createElement("div", { key: "e" + i }) : (React.createElement("button", { key: k, onClick: () => setNumber((prev) => (prev + k).slice(0, 10)), className: "w-16 h-16 rounded-full flex items-center justify-center mx-auto", style: { backgroundColor: colors.btnFill } },
                 React.createElement("span", { className: "text-xl font-bold", style: { color: colors.text } }, k))))),
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-4 w-full max-w-xs justify-center` },
-                React.createElement("button", { "aria-label": t("atsal"), onClick: () => ready && onCall(number), disabled: !ready, className: "w-16 h-16 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary, opacity: ready ? 1 : 0.4 } },
+                React.createElement("button", { "aria-label": t("atsal"), onClick: () => ready && onCall(number), disabled: !ready, className: "w-16 h-16 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primaryFill, opacity: ready ? 1 : 0.4 } },
                     React.createElement(Phone, { size: 22, color: "#fff" })),
                 number.length > 0 && (React.createElement("button", { "aria-label": tl("مسح آخر رقم", "Delete last digit"), onClick: () => setNumber((prev) => prev.slice(0, -1)), className: "w-12 h-12 rounded-full flex items-center justify-center" },
                     React.createElement(Delete, { size: 18, color: colors.textMuted })))))));
@@ -111,7 +111,7 @@ function ScheduleCallScreen({ defaultCallType, onSave, onBack, groups = [] }) {
                     React.createElement("div", { className: `flex-1 ${textStart()} ${ms("2")}` },
                         React.createElement("span", { className: "text-sm font-bold block", style: { color: colors.text } }, t("tlzm_almwafqa_llandmam")),
                         React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } }, t("ay_shkhs_yryd_aldkhwl"))),
-                    React.createElement("button", { onClick: () => setRequireApproval(!requireApproval), className: "w-10 h-5 rounded-full relative shrink-0", style: { backgroundColor: requireApproval ? colors.primary : colors.border } },
+                    React.createElement("button", { onClick: () => setRequireApproval(!requireApproval), className: "w-10 h-5 rounded-full relative shrink-0", style: { backgroundColor: requireApproval ? colors.primaryFill : colors.border } },
                         React.createElement("span", { className: "absolute top-0.5 w-4 h-4 rounded-full bg-white", style: { [requireApproval ? "right" : "left"]: 2 } })))),
             React.createElement("label", { className: "text-xs font-bold mb-1.5 block", style: { color: colors.text } }, t("tdhkyr_qbl_almwad")),
             React.createElement("select", { value: reminderMinutes, onChange: (e) => setReminderMinutes(Number(e.target.value)), className: "w-full border rounded-xl px-3 py-2.5 text-sm mb-5", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card } },
@@ -156,7 +156,7 @@ function ScheduledCallsScreen({ scheduledCalls, onDelete, onJoinNow, onNewSchedu
                         s.reminderMinutes,
                         tl(" \u062F\u0642\u064A\u0642\u0629", " min before"))),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
-                    React.createElement("button", { onClick: () => onJoinNow(s), className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.primary } },
+                    React.createElement("button", { onClick: () => onJoinNow(s), className: "flex-1 rounded-xl py-2", style: { backgroundColor: colors.primaryFill } },
                         React.createElement("span", { className: "text-[11px] font-bold text-white" }, t("abda_alan"))),
                     React.createElement("button", { "aria-label": t("hdhf"), onClick: () => onDelete(s.id), className: "rounded-xl py-2 px-3 border", style: { borderColor: colors.danger } },
                         React.createElement(Trash2, { size: 13, color: colors.danger })))))))));
@@ -196,7 +196,7 @@ function ScheduledRoomsScreen({ rooms = [], onJoin, onCancel, onNew, onBack }) {
         React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
             list.length === 0 && React.createElement("div", { className: "flex flex-col items-center gap-3 mt-8" },
                 React.createElement(EmptyState, { icon: CalendarDays, label: tl("لا غرف مجدولة بعد", "No scheduled rooms yet") }),
-                React.createElement("button", { onClick: onNew, className: `flex ${rowStart()} items-center gap-2 px-4 py-2.5 rounded-2xl`, style: { backgroundColor: colors.primary } },
+                React.createElement("button", { onClick: onNew, className: `flex ${rowStart()} items-center gap-2 px-4 py-2.5 rounded-2xl`, style: { backgroundColor: colors.primaryFill } },
                     React.createElement(Plus, { size: 16, color: "#fff" }),
                     React.createElement("span", { className: "text-sm font-bold text-white" }, tl("جدولة غرفة", "Schedule a room")))),
             list.map(({ r, st }) => (React.createElement(Card, { key: r.id, className: "mb-2.5", style: { opacity: st.k === "past" ? 0.6 : 1, border: st.k === "live" ? "2px solid #16a34a" : undefined } },
@@ -212,7 +212,7 @@ function ScheduledRoomsScreen({ rooms = [], onJoin, onCancel, onNew, onBack }) {
                     React.createElement("button", { "aria-label": tl("نسخ الرابط", "Copy link"), onClick: () => copy(r), className: "shrink-0 p-1" }, React.createElement(Copy, { size: 15, color: colors.primary })),
                     React.createElement("button", { "aria-label": tl("مشاركة الرابط", "Share link"), onClick: () => share(r), className: "shrink-0 p-1" }, React.createElement(Share2, { size: 15, color: colors.primary }))),
                 st.k !== "past" && React.createElement("div", { className: `flex ${rowStart()} gap-2 mt-2.5` },
-                    React.createElement("button", { onClick: () => onJoin(r.code), className: "flex-1 rounded-xl py-2.5", style: { backgroundColor: st.k === "live" || st.live ? "#16a34a" : colors.primary } },
+                    React.createElement("button", { onClick: () => onJoin(r.code), className: "flex-1 rounded-xl py-2.5", style: { backgroundColor: st.k === "live" || st.live ? "#16a34a" : colors.primaryFill } },
                         React.createElement("span", { className: "text-xs font-extrabold text-white" }, st.k === "live" ? tl("ادخل الآن", "Join now") : tl("دخول الغرفة", "Enter room"))),
                     React.createElement("button", { onClick: () => share(r), className: `flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2.5 px-3.5 border`, style: { borderColor: colors.primary } },
                         React.createElement(Share2, { size: 14, color: colors.primary }),
@@ -344,7 +344,7 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
         React.createElement("div", { style: { display: "flex", flexDirection: isRTL() ? "row" : "row-reverse", direction: "ltr", alignItems: "center", padding: "1rem 1rem 0 1rem" } },
             React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: isRTL() ? "row" : "row-reverse", justifyContent: "flex-start", alignItems: "center", gap: 8 } },
                 // C289: أزرار الرأس بنمط «المحادثات» نفسه (40 بكسل بإطار) — كانت 36 بلا إطار فيختلف الرأس بين التبويبات
-                React.createElement("button", { "aria-label": t("khyarat"), onClick: () => setShowMenu(!showMenu), className: "w-10 h-10 rounded-full flex items-center justify-center border", style: { borderColor: showMenu ? colors.primary : colors.border, backgroundColor: showMenu ? colors.primary : "transparent" } },
+                React.createElement("button", { "aria-label": t("khyarat"), onClick: () => setShowMenu(!showMenu), className: "w-10 h-10 rounded-full flex items-center justify-center border", style: { borderColor: showMenu ? colors.primaryFill : colors.border, backgroundColor: showMenu ? colors.primaryFill : "transparent" } },
                     React.createElement(MoreVertical, { size: 22, color: showMenu ? "#fff" : colors.textMuted })),
                 React.createElement("button", { "aria-label": t("bhth"), "aria-expanded": callQ !== null, onClick: () => setCallQ((q) => q === null ? "" : null), className: "w-10 h-10 rounded-full flex items-center justify-center border", style: { borderColor: callQ !== null ? colors.primary : colors.border, backgroundColor: "transparent" } },
                     React.createElement(Search, { size: 20, color: callQ !== null ? colors.primary : colors.textMuted }))),
@@ -435,7 +435,7 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
                 ].map((it) => (React.createElement("button", { key: it.label, onClick: () => { it.act(); setCallMenu(null); }, className: "w-full flex flex-row items-center gap-3 px-5 py-3.5 border-t", style: { borderColor: colors.border } },
                     React.createElement(it.icon, { size: 17, color: it.danger ? colors.danger : colors.textMuted }),
                     React.createElement("span", { className: `flex-1 ${textStart()} text-sm font-bold`, style: { color: it.danger ? colors.danger : colors.text } }, it.label))))))),
-        React.createElement("button", { onClick: () => setSubScreen("newCall"), className: "flex items-center justify-center", "aria-label": t("mkalma_jdyda"), style: { position: "absolute", bottom: "1rem", [isRTL() ? "left" : "right"]: "1rem", width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, boxShadow: "0 4px 12px rgba(0,0,0,0.25)" }   /* C198: كان أخضر واتساب #25D366 (الأيقونة البيضاء 2:1) */ },
+        React.createElement("button", { onClick: () => setSubScreen("newCall"), className: "flex items-center justify-center", "aria-label": t("mkalma_jdyda"), style: { position: "absolute", bottom: "1rem", [isRTL() ? "left" : "right"]: "1rem", width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primaryFill, boxShadow: "0 4px 12px rgba(0,0,0,0.25)" }   /* C198: كان أخضر واتساب #25D366 (الأيقونة البيضاء 2:1) */ },
             React.createElement(PhoneCall, { size: 22, color: "#fff" }))));
 }
 // ============================================================================
@@ -506,7 +506,7 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
     const close = () => setSelectedId(null);
     // ⛔ لا شاشة مكالمةٍ وهميّة: تعذّرت المكالمة الحقيقيّة ⇒ نقول ذلك
     const callReal = (c, type) => { if (!cloudCallTo(c, type)) showToast(CALL_FAIL_MSG(), "error"); };
-    const chip = (key, label, n) => React.createElement("button", { key, onClick: () => setFilter(key), className: "px-3 py-1.5 rounded-full text-xs font-bold shrink-0", style: { backgroundColor: view === key ? colors.primary : colors.card, color: view === key ? "#fff" : colors.text, border: `1px solid ${view === key ? colors.primary : colors.border}` } }, label + (n != null ? " · " + n : ""));
+    const chip = (key, label, n) => React.createElement("button", { key, onClick: () => setFilter(key), className: "px-3 py-1.5 rounded-full text-xs font-bold shrink-0", style: { backgroundColor: view === key ? colors.primaryFill : colors.card, color: view === key ? "#fff" : colors.text, border: `1px solid ${view === key ? colors.primary : colors.border}` } }, label + (n != null ? " · " + n : ""));
     const quick = (icon, label, onPress) => React.createElement("button", { onClick: onPress, className: "flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3", style: { backgroundColor: colors.btnFill } },
         React.createElement("div", { className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primaryLight } }, React.createElement(icon, { size: 17, color: colors.primary })),
         React.createElement("span", { className: "text-[12px] font-bold", style: { color: colors.text } }, label));
@@ -552,7 +552,7 @@ function ContactsScreen({ onMessageContact, onSwitchTab, onLogCall, onlineContac
                 React.createElement(Button, { icon: UserPlus, label: t("ct_add_title"), onPress: () => setShowAddModal(true) }))),
             contacts.length > 0 && filtered.length === 0 && (React.createElement(EmptyState, { icon: view === "online" ? Wifi : Search, label: view === "online" && !q ? tl("لا أحد متّصل الآن", "Nobody is online right now") : t("la_twjd_ntayj") }))),
         !search && view === "all" && sawaContacts.length >= 40 && letters.length > 6 && (React.createElement("div", { className: "absolute top-1/2 flex flex-col gap-0.5",   /* C197: للقوائم الطويلة فقط (كان يظهر مع 12 اسماً) */ style: { [isRTL() ? "left" : "right"]: 4, transform: "translateY(-50%)", zIndex: 10 } }, letters.map((l) => (React.createElement("button", { key: l, onClick: () => { var _a; (_a = sectionRefs.current[l]) === null || _a === void 0 ? void 0 : _a.scrollIntoView({ behavior: "smooth", block: "start" }); }, className: "w-7 h-7 flex items-center justify-center rounded-full text-[12px] font-extrabold", style: { color: colors.primary } }, l))))),
-        contacts.length > 0 && React.createElement("button", { "aria-label": t("idafa_mshark"), onClick: () => setShowAddModal(true), className: "absolute flex items-center justify-center rounded-full shadow-lg", style: { bottom: 20, [isRTL() ? "left" : "right"]: 20, width: 52, height: 52, backgroundColor: colors.primary, zIndex: 10 } },
+        contacts.length > 0 && React.createElement("button", { "aria-label": t("idafa_mshark"), onClick: () => setShowAddModal(true), className: "absolute flex items-center justify-center rounded-full shadow-lg", style: { bottom: 20, [isRTL() ? "left" : "right"]: 20, width: 52, height: 52, backgroundColor: colors.primaryFill, zIndex: 10 } },
             React.createElement(UserPlus, { size: 22, color: "#fff" })),
         showAddModal && (React.createElement(AddContactSheet, { colors: colors, onClose: () => setShowAddModal(false) })),
         selected && !selected.onSawa && (React.createElement(NonSawaContactSheet, { contact: selected, colors: colors, onClose: close })),
@@ -641,7 +641,7 @@ function ContactProfileSheet({ contact, isOnline, blocked, colors, onCall, onVid
     // C61: الكلمة تحت الدائرة تنقر أيضاً (كان النقر عليها لا يفعل شيئاً)
     // C197: الدوائر بلون المظهر (كانت أزرق/أخضر/كهرمانيّ/أخضر — و«اتصال» و«فيديو» في الداكن فاتحان فالأيقونة البيضاء ~2:1)؛ «سرّيّة» محدّدة بلونه
     const act = (icon, label, onPress, outline) => React.createElement("div", { className: "flex flex-col items-center gap-1.5", style: { opacity: onPress ? 1 : 0.35, cursor: onPress ? "pointer" : "default" }, onClick: onPress || undefined },
-        React.createElement("button", { "aria-label": label, onClick: (e) => { e.stopPropagation(); if (onPress) onPress(); }, disabled: !onPress, className: "w-13 h-13 rounded-full flex items-center justify-center", style: { width: 52, height: 52, backgroundColor: outline ? "transparent" : colors.primary, border: outline ? `2px solid ${colors.primary}` : "none" } }, React.createElement(icon, { size: 21, color: outline ? colors.primary : "#fff" })),
+        React.createElement("button", { "aria-label": label, onClick: (e) => { e.stopPropagation(); if (onPress) onPress(); }, disabled: !onPress, className: "w-13 h-13 rounded-full flex items-center justify-center", style: { width: 52, height: 52, backgroundColor: outline ? "transparent" : colors.primaryFill, border: outline ? `2px solid ${colors.primary}` : "none" } }, React.createElement(icon, { size: 21, color: outline ? colors.primary : "#fff" })),
         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, label));
     const row = (icon, label, sub, onPress, danger) => React.createElement("button", { onClick: onPress, className: "w-full flex flex-row items-center gap-3 px-3 py-3 rounded-xl", style: { backgroundColor: danger ? "transparent" : colors.bg } },   /* C197: الخطرة بنصٍّ أحمر بلا خلفيّة */
         React.createElement(icon, { size: 17, color: danger ? colors.danger : colors.primary }),
@@ -731,7 +731,7 @@ function AddContactSheet({ colors, onClose }) {
             SC && SC.scanSupported() && React.createElement("div", { className: "mt-2" }, addOpt(Camera, t("ct_scan_qr"), scan)),
             React.createElement("div", { className: `flex ${rowStart()} gap-2 mt-3` },
                 React.createElement("input", { dir: "ltr", value: pasted, onChange: (e) => setPasted(e.target.value), placeholder: t("ct_paste_ph"), className: "flex-1 rounded-xl px-3 py-2.5 text-xs border outline-none", style: { backgroundColor: colors.bg, borderColor: colors.border, color: colors.text } }),
-                React.createElement("button", { onClick: addPasted, disabled: !pasted.trim(), className: "rounded-xl px-4 text-xs font-bold", style: { backgroundColor: pasted.trim() ? colors.primary : colors.border, color: "#fff" } }, t("ct_add_btn"))))));
+                React.createElement("button", { onClick: addPasted, disabled: !pasted.trim(), className: "rounded-xl px-4 text-xs font-bold", style: { backgroundColor: pasted.trim() ? colors.primaryFill : colors.border, color: "#fff" } }, t("ct_add_btn"))))));
 }
 
 // جهة اتصال غير مسجّلة على سوا — لا محادثة ولا مكالمة داخل التطبيق.
@@ -756,10 +756,10 @@ function NonSawaContactSheet({ contact, colors, onClose }) {
                         React.createElement(Phone, { size: 22, color: "#fff" })),
                     React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, t("cs_atsal"))),
                 React.createElement("div", { className: "flex flex-col items-center gap-1.5" },
-                    React.createElement("a", { href: "sms:" + phone + "?body=" + encodeURIComponent(inviteText), className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primary } },
+                    React.createElement("a", { href: "sms:" + phone + "?body=" + encodeURIComponent(inviteText), className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: colors.primaryFill } },
                         React.createElement(MessageCircle, { size: 22, color: "#fff" })),
                     React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, t("cs_rsala_sms")))),
-            React.createElement("a", { href: "sms:" + phone + "?body=" + encodeURIComponent(inviteText), className: "w-full flex flex-row items-center justify-center gap-2 rounded-2xl py-3.5", style: { backgroundColor: colors.primary } },
+            React.createElement("a", { href: "sms:" + phone + "?body=" + encodeURIComponent(inviteText), className: "w-full flex flex-row items-center justify-center gap-2 rounded-2xl py-3.5", style: { backgroundColor: colors.primaryFill } },
                 React.createElement(UserPlus, { size: 17, color: "#fff" }),
                 React.createElement("span", { className: "text-sm font-extrabold", style: { color: "#fff" } }, t("cs_dawa_ila_swa"))))));
 }
@@ -985,7 +985,7 @@ function MomentsScreen({ posts, myUserId, onAddPost, onToggleLike, onAddComment,
                                             pct,
                                             "%")),
                                     React.createElement("div", { className: "h-1.5 rounded-full", style: { backgroundColor: colors.card } },
-                                        React.createElement("div", { className: "h-1.5 rounded-full", style: { width: `${pct}%`, backgroundColor: colors.primary } }))));
+                                        React.createElement("div", { className: "h-1.5 rounded-full", style: { width: `${pct}%`, backgroundColor: colors.primaryFill } }))));
                             })));
                     })(),
                     p.location && (React.createElement("button", { onClick: () => setViewingLocation(p.location), className: "text-[11px] font-bold underline mb-3 block", style: { color: colors.primary } }, t("ard_almwqa_ala_alkhryta"))),
@@ -1444,11 +1444,11 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
     const walletReady = paymentMethod !== "wallet" || (!walletShort && walletPinOk);
     // C225: بلاطةٌ مدمجة (أيقونة · اسم · رسم) — اختيارٌ واحد للنوع، ومتعدّد للحالة (علامة صحّ)
     const erTile = (o, active, onPress, multi) => React.createElement("button", { key: o.key, onClick: onPress, "aria-pressed": active, className: `relative flex ${rowStart()} items-center gap-2 rounded-xl border-2 p-2.5 ${textStart()}`, style: { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primaryLight : colors.card, minWidth: 0 } },
-        React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: active ? colors.primary : colors.bg } }, React.createElement(o.icon, { size: 15, color: active ? "#fff" : colors.textMuted })),
+        React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: active ? colors.primaryFill : colors.bg } }, React.createElement(o.icon, { size: 15, color: active ? "#fff" : colors.textMuted })),
         React.createElement("div", { className: "flex-1 min-w-0" },
             React.createElement("div", { className: "text-xs font-bold leading-tight", style: { color: colors.text } }, o.label),
             React.createElement("div", { className: "text-[10px] mt-0.5", style: { color: o.surcharge > 0 ? colors.textMuted : colors.success } }, o.surcharge > 0 ? "+" + erN(o.surcharge) + t("w_sdg_sp") : tl("بلا رسوم", "No fee"))),
-        multi && active && React.createElement("div", { className: "absolute top-1.5 w-4 h-4 rounded flex items-center justify-center", style: { insetInlineEnd: 6, backgroundColor: colors.primary } }, React.createElement(Check, { size: 11, color: "#fff" })));
+        multi && active && React.createElement("div", { className: "absolute top-1.5 w-4 h-4 rounded flex items-center justify-center", style: { insetInlineEnd: 6, backgroundColor: colors.primaryFill } }, React.createElement(Check, { size: 11, color: "#fff" })));
     function toggleHandling(key) {
         setHandlingKeys((prev) => {
             if (key === "normal")
@@ -1498,9 +1498,9 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                             t("er_tryqa_astlam"),
                             city.name),
                         React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-4` },
-                            React.createElement("button", { onClick: () => setDeliveryMethod("address"), className: "flex-1 rounded-xl border-2 p-3 text-center", style: { borderColor: deliveryMethod === "address" ? colors.primary : colors.border, backgroundColor: deliveryMethod === "address" ? colors.primary : colors.card } },
+                            React.createElement("button", { onClick: () => setDeliveryMethod("address"), className: "flex-1 rounded-xl border-2 p-3 text-center", style: { borderColor: deliveryMethod === "address" ? colors.primaryFill : colors.border, backgroundColor: deliveryMethod === "address" ? colors.primaryFill : colors.card } },
                                 React.createElement("span", { className: "text-xs font-bold", style: { color: deliveryMethod === "address" ? "#fff" : colors.text } }, t("twsyl_ila_anwan"))),
-                            React.createElement("button", { onClick: () => setDeliveryMethod("branch"), className: "flex-1 rounded-xl border-2 p-3 text-center", style: { borderColor: deliveryMethod === "branch" ? colors.primary : colors.border, backgroundColor: deliveryMethod === "branch" ? colors.primary : colors.card } },
+                            React.createElement("button", { onClick: () => setDeliveryMethod("branch"), className: "flex-1 rounded-xl border-2 p-3 text-center", style: { borderColor: deliveryMethod === "branch" ? colors.primaryFill : colors.border, backgroundColor: deliveryMethod === "branch" ? colors.primaryFill : colors.card } },
                                 React.createElement("span", { className: "text-xs font-bold", style: { color: deliveryMethod === "branch" ? "#fff" : colors.text } }, t("alastlam_mn_fra_alshrka")))),
                         deliveryMethod === "address" ? (React.createElement(React.Fragment, null,
                             React.createElement("label", { className: "text-[11px] font-bold mb-2 block", style: { color: colors.textMuted } }, t("anwan_altslym_altfsyly_akhtyary")),
@@ -1556,7 +1556,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                         React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
                             React.createElement(ShieldCheck, { size: 15, color: insuranceEnabled ? colors.primary : colors.textMuted }),
                             React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("tamyn_akhtyary_ala_alshhna"))),
-                        React.createElement("div", { className: "w-9 h-5 rounded-full relative", style: { backgroundColor: insuranceEnabled ? colors.primary : colors.border } },
+                        React.createElement("div", { className: "w-9 h-5 rounded-full relative", style: { backgroundColor: insuranceEnabled ? colors.primaryFill : colors.border } },
                             React.createElement("span", { className: "absolute top-0.5 w-4 h-4 rounded-full bg-white", style: { [insuranceEnabled ? "right" : "left"]: 2 } }))),
                     insuranceEnabled && (React.createElement("div", { className: "mb-3" }, Number(declaredValue) > 0 ? (React.createElement("p", { className: "text-[10px]", style: { color: colors.textMuted } },
                         t("er_rsm_altamyn"),
@@ -1645,7 +1645,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                         const methodNeedsConfirm = m.key === "cash" || m.key === "bank";
                         return (React.createElement("div", { key: m.key, className: "mb-2" },
                             React.createElement("button", { onClick: () => setPaymentMethod(m.key), className: `w-full flex ${rowStart()} items-center gap-3 rounded-xl border-2 p-3`, style: { borderColor: isSelected ? colors.primary : colors.border, backgroundColor: isSelected ? colors.primaryLight : colors.card } },
-                                React.createElement("div", { className: "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0", style: { backgroundColor: isSelected ? colors.primary : colors.bg } },
+                                React.createElement("div", { className: "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0", style: { backgroundColor: isSelected ? colors.primaryFill : colors.bg } },
                                     React.createElement(m.icon, { size: 18, color: isSelected ? "#fff" : colors.textMuted })),
                                 React.createElement("div", { className: `flex-1 ${textStart()}` },
                                     React.createElement("div", { className: "text-sm font-bold", style: { color: colors.text } }, m.label),
@@ -1744,7 +1744,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                     { key: "active", label: t("er_nshta") },
                     { key: "delivered", label: t("er_mslma") },
                     { key: "failed", label: t("er_fshlt") },
-                ].map((f) => (React.createElement("button", { key: f.key, onClick: () => setShipmentStatusFilter(f.key), className: "rounded-full border px-3 py-1.5 shrink-0", style: { borderColor: shipmentStatusFilter === f.key ? colors.primary : colors.border, backgroundColor: shipmentStatusFilter === f.key ? colors.primary : "transparent" } },
+                ].map((f) => (React.createElement("button", { key: f.key, onClick: () => setShipmentStatusFilter(f.key), className: "rounded-full border px-3 py-1.5 shrink-0", style: { borderColor: shipmentStatusFilter === f.key ? colors.primaryFill : colors.border, backgroundColor: shipmentStatusFilter === f.key ? colors.primaryFill : "transparent" } },
                     React.createElement("span", { className: "text-xs font-bold", style: { color: shipmentStatusFilter === f.key ? "#fff" : colors.text } }, f.label))))),
                 shipments.length === 0 && React.createElement(EmptyState, { icon: Truck, label: t("la_twjd_shhnat_bad") }),
                 shipments.length > 0 && filteredShipments.length === 0 && React.createElement(EmptyState, { icon: Search, label: t("ma_fyh_shhnat_ttabq") }),
@@ -1769,7 +1769,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                                         ? `linear-gradient(135deg, ${colors.danger}, #8B2E22)`
                                         : isDelivered
                                             ? `linear-gradient(135deg, ${colors.success}, #145C33)`
-                                            : `linear-gradient(135deg, ${colors.primary}, ${colors.primaryDark})`,
+                                            : `linear-gradient(135deg, ${colors.primaryFill}, ${colors.primaryDark})`,
                             } },
                             React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-1` },
                                 React.createElement("span", { className: "text-sm font-extrabold font-mono text-white" }, s.id),
@@ -1801,7 +1801,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                                 s.total.toLocaleString(loc()),
                                 t("w_sdg_sp")),
                             !isDelivered && !s.failed && !s.cancelled && (React.createElement(AnimatedTrackingMap, { progress: stageIdx / (stages.length - 1), icon: Truck, pickup: ERSAL_ORIGIN_POINT, destination: ERSAL_CITIES.find((c) => c.name === s.destination) || { x: 85, y: 20 } })),
-                            !s.failed && (React.createElement("div", { className: `flex ${rowStart()} gap-1 mb-2 mt-2` }, stages.map((st, i) => (React.createElement("div", { key: i, className: "flex-1 h-1.5 rounded-full", style: { backgroundColor: stageIdx >= i ? colors.primary : colors.border } }))))),
+                            !s.failed && (React.createElement("div", { className: `flex ${rowStart()} gap-1 mb-2 mt-2` }, stages.map((st, i) => (React.createElement("div", { key: i, className: "flex-1 h-1.5 rounded-full", style: { backgroundColor: stageIdx >= i ? colors.primaryFill : colors.border } }))))),
                             activeDriver && !s.failed && (React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-2` },
                                 React.createElement("span", { className: "text-[11px]", style: { color: colors.textMuted } },
                                     activeDriverLabel,
@@ -1860,7 +1860,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                             isDelivered && !s.failed && (React.createElement(React.Fragment, null,
                                 React.createElement("div", { className: `flex ${rowStart()} gap-2 mt-1` },
                                     React.createElement("button", { onClick: () => setViewingProofId(s.id), className: `flex-1 flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2.5 border`, style: { borderColor: colors.primary } }, React.createElement(FileText, { size: 14, color: colors.primary }), React.createElement("span", { className: "text-xs font-bold", style: { color: colors.primary } }, t("ard_ithbat_altslym"))),
-                                    React.createElement("button", { onClick: () => onReorderShipment(s), className: `flex-1 flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2.5`, style: { backgroundColor: colors.primary } }, React.createElement(RotateCcw, { size: 14, color: "#fff" }), React.createElement("span", { className: "text-xs font-bold text-white" }, t("iaada_altlb")))),
+                                    React.createElement("button", { onClick: () => onReorderShipment(s), className: `flex-1 flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2.5`, style: { backgroundColor: colors.primaryFill } }, React.createElement(RotateCcw, { size: 14, color: "#fff" }), React.createElement("span", { className: "text-xs font-bold text-white" }, t("iaada_altlb")))),
                                 !s.courierRating ? (React.createElement("div", { className: "rounded-xl border mt-2 p-3", style: { borderColor: colors.border, backgroundColor: colors.card } },
                                     React.createElement("p", { className: "text-xs font-bold text-center mb-2", style: { color: colors.text } },
                                         t("er_kyf_kant"), (_b = s.deliveryDriver) === null || _b === void 0 ? void 0 :
@@ -1999,7 +1999,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
         const stColor = (s) => s.cancelled ? colors.textMuted : s.failed ? colors.danger : s.stageIdx >= s.stages.length - 1 ? colors.success : colors.primary;
         return (React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
             React.createElement(WalletDemoNote, { ar: "نموذجٌ تجريبيّ للمشرف والمدير — لا شحن ولا دفع حقيقيّ.", en: "Demo for moderators and admins — no real shipping or payment." }),
-            React.createElement("div", { className: "rounded-2xl p-4 mb-3 relative overflow-hidden", style: { background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryDark} 100%)` } },
+            React.createElement("div", { className: "rounded-2xl p-4 mb-3 relative overflow-hidden", style: { background: `linear-gradient(135deg, ${colors.primaryFill} 0%, ${colors.primaryDark} 100%)` } },
                 React.createElement("div", { style: { position: "absolute", insetInlineEnd: -10, bottom: -16, opacity: 0.12, lineHeight: 0, pointerEvents: "none" } }, React.createElement(Truck, { size: 96, color: "#fff" })),
                 React.createElement("div", { className: "text-xs font-bold", style: { color: "rgba(255,255,255,0.75)" } }, hr < 12 ? t("sbah_alkhyr") : tl("مساء الخير", "Good evening")),
                 React.createElement("div", { className: "text-lg font-extrabold text-white mb-3" }, t("jahz_lnql_shy")),
@@ -2008,7 +2008,7 @@ function ErsalScreenInner({ walletBalance = 0, walletPin = null, canWallet = fal
                 React.createElement("label", { className: "text-xs font-bold mb-2 block", style: { color: colors.text } }, t("ttba_ay_shhna_brqmha")),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                     React.createElement("input", { dir: "ltr", value: trackingNumber, onChange: (e) => setTrackingNumber(e.target.value.toUpperCase()), onKeyDown: (e) => { if (e.key === "Enter") goTrack(trackingNumber.trim()); }, placeholder: "FR-10462", className: "flex-1 min-w-0 border rounded-xl px-3 py-2 text-sm", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
-                    React.createElement("button", { onClick: () => goTrack(trackingNumber.trim()), className: `shrink-0 flex ${rowStart()} items-center gap-1.5 rounded-xl px-4 text-sm font-bold text-white`, style: { backgroundColor: colors.primary } }, React.createElement(Search, { size: 14, color: "#fff" }), t("ttba")))),
+                    React.createElement("button", { onClick: () => goTrack(trackingNumber.trim()), className: `shrink-0 flex ${rowStart()} items-center gap-1.5 rounded-xl px-4 text-sm font-bold text-white`, style: { backgroundColor: colors.primaryFill } }, React.createElement(Search, { size: 14, color: "#fff" }), t("ttba")))),
             React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-3` }, [
                 { v: activeShipments.length, l: t("nshta"), c: colors.primary },
                 { v: onTimeCount, l: tl("مُسلَّمة", "Delivered"), c: colors.success },
@@ -2125,9 +2125,9 @@ function ErsalStepper({ step }) {
     const steps = [tl("الشحنة", "Shipment"), t("ard_alsar"), t("aldfa")];
     return React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-4 py-2.5 border-b`, style: { backgroundColor: colors.card, borderColor: colors.border } },
         steps.map((l, i) => React.createElement(React.Fragment, { key: i },
-            i > 0 && React.createElement("div", { className: "flex-1 h-0.5 rounded-full", style: { backgroundColor: i <= step ? colors.primary : colors.border } }),
+            i > 0 && React.createElement("div", { className: "flex-1 h-0.5 rounded-full", style: { backgroundColor: i <= step ? colors.primaryFill : colors.border } }),
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 shrink-0` },
-                React.createElement("span", { className: "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold", style: { backgroundColor: i <= step ? colors.primary : colors.border, color: i <= step ? "#fff" : colors.textMuted } }, i < step ? React.createElement(Check, { size: 11, color: "#fff" }) : (i + 1).toLocaleString(loc())),
+                React.createElement("span", { className: "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold", style: { backgroundColor: i <= step ? colors.primaryFill : colors.border, color: i <= step ? "#fff" : colors.textMuted } }, i < step ? React.createElement(Check, { size: 11, color: "#fff" }) : (i + 1).toLocaleString(loc())),
                 React.createElement("span", { className: "text-[11px] font-bold", style: { color: i === step ? colors.text : colors.textMuted } }, l)))));
 }
 function ErsalProofOfDeliveryScreen({ shipment, onBack }) {

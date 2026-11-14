@@ -41,7 +41,7 @@ function LinkedDevicesScreen({ onBack }) {
             React.createElement("div", { className: "mx-4 mt-4 p-4 rounded-2xl", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                 React.createElement("p", { className: `text-xs ${textStart()} leading-relaxed`, style: { color: colors.textMuted } }, t("arbt_swa_bmtsfhk_aw"))),
             React.createElement("div", { className: "px-4 mt-4" },
-                React.createElement("button", { "aria-label": t("idafa"), onClick: () => setShowQr(!showQr), className: `w-full flex ${rowStart()} items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm`, style: { backgroundColor: colors.primary, color: "#fff" } },
+                React.createElement("button", { "aria-label": t("idafa"), onClick: () => setShowQr(!showQr), className: `w-full flex ${rowStart()} items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm`, style: { backgroundColor: colors.primaryFill, color: "#fff" } },
                     React.createElement(Plus, { size: 16, color: "#fff" }),
                     t("rbt_jhaz_jdyd"))),
             showQr && (React.createElement("div", { className: "mx-4 mt-4 p-5 rounded-2xl flex flex-col items-center gap-3", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
@@ -84,7 +84,7 @@ function SawaWrappedScreen({ onBack, conversations, groups, showToast = () => { 
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col", style: { backgroundColor: colors.bg } },
         React.createElement(TopBar, { title: t("ihsayyaty"), onBack: onBack }),
         React.createElement("div", { className: "flex-1 overflow-y-auto p-4" },
-            React.createElement("div", { className: "rounded-2xl p-5 mb-4 text-center", style: { background: `linear-gradient(135deg, ${colors.primary}, ${colors.accent})` } },
+            React.createElement("div", { className: "rounded-2xl p-5 mb-4 text-center", style: { background: `linear-gradient(135deg, ${colors.primaryFill}, ${colors.accent})` } },
                 React.createElement("p", { className: "text-white text-xs font-bold mb-1 opacity-80" }, t("swa_mlkhsk_hdha_alshhr")),
                 React.createElement("p", { className: "text-white text-2xl font-extrabold" }, t("342_rsala")),
                 React.createElement("p", { className: "text-white text-xs opacity-75 mt-1" }, t("ant_mn_akthr_almstkhdmyn"))),
@@ -151,9 +151,9 @@ function ScheduleRoomModal({ onSave, onClose }) {
                 React.createElement("div", { className: `rounded-xl px-3 py-2.5 mb-4 flex ${rowStart()} items-center gap-2`, style: { backgroundColor: colors.primaryLight, border: `1px solid ${colors.primary}33` } },
                     React.createElement(Link2, { size: 14, color: colors.primary }),
                     React.createElement("span", { className: `flex-1 ${textStart()} text-xs font-bold truncate`, style: { color: colors.primary }, dir: "ltr" }, link),
-                    React.createElement("button", { onClick: () => { copyText(link); showToast(t("nskh_alrabt_2"), "success"); }, className: "text-[10px] font-extrabold px-2 py-1 rounded-lg", "aria-label": t("nskh"), style: { backgroundColor: colors.primary, color: "#fff" } }, t("nskh"))),
+                    React.createElement("button", { onClick: () => { copyText(link); showToast(t("nskh_alrabt_2"), "success"); }, className: "text-[10px] font-extrabold px-2 py-1 rounded-lg", "aria-label": t("nskh"), style: { backgroundColor: colors.primaryFill, color: "#fff" } }, t("nskh"))),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
-                    React.createElement("button", { onClick: save, className: "flex-1 py-3 rounded-xl text-sm font-extrabold", style: { backgroundColor: colors.primary, color: "#fff" } }, t("hfz_almwad")),
+                    React.createElement("button", { onClick: save, className: "flex-1 py-3 rounded-xl text-sm font-extrabold", style: { backgroundColor: colors.primaryFill, color: "#fff" } }, t("hfz_almwad")),
                     React.createElement("button", { onClick: onClose, className: "flex-1 py-3 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, t("ilgha")))))));
 }
 function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, groups = [], onSendTasksToGroup }) {
@@ -391,12 +391,12 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                 React.createElement("p", { className: "text-xs font-bold mb-0.5", style: { color: "#94a3b8" } }, t("rabt_aldawa")),
                 editingSlug ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5` },
                     React.createElement("input", { dir: "ltr", value: slugDraft, autoFocus: true, onChange: (e) => setSlugDraft(e.target.value), onKeyDown: (e) => e.key === "Enter" && saveSlug(), placeholder: t("asm_alghrfa"), className: "flex-1 rounded-lg px-2 py-1 text-xs font-bold", style: { backgroundColor: "#111827", color: "#e2e8f0", border: "1px solid #475569", minWidth: 0 } }),
-                    React.createElement("button", { onClick: saveSlug, className: "text-[10px] font-extrabold px-2 py-1 rounded-lg", style: { backgroundColor: colors.primary, color: "#fff" } }, t("hfz")))) : (React.createElement("button", { onClick: () => { setSlugDraft(customSlug || ""); setEditingSlug(true); }, className: `w-full ${textStart()}`, "aria-label": t("tadyl_alrabt") },
+                    React.createElement("button", { onClick: saveSlug, className: "text-[10px] font-extrabold px-2 py-1 rounded-lg", style: { backgroundColor: colors.primaryFill, color: "#fff" } }, t("hfz")))) : (React.createElement("button", { onClick: () => { setSlugDraft(customSlug || ""); setEditingSlug(true); }, className: `w-full ${textStart()}`, "aria-label": t("tadyl_alrabt") },
                     React.createElement("p", { className: "text-sm font-extrabold truncate", style: { color: "#e2e8f0" }, dir: "ltr" }, roomLink),
                     React.createElement("p", { className: "text-[9px] mt-0.5", style: { color: colors.primary } }, t("adght_ltkhsys_alasm"))))),
             React.createElement("button", { "aria-label": t("nskh"), onClick: copyLink, className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: "#334155" } },
                 React.createElement(Copy, { size: 15, color: "#94a3b8" })),
-            React.createElement("button", { "aria-label": t("rmz_qr"), onClick: () => setShowQr(true), className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: showQr ? colors.primary : "#334155" } },
+            React.createElement("button", { "aria-label": t("rmz_qr"), onClick: () => setShowQr(true), className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: showQr ? colors.primaryFill : "#334155" } },
                 React.createElement(QrCode, { size: 15, color: showQr ? "#fff" : "#94a3b8" }))),
         amHost && waitingQueue.length > 0 && (React.createElement("div", { className: "mx-4 mt-2 rounded-xl px-3 py-2", style: { backgroundColor: colors.primary + "1a", border: `1px solid ${colors.primary}55` } },
             React.createElement("p", { className: `text-[11px] font-extrabold ${textStart()} mb-1.5`, style: { color: colors.primary } },
@@ -416,7 +416,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
         isTyping ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 shrink-0`, style: { backgroundColor: "#111827", borderBottom: "1px solid #1e293b", height: 40, transition: "height .25s" } },
             React.createElement("span", { className: "text-[9px] font-bold shrink-0", style: { color: "#475569" } }, t("rm_msharkwn")),
             participants.map((p) => (React.createElement("div", { key: p.id, className: "w-7 h-7 rounded-full flex items-center justify-center font-extrabold text-xs shrink-0", style: {
-                    backgroundColor: p.id === "p-1" ? colors.primary : "#334155",
+                    backgroundColor: p.id === "p-1" ? colors.primaryFill : "#334155",
                     color: "#fff",
                     border: activeSpeaker === p.id && p.mic ? "2px solid #16A34A"
                         : p.id === "p-1" ? `2px solid ${colors.primary}88` : "2px solid #475569",
@@ -435,7 +435,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                     transition: "border-color .25s, box-shadow .25s",
                     cursor: amHost && p.id !== "p-1" ? "pointer" : "default",
                 } },
-                React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center font-extrabold text-sm mb-1", style: { backgroundColor: p.id === "p-1" ? colors.primary : "#334155", color: "#fff" } }, p.cam && !lowDataMode ? React.createElement(Video, { size: 14, color: "#fff" }) : p.avatar),
+                React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center font-extrabold text-sm mb-1", style: { backgroundColor: p.id === "p-1" ? colors.primaryFill : "#334155", color: "#fff" } }, p.cam && !lowDataMode ? React.createElement(Video, { size: 14, color: "#fff" }) : p.avatar),
                 React.createElement("p", { className: "text-[9px] font-bold text-white truncate px-1", style: { maxWidth: "100%" } }, p.name),
                 React.createElement("div", { className: "absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center", style: { backgroundColor: p.mic ? "#16a34a33" : "#ef444433" } }, p.mic ? React.createElement(Mic, { size: 8, color: "#16a34a" }) : React.createElement(MicOff, { size: 8, color: "#ef4444" })),
                 raisedHands.includes(p.id) && React.createElement("div", { className: "absolute bottom-1 left-1 text-xs" }, "\u270B")))),
@@ -452,7 +452,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                     minHeight: 120,
                     cursor: amHost && p.id !== "p-1" ? "pointer" : "default",
                 } },
-                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center font-extrabold text-xl mb-2", style: { backgroundColor: p.id === "p-1" ? colors.primary : "#334155", color: "#fff" } }, p.cam && !lowDataMode ? React.createElement(Video, { size: 24, color: "#fff" }) : p.avatar),
+                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center font-extrabold text-xl mb-2", style: { backgroundColor: p.id === "p-1" ? colors.primaryFill : "#334155", color: "#fff" } }, p.cam && !lowDataMode ? React.createElement(Video, { size: 24, color: "#fff" }) : p.avatar),
                 React.createElement("p", { className: "text-xs font-bold text-white truncate px-2", style: { maxWidth: "100%" } }, p.name),
                 React.createElement("div", { className: "absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center", style: { backgroundColor: p.mic ? "#16a34a33" : "#ef444433" } }, p.mic ? React.createElement(Mic, { size: 11, color: "#16a34a" }) : React.createElement(MicOff, { size: 11, color: "#ef4444" })),
                 p.host && (React.createElement("div", { className: "absolute top-2 left-2 px-1.5 py-0.5 rounded-full", style: { backgroundColor: colors.primary + "55" } },
@@ -464,7 +464,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                 familyMembers.length > 0 && (React.createElement("span", { className: "text-[9px] font-bold", style: { color: colors.accent } }, t("aw_ada_alaayla"))))))),
         chatOpen && (React.createElement("div", { className: "mx-4 mb-2 rounded-2xl overflow-hidden flex flex-col", style: { backgroundColor: "#1e293b", border: "1px solid #334155", flex: isTyping ? 1 : "0 0 auto", maxHeight: isTyping ? "none" : 220, transition: "flex .25s, max-height .25s" } },
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 py-2 border-b shrink-0`, style: { borderColor: "#334155" } },
-                React.createElement("div", { className: `flex ${rowStart()} rounded-lg overflow-hidden shrink-0`, style: { border: "1px solid #334155" } }, [{ k: "casual", l: t("rm_drdsha") }, { k: "business", l: t("rm_amal") }].map((chatMode_item) => (React.createElement("button", { key: chatMode_item.k, onClick: () => setChatMode(chatMode_item.k), className: "px-2.5 py-1 text-[10px] font-extrabold", style: { backgroundColor: chatMode === chatMode_item.k ? colors.primary : "transparent", color: chatMode === chatMode_item.k ? "#fff" : "#94a3b8" } }, chatMode_item.l)))),
+                React.createElement("div", { className: `flex ${rowStart()} rounded-lg overflow-hidden shrink-0`, style: { border: "1px solid #334155" } }, [{ k: "casual", l: t("rm_drdsha") }, { k: "business", l: t("rm_amal") }].map((chatMode_item) => (React.createElement("button", { key: chatMode_item.k, onClick: () => setChatMode(chatMode_item.k), className: "px-2.5 py-1 text-[10px] font-extrabold", style: { backgroundColor: chatMode === chatMode_item.k ? colors.primaryFill : "transparent", color: chatMode === chatMode_item.k ? "#fff" : "#94a3b8" } }, chatMode_item.l)))),
                 React.createElement("div", { className: "flex-1" }),
                 chatMode === "business" && (React.createElement("button", { onClick: () => setShowSummary(true), className: "px-2 py-1 rounded-lg text-[10px] font-bold shrink-0", style: { backgroundColor: "#16A34A22", color: "#16A34A" } },
                     t("rm_mhdr_adad"),
@@ -494,7 +494,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                 v.label))))),
             React.createElement("div", { className: `flex ${rowStart()} gap-2 px-3 pb-2` },
                 React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: chatText, onChange: (e) => setChatText(e.target.value), onFocus: () => setIsTyping(true), onBlur: () => setIsTyping(false), onKeyDown: (e) => e.key === "Enter" && sendChat(), placeholder: chatMode === "business" ? t("rm_sjl_") + NOTE_KINDS[noteKind].label + "..." : t("rm_aktb_rsala"), className: "flex-1 rounded-xl px-3 py-1.5 text-xs", style: { backgroundColor: "#111827", color: "#e2e8f0", border: `1px solid ${isTyping ? colors.primary + "88" : "#334155"}`, minWidth: 0 } }),
-                React.createElement("button", { "aria-label": t("irsal"), onClick: () => { sendChat(); setIsTyping(false); }, className: "w-8 h-8 rounded-xl flex items-center justify-center", style: { backgroundColor: colors.primary } },
+                React.createElement("button", { "aria-label": t("irsal"), onClick: () => { sendChat(); setIsTyping(false); }, className: "w-8 h-8 rounded-xl flex items-center justify-center", style: { backgroundColor: colors.primaryFill } },
                     React.createElement(Send, { size: 13, color: "#fff", style: { transform: "scaleX(-1)" } }))))),
         showQr && (React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setShowQr(false), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.6)" } }),
@@ -505,7 +505,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                     React.createElement(QrCode, { size: 130, color: "#000" })),
                 React.createElement("p", { className: "text-[11px] text-center font-bold mb-4", style: { color: "#e2e8f0" }, dir: "ltr" }, roomLink),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
-                    React.createElement("button", { onClick: copyLink, className: "flex-1 py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: colors.primary, color: "#fff" } }, t("nskh_alrabt")),
+                    React.createElement("button", { onClick: copyLink, className: "flex-1 py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: colors.primaryFill, color: "#fff" } }, t("nskh_alrabt")),
                     React.createElement("button", { onClick: () => setShowQr(false), className: "flex-1 py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: "#334155", color: "#94a3b8" } }, t("ighlaq")))))),
         confirmLeave && (React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setConfirmLeave(false), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.6)" } }),
@@ -545,7 +545,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                         const on = pickedFamily.includes(m.id);
                         const late = isContactOverdue(m);
                         return (React.createElement("button", { key: m.id, onClick: () => setPickedFamily((p) => on ? p.filter((x) => x !== m.id) : [...p, m.id]), className: `w-full flex ${rowStart()} items-center gap-3 px-2 py-2.5 rounded-xl mb-1`, style: { backgroundColor: on ? colors.primary + "22" : "transparent" } },
-                            React.createElement("span", { className: "w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2", style: { borderColor: on ? colors.primary : "#475569", backgroundColor: on ? colors.primary : "transparent" } }, on && React.createElement(Check, { size: 11, color: "#fff" })),
+                            React.createElement("span", { className: "w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2", style: { borderColor: on ? colors.primaryFill : "#475569", backgroundColor: on ? colors.primaryFill : "transparent" } }, on && React.createElement(Check, { size: 11, color: "#fff" })),
                             React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
                                 React.createElement("p", { className: "text-xs font-bold text-white truncate" }, m.local_name),
                                 React.createElement("p", { className: "text-[10px]", style: { color: late ? "#ef4444" : "#64748b" } },
@@ -559,7 +559,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                             showToast(t("arslt_aldawa_ila", { count: chosen.length }), "success");
                             setShowFamilyInvite(false);
                             setPickedFamily([]);
-                        }, disabled: pickedFamily.length === 0, className: "flex-1 py-2.5 rounded-xl text-xs font-extrabold", style: { backgroundColor: pickedFamily.length ? colors.primary : "#334155", color: pickedFamily.length ? "#fff" : "#64748b" } },
+                        }, disabled: pickedFamily.length === 0, className: "flex-1 py-2.5 rounded-xl text-xs font-extrabold", style: { backgroundColor: pickedFamily.length ? colors.primaryFill : "#334155", color: pickedFamily.length ? "#fff" : "#64748b" } },
                         t("rm_irsal_aldawa"),
                         pickedFamily.length,
                         ")"),
@@ -663,7 +663,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                             else
                                 transferHost(hostConfirm.p.id);
                             setHostConfirm(null);
-                        }, className: "flex-1 py-2.5 rounded-xl text-xs font-extrabold", style: { backgroundColor: hostConfirm.action === "remove" ? "#ef4444" : colors.primary, color: "#fff" } }, hostConfirm.action === "remove" ? t("rm_izala") : t("rm_nql")),
+                        }, className: "flex-1 py-2.5 rounded-xl text-xs font-extrabold", style: { backgroundColor: hostConfirm.action === "remove" ? "#ef4444" : colors.primaryFill, color: "#fff" } }, hostConfirm.action === "remove" ? t("rm_izala") : t("rm_nql")),
                     React.createElement("button", { onClick: () => setHostConfirm(null), className: "flex-1 py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: "#334155", color: "#e2e8f0" } }, t("ilgha")))))),
         floatingReactions.length > 0 && (React.createElement("div", { style: { position: "fixed", inset: 0, pointerEvents: "none", zIndex: 35 } }, floatingReactions.map((r) => (React.createElement("span", { key: r.id, className: "sawa-float-up", style: { position: "absolute", bottom: 110, left: r.left + "%", fontSize: 30 } }, r.emoji))))),
         showReactionBar && (React.createElement("div", { className: `mx-4 mb-2 rounded-2xl px-3 py-2 flex ${rowStart()} items-center justify-around`, style: { backgroundColor: "#1e293b", border: "1px solid #334155" } }, ROOM_REACTIONS.map((e) => (React.createElement("button", { key: e, onClick: () => sendReaction(e), style: { fontSize: 24 }, "aria-label": t("rm_tfaal") + e }, e))))),
@@ -715,7 +715,7 @@ function FirstRunScreen({ onStartFresh, onViewDemo }) {
                 React.createElement("p", { className: "text-sm font-extrabold mb-3", style: { color: colors.text } }, tl("\u0627\u0628\u062F\u0623 \u0628\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0644 \u0642\u0631\u064A\u0628 \u0644\u0643", "Add your first relative")),
                 React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: firstName, onChange: (e) => setFirstName(e.target.value), placeholder: t("misc_aktb_asm"), className: "w-full border rounded-xl px-4 py-3 text-sm mb-4 outline-none", style: { borderColor: firstName ? colors.primary : colors.border, color: colors.text, backgroundColor: colors.bg }, autoFocus: true }),
                 React.createElement("button", { onClick: () => firstName.trim() && onStartFresh(firstName.trim()), className: "w-full py-3 rounded-xl text-sm font-extrabold", style: {
-                        backgroundColor: firstName.trim() ? colors.primary : colors.border,
+                        backgroundColor: firstName.trim() ? colors.primaryFill : colors.border,
                         color: "#fff",
                         opacity: firstName.trim() ? 1 : 0.5,
                     } },
@@ -758,7 +758,7 @@ function MatchCandidatesCard({ matchCandidates, matchDecisions, setMatchDecision
             m.allMatches.length > 1 && (React.createElement("p", { className: "text-[10px] " + textStart() + " mb-1.5", style: { color: colors.danger } }, t("tshabh_fy_alasm_takd"))),
             React.createElement("div", { className: "flex " + rowStart() + " gap-2" },
                 React.createElement("button", { onClick: () => setMatchDecisions((d) => ({ ...d, [m.low]: "same" })), className: "flex-1 py-1.5 rounded-lg text-[10px] font-extrabold", style: {
-                        backgroundColor: matchDecisions[m.low] === "same" ? colors.primary : colors.card,
+                        backgroundColor: matchDecisions[m.low] === "same" ? colors.primaryFill : colors.card,
                         color: matchDecisions[m.low] === "same" ? "#fff" : colors.text,
                         border: "1px solid " + (matchDecisions[m.low] === "same" ? colors.primary : colors.border),
                     } }, t("hw_nfsh")),
@@ -819,7 +819,7 @@ function OnboardingScreen({ onDone }) {
             idx === 0 ? (React.createElement("img", { src: IS_RAHIM ? APP_LOGO_RAHIM : SAWA_LOGO, alt: t("shaar_swa"), style: { width: 120, height: 120, objectFit: "contain", marginBottom: 20 } })) : (React.createElement("div", { className: "w-20 h-20 rounded-full flex items-center justify-center mb-5", style: { backgroundColor: colors.primaryLight } }, React.createElement(slide.icon, { size: 36, color: colors.primary }))),
             React.createElement("h2", { className: "text-lg font-extrabold text-center mb-2", style: { color: colors.text } }, t(slide.titleKey)),
             React.createElement("p", { className: "text-sm text-center", style: { color: colors.textMuted } }, t(slide.bodyKey))),
-        React.createElement("div", { className: `flex ${rowStart()} justify-center gap-1.5 pb-4` }, ONBOARDING_SLIDES.map((_, i) => (React.createElement("span", { key: i, className: "rounded-full", style: { width: i === idx ? 18 : 6, height: 6, backgroundColor: i === idx ? colors.primary : colors.border, transition: "width 0.2s" } })))),
+        React.createElement("div", { className: `flex ${rowStart()} justify-center gap-1.5 pb-4` }, ONBOARDING_SLIDES.map((_, i) => (React.createElement("span", { key: i, className: "rounded-full", style: { width: i === idx ? 18 : 6, height: 6, backgroundColor: i === idx ? colors.primaryFill : colors.border, transition: "width 0.2s" } })))),
         React.createElement("div", { className: "p-4" },
             React.createElement(Button, { label: isLast ? t("mnw_abda_alan") : t("altaly"), onPress: () => (isLast ? onDone() : setIdx((i) => i + 1)) }))));
 }
@@ -854,7 +854,7 @@ function CaptionSendSheet({ items, colors, onCancel, onSend }) {
             React.createElement("input", { value: cap, onChange: (e) => setCap(e.target.value), maxLength: 1000, autoFocus: true, placeholder: tl("أضف تعليقاً…", "Add a caption…"), dir: isRTL() ? "rtl" : "ltr", className: "w-full border rounded-xl px-3 py-2.5 text-sm mb-3", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             React.createElement("div", { className: "flex items-center gap-2" },
                 React.createElement("button", { onClick: onCancel, className: "flex-1 py-2.5 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, tl("إلغاء", "Cancel")),
-                React.createElement("button", { onClick: () => onSend(cap.trim()), className: "flex-1 py-2.5 rounded-xl text-sm font-bold text-white", style: { backgroundColor: colors.primary } }, tl("إرسال", "Send")))));
+                React.createElement("button", { onClick: () => onSend(cap.trim()), className: "flex-1 py-2.5 rounded-xl text-sm font-bold text-white", style: { backgroundColor: colors.primaryFill } }, tl("إرسال", "Send")))));
 }
 function FeedbackSheet({ onClose, currentScreen = "" }) {
     const { colors } = useTheme();
@@ -923,7 +923,7 @@ function FeedbackSheet({ onClose, currentScreen = "" }) {
                         React.createElement(Check, { size: 26, color: colors.primary })),
                     React.createElement("p", { className: "text-sm font-extrabold mb-1", style: { color: colors.text } }, t("shkra_lk")),
                     React.createElement("p", { className: "text-xs mb-5", style: { color: colors.textMuted } }, t("mlahztk_tsna_alfrq_kl")),
-                    React.createElement("button", { onClick: onClose, className: "w-full rounded-xl py-3 text-xs font-extrabold", style: { backgroundColor: colors.primary, color: "#fff" } }, t("ighlaq"))))));
+                    React.createElement("button", { onClick: onClose, className: "w-full rounded-xl py-3 text-xs font-extrabold", style: { backgroundColor: colors.primaryFill, color: "#fff" } }, t("ighlaq"))))));
     }
     return (React.createElement("div", { className: "absolute inset-0 z-50 flex items-end justify-center", style: { backgroundColor: "rgba(0,0,0,0.5)" }, onClick: onClose },
         React.createElement("div", { className: "w-full rounded-t-2xl max-h-[92%] overflow-y-auto", style: { backgroundColor: colors.card }, onClick: (e) => e.stopPropagation() },
@@ -942,12 +942,12 @@ function FeedbackSheet({ onClose, currentScreen = "" }) {
                     React.createElement("p", { className: `text-[11px] font-extrabold mb-0.5 ${textStart()}`, style: { color: colors.text } }, t("swal_wahd_in_smht")),
                     React.createElement("p", { className: `text-[10px] mb-2.5 ${textStart()}`, style: { color: colors.textMuted } }, t("tdhkyrat_sla_alrhm_kyf")),
                     React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-1.5` }, feelings.map((f) => (React.createElement("button", { key: f.k, onClick: () => setFeeling(feeling === f.k ? null : f.k), className: "rounded-full px-2.5 py-1 text-[10px] font-bold", style: {
-                            backgroundColor: feeling === f.k ? colors.primary : "transparent",
+                            backgroundColor: feeling === f.k ? colors.primaryFill : "transparent",
                             color: feeling === f.k ? "#fff" : colors.textMuted,
                             border: `1px solid ${feeling === f.k ? colors.primary : colors.border}`,
                         } }, f.label))))),
                 React.createElement("button", { onClick: send, disabled: !text.trim(), className: `w-full rounded-xl py-3 flex ${rowStart()} items-center justify-center gap-2`, style: {
-                        backgroundColor: text.trim() ? colors.primary : colors.border,
+                        backgroundColor: text.trim() ? colors.primaryFill : colors.border,
                         opacity: text.trim() ? 1 : 0.6,
                     } },
                     React.createElement(Send, { size: 15, color: "#fff" }),
@@ -971,7 +971,7 @@ function ContributionAmountModal({ onConfirm, onClose, walletBalance }) {
                 React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } },
                     (walletBalance || 0).toLocaleString(loc()),
                     " \u062C.\u0633"),
-                React.createElement("div", { className: "w-4 h-4 rounded flex items-center justify-center", style: { backgroundColor: useWallet ? colors.primary : "transparent", border: `1px solid ${useWallet ? colors.primary : colors.border}` } }, useWallet && React.createElement(Check, { size: 10, color: "#fff" })))),
+                React.createElement("div", { className: "w-4 h-4 rounded flex items-center justify-center", style: { backgroundColor: useWallet ? colors.primaryFill : "transparent", border: `1px solid ${useWallet ? colors.primary : colors.border}` } }, useWallet && React.createElement(Check, { size: 10, color: "#fff" })))),
             walletInsufficient && (React.createElement("p", { className: "text-[10px] text-center mb-2", style: { color: colors.danger } }, t("alrsyd_ghyr_kaf"))),
             React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                 React.createElement(Button, { label: t("tbra_alan"), disabled: !amount || numAmount <= 0 || walletInsufficient, onPress: () => onConfirm(numAmount, useWallet), style: { flex: 1 } }),
@@ -4476,7 +4476,7 @@ function AppInner() {
                         React.createElement(Icon, { size: 26, color: active ? colors.primary : colors.textMuted, style: { width: "min(calc(26px * var(--sfs, 1)), 30px)", height: "min(calc(26px * var(--sfs, 1)), 30px)" } }),   // C154: شريط التبويبات يكبر قليلاً فقط كي لا تتلاصق الأسماء
                         tabItem.key === "calls" && missedNew > 0 && (React.createElement("span", { className: "absolute -top-1.5 -left-2 min-w-[14px] h-3.5 px-0.5 rounded-full flex items-center justify-center text-[8px] font-bold text-white", style: { backgroundColor: colors.danger } }, missedNew))),
                     React.createElement("span", { className: "mt-1 whitespace-nowrap leading-tight", style: { fontSize: "min(calc(12px * var(--sfs, 1)), 13.5px)", color: active ? colors.primary : colors.textMuted, fontWeight: active ? 800 : 600 } }, t(IS_RAHIM && tabItem.key === "discover" ? "sla_alrhm" : tabItem.labelKey)),
-                    active && React.createElement("div", { className: "w-1.5 h-1.5 rounded-full mt-0.5", style: { backgroundColor: colors.primary } })));
+                    active && React.createElement("div", { className: "w-1.5 h-1.5 rounded-full mt-0.5", style: { backgroundColor: colors.primaryFill } })));
             }))))),
         showAddSchedule && (() => { const schGid = (editingSchedule && editingSchedule.groupId) || (discoverTop && (discoverTop.type === "schedules" || discoverTop.type === "tree") && discoverTop.data && discoverTop.data.id) || (discoverTop && discoverTop.type === "personDetail" && discoverTop.groupId) || currentGroupId; return React.createElement(FamilyAddScheduleSheet, { allPersons: famPersons[schGid] || [], persons: (famPersons[schGid] || []).filter((p) => !isSelfPerson(p) && (p.alive !== false || (editingSchedule && editingSchedule.personId === p.id))), relations: kinshipRelations.filter((r) => r.groupId === schGid), preselectedPersonId: preselectedSchedulePersonId, initial: editingSchedule, onSave: (personId, action, freqKey) => (editingSchedule ? updateSchedule(editingSchedule.id, personId, action, freqKey) : addSchedule(schGid, personId, action, freqKey)), onClose: () => { setShowAddSchedule(false); setPreselectedSchedulePersonId(null); setEditingSchedule(null); } }); })(),
         showAddEvent && (() => { const evGid = (editingEvent && editingEvent.groupId) || (discoverTop && discoverTop.type === "events" && discoverTop.data && discoverTop.data.id) || (discoverTop && discoverTop.type === "personDetail" && discoverTop.groupId) || currentGroupId; return React.createElement(FamilyAddEventSheet, { persons: groupPersons[evGid] || [], relations: kinshipRelations.filter((r) => r.groupId === evGid), initial: editingEvent, onSave: (personId, type, title, ts, desc) => (editingEvent ? updateEvent(editingEvent.id, personId, type, title, ts, desc) : addEvent(evGid, personId, type, title, ts, desc)), onClose: () => { setShowAddEvent(false); setEditingEvent(null); } }); })(),

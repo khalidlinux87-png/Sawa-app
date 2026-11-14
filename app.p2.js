@@ -266,26 +266,28 @@ const SAWA_LOGO_SM = "data:image/webp;base64,UklGRvIqAABXRUJQVlA4WAoAAAAQAAAAjwA
 //   (نسخةٌ من moments في sawa-chat.js: MO_SERVICE_COLOR — غيّرهما معاً)
 const SERVICE_COLORS = { moments: "#7C3AED", wallet: "#0F766E", ersal: "#1565C0" };
 const ACCENT_THEMES = {
+    // C302: في الداكن درجتان بدل الدرجة الوسط (C192، ~4.1 في الاتّجاهين = أقلّ من 4.5): accentOnDark للنصّ والأيقونات على الخلفيّة الداكنة
+    //   (≥ 4.6 حتّى على btnFill)، وaccentFillDark تعبئةٌ تحت نصٍّ أبيض (≥ 4.6) ⇐ colors.primaryFill. الفاتح بلا تغيير (primaryFill = primary).
     // C192: accentOnDark — درجة المظهر في الوضع الداكن. اللون نفسه نصٌّ على الخلفيّة الداكنة وتعبئةٌ تحت نصٍّ أبيض، فاختيرت درجةٌ
     //   تعطي ~4.1 في الاتّجاهين (أقصى توازنٍ ممكن). كان الكحليّ في الداكن 1.5 فلا تكاد تُرى الروابط والتبويب النشط.
     //   البرتقاليّ الفاتح كان E8823D (النصّ الأبيض عليه 2.7) ⇐ BB5816 (4.7).
     // C187: لون سوا كان 2F80C8 (تباين النصّ الأبيض عليه 4.2 < 4.5 المطلوبة) — نفس الدرجة أعمق قليلاً
-    sawa: { labelKey: "acc_swa", accent: "#2774BA", accentDark: "#1E3A63", accentTint: "#BFE0F5", accentOnDark: "#2B81CE" },
-    orange: { labelKey: "acc_brtqaly", accent: "#BB5816", accentDark: "#8F420F", accentTint: "#FBD9BA", accentOnDark: "#C85F18" },
-    purple: { labelKey: "acc_bnfsjy", accent: "#8B5FA8", accentDark: "#5F3F78", accentTint: "#E3D3ED", accentOnDark: "#966DB0" },
-    navy: { labelKey: "acc_khly", accent: "#1E3A63", accentDark: "#132743", accentTint: "#C7D4E3", accentOnDark: "#4A7EC8" },
+    sawa: { labelKey: "acc_swa", accent: "#2774BA", accentDark: "#1E3A63", accentTint: "#BFE0F5", accentOnDark: "#5FA2DE", accentFillDark: "#2877BE" },
+    orange: { labelKey: "acc_brtqaly", accent: "#BB5816", accentDark: "#8F420F", accentTint: "#FBD9BA", accentOnDark: "#E8813B", accentFillDark: "#BB5916" },
+    purple: { labelKey: "acc_bnfsjy", accent: "#8B5FA8", accentDark: "#5F3F78", accentTint: "#E3D3ED", accentOnDark: "#AE8EC2", accentFillDark: "#8F63AB" },
+    navy: { labelKey: "acc_khly", accent: "#1E3A63", accentDark: "#132743", accentTint: "#C7D4E3", accentOnDark: "#769DD5", accentFillDark: "#3B74C4" },
     // مستخلَصة من شعار أرحام نفسه: أخضره وزيتيّه. افتراض أرحام، وخيارٌ في سوا.
-    green: { labelKey: "acc_akhdr", accent: "#187854", accentDark: "#0C4854", accentTint: "#CFE9DD", accentOnDark: "#1C8E64" },
+    green: { labelKey: "acc_akhdr", accent: "#187854", accentDark: "#0C4854", accentTint: "#CFE9DD", accentOnDark: "#23B37E", accentFillDark: "#1A845D" },
 };
 // C187: رموز الألوان — المصدر الوحيد. تُنشر أيضاً متغيّراتِ CSS (‎--sawa-*‎) في App، فتقرؤها sawa-chat/sawa-rtc وشاشة التحميل.
 //   الأحمر/الأخضر/الكهرمانيّ: لونٌ واحد لكلّ دور (كانت 3–4 درجات متقاربة مكتوبة مباشرة).
 const lightColors = {
-    primary: "#2774BA", primaryDark: "#1E3A63", primaryLight: "#BFE0F5",
+    primary: "#2774BA", primaryFill: "#2774BA", primaryDark: "#1E3A63", primaryLight: "#BFE0F5",
     accent: "#D98E04", danger: "#B42318", success: "#1B7A43", warning: "#B45309",
     bg: "#F5F7FA", card: "#FFFFFF", text: "#111827", textMuted: "#6B7280", border: "#E2E5E9",
 };
 const darkColors = {
-    primary: "#5AA9E6", primaryDark: "#2F5C8F", primaryLight: "#173049",
+    primary: "#5AA9E6", primaryFill: "#2877BE", primaryDark: "#2F5C8F", primaryLight: "#173049",
     accent: "#E8A93D", danger: "#E5695C", success: "#5CD692", warning: "#F5B14C",
     bg: "#0E1116", card: "#171B21", text: "#EDEFF2", textMuted: "#8A93A0", border: "#262B33",
 };
@@ -346,7 +348,7 @@ function Button({ label, icon: Icon, onPress, variant = "filled", disabled, clas
     return (React.createElement("button", { onClick: onPress, disabled: disabled, className: `w-full flex ${rowStart()} items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-extrabold transition-transform active:scale-[0.98] ${className}`, style: {
             // C199: المعطّل رماديّ بنصٍّ خافت (كان لون المظهر بشفافيّة 50٪ — نصٌّ أبيض على أزرق شاحب ~1.6:1)
             // C204: «outline» صار تعبئةً لونيّةً صلبة (primaryLight/primaryInk) بلا حدٍّ رفيع — الهرميّة بقوّة التعبئة لا بالخطّ
-            backgroundColor: disabled ? colors.border : filled ? colors.primary : (colors.primaryLight || colors.btnFill),
+            backgroundColor: disabled ? colors.border : filled ? colors.primaryFill : (colors.primaryLight || colors.btnFill),
             color: disabled ? colors.textMuted : filled ? "#fff" : (colors.primaryInk || colors.primary),
             border: "none",
             opacity: 1,
@@ -391,8 +393,8 @@ function NumericAmountInput({ value, onChange, placeholder, className, style }) 
 function Chip({ label, active, onPress, disabled = false }) {
     const { colors } = useTheme();
     return (React.createElement("button", { onClick: disabled ? undefined : onPress, disabled: disabled, className: "rounded-full text-xs px-3.5 py-2 border mb-2 whitespace-nowrap shrink-0", style: {
-            backgroundColor: active ? colors.primary : colors.card,
-            borderColor: active ? colors.primary : colors.border,
+            backgroundColor: active ? colors.primaryFill : colors.card,
+            borderColor: active ? colors.primaryFill : colors.border,
             color: active ? "#fff" : (disabled ? colors.textMuted : colors.text),
             fontWeight: active ? 700 : 400,
             opacity: disabled ? 0.45 : 1,
@@ -401,8 +403,8 @@ function Chip({ label, active, onPress, disabled = false }) {
 function PinDots({ length = 6, filled = 0, error = false }) {
     const { colors } = useTheme();
     return (React.createElement("div", { className: "flex justify-center my-6 gap-3" }, Array.from({ length }).map((_, i) => (React.createElement("div", { key: i, className: "w-4 h-4 rounded-full border-2", style: {
-            borderColor: error ? colors.danger : colors.primary,
-            backgroundColor: i < filled ? (error ? colors.danger : colors.primary) : "transparent",
+            borderColor: error ? colors.danger : colors.primaryFill,
+            backgroundColor: i < filled ? (error ? colors.danger : colors.primaryFill) : "transparent",
         } })))));
 }
 function PinKeypad({ onDigit, onBackspace, onBiometric, showBiometric }) {
@@ -516,7 +518,7 @@ function TopBar({ title, subtitle, onBack, actions, avatar, photo, onTitlePress 
     // C146: اتّجاهٌ صريح + ترتيبٌ طبيعيّ — «رجوع» ثمّ الصورة ثمّ الاسم من جهة البداية، والأزرار في الطرف الآخر:
     //       العربيّة: رجوع يميناً والأزرار يساراً · الإنجليزيّة: العكس. (كان flex-row-reverse داخل صفحةٍ عربيّة يقلبه فيصير الرجوع يساراً)
     const rtl = isRTL();
-    return (React.createElement("div", { dir: rtl ? "rtl" : "ltr", className: "flex flex-row items-center px-3 pb-2.5", style: { backgroundColor: colors.header || colors.primary,   /* C195: لون الخدمة داخل شاشاتها (ServiceTheme) */ paddingTop: "calc(env(safe-area-inset-top,0px) + 12px)", minHeight: 60 } },   // C117: كان pt-10 ثابتاً
+    return (React.createElement("div", { dir: rtl ? "rtl" : "ltr", className: "flex flex-row items-center px-3 pb-2.5", style: { backgroundColor: colors.header || colors.primaryFill,   /* C195: لون الخدمة داخل شاشاتها (ServiceTheme) */ paddingTop: "calc(env(safe-area-inset-top,0px) + 12px)", minHeight: 60 } },   // C117: كان pt-10 ثابتاً
         onBack && React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: onBack, className: "w-11 h-11 rounded-full flex items-center justify-center shrink-0", style: { margin: "-4px 0", marginInlineStart: -4, marginInlineEnd: 0 } },   // 44px tap target; the -4px margins keep the chevron and the header height exactly as before
             React.createElement(rtl ? ChevronRight : ChevronLeft, { color: "#fff", size: 22 })),
         React.createElement("div", { className: "flex-1 min-w-0 flex flex-row items-center justify-start gap-2", onClick: onTitlePress || undefined, style: Object.assign({ marginInlineEnd: 12 }, onTitlePress ? { cursor: "pointer" } : {}) },
@@ -536,7 +538,7 @@ function famMix(hex, t) {
     const n = parseInt(m[1], 16), ch = (s) => Math.round(((n >> s) & 255) + (255 - ((n >> s) & 255)) * t);
     return "#" + [ch(16), ch(8), ch(0)].map((v) => v.toString(16).padStart(2, "0")).join("");
 }
-function famGrad(colors) { return `linear-gradient(135deg, ${famMix(colors.primary, 0.14)} 0%, ${colors.primary} 45%, ${colors.primaryDark} 100%)`; }
+function famGrad(colors) { return `linear-gradient(135deg, ${famMix(colors.primaryFill, 0.14)} 0%, ${colors.primaryFill} 45%, ${colors.primaryDark} 100%)`; }
 function famShadow(isDark) { return isDark ? "0 6px 18px rgba(0,0,0,0.38)" : "0 6px 18px rgba(30,41,59,0.07)"; }
 const FAM_AV_GRADS = [["#60a5fa", "#2563eb"], ["#34d399", "#0d9488"], ["#fbbf24", "#f97316"], ["#c084fc", "#7c3aed"], ["#f472b6", "#db2777"], ["#22d3ee", "#0e7490"], ["#a3e635", "#4d7c0f"], ["#fb7185", "#be123c"]];
 function famAvGrad(name) {
@@ -602,7 +604,7 @@ function FamSection({ title, action, onAction, children, className = "" }) {
 // شرائح تصفية مستديرة قابلة للتمرير أفقيّاً
 function FamTabs({ options, value, onChange, className = "" }) {
     const { colors, isDark } = useTheme();
-    return React.createElement("div", { className: `flex ${rowStart()} gap-2 overflow-x-auto pb-1 ${className}`, style: { scrollbarWidth: "none" } }, options.map((o) => React.createElement("button", { key: o.k, onClick: () => onChange(o.k), className: `shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-bold whitespace-nowrap flex ${rowStart()} items-center gap-1`, style: value === o.k ? { backgroundColor: colors.primary, color: "#fff" } : { backgroundColor: colors.card, color: colors.textMuted, boxShadow: famShadow(isDark) } }, o.i ? React.createElement(o.i, { size: 12 }) : null, o.l, o.n != null ? React.createElement("span", { className: "text-[9.5px] px-1 rounded-full", style: { backgroundColor: value === o.k ? "rgba(255,255,255,0.25)" : colors.bg } }, o.n) : null)));
+    return React.createElement("div", { className: `flex ${rowStart()} gap-2 overflow-x-auto pb-1 ${className}`, style: { scrollbarWidth: "none" } }, options.map((o) => React.createElement("button", { key: o.k, onClick: () => onChange(o.k), className: `shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-bold whitespace-nowrap flex ${rowStart()} items-center gap-1`, style: value === o.k ? { backgroundColor: colors.primaryFill, color: "#fff" } : { backgroundColor: colors.card, color: colors.textMuted, boxShadow: famShadow(isDark) } }, o.i ? React.createElement(o.i, { size: 12 }) : null, o.l, o.n != null ? React.createElement("span", { className: "text-[9.5px] px-1 rounded-full", style: { backgroundColor: value === o.k ? "rgba(255,255,255,0.25)" : colors.bg } }, o.n) : null)));
 }
 // مفتاح مقسوم (ذكر/أنثى، حيّ/متوفّى…)
 function FamSeg({ options, value, onChange }) {
@@ -774,7 +776,7 @@ function FamAction({ icon: Icon, label, onPress, bg, href, outline }) {
     const on = !!(onPress || href);
     // C74: الزرّ يشمل الدائرة واسمها — كان النقر على الكلمة («تعديل»، «مفضّلة») لا يفعل شيئاً
     return React.createElement(Tag, { "aria-label": label, href: href, onClick: onPress, disabled: !on, className: "flex flex-col items-center gap-1.5 active:scale-95 transition-transform", style: { opacity: on ? 1 : 0.4, background: "none", border: 0, padding: 0, textDecoration: "none" } },
-        React.createElement("span", { className: "rounded-full flex items-center justify-center", style: { width: 50, height: 50, backgroundColor: outline ? "transparent" : (bg || colors.primary), border: outline ? `2px solid ${colors.primary}` : "none", boxShadow: outline ? "none" : `0 6px 14px ${(bg || colors.primary)}55` } }, React.createElement(Icon, { size: 21, color: outline ? colors.primary : "#fff" })),
+        React.createElement("span", { className: "rounded-full flex items-center justify-center", style: { width: 50, height: 50, backgroundColor: outline ? "transparent" : (bg || colors.primaryFill), border: outline ? `2px solid ${colors.primary}` : "none", boxShadow: outline ? "none" : `0 6px 14px ${(bg || colors.primary)}55` } }, React.createElement(Icon, { size: 21, color: outline ? colors.primary : "#fff" })),
         React.createElement("span", { className: "text-[11px] font-bold", style: { color: colors.textMuted } }, label));
 }
 // صفّ قائمة داخل بطاقة: أيقونة + عنوان + وصف + سهم
@@ -841,7 +843,7 @@ function SetupPinScreen({ onDone, onCancel }) {
             React.createElement("p", { className: "text-xs text-center mt-2 px-2", style: { color: colors.textMuted } }, t("ahfz_hdhh_alrmwz_fy")),
             React.createElement(Card, { style: { marginTop: 16 } }, codes.map((c, i) => (React.createElement("div", { key: i, className: "text-center font-bold my-1 tracking-widest", style: { color: colors.text } }, c)))),
             React.createElement("button", { onClick: () => setConfirmed(!confirmed), className: `flex ${rowStart()} items-center gap-2 justify-center mt-4 mx-auto` },
-                React.createElement("div", { className: "w-5 h-5 rounded border-2 flex items-center justify-center", style: { borderColor: colors.primary, backgroundColor: confirmed ? colors.primary : "transparent" } }, confirmed && React.createElement(Check, { size: 12, color: "#fff" })),
+                React.createElement("div", { className: "w-5 h-5 rounded border-2 flex items-center justify-center", style: { borderColor: colors.primaryFill, backgroundColor: confirmed ? colors.primaryFill : "transparent" } }, confirmed && React.createElement(Check, { size: 12, color: "#fff" })),
                 React.createElement("span", { className: "text-xs", style: { color: colors.text } }, t("hfzt_alrmwz_fy_mkan"))),
             React.createElement("div", { className: "mt-4" },
                 React.createElement(Button, { label: t("mtabaa"), onPress: () => onDone(firstPin, codes), disabled: !confirmed }))));
@@ -902,7 +904,7 @@ function LockScreen({ onUnlock, onForgot, correctPin, biometricEnabled, onBiomet
     const msg = lockedFor > 0 ? lockoutMsg(lockedFor) : (lockout.fails >= 3 && left > 0 ? tl("بقيت " + left + " محاولات", left + " tries left") : bioMsg);
     return (React.createElement("div", { className: "flex-1 flex flex-col overflow-y-auto", style: { backgroundColor: colors.bg } },
         React.createElement("div", { className: "flex flex-col items-center justify-center py-4" },
-            React.createElement("div", { className: "w-16 h-16 rounded-full flex items-center justify-center mb-3", style: { backgroundColor: colors.primary } },
+            React.createElement("div", { className: "w-16 h-16 rounded-full flex items-center justify-center mb-3", style: { backgroundColor: colors.primaryFill } },
                 React.createElement("span", { className: "text-white text-xl font-extrabold" }, appName())),
             React.createElement("h2", { className: "text-sm font-bold", style: { color: colors.text } }, t("adkhl_rmz_alqfl")),
             React.createElement(PinDots, { filled: pin.length, error: error }),
@@ -1093,7 +1095,7 @@ function PostRecoveryCodesScreen({ codes, onDone }) {
         React.createElement("p", { className: "text-xs text-center mt-2 px-2", style: { color: colors.textMuted } }, t("alqdyma_asbht_laghya_tlqayya")),
         React.createElement(Card, { style: { marginTop: 16 } }, codes.map((c, i) => React.createElement("div", { key: i, className: "text-center font-bold my-1 tracking-widest", style: { color: colors.text } }, c))),
         React.createElement("button", { onClick: () => setConfirmed(!confirmed), className: `flex ${rowStart()} items-center gap-2 justify-center mt-4 mx-auto` },
-            React.createElement("div", { className: "w-5 h-5 rounded border-2 flex items-center justify-center", style: { borderColor: colors.primary, backgroundColor: confirmed ? colors.primary : "transparent" } }, confirmed && React.createElement(Check, { size: 12, color: "#fff" })),
+            React.createElement("div", { className: "w-5 h-5 rounded border-2 flex items-center justify-center", style: { borderColor: colors.primaryFill, backgroundColor: confirmed ? colors.primaryFill : "transparent" } }, confirmed && React.createElement(Check, { size: 12, color: "#fff" })),
             React.createElement("span", { className: "text-xs", style: { color: colors.text } }, t("hfzt_alrmwz_bmkan_amn"))),
         React.createElement("div", { className: "mt-4" },
             React.createElement(Button, { label: t("mtabaa"), onPress: onDone, disabled: !confirmed }))));
@@ -1234,7 +1236,7 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
     const meGroups = ME_SEC_ORDER.map(([id, title]) => [id, title, listItems.filter((it) => (ME_SEC[it.key] || "admin") === id)]).filter((g) => g[2].length);
     // اختبار قلب الاتجاه — شاشة ثانية
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 flex flex-col overflow-y-auto", style: { backgroundColor: colors.bg } },
-        React.createElement("div", { style: { background: `linear-gradient(160deg, ${colors.primary} 0%, ${colors.primaryDark} 100%)`, paddingBottom: 132, position: "relative" } },
+        React.createElement("div", { style: { background: `linear-gradient(160deg, ${colors.primaryFill} 0%, ${colors.primaryDark} 100%)`, paddingBottom: 132, position: "relative" } },
             React.createElement("div", { className: `flex ${rowStart()} items-center justify-between px-5 pt-5 pb-4` },
                 React.createElement("h2", { className: "text-xl font-extrabold text-white" }, t("hsaby")))),   // C196: عنوان التبويب «حسابي» مثل باقي التبويبات (كان «سوا» كبيراً و«حسابي» صغيراً)
         React.createElement("div", { className: "mx-4 rounded-2xl shadow-lg px-5 pt-5 pb-4", style: { backgroundColor: colors.card, marginTop: -120, position: "relative", zIndex: 2, border: `1px solid ${colors.border}` } },
@@ -1393,7 +1395,7 @@ function ReferralSection({ myCode, redeemedCode, onRedeem }) {
             React.createElement("span", { className: "text-xs font-bold block mb-1.5", style: { color: colors.textMuted } }, t("andk_rmz_mn_sdyq")),
             React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                 React.createElement("input", { dir: "ltr", value: codeInput, onChange: (e) => setCodeInput(e.target.value), placeholder: "SAWA-XXXXX", disabled: !!redeemedCode, className: "flex-1 border rounded-xl px-3 py-2 text-sm text-center tracking-widest", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.card, opacity: redeemedCode ? 0.5 : 1 } }),
-                React.createElement("button", { onClick: handleRedeem, disabled: !!redeemedCode || !codeInput.trim(), className: "rounded-xl px-4 py-2 text-xs font-bold", style: { backgroundColor: redeemedCode || !codeInput.trim() ? colors.border : colors.primary, color: redeemedCode || !codeInput.trim() ? colors.textMuted : "#fff" } }, t("astkhdm"))),
+                React.createElement("button", { onClick: handleRedeem, disabled: !!redeemedCode || !codeInput.trim(), className: "rounded-xl px-4 py-2 text-xs font-bold", style: { backgroundColor: redeemedCode || !codeInput.trim() ? colors.border : colors.primaryFill, color: redeemedCode || !codeInput.trim() ? colors.textMuted : "#fff" } }, t("astkhdm"))),
             !!error && React.createElement("p", { className: "text-[11px] font-bold mt-2 text-center", style: { color: colors.danger } }, error),
             redeemedCode && (React.createElement("p", { className: "text-[11px] font-bold mt-2 text-center", style: { color: colors.success } },
                 t("ps_astkhdm_rmz"),
@@ -1438,7 +1440,7 @@ function NativeAppLockCard() {
     const opts = [{ v: 0, l: tl("فوراً", "Immediately") }, { v: 60000, l: tl("بعد دقيقة", "After 1 min") }, { v: 300000, l: tl("بعد 5 دقائق", "After 5 min") }, { v: 1800000, l: tl("بعد 30 دقيقة", "After 30 min") }];
     return React.createElement(Card, null,
         React.createElement("div", { className: `flex ${rowEnd()} items-center gap-2.5` },
-            React.createElement("button", { onClick: () => ask(!st.on, st.after || 60000), disabled: busy || (!st.available && !st.on), className: "w-11 h-6 rounded-full relative shrink-0", style: { backgroundColor: st.on ? colors.primary : colors.border, opacity: busy ? 0.6 : 1 }, "aria-label": tl("قفل التطبيق", "App lock") },
+            React.createElement("button", { onClick: () => ask(!st.on, st.after || 60000), disabled: busy || (!st.available && !st.on), className: "w-11 h-6 rounded-full relative shrink-0", style: { backgroundColor: st.on ? colors.primaryFill : colors.border, opacity: busy ? 0.6 : 1 }, "aria-label": tl("قفل التطبيق", "App lock") },
                 React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [st.on ? "right" : "left"]: 2 } })),
             React.createElement("span", { className: `text-sm font-bold flex-1 ${textStart()}`, style: { color: colors.text } }, tl("قفل التطبيق بالبصمة", "Fingerprint app lock")),
             React.createElement(Lock, { size: 16, color: colors.textMuted })),
@@ -1446,7 +1448,7 @@ function NativeAppLockCard() {
             st.available || st.on
                 ? tl("يُفتح سوا بالبصمة أو برمز قفل الهاتف. المكالمات والإشعارات تصلك وهو مقفل، والردّ على مكالمة لا ينتظر القفل.", "Sawa opens with your fingerprint or phone PIN. Calls and notifications still arrive while locked.")
                 : tl("يحتاج قفل شاشة على الهاتف (بصمة أو رمز أو نمط). فعّله من إعدادات الهاتف ثمّ عُد هنا.", "Needs a phone screen lock (fingerprint, PIN or pattern).")),
-        st.on && React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mt-3` }, opts.map((o) => React.createElement("button", { key: o.v, onClick: () => { if (o.v !== st.after) ask(true, o.v); }, disabled: busy, className: "rounded-full px-3 py-1.5 text-xs border", style: { backgroundColor: st.after === o.v ? colors.primary : colors.card, color: st.after === o.v ? "#fff" : colors.text, borderColor: st.after === o.v ? colors.primary : colors.border } }, o.l))),
+        st.on && React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mt-3` }, opts.map((o) => React.createElement("button", { key: o.v, onClick: () => { if (o.v !== st.after) ask(true, o.v); }, disabled: busy, className: "rounded-full px-3 py-1.5 text-xs border", style: { backgroundColor: st.after === o.v ? colors.primaryFill : colors.card, color: st.after === o.v ? "#fff" : colors.text, borderColor: st.after === o.v ? colors.primaryFill : colors.border } }, o.l))),
         msg && React.createElement("p", { className: `text-[11px] mt-2 font-bold ${textStart()}`, style: { color: colors.danger } }, msg));
 }
 function NotifAvatarRow() {
@@ -1455,7 +1457,7 @@ function NotifAvatarRow() {
     const [on, setOn] = useState(() => { try { return SC.notifAvatars(); } catch (e) { return true; } });
     return React.createElement(Card, { className: "mb-2" },
         React.createElement("div", { className: `flex ${rowEnd()} items-center gap-2.5` },
-            React.createElement("button", { onClick: () => { const v = !on; setOn(v); SC.setNotifAvatars(v); }, "aria-label": tl("صور المرسلين في الإشعارات", "Sender photos in notifications"), className: "w-11 h-6 rounded-full relative shrink-0", style: { backgroundColor: on ? colors.primary : colors.border } },
+            React.createElement("button", { onClick: () => { const v = !on; setOn(v); SC.setNotifAvatars(v); }, "aria-label": tl("صور المرسلين في الإشعارات", "Sender photos in notifications"), className: "w-11 h-6 rounded-full relative shrink-0", style: { backgroundColor: on ? colors.primaryFill : colors.border } },
                 React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [on ? "right" : "left"]: 2 } })),
             React.createElement("div", { className: `flex-1 ${textStart()}` },
                 React.createElement("span", { className: "text-sm font-bold block", style: { color: colors.text } }, tl("صور المرسلين في الإشعارات", "Sender photos in notifications")),
@@ -1498,7 +1500,7 @@ function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiome
             React.createElement("p", { className: "text-xs font-bold mb-2", style: { color: colors.textMuted } }, t("lwn_mzhr_alttbyq")),
             React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-5` }, Object.entries(accentThemes).map(([key, theme]) => (React.createElement("button", { "aria-label": t("takyd"), key: key, onClick: () => setAccentKey(key), className: "w-9 h-9 rounded-full flex items-center justify-center", style: { backgroundColor: theme.accent, border: accentKey === key ? `3px solid ${colors.text}` : "none" } }, accentKey === key && React.createElement(Check, { size: 14, color: "#fff" }))))),
             React.createElement(Card, { className: `flex ${rowEnd()} items-center gap-2.5` },
-                React.createElement("button", { onClick: toggleDark, className: "w-11 h-6 rounded-full relative", style: { backgroundColor: isDark ? colors.primary : colors.border } },
+                React.createElement("button", { onClick: toggleDark, className: "w-11 h-6 rounded-full relative", style: { backgroundColor: isDark ? colors.primaryFill : colors.border } },
                     React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white flex items-center justify-center", style: { [isDark ? "right" : "left"]: 2 } }, isDark ? React.createElement(Moon, { size: 11, color: colors.primary }) : React.createElement(Sun, { size: 11, color: colors.accent }))),
                 React.createElement("span", { className: `text-sm font-bold flex-1 ${textStart()}`, style: { color: colors.text } }, t("alwda_allyly"))),
             React.createElement(Card, null,
@@ -1514,32 +1516,32 @@ function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiome
             React.createElement(Card, null,
                 React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-2` },
                     React.createElement("span", { className: "text-sm font-bold", style: { color: colors.text } }, t("hjm_alkht"))),
-                React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-3` }, [{ v: 0.9, l: t("ps_sghyr") }, { v: 1, l: t("ps_aady") }, { v: 1.15, l: t("ps_kbyr") }, { v: 1.35, l: t("ps_akbr") }].map((s) => (React.createElement("button", { key: s.v, onClick: () => setFontScale(s.v), className: "flex-1 rounded-full border py-2", style: { backgroundColor: fontScale === s.v ? colors.primary : colors.card, borderColor: fontScale === s.v ? colors.primary : colors.border } },
+                React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-3` }, [{ v: 0.9, l: t("ps_sghyr") }, { v: 1, l: t("ps_aady") }, { v: 1.15, l: t("ps_kbyr") }, { v: 1.35, l: t("ps_akbr") }].map((s) => (React.createElement("button", { key: s.v, onClick: () => setFontScale(s.v), className: "flex-1 rounded-full border py-2", style: { backgroundColor: fontScale === s.v ? colors.primaryFill : colors.card, borderColor: fontScale === s.v ? colors.primaryFill : colors.border } },
                     React.createElement("span", { className: "text-xs font-bold", style: { color: fontScale === s.v ? "#fff" : colors.text } }, s.l))))),
                 React.createElement("div", { className: `flex ${rowEnd()} items-center gap-2.5` },
-                    React.createElement("button", { onClick: () => setHighContrast(!highContrast), className: "w-11 h-6 rounded-full relative", style: { backgroundColor: highContrast ? colors.primary : colors.border } },
+                    React.createElement("button", { onClick: () => setHighContrast(!highContrast), className: "w-11 h-6 rounded-full relative", style: { backgroundColor: highContrast ? colors.primaryFill : colors.border } },
                         React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [highContrast ? "right" : "left"]: 2 } })),
                     React.createElement("span", { className: `text-sm font-bold flex-1 ${textStart()}`, style: { color: colors.text } }, t("wda_altbayn_alaaly")),
                     React.createElement(Eye, { size: 16, color: colors.textMuted }))),
             !IS_RAHIM && React.createElement(Card, { className: `flex ${rowEnd()} items-start gap-2.5` },
-                React.createElement("button", { onClick: () => setDataSaver(!dataSaver), className: "w-11 h-6 rounded-full relative shrink-0 mt-0.5", style: { backgroundColor: dataSaver ? colors.primary : colors.border }, "aria-label": t("twfyr_albyanat") },
+                React.createElement("button", { onClick: () => setDataSaver(!dataSaver), className: "w-11 h-6 rounded-full relative shrink-0 mt-0.5", style: { backgroundColor: dataSaver ? colors.primaryFill : colors.border }, "aria-label": t("twfyr_albyanat") },
                     React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [dataSaver ? "right" : "left"]: 2 } })),
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
                     React.createElement("span", { className: "text-sm font-bold block mb-1", style: { color: colors.text } }, t("twfyr_albyanat")),
                     React.createElement("p", { className: "text-[10px]", style: { color: colors.textMuted } }, t("la_thml_alswr_walfydyw"))),
                 React.createElement(Download, { size: 16, color: colors.textMuted, className: "shrink-0 mt-0.5" })),
             React.createElement(Card, { className: `flex ${rowEnd()} items-center gap-2.5` },
-                React.createElement("button", { onClick: () => setPinLockEnabled(!pinLockEnabled), className: "w-11 h-6 rounded-full relative", style: { backgroundColor: pinLockEnabled ? colors.primary : colors.border } },
+                React.createElement("button", { onClick: () => setPinLockEnabled(!pinLockEnabled), className: "w-11 h-6 rounded-full relative", style: { backgroundColor: pinLockEnabled ? colors.primaryFill : colors.border } },
                     React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [pinLockEnabled ? "right" : "left"]: 2 } })),
                 React.createElement("span", { className: `text-sm font-bold flex-1 ${textStart()}`, style: { color: colors.text } }, t("qfl_alttbyq_brmz_pin")),
                 React.createElement(Lock, { size: 16, color: colors.textMuted })),
             pinLockEnabled && (React.createElement(Card, null,
                 !!window.PublicKeyCredential && React.createElement("div", { className: `flex ${rowEnd()} items-center gap-2.5 mb-2` },
-                    React.createElement("button", { onClick: () => setBiometricEnabled(!biometricEnabled), className: "w-11 h-6 rounded-full relative", style: { backgroundColor: biometricEnabled ? colors.primary : colors.border } },
+                    React.createElement("button", { onClick: () => setBiometricEnabled(!biometricEnabled), className: "w-11 h-6 rounded-full relative", style: { backgroundColor: biometricEnabled ? colors.primaryFill : colors.border } },
                         React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [biometricEnabled ? "right" : "left"]: 2 } })),
                     React.createElement("span", { className: `text-sm font-bold flex-1 ${textStart()}`, style: { color: colors.text } }, t("fth_balbsma_face_id"))),
                 React.createElement("p", { className: `text-xs font-bold mb-2 ${textStart()}`, style: { color: colors.textMuted } }, t("alqfl_altlqayy_and_alkhlfya")),
-                React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mb-3` }, options.map((o) => (React.createElement("button", { key: o.value, onClick: () => setAutoLockDelay(o.value), className: "rounded-full px-3 py-1.5 text-xs border", style: { backgroundColor: autoLockDelay === o.value ? colors.primary : colors.card, color: autoLockDelay === o.value ? "#fff" : colors.text, borderColor: autoLockDelay === o.value ? colors.primary : colors.border } }, o.label)))),
+                React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2 mb-3` }, options.map((o) => (React.createElement("button", { key: o.value, onClick: () => setAutoLockDelay(o.value), className: "rounded-full px-3 py-1.5 text-xs border", style: { backgroundColor: autoLockDelay === o.value ? colors.primaryFill : colors.card, color: autoLockDelay === o.value ? "#fff" : colors.text, borderColor: autoLockDelay === o.value ? colors.primaryFill : colors.border } }, o.label)))),
                 React.createElement("button", { onClick: onChangePin, className: `w-full flex ${rowStart()} items-center gap-2 py-2 border-t`, style: { borderColor: colors.border } },
                     React.createElement(Key, { size: 15, color: colors.primary }),
                     React.createElement("span", { className: "text-xs font-bold", style: { color: colors.primary } }, t("tghyyr_rmz_alqfl"))),
@@ -1553,7 +1555,7 @@ function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiome
             React.createElement(NativeAppLockCard, null),
             React.createElement(Card, null,
                 React.createElement("div", { className: `flex ${rowEnd()} items-center gap-2.5` },
-                    React.createElement("button", { onClick: onToggleBrowserNotif, className: "w-11 h-6 rounded-full relative", style: { backgroundColor: browserNotifEnabled ? colors.primary : colors.border } },
+                    React.createElement("button", { onClick: onToggleBrowserNotif, className: "w-11 h-6 rounded-full relative", style: { backgroundColor: browserNotifEnabled ? colors.primaryFill : colors.border } },
                         React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [browserNotifEnabled ? "right" : "left"]: 2 } })),
                     React.createElement("span", { className: `text-sm font-bold flex-1 ${textStart()}`, style: { color: colors.text } }, RELEASE_UI ? tl("الإشعارات", "Notifications") : t("ishaarat_almtsfh_alhqyqya")),
                     React.createElement(BellIcon, { size: 16, color: colors.textMuted })),
@@ -1577,10 +1579,10 @@ function ProfileSettingsScreen({ onBack, onChangePin, biometricEnabled, setBiome
                         React.createElement("div", { className: "text-xs font-bold", style: { color: colors.success } }, t("tshfyr_mn_trf_ila")),
                         React.createElement("div", { className: "text-[10px]", style: { color: colors.textMuted } }, t("jmya_alrsayl_walmlfat_mshfra")))),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
-                    React.createElement("button", { onClick: () => setShowQrNote(true), className: `flex-1 flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2`, style: { backgroundColor: colors.primary } },
+                    React.createElement("button", { onClick: () => setShowQrNote(true), className: `flex-1 flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2`, style: { backgroundColor: colors.primaryFill } },
                         React.createElement(QrCode, { size: 14, color: "#fff" }),
                         React.createElement("span", { className: "text-xs font-bold text-white" }, "QR Code")),
-                    React.createElement("button", { "aria-label": t("nskh"), onClick: () => { copyText(MY_SAFETY_NUMBER).then(() => { setCopiedSafety(true); setTimeout(() => setCopiedSafety(false), 1500); }); }, className: `flex-1 flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2`, style: { backgroundColor: colors.primary } },
+                    React.createElement("button", { "aria-label": t("nskh"), onClick: () => { copyText(MY_SAFETY_NUMBER).then(() => { setCopiedSafety(true); setTimeout(() => setCopiedSafety(false), 1500); }); }, className: `flex-1 flex ${rowStart()} items-center justify-center gap-1.5 rounded-xl py-2`, style: { backgroundColor: colors.primaryFill } },
                         React.createElement(Copy, { size: 14, color: "#fff" }),
                         React.createElement("span", { className: "text-xs font-bold text-white" }, copiedSafety ? "تم النسخ ✓" : "نسخ"))),
                 showQrNote && React.createElement("p", { className: "text-[10px] text-center mt-2", style: { color: colors.textMuted } }, t("myza_ard_qr_code"))),
@@ -1630,7 +1632,7 @@ function EncryptedNotesDemoScreen({ onBack, notes, onAdd, onDelete }) {
                 React.createElement("button", { "aria-label": t("takyd"), onClick: () => { if (text.trim()) {
                         onAdd(text.trim());
                         setText("");
-                    } }, className: "w-11 h-11 rounded-lg flex items-center justify-center", style: { backgroundColor: colors.primary } },
+                    } }, className: "w-11 h-11 rounded-lg flex items-center justify-center", style: { backgroundColor: colors.primaryFill } },
                     React.createElement(Check, { size: 18, color: "#fff" }))),
             React.createElement("div", { className: "flex-1 overflow-y-auto px-4" },
                 notes.length === 0 && React.createElement(EmptyState, { icon: Server, label: t("la_twjd_mlahzat_mhfwza") }),
