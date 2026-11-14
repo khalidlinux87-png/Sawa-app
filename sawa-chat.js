@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c228";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c304";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -4366,6 +4366,9 @@
     if (/no_targets/.test(m)) return L("اختر شخصاً واحداً على الأقلّ", "Pick at least one person");
     if (/not_eligible/.test(m)) return L("لتأكيد الآخرين يلزم حسابٌ بـGoogle أو بريدٍ مؤكَّد أو رقمٍ موثَّق", "To confirm others you need a Google / confirmed-email account or a verified number");
     if (/not_contact/.test(m)) return L("لستما جهتي اتّصال", "You're not contacts");
+    if (/sms_expired/.test(m)) return L("انتهت صلاحيّة الرمز — اطلب رمزاً جديداً", "Code expired — request a new one");   // C304
+    if (/sms_failed/.test(m)) return L("تعذّر إرسال الرسالة — حاول لاحقاً", "Couldn't send the SMS — try later");
+    if (/manager_only/.test(m)) return L("التحقّق بالرمز للمدير فقط", "Code verification is for the manager only");   // C303
     // C198
     if (/guest_limited/.test(m)) return L("البحث بالرقم أو البريد يحتاج ربط حسابك بـGoogle أو Apple أو بريد — ويمكنك البحث بالرمز الآن", "Searching by phone or email needs a linked Google / Apple / email account — you can search by code now");
     if (/voucher_too_new/.test(m)) return L("حسابك جديد — يمكنك تأكيد أرقام الآخرين بعد 30 يوماً من إنشائه، أو بعد توثيق رقمك عبر واتساب", "Your account is new — you can confirm others' numbers 30 days after creating it, or after verifying your number via WhatsApp");
@@ -4813,7 +4816,7 @@
       body.appendChild(mk("div", "font:600 13px var(--sawa-font,system-ui);color:#5b6b7c;direction:ltr;text-align:center;margin:2px 0 8px", p.phone));
       body.appendChild(note(L("جارٍ التحميل…", "Loading…")));
       Promise.all([call("phone.status", {}), call("profile.get", {}).catch(function () { return {}; })]).then(function (rr) {
-        var st = rr[0] || {}, wa = !!(rr[1] && rr[1].verify && rr[1].verify.whatsapp);
+        var st = rr[0] || {}, wa = !!(rr[1] && rr[1].verify && rr[1].verify.whatsapp), mgr = !!(rr[1] && rr[1].verify && rr[1].verify.mgr), sms = !!(rr[1] && rr[1].verify && rr[1].verify.sms);   // C303: الرمز للمدير فقط
         state.waReady = wa;
         body.innerHTML = "";
         body.appendChild(mk("div", "font:600 13px var(--sawa-font,system-ui);color:#5b6b7c;direction:ltr;text-align:center;margin:2px 0 8px", p.phone));
@@ -4831,12 +4834,21 @@
         var ask = mkBtn(L("اطلب من معارفك", "Ask my contacts"), "primary"); c1.appendChild(ask);
         ask.onclick = function () { pickVouchers(function () { home(); }); };
         body.appendChild(c1);
-        // 2) عبر واتساب
+        // 2) عبر واتساب (رمز OTP) — C303: للمدير فقط؛ لا يظهر لغيره
+        if (!mgr) return;
         var c2 = mk("div", "border:1px solid #e2e5e9;border-radius:16px;padding:12px;margin:8px 0");
-        c2.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui)", L("💬 عبر واتساب", "💬 Via WhatsApp")));
+        c2.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui)", L("💬 عبر واتساب (رمز تحقّق)", "💬 Via WhatsApp (verification code)")));
+        c2.appendChild(mk("div", "display:inline-block;font:700 11px var(--sawa-font,system-ui);color:#8a6d00;background:#fff7e0;border-radius:8px;padding:2px 8px;margin:4px 0", L("للمدير فقط", "Manager only")));
         if (wa) { c2.appendChild(note(L("ترسل رمزاً قصيراً إلى رقم سوا على واتساب فيُوثَّق رقمك فوراً.", "Send a short code to Sawa's WhatsApp and your number is verified instantly."))); var g2 = mkBtn(L("ابدأ — افتح واتساب", "Start — open WhatsApp")); g2.onclick = intro; c2.appendChild(g2); }
         else c2.appendChild(note(L("قيد التجهيز — سيُفعَّل قريباً.", "Coming soon."), "#8a6d00", "#fff7e0"));
         body.appendChild(c2);
+        // 3) C304: عبر رسالة SMS — للمدير فقط
+        var c3 = mk("div", "border:1px solid #e2e5e9;border-radius:16px;padding:12px;margin:8px 0");
+        c3.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui)", L("✉️ عبر رسالة SMS (رمز تحقّق)", "✉️ Via SMS (verification code)")));
+        c3.appendChild(mk("div", "display:inline-block;font:700 11px var(--sawa-font,system-ui);color:#8a6d00;background:#fff7e0;border-radius:8px;padding:2px 8px;margin:4px 0", L("للمدير فقط", "Manager only")));
+        if (sms) { c3.appendChild(note(L("نرسل رمزاً إلى رقمك برسالة نصّيّة، فتكتبه هنا.", "We text a code to your number; you type it here."))); var g3 = mkBtn(L("أرسل الرمز", "Send the code")); g3.onclick = smsSend; c3.appendChild(g3); }
+        else c3.appendChild(note(L("قيد التجهيز — سيُفعَّل قريباً.", "Coming soon."), "#8a6d00", "#fff7e0"));
+        body.appendChild(c3);
       }).catch(function (e) { body.innerHTML = ""; body.appendChild(note(codeErr(e), "#b42318")); });
     }
     // اختيار المعارف (حتى 5)
@@ -4863,6 +4875,46 @@
           s2.close(); done();
         }).catch(function (e) { snd.disabled = false; snd.textContent = L("إرسال الطلب", "Send request"); toast(codeErr(e)); });
       };
+    }
+    // C304: SMS — phone.smsStart ⇒ رسالة إلى رقم الحساب · phone.smsCheck { code } ⇒ موثَّق
+    function smsDone(q) {
+      state.me = Object.assign({}, state.me || {}, { phone: q.phone, phoneVerified: true, verifiedBy: "sms" });
+      lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
+      publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {}
+      toast(L("تمّ توثيق رقمك ✓ " + q.phone, "Number verified ✓ " + q.phone));
+      s.close();
+    }
+    function smsSend() {
+      body.innerHTML = "";
+      body.appendChild(note(L("جارٍ الإرسال…", "Sending…")));
+      call("phone.smsStart", {}).then(function (r) {
+        if (!r.enabled) { body.innerHTML = ""; body.appendChild(note(L("التحقّق برسالة SMS قيد التجهيز — سيُفعَّل قريباً.", "SMS verification is being set up — coming soon."), "#8a6d00", "#fff7e0")); return; }
+        if (r.already) { toast(L("رقمك موثَّق أصلاً ✓", "Already verified ✓")); s.close(); return; }
+        smsStage(r);
+      }, function (e) { home(); toast(codeErr(e)); });
+    }
+    function smsStage(r) {
+      body.innerHTML = "";
+      body.appendChild(note(L("أرسلنا رمزاً إلى رقمك. اكتبه هنا (صالحٌ ١٠ دقائق).", "We sent a code to your number. Type it here (valid 10 minutes).")));
+      body.appendChild(mk("div", "font:600 13px var(--sawa-font,system-ui);color:#5b6b7c;direction:ltr;text-align:center;margin:2px 0 8px", r.phone));
+      var inp = mk("input", "width:100%;box-sizing:border-box;font:800 24px ui-monospace,Menlo,monospace;letter-spacing:6px;text-align:center;direction:ltr;border:1px solid #cbd5e1;border-radius:14px;padding:10px;margin:6px 0");
+      inp.inputMode = "numeric"; inp.autocomplete = "one-time-code"; inp.maxLength = 10; inp.setAttribute("aria-label", L("رمز التحقّق", "Verification code"));
+      body.appendChild(inp);
+      var ok = mkBtn(L("تحقّق", "Verify"), "primary"); ok.disabled = true; body.appendChild(ok);
+      var again = mkBtn(L("أرسل رمزاً جديداً", "Send a new code")); body.appendChild(again);
+      again.onclick = smsSend;
+      var digits = function () { return String(inp.value || "").replace(/[\u0660-\u0669]/g, function (d) { return "٠١٢٣٤٥٦٧٨٩".indexOf(d); }).replace(/\D/g, ""); };
+      inp.oninput = function () { ok.disabled = digits().length < 4; };
+      inp.onkeydown = function (ev) { if (ev.key === "Enter" && !ev.isComposing && !ok.disabled) ok.onclick(); };
+      ok.onclick = function () {
+        ok.disabled = true; ok.textContent = "…";
+        call("phone.smsCheck", { code: digits() }).then(function (q) {
+          if (q.verified) { smsDone(q); return; }
+          ok.disabled = false; ok.textContent = L("تحقّق", "Verify");
+          toast(q.enabled === false ? L("قيد التجهيز", "Coming soon") : L("الرمز غير صحيح", "Wrong code"));
+        }, function (e) { ok.disabled = false; ok.textContent = L("تحقّق", "Verify"); toast(/bad_code/.test((e && e.message) || "") ? L("الرمز غير صحيح", "Wrong code") : codeErr(e)); });
+      };
+      setTimeout(function () { try { inp.focus(); } catch (e) {} }, 60);
     }
     function intro() {
       body.innerHTML = "";
