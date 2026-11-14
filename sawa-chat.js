@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c310";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c311";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -4968,7 +4968,24 @@
       var restore = function () { s.ov.style.zIndex = z0; s.ov.onclick = tap0; };
       new firebase.auth.PhoneAuthProvider().verifyPhoneNumber(ph, fbVerifier).then(function (vid) { restore(); fbStage(vid, ph); }, function (e) {
         restore(); fbClear(); btn.disabled = false; btn.textContent = L("أرسل الرمز", "Send the code"); toast(fbErr(e));
+        if (/operation-not-allowed/.test((e && e.code) || "") || /region/i.test((e && e.message) || "")) fbCfgNote(btn, e);
       });
+    }
+    // C311: ما المحفوظ فعلاً في Firebase؟ (الخادم يقرؤه بحساب الخدمة) — يظهر تحت الزرّ للمدير
+    function fbCfgNote(btn, e) {
+      var host = btn.parentNode; if (!host) return;
+      var old = host.querySelector("[data-fbcfg]"); if (old) old.remove();
+      var n = note(L("جارٍ قراءة إعداد Firebase…", "Reading Firebase settings…"), "#5b6b7c"); n.setAttribute("data-fbcfg", "1"); n.style.whiteSpace = "pre-line"; host.appendChild(n);
+      call("phone.smsConfig", {}).then(function (c) {
+        var raw = ((e && e.message) || "").replace(/^Firebase:\s*/, "").slice(0, 200);
+        if (!c.ok2) { n.textContent = L("تعذّرت قراءة إعداد Firebase", "Couldn't read Firebase settings") + " (" + (c.status || "") + " " + (c.err || "") + ")\n" + raw; return; }
+        var rg = String(c.region || ""), allowSD = /^allow:.*\bSD\b/.test(rg) || (/^deny:/.test(rg) && !/\bSD\b/.test(rg)) || rg === "default";
+        n.textContent = L("إعداد Firebase المحفوظ فعلاً (", "Saved Firebase settings (") + c.project + "):\n" +
+          "• Phone: " + (c.phone ? L("مفعَّل ✓", "enabled ✓") : L("معطَّل ✗", "disabled ✗")) + "\n" +
+          "• SMS region policy: " + (rg === "default" ? L("بلا سياسة (الكلّ مسموح)", "none (all allowed)") : rg.replace(/^allow:/, L("السماح فقط: ", "allow only: ")).replace(/^deny:/, L("المنع: ", "deny: "))) + (allowSD ? " ✓" : " ✗") + "\n" +
+          L("• أرقام التجربة: ", "• Test numbers: ") + c.tests + "\n" + L("نصّ Firebase: ", "Firebase says: ") + raw;
+        n.style.color = (c.phone && allowSD) ? "#8a6d00" : "#b42318";
+      }, function (er) { n.textContent = codeErr(er); });
     }
     function fbStage(vid, ph) {
       body.innerHTML = "";

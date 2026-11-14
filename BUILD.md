@@ -3042,3 +3042,10 @@ In dark mode one accent shade (C192, e.g. #2B81CE) served both as text on the da
 - **Fix:** while `verifyPhoneNumber` is pending the sheet drops to z-index 1999999000 (under the challenge) and background taps do nothing; both are restored when it succeeds or fails.
 - **Checks:** `node --check`; browser harness with a slow challenge: z-index 2147483002 ⇒ 1999999000 during, tap on background ignored, restored after, code box shown, background tap closes again afterwards.
 - **sw.js:** v494; `EXPECT` for `sawa-chat.js` 596820.
+
+## 🔍 C311 — When Firebase refuses SMS, show what Firebase actually has saved · sawa-chat.js (c311) · sw v495 · Worker v131-smscfg
+- **Seen on device (after C310):** the reCAPTCHA images were completed, but Firebase still answered "SMS unable to be sent until this region enabled" although the console showed Allow + Sudan.
+- **Worker:** new `phone.smsConfig` (manager only, read-only) reads `identitytoolkit admin/v2/projects/{id}/config` with the service account (`identitytoolkit` scope already in the token) and returns: Phone enabled, SMS region policy (`allow:…` / `deny:…` / `default`), number of test numbers, project id. Errors are returned as `ok2:false` + status.
+- **App:** on `operation-not-allowed` / region errors the SMS card shows «إعداد Firebase المحفوظ فعلاً» with ✓/✗ for Phone and for Sudan, the test-number count, and Firebase's own message (amber if settings look right, red if not).
+- **Checks:** `node --check`; Worker op with mocked Google responses (allow SD, no policy, deny SD + phone off, 403, non-manager); browser harness renders both the "looks right" and the "SD denied" cases; `kin.test.js` 17/17, `marriage.test.js` 9/9.
+- **sw.js:** v495; `EXPECT` for `sawa-chat.js` 598745.
