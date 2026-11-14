@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c309";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c310";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -4961,8 +4961,13 @@
       fbClear();
       var rc = mk("div"); rc.style.cssText = "position:absolute;width:0;height:0;overflow:hidden"; s.box.appendChild(rc);   // حاوية reCAPTCHA الخفيّة (تبقى بعد تبديل الشاشة)
       try { fbVerifier = new firebase.auth.RecaptchaVerifier(rc, { size: "invisible" }); } catch (e) { btn.disabled = false; btn.textContent = L("أرسل الرمز", "Send the code"); toast(fbErr(e)); return; }
-      new firebase.auth.PhoneAuthProvider().verifyPhoneNumber(ph, fbVerifier).then(function (vid) { fbStage(vid, ph); }, function (e) {
-        fbClear(); btn.disabled = false; btn.textContent = L("أرسل الرمز", "Send the code"); toast(fbErr(e));
+      // C310: نافذة reCAPTCHA (صور) طبقتها ≈ 2e9 — ورقتنا 2147483002 كانت تغطّيها، فيلمس المستخدم الخلفيّة فتُغلق الورقة.
+      //   أثناء التحقّق: الورقة تحت reCAPTCHA، ولمس الخلفيّة لا يغلقها. تعود كما كانت بعد النتيجة.
+      var z0 = s.ov.style.zIndex, tap0 = s.ov.onclick;
+      s.ov.style.zIndex = "1999999000"; s.ov.onclick = null;
+      var restore = function () { s.ov.style.zIndex = z0; s.ov.onclick = tap0; };
+      new firebase.auth.PhoneAuthProvider().verifyPhoneNumber(ph, fbVerifier).then(function (vid) { restore(); fbStage(vid, ph); }, function (e) {
+        restore(); fbClear(); btn.disabled = false; btn.textContent = L("أرسل الرمز", "Send the code"); toast(fbErr(e));
       });
     }
     function fbStage(vid, ph) {

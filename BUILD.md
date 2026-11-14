@@ -3036,3 +3036,9 @@ In dark mode one accent shade (C192, e.g. #2B81CE) served both as text on the da
 - Firebase returns `auth/operation-not-allowed` both when the Phone provider is off and when the country is blocked by the SMS region policy; C308 always showed «فعّل Phone». Now a message containing "region" ⇒ «Firebase لا يسمح بإرسال SMS إلى هذا البلد — فعّل السودان…»; otherwise «Firebase رفض الإرسال: فعّل Phone… ثمّ تأكّد من السماح بالسودان…» plus Firebase's own message. Every Firebase error now ends with its code.
 - **Checks:** `node --check`; browser harness: region error ⇒ region message, provider-off error ⇒ provider message + raw text, button re-enabled; success still opens the code box.
 - **sw.js:** v493; `EXPECT` for `sawa-chat.js` 596245.
+
+## 🧩 C310 — reCAPTCHA image challenge hidden under the «توثيق رقمك» sheet · sawa-chat.js (c310) · sw v494
+- **Seen on device:** pressing «أرسل الرمز» brought up Google's image challenge, but our sheet (z-index 2147483002) sat above it (~2e9); touching the screen hit the sheet's background and closed it, so the code screen never came.
+- **Fix:** while `verifyPhoneNumber` is pending the sheet drops to z-index 1999999000 (under the challenge) and background taps do nothing; both are restored when it succeeds or fails.
+- **Checks:** `node --check`; browser harness with a slow challenge: z-index 2147483002 ⇒ 1999999000 during, tap on background ignored, restored after, code box shown, background tap closes again afterwards.
+- **sw.js:** v494; `EXPECT` for `sawa-chat.js` 596820.
