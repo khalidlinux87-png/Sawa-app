@@ -3008,3 +3008,11 @@ In dark mode one accent shade (C192, e.g. #2B81CE) served both as text on the da
 - **Checks:** `node --check` on all three files. Worker ops tested with mocked Twilio/Firestore: non-manager refused; send uses +249 form; wrong code ⇒ not verified; right code (Arabic digits) ⇒ verified with the 3 writes; no secrets ⇒ `enabled:false`; expired ⇒ `sms_expired`.
 - **Not checked:** a real SMS (needs a Twilio account + secrets) and the sheet rendered on a device.
 - **sw.js:** v489; `EXPECT` for `sawa-chat.js` 588177. **Upload:** Worker secrets, then Worker (v117-sms), then sawa-chat.js, then sw.js (v489) last.
+
+## 🔧 C305 — OTP options did not appear for a manager whose number is already verified · app.p2.js · sawa-chat.js (c305) · sw v490 · Worker v128-otp
+- **Cause:** the WhatsApp/SMS cards live in «توثيق رقمك», which opens only from the «غير موثّق — وثّقه» badge. With a verified number the badge was a plain «موثّق ✓» label, and `verifySheet` also returned early when the number was verified, so a manager never reached the cards.
+- **Fix:** for admin/owner (`admRank >= 3`) the «موثّق ✓» badge is a button that opens the sheet. The sheet shows «رقمك موثَّق ✓», a re-verify note, and the WhatsApp + SMS cards, without the contacts card. Non-managers: unchanged.
+- **Worker v128-otp:** `phone.smsStart` no longer returns `already` for a verified number (it is manager only), so a code is sent. `phone.status` adds `otpOpen` (a WhatsApp code is still outstanding); the WhatsApp wait loop finishes only when it is false, so an already-verified manager is not told "verified" before sending.
+- **Checks:** `node --check` on all changed files; Worker `kin.test.js` 17/17, `marriage.test.js` 9/9; mocked SMS ops still pass.
+- **Not checked:** the sheet on a device.
+- **sw.js:** v490; `EXPECT` for `sawa-chat.js` 588589. **Upload:** Worker (v128-otp), then app.p2.js and sawa-chat.js, then sw.js (v490) last.
