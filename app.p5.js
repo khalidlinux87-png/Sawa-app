@@ -158,6 +158,67 @@ function GroupCallOverlay({ groupName, members, callType, onEnd }) {
             React.createElement("button", { "aria-label": tl("الصوت", "Sound"), onClick: () => setSpeakerOn(!speakerOn), className: "w-14 h-14 rounded-full flex items-center justify-center", style: { backgroundColor: speakerOn ? colors.primaryFill : "#262B33" } },
                 React.createElement(Volume2, { size: 20, color: "#fff" })))));
 }
+// C318: الرسائل الصوتيّة على سمّاعة الأذن حين يُقرَّب الهاتف من الأذن (كواتساب) — تطبيقا أندرويد وآيفون فقط.
+//  · أندرويد: مشغّل الصفحة يُخرج الصوت من المكبّر دائماً ⇒ عند الأذن نسلّم المقطع لمشغّلٍ أصليّ على سمّاعة الأذن من الموضع
+//    نفسه (SawaNativeBridge.vnPlay)، وعند الإبعاد نأخذ الموضع (vnStop) ونكمل هنا على المكبّر. الشاشة تنطفئ عند الأذن.
+//  · آيفون: النظام يحوّل جلسة الصوت (SawaIOS «voiceEar»)، ونحن نتأكّد أنّ التشغيل لم يتوقّف مع التحويل.
+const VoiceEar = (function () {
+    let cur = null;   // { a: عنصر الصوت, url, native: يعمل الآن في المشغّل الأصليّ, sw: وقت آخر تحويل }
+    const nb = () => { try { const b = window.SawaNativeBridge; return b && typeof b.vnWatch === "function" ? b : null; } catch (e) { return null; } };
+    const ios = () => { try { const b = window.SawaIOS; return b && b.voiceEar && typeof b.call === "function" ? b : null; } catch (e) { return null; } };
+    const b64 = (url) => fetch(url).then((r) => r.blob()).then((bl) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1] || ""); fr.onerror = rej; fr.readAsDataURL(bl); }));
+    function back(c, pos) {   // العودة إلى مشغّل الصفحة (المكبّر) من الموضع pos بالثواني
+        c.native = false; c.sw = Date.now();
+        if (cur !== c) return;
+        try { if (pos != null && isFinite(pos) && pos >= 0) c.a.currentTime = pos; } catch (e) { }
+        c.a.play().catch(() => { });
+    }
+    window.__sawaVoiceNear = function (on) {
+        const c = cur; if (!c) return;
+        c.sw = Date.now();
+        const a = c.a;
+        if (ios()) { setTimeout(() => { if (cur === c && a.paused) a.play().catch(() => { }); }, 300); return; }
+        const b = nb(); if (!b) return;
+        if (on) {
+            if (c.native || a.paused) return;
+            c.native = true;
+            const pos = a.currentTime || 0;
+            a.pause();
+            b64(c.url).then((d) => {
+                if (cur !== c || !c.native) return;
+                let ok = false; try { ok = !!d && b.vnPlay(d, Math.round(pos * 1000), a.playbackRate || 1); } catch (e) { }
+                if (!ok) back(c, pos);
+            }).catch(() => back(c, pos));
+        } else if (c.native) {
+            let ms = -1; try { ms = Number(b.vnStop()); } catch (e) { }
+            back(c, ms >= 0 ? ms / 1000 : null);
+        }
+    };
+    window.__sawaVoiceBack = function () { const c = cur; if (c && c.native) back(c, null); };   // تعذّر التشغيل الأصليّ ⇒ نكمل هنا
+    window.__sawaVoiceEnd = function () {   // انتهى المقطع على سمّاعة الأذن
+        const c = cur; if (!c) return;
+        c.native = false; VoiceEar.stop(c.a);
+        try { c.a.currentTime = 0; c.a.dispatchEvent(new Event("ended")); } catch (e) { }
+    };
+    return {
+        start(a, url) {
+            if (!a || !url) return;
+            if (cur && cur.a !== a) this.stop(cur.a);
+            if (cur && cur.a === a) { cur.url = url; return; }
+            cur = { a, url, native: false, sw: 0 };
+            const b = nb(); if (b) { try { b.vnWatch(true); } catch (e) { } return; }
+            const i = ios(); if (i) i.call("voiceEar", { on: true }, 5000);
+        },
+        // توقّفٌ سببه التحويل لا المستخدم: الصفحة سلّمت المقطع للمشغّل الأصليّ، أو آيفون أوقفه لحظة تغيير الجلسة
+        holds(a) { return !!(cur && cur.a === a && (cur.native || Date.now() - cur.sw < 1500)); },
+        stop(a) {
+            if (!cur || (a && cur.a !== a)) return;
+            const c = cur; cur = null;
+            const b = nb(); if (b) { try { if (c.native) b.vnStop(); b.vnWatch(false); } catch (e) { } }
+            const i = ios(); if (i) i.call("voiceEar", { on: false }, 5000);
+        },
+    };
+})();
 function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, failed = false, cid = null, mid = null }) {
     const { showToast } = useToast();
     const [prog, setProg] = useState(0), [elapsed, setElapsed] = useState(0);   // C19: شريط التقدّم والوقت المنقضي
@@ -179,6 +240,7 @@ function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, 
     // نسجّل «المشغّل النشط» عالمياً: بدء تشغيل جديد يوقف السابق.
     const stopSelfRef = useRef(null);
     stopSelfRef.current = function () {
+        VoiceEar.stop(audioRef.current);   // C318
         try { if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; } } catch (e) { }
         setPlaying(false);
     };
@@ -186,15 +248,17 @@ function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, 
     useEffect(function () {
         return function () {
             if (window.__sawaActiveAudio === stopSelfRef) window.__sawaActiveAudio = null;
+            VoiceEar.stop(audioRef.current);   // C318
         };
     }, []);
     return (React.createElement("div", { style: { minWidth: 160 } },
         React.createElement("div", { className: `flex ${rowStart()} items-center gap-2` },
-            React.createElement("audio", { ref: audioRef, src: url, onEnded: () => { setPlaying(false); setProg(0); setElapsed(0); if (window.__sawaActiveAudio === stopSelfRef) window.__sawaActiveAudio = null; }, onPause: () => setPlaying(false),
+            React.createElement("audio", { ref: audioRef, src: url, onEnded: (e) => { VoiceEar.stop(e.currentTarget); setPlaying(false); setProg(0); setElapsed(0); if (window.__sawaActiveAudio === stopSelfRef) window.__sawaActiveAudio = null; }, onPause: (e) => { if (VoiceEar.holds(e.currentTarget)) return; VoiceEar.stop(e.currentTarget); setPlaying(false); },   // C318
                 onTimeUpdate: (e) => { const a = e.currentTarget; setElapsed(Math.floor(a.currentTime || 0)); if (a.duration && isFinite(a.duration)) setProg(Math.min(1, a.currentTime / a.duration)); }, className: "hidden" }),
             React.createElement("button", { onClick: () => {
                     var _a, _b;
                     if (playing) {
+                        VoiceEar.stop(audioRef.current);   // C318
                         (_a = audioRef.current) === null || _a === void 0 ? void 0 : _a.pause();
                         setPlaying(false);
                         if (window.__sawaActiveAudio === stopSelfRef) window.__sawaActiveAudio = null;
@@ -215,6 +279,7 @@ function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, 
                         try { if (audioRef.current) audioRef.current.playbackRate = rate; } catch (e) { }   // C227
                         const pr = (_b = audioRef.current) === null || _b === void 0 ? void 0 : _b.play();
                         setPlaying(true);
+                        VoiceEar.start(audioRef.current, url);   // C318: سمّاعة الأذن عند تقريب الهاتف
                         // C18: الصيغة غير مدعومة على هذا الجهاز (مثلاً webm على آيفون قديم) ⇒ نقول ذلك بدل زرٍّ عالق
                         if (pr && pr.catch) pr.catch((e) => { setPlaying(false); showToast(tl("تعذّر تشغيل التسجيل على هذا الجهاز", "Can't play this voice note on this device") + (e && e.name === "NotSupportedError" ? tl(" (صيغة غير مدعومة)", " (unsupported format)") : ""), "error"); });
                     }
