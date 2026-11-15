@@ -3134,3 +3134,12 @@ Khalid's notes on C314:
 - **Also hidden:** the Personal accountant (invoices, budgets), because its only entry is inside the wallet. pay.html (public invoice page) is unchanged; links already shared keep working.
 - **Checks:** `node --check` on app.p3, app.p8, sw.js and on all nine parts joined in order. **Not tried in a browser.**
 - **Upload:** app.p3.js (437650 bytes) · app.p8.js (390386 bytes) · then sw.js (v503, 17774 bytes) last. Check: Discover shows no wallet card for an admin account.
+
+## 🛡 C321 — Wallet back for moderators and admins only (never for users, Google Play build included) · app.p3 · app.p8 · sw v504
+- **Owner's decision (replaces C320):** the wallet shows only to moderators and admins; regular users never see it, also after the Google Play release.
+- **Switch:** `SHOW_WALLET = true` in app.p3.js. The Discover card still needs `useAdminAtLeast("moderator")` (C220).
+- **Hardened:** the wallet route in app.p8 (`stack[0] === "wallet"`) and `onOpenWallet` now also check `canIntl` (moderator or above), so a regular user cannot reach the wallet screen by any path. Ersal «pay from Sawa Wallet» stays `SHOW_WALLET && canIntl`.
+- **Personal accountant:** comes back with the wallet for moderators and admins (its entry is inside the wallet).
+- **Google Play:** the review account is a regular user ⇒ the reviewer sees no wallet. Financial features: "no financial features". **Never give the reviewer a moderator or admin account.**
+- **Checks:** `node --check` on app.p3, app.p8, sw.js and on all nine parts joined. **Not tried in a browser.**
+- **Upload:** app.p3.js (437701) · app.p8.js (390419) · sw.js (v504, 17774) last. Check: admin sees the wallet in Discover; a normal account does not.
