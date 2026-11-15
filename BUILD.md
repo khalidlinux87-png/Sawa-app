@@ -3127,3 +3127,10 @@ Khalid's notes on C314:
 - **sw.js:** v502 · `EXPECT['./sawa-rtc.js']` = 468,739.
 - **Checks:** `node --check` on `sawa-rtc.js` and `sw.js`. **Not tried on a phone.**
 - **Upload:** `sawa-rtc.js` then `sw.js` (v502) last. Try: a group call, a room, and adding a person to a video call; the volume should match a 1:1 call, and the camera should stay on after adding a person.
+
+## 🙈 C320 — Wallet hidden from everyone for the first Google Play release · app.p3 · app.p8 · sw v503
+- **Why:** Google Play asks for a financial licence for money transfer. The owner decided the wallet must not appear at all in the first release.
+- **Switch:** `SHOW_WALLET = false` in app.p3.js (next to `SHOW_SOON_SERVICES`). It hides, for every user including moderators and admins: the «محفظة سوا» card in Discover, the wallet route (`stack[0] === "wallet"` renders nothing even if set), and «pay from Sawa Wallet» in Ersal (`canWallet`). Setting it to `true` brings back the C220 behaviour (moderators and admins only).
+- **Also hidden:** the Personal accountant (invoices, budgets), because its only entry is inside the wallet. pay.html (public invoice page) is unchanged; links already shared keep working.
+- **Checks:** `node --check` on app.p3, app.p8, sw.js and on all nine parts joined in order. **Not tried in a browser.**
+- **Upload:** app.p3.js (437650 bytes) · app.p8.js (390386 bytes) · then sw.js (v503, 17774 bytes) last. Check: Discover shows no wallet card for an admin account.
