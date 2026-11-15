@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c314";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c315";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -1428,11 +1428,16 @@
       try { if (app.setGroups) app.setGroups(groups); } catch (e) {}
     }, 40);
   }
+  // C315: الرسائل المؤقّتة تبقى ثلاثة أشهر على الأقلّ من إرسالها (كما في الخادم)
+  var DIS_MIN_MS = 7776000000;
+  function disExpOf(m) { return m && m.exp ? Math.max(Number(m.exp) || 0, (Number(m.ts) || 0) + DIS_MIN_MS) : 0; }
+  function isStarredId(id) { return !!(prefs && prefs.starred && prefs.starred.some(function (s) { return s && s.id === id; })); }
   function appMessages(cid) {
     var c = chats[cid] || virtualChats[cid] || { members: [] }, hidden = (prefs && prefs.hidden) || {};
     var clearedAt = (prefs && prefs.cleared && prefs.cleared[cid]) || 0;
     var dd = days[cid] || {}, arr = [], now = Date.now();   // C14: المؤقّتة تختفي عند انتهاء أجلها (لا تنتظر تنظيف الخادم)
-    Object.keys(dd).forEach(function (day) { var mm = dd[day]; Object.keys(mm).forEach(function (id) { var m = mm[id]; if (m && !hidden[id] && (m.ts || 0) > clearedAt && !(m.exp && m.exp < now)) arr.push({ m: m, day: day }); }); });
+    // C315: الأجل الفعليّ ثلاثة أشهر على الأقلّ، والمفضّلة لا تختفي أبداً (الخادم يزيل أجلها)
+    Object.keys(dd).forEach(function (day) { var mm = dd[day]; Object.keys(mm).forEach(function (id) { var m = mm[id]; if (m && !hidden[id] && (m.ts || 0) > clearedAt && !(m.exp && disExpOf(m) < now && !isStarredId(id))) arr.push({ m: m, day: day }); }); });
     if (e2eOn(c)) {
       arr = arr.filter(function (x) { var m0 = x.m; return !(m0.type === "system" && m0.extra && m0.extra.ev === "e2e_rekey" && m0.by !== state.uid); });
       (lsGet(NOTES, {})[cid] || []).forEach(function (n) { if (n.ts > clearedAt) arr.push({ m: { id: n.id, by: "", ts: n.ts, type: "system", extra: { ev: "local" }, text: n.text } }); });
@@ -1448,6 +1453,7 @@
                 forwarded: !!m.fwd, reaction: mineRe || anyRe || null, reactions: re, replyTo: m.reply || null,
                 replyToText: m.reply ? (m.reply.missing ? L("رسالة غير متاحة", "Message unavailable") : m.reply.del ? L("🚫 رسالة محذوفة", "🚫 Deleted message") : (m.reply.text || replyLabel(cid, m.reply.id) || (m.reply.id ? L("📎 وسيط", "📎 Media") : null))) : null, replyThumb: m.reply ? replyThumb(cid, m.reply.id) : null, contact: m.contact || null, extra: m.extra || null, cloud: true,
                 starred: !!(prefs && prefs.starred && prefs.starred.some(function (s) { return s.id === m.id; })) };
+      if (m.exp && !o.starred && !m.del) o.expiresAt = disExpOf(m);   // C315: لشريط «ستُحذف قريباً»
       if (group) { o.senderId = appId(m.by); o.senderName = personName(m.by, c); if (o.type === undefined) o.type = "text"; if (!m.del) toolShape(m, o, c); }
       else { o.senderUserId = appId(m.by); if (m.type === "system") { o.type = "system"; o.text = sysText(m, c); } }   // C23: إشعارات المحادثة السرّيّة في المحادثة الفرديّة
       if (m.e2eErr) o.e2eErr = true;

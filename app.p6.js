@@ -340,7 +340,9 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
     }
     const missedCount = callLog.filter((c) => c.type === "missed").length;
     // C198: خلفيّة التطبيق مثل باقي التبويبات (كانت البطاقة)، والأزرار الأربعة بلون المظهر الفاتح، والفواصل من ألوانه — كانت رماديّة ثابتة فتسطع في الداكن
-    return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 overflow-y-auto relative", style: { backgroundColor: colors.bg } },
+    return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 min-h-0 relative flex flex-col", style: { backgroundColor: colors.bg } },
+        // C315: الزرّ العائم خارج منطقة التمرير — كان داخلها فيصعد مع القائمة
+        React.createElement("div", { className: "flex-1 overflow-y-auto" },
         React.createElement("div", { style: { display: "flex", flexDirection: isRTL() ? "row" : "row-reverse", direction: "ltr", alignItems: "center", padding: "1rem 1rem 0 1rem" } },
             React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: isRTL() ? "row" : "row-reverse", justifyContent: "flex-start", alignItems: "center", gap: 8 } },
                 // C289: أزرار الرأس بنمط «المحادثات» نفسه (40 بكسل بإطار) — كانت 36 بلا إطار فيختلف الرأس بين التبويبات
@@ -434,7 +436,7 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
                     { icon: Trash2, label: tl("حذف من السجل", "Remove from history"), act: () => onDeleteCallEntry === null || onDeleteCallEntry === void 0 ? void 0 : onDeleteCallEntry(callMenu.id), danger: true },
                 ].map((it) => (React.createElement("button", { key: it.label, onClick: () => { it.act(); setCallMenu(null); }, className: "w-full flex flex-row items-center gap-3 px-5 py-3.5 border-t", style: { borderColor: colors.border } },
                     React.createElement(it.icon, { size: 17, color: it.danger ? colors.danger : colors.textMuted }),
-                    React.createElement("span", { className: `flex-1 ${textStart()} text-sm font-bold`, style: { color: it.danger ? colors.danger : colors.text } }, it.label))))))),
+                    React.createElement("span", { className: `flex-1 ${textStart()} text-sm font-bold`, style: { color: it.danger ? colors.danger : colors.text } }, it.label)))))))),
         React.createElement("button", { onClick: () => setSubScreen("newCall"), className: "flex items-center justify-center", "aria-label": t("mkalma_jdyda"), style: { position: "absolute", bottom: "1rem", [isRTL() ? "left" : "right"]: "1rem", width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primaryFill, boxShadow: "0 4px 12px rgba(0,0,0,0.25)" }   /* C198: كان أخضر واتساب #25D366 (الأيقونة البيضاء 2:1) */ },
             React.createElement(PhoneCall, { size: 22, color: "#fff" }))));
 }

@@ -2648,11 +2648,12 @@ function EmojiTray({ colors, onPick, onSticker }) {
             React.createElement("span", { className: "text-[10.5px] font-bold shrink-0 px-1", style: { color: colors.textMuted } }, tl("ملصق:", "Sticker:")),
             STICKER_SET.map((st) => React.createElement("button", { key: st, "aria-label": st, onClick: () => onSticker(st), className: "w-9 h-9 rounded-xl flex items-center justify-center text-xl shrink-0", style: { backgroundColor: colors.bg } }, st))));
 }
+// C315: ثلاثة أشهر على الأقلّ (قرار خالد) · تنبيهٌ قبل الحذف بثلاثة أيّام · الرسائل المفضّلة لا تُحذف أبداً
 const DISAPPEARING_OPTIONS = [
     { key: 0, labelKey: "dis_mattl" },
-    { key: 3600, labelKey: "dis_saa" },
-    { key: 86400, labelKey: "dis_24_saa" },
-    { key: 604800, labelKey: "dis_7_ayam" },
+    { key: 7776000, label: () => tl("3 أشهر", "3 months") },
+    { key: 15552000, label: () => tl("6 أشهر", "6 months") },
+    { key: 31536000, label: () => tl("سنة", "1 year") },
 ];
 // 6 خيارات بالضبط — تدرّجات لونية، لا صور
 const CHAT_THEMES = [
@@ -2818,7 +2819,8 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                     React.createElement("div", { className: `flex ${rowStart()} items-center justify-between mb-2` },
                         React.createElement("span", { className: "text-xs font-bold", style: { color: colors.text } }, t("rsayl_dhatya_alakhtfa")),
                         React.createElement(Clock, { size: 14, color: colors.primary })),
-                    React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2` }, DISAPPEARING_OPTIONS.map((o) => (React.createElement(Chip, { key: o.key, label: t(o.labelKey), active: disappearing === o.key, onPress: () => setDisappearing(o.key) }))))),
+                    React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2` }, DISAPPEARING_OPTIONS.map((o) => (React.createElement(Chip, { key: o.key, label: o.label ? o.label() : t(o.labelKey), active: disappearing === o.key || (o.key === 7776000 && disappearing > 0 && disappearing < 7776000), onPress: () => setDisappearing(o.key) })))),
+                    disappearing > 0 && React.createElement("p", { className: `text-[11px] mt-2 ${textStart()}`, style: { color: colors.textMuted } }, tl("تُحذف الرسائل بعد المدّة، ويصلك تنبيهٌ قبلها بثلاثة أيّام. الرسائل المفضّلة ⭐ لا تُحذف أبداً.", "Messages are deleted after this time, with a reminder 3 days before. Starred ⭐ messages are never deleted."))),
                 React.createElement("h4", { className: `text-xs font-extrabold mb-2 flex ${rowStart()} items-center gap-1.5`, style: { color: colors.text } },
                     React.createElement(BellIcon, { size: 13, color: colors.primary }),
                     t("alishaarat")),
