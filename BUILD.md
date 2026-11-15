@@ -3143,3 +3143,9 @@ Khalid's notes on C314:
 - **Google Play:** the review account is a regular user ⇒ the reviewer sees no wallet. Financial features: "no financial features". **Never give the reviewer a moderator or admin account.**
 - **Checks:** `node --check` on app.p3, app.p8, sw.js and on all nine parts joined. **Not tried in a browser.**
 - **Upload:** app.p3.js (437701) · app.p8.js (390419) · sw.js (v504, 17774) last. Check: admin sees the wallet in Discover; a normal account does not.
+
+## 🔏 C323 — Google Play app-signing fingerprint in assetlinks.json
+- **Why:** with Play App Signing, Google signs the installed app with its own key. Without its SHA-256 in `assetlinks.json`, sawaaap.com links don't open the app installed from Play.
+- **Change:** `well-known/assetlinks.json` (served at `/.well-known/assetlinks.json` via `_redirects`) now lists two SHA-256 fingerprints: the upload key (unchanged, for the APK from GitHub) and Play's app-signing key `C5:25:6A:…:E9:A1`.
+- **Still to do (owner):** add the Play app-signing **SHA-1 and SHA-256** to the Android app in Firebase (Project settings ⇒ com.sawaaap.app ⇒ Add fingerprint), or Google sign-in fails in the Play build.
+- **No sw.js change:** the file is outside the app cache.
