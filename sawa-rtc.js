@@ -141,7 +141,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c317";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
+  var RTC_BUILD = "c319";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -476,8 +476,11 @@
   }
   // C278: بعض الهواتف (Honor) تُسكت التقاط WebView بنمط «المكالمات» (إلغاء الصدى ⇒ مصدر VOICE_COMMUNICATION) فلا يصل صوتي في الغرف
   //       ولا تظهر علامة التحدّث. حين يثبت ذلك (صمتٌ رقميّ بعد إعادة فتح الميكروفون) نفتحه بنمط الميكروفون العاديّ ونتذكّره لهذا الجهاز.
-  var MICK = "sawa-mic-mode";
-  function micPlain() { try { return localStorage.getItem(MICK) === "plain"; } catch (e) { return false; } }
+  // C319: لم يعد يُحفَظ في الهاتف — كان إنذارٌ كاذب واحد (صمتٌ لحظة تبديل المسار) يُبقي الغرف والجماعيّة بلا إلغاء صدى إلى الأبد:
+  //       أندرويد يُخرج صوت الطرف الآخر حينها «وسائط» تخفضها المكالمة ⇒ صوتٌ منخفض وصدى. الآن يبقى حتّى إغلاق التطبيق فقط.
+  var MICK = "sawa-mic-mode", micPlainMem = false;
+  try { localStorage.removeItem(MICK); } catch (e) {}
+  function micPlain() { return micPlainMem; }
   // C317: النمط البديل (بلا إلغاء صدى) للغرف فقط — كان يُطبَّق على كلّ المكالمات بعد أن يُحفَظ مرّةً للجهاز ⇒ صدى قويّ عند الطرف الآخر
   function micAudio(plain) { return plain ? { echoCancellation: false, noiseSuppression: true, autoGainControl: true } : { echoCancellation: true, noiseSuppression: true, autoGainControl: true }; }
   function getMedia0(type, facing, plain) {
@@ -2445,9 +2448,9 @@
   function gMoveTo(g, code) {
     if (g.done || g.movedTo) return;
     g.movedTo = code;
-    var title = g.title, mic = !g.muted;
+    var title = g.title, mic = !g.muted, cam = g.type === "video" && !g.camOff;   // C319: كانت الكاميرا تنطفئ عند الانتقال إلى خادم الوسائط
     gFinish(g, "moved");
-    setTimeout(function () { roomJoin(code, { title: title, mic: mic }); toast(L("انتقلت المكالمة إلى خادم الوسائط — جودةٌ أفضل للمجموعة", "The call moved to the media server for better group quality")); }, 150);
+    setTimeout(function () { roomJoin(code, { title: title, mic: mic, cam: cam }); toast(L("انتقلت المكالمة إلى خادم الوسائط — جودةٌ أفضل للمجموعة", "The call moved to the media server for better group quality")); }, 150);
   }
   function gSend(g, to, toSess, payload) {
     var o = { from: myUid(), fs: g.sess, tsn: toSess, ts: TS() };
@@ -2970,6 +2973,7 @@
     var r = rm = rNew({ code: code, title: opts.title || "", state: "starting" });
     if (rejoinEl) { try { rejoinEl.remove(); } catch (e) {} rejoinEl = null; }   // C119
     if (opts.mic === false) r.startMuted = true;
+    if (opts.cam) r.startCam = true;   // C319
     r.ref = db().ref("rooms/" + code);
     rShow(r);
     var me = myUid();
@@ -3117,7 +3121,9 @@
       if (r.done) return;
       r.live = true; r.joinedAt = Date.now();
       try { rRef(r, "members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
-      r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }); nativeSpk(true, true);   // C234: أندرويد أيضاً — كان صوت الغرف والجماعيّة يُفرض على سمّاعة الأذن (خافتاً جدّاً)   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
+      r.state = "live"; wakeOn(); rPaint(r);
+      if (r.startCam) { r.startCam = false; setTimeout(function () { if (!r.done && r.live && !r.camOn && !(r.meta && r.meta.audioOnly)) rToggleCam(r); }, 300); }   // C319: مكالمة فيديو جماعيّة انتقلت إلى الغرفة ⇒ الكاميرا تبقى
+      bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }); nativeSpk(true, true);   // C234: أندرويد أيضاً — كان صوت الغرف والجماعيّة يُفرض على سمّاعة الأذن (خافتاً جدّاً)   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
       LOG.info("room.live", { ms: Date.now() - (r.t0 || Date.now()) });
       // C66: المضيف ينشر جلسته في meta (مقروءة قبل العضويّة) ⇒ الوافد يعرض عليه فور دخوله بلا انتظار أوّل لقطةٍ من قائمة الأعضاء (رحلةٌ كاملة أقلّ حتى يُسمع الصوت)
       if (amHost(r)) rRef(r, "meta/hsess").set(r.sess).catch(function () {});
@@ -3982,7 +3988,7 @@
     var zero = false, measured = false;
     try { var ctx = tone.ctx; if (!bad && r.mic && a && a.enabled && r.an && ctx && ctx.state === "running") { r.an.an.getByteTimeDomainData(r.an.buf); measured = true; zero = true; for (var i = 0; i < r.an.buf.length; i++) if (r.an.buf[i] !== 128) { zero = false; break; } } } catch (e) {}
     r.micZero = zero ? (r.micZero || 0) + 1 : 0;
-    if (r.plainCheck && measured && !zero) { r.plainCheck = false; if (!micPlain()) { try { localStorage.setItem(MICK, "plain"); } catch (e) {} LOG.warn("mic.plain.ok"); if (isAdm()) toast(L("🎙 ميكروفونٌ بديل لهذا الهاتف — صار يعمل", "🎙 Fallback mic mode for this phone — working")); } }   // C278
+    if (r.plainCheck && measured && !zero) { r.plainCheck = false; if (!micPlain()) { micPlainMem = true; LOG.warn("mic.plain.ok"); if (isAdm()) toast(L("🎙 ميكروفونٌ بديل لهذا الهاتف — صار يعمل", "🎙 Fallback mic mode for this phone — working")); } }   // C278
     if (r.micZero >= 4) { bad = true; r.micBad = 2; r.micZero = 0; r.zeroN = (r.zeroN || 0) + 1; }
     r.micBad = bad ? (r.micBad || 0) + 1 : 0;
     if (r.micBad < 3 || (r.healN || 0) >= 5) return;
@@ -4549,7 +4555,7 @@
       rj.onclick = function () { r.rejoining = false; Object.keys(r.peers).forEach(function (u) { rDrop(r, u); }); rRejoin(r); toast(L("جارٍ إعادة الاتّصال…", "Reconnecting…")); };
       bt.appendChild(cp); bt.appendChild(rj); body0.appendChild(bt);
       if (micPlain()) { var rs = el("button", "margin:0 16px 12px;width:calc(100% - 32px);padding:9px;border:0;border-radius:12px;background:" + LINE + ";color:#fff;font:800 12px var(--sawa-font,system-ui)", L("إعادة الميكروفون إلى النمط الافتراضيّ (إلغاء الصدى)", "Reset mic to default (echo cancellation)"));   // C278
-        rs.onclick = function () { try { localStorage.removeItem(MICK); } catch (e) {} toast(L("سيُستعمل النمط الافتراضيّ من الغرفة القادمة", "Default mode from the next room")); rs.remove(); }; body0.appendChild(rs); }
+        rs.onclick = function () { micPlainMem = false; toast(L("سيُستعمل النمط الافتراضيّ من الغرفة القادمة", "Default mode from the next room")); rs.remove(); }; body0.appendChild(rs); }
     };
     sheet(L("تشخيص الاتّصال", "Connection diagnostics"), function (body) { body0 = el("div", ""); body.appendChild(body0); paint(null, null); });
     var routes = {}, vin = {}, vout = {};
