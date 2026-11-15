@@ -1596,6 +1596,16 @@ function NewMessageAnnouncer({ messages, isMine, nameOf }) {
     return React.createElement("div", { "aria-live": "polite", "aria-atomic": "true", style: VISUALLY_HIDDEN }, say);
 }
 
+// C315: شريط «ستُحذف رسائل قريباً» — رسائل مؤقّتة بقي على حذفها أقلّ من ثلاثة أيّام (المفضّلة ⭐ لا تُحذف)
+function DisappearSoonBar({ messages, colors }) {
+    const now = Date.now();
+    const soon = (messages || []).filter((m) => m && m.expiresAt && m.expiresAt - now < 3 * 86400000 && m.expiresAt > now);
+    if (!soon.length) return null;
+    const first = Math.min(...soon.map((m) => m.expiresAt)), d = Math.max(1, Math.ceil((first - now) / 86400000));
+    return React.createElement("div", { role: "status", className: `flex ${rowStart()} items-center gap-2 px-4 py-2 text-[12px] font-bold`, style: { backgroundColor: colors.warning ? colors.warning + "22" : "#F59E0B22", color: colors.text } },
+        React.createElement(Clock, { size: 14, color: colors.warning || "#B45309", "aria-hidden": true }),
+        React.createElement("span", { className: `flex-1 ${textStart()}` }, tl(`ستُحذف ${soon.length} رسالة مؤقّتة خلال ${d} ${d === 1 ? "يوم" : "أيّام"} — اضغط مطوّلاً ثمّ «حفظ الرسالة» لتبقى`, `${soon.length} disappearing message(s) will be deleted within ${d} day(s) — long-press and Star to keep`)));
+}
 function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSendSticker, onSendFile, onSendVoice, onEditMessage, onMarkViewedOnce, onTogglePin, onToggleStar, onOpenInfo, disappearing, setDisappearing, background, onBack, myUserId, isBlocked, allConversations, allGroups, isTyping, onLogCall, isOnline, callSettings, groupPersons = {}, onDeleteMessage, onOpenFamilyProfile, draft = "", onSaveDraft, unreadCount = 0, onTyping, contactsForForward, }) {
     var _a, _b;
     const { colors } = useTheme();
@@ -1777,6 +1787,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
         })(),
         !online && React.createElement(OfflineBar, null),
         React.createElement(PinnedBar, { ids: pinIdsOf(conversation), messages, win, colors }),   // C227
+        React.createElement(DisappearSoonBar, { messages, colors }),   // C315
         React.createElement(NewMessageAnnouncer, { messages, isMine: (m) => m.senderUserId === myUserId, nameOf: () => conversation && conversation.name }),   // C300
         React.createElement("div", { style: { position: "relative", flex: 1, minHeight: 0 } },
             React.createElement("div", { ref: scrollContainerRef, className: "flex-1 overflow-y-auto p-4", style: { background: bgGradient || colors.bg, height: "100%", overflowY: "auto" }, onScroll: (e) => {
@@ -2697,6 +2708,7 @@ function GroupChatScreen({ muteKey = 0, onSetMute = null, onTogglePin, onToggleS
         viewSender && React.createElement(PhotoViewer, { photo: viewSender.photo, hdId: viewSender.hdId, title: viewSender.title, onClose: () => setViewSender(null) }),
         !online && React.createElement(OfflineBar, null),
         React.createElement(PinnedBar, { ids: pinIdsOf(group), messages, win, colors }),   // C227
+        React.createElement(DisappearSoonBar, { messages, colors }),   // C315
         React.createElement(NewMessageAnnouncer, { messages, isMine: (m) => m.senderId === myUserId, nameOf: (m) => ((group.members || []).find((x) => x.uid === m.senderId) || {}).name }),   // C300
         React.createElement("div", { style: { position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } },   // C174: لزرّ «إلى آخر المحادثة»
         React.createElement("div", { ref: scrollContainerRef, className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg }, onScroll: (e) => { if (win.hidden > 0 && e.currentTarget.scrollTop < 80 && stickRef.recent()) win.more(); } },
