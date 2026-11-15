@@ -1384,6 +1384,7 @@ function AppInner() {
         showToast(t("tmt_alarshfa"), "success");
     }, [showToast]);
     const handleMuteConv = useCallback((id) => {
+        setMuteUntil((m) => { if (!m || !m[id]) return m; const n = { ...m }; delete n[id]; return n; });   // C314
         setMutedConversations((p) => {
             const on = p.includes(id);
             showToast(on ? t("ai_rf_alktm") : t("ai_tm_alktm"), "success");
@@ -1447,6 +1448,26 @@ function AppInner() {
     }, []);
     const [showFamilyReminders, setShowFamilyReminders] = usePersistedState("showFamilyReminders", true);
     const [mutedConversations, setMutedConversations] = usePersistedState("mutedConvs", []);
+    // C314: كتمٌ بمدّة (ساعة · ٨ ساعات · دائم) لمحادثةٍ أو مجموعة — muteUntil = { [id]: { u: وقت الانتهاء, k: الخيار } } على هذا الجهاز؛
+    //       الكتم نفسه في mutedConversations (يتزامن، والخادم لا يرسل إشعاراتها). عند انتهاء المدّة يُرفع الكتم هنا فيتزامن.
+    const [muteUntil, setMuteUntil] = usePersistedState("muteUntil", {});
+    const setConvMute = useCallback((id, key) => {
+        const on = key !== 0;
+        setMutedConversations((p) => on ? (p.includes(id) ? p : [...p, id]) : p.filter((x) => x !== id));
+        setMuteUntil((m) => { const n = { ...(m || {}) }; if (key > 0) n[id] = { u: Date.now() + key * 1000, k: key }; else delete n[id]; return n; });
+    }, []);
+    const muteKeyOf = (id) => !mutedConversations.includes(id) ? 0 : (muteUntil && muteUntil[id] && muteUntil[id].k) || -1;
+    useEffect(() => {
+        const tick = () => {
+            const now = Date.now(), ids = Object.keys(muteUntil || {}).filter((k) => muteUntil[k] && muteUntil[k].u <= now);
+            if (!ids.length) return;
+            setMutedConversations((p) => p.filter((x) => !ids.includes(x)));
+            setMuteUntil((m) => { const n = { ...(m || {}) }; ids.forEach((k) => delete n[k]); return n; });
+        };
+        tick();
+        const iv = setInterval(tick, 30000);
+        return () => clearInterval(iv);
+    }, [muteUntil]);
     const [showLinkedDevices, setShowLinkedDevices] = useState(false);
     const [showWrapped, setShowWrapped] = useState(false);
     const [showFeedback, setShowFeedback] = useState(false);
@@ -4381,7 +4402,7 @@ function AppInner() {
                     }
                     if (chatsTop.type === "group") {
                         const liveGroup = groups.find((g) => g.id === chatsTop.data.id) || chatsTop.data;
-                        return (React.createElement(GroupChatScreen, { key: "g:" + liveGroup.id, group: liveGroup, onTogglePin: (mid) => togglePinMessage(liveGroup.id, mid), onToggleStar: (mid, text) => toggleStarMessage(liveGroup.id, mid, text), messages: groupMessages[liveGroup.id] || [], myUserId: myUserId, draft: chatDrafts["g:" + liveGroup.id] || "", onSaveDraft: (v) => saveChatDraft("g:" + liveGroup.id, v), onTyping: () => { const c = cloudChat(liveGroup.id); if (c) c.typing(liveGroup.id); }, onSendSticker: (emoji) => sendGroupSticker(liveGroup.id, emoji), contactsForForward: (window.SawaChat && window.SawaChat.contacts ? window.SawaChat.contacts() : []), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendGroupMessage(liveGroup.id, text, replyTo),
+                        return (React.createElement(GroupChatScreen, { key: "g:" + liveGroup.id, group: liveGroup, muteKey: muteKeyOf(liveGroup.id), onSetMute: (k) => setConvMute(liveGroup.id, k), onTogglePin: (mid) => togglePinMessage(liveGroup.id, mid), onToggleStar: (mid, text) => toggleStarMessage(liveGroup.id, mid, text), messages: groupMessages[liveGroup.id] || [], myUserId: myUserId, draft: chatDrafts["g:" + liveGroup.id] || "", onSaveDraft: (v) => saveChatDraft("g:" + liveGroup.id, v), onTyping: () => { const c = cloudChat(liveGroup.id); if (c) c.typing(liveGroup.id); }, onSendSticker: (emoji) => sendGroupSticker(liveGroup.id, emoji), contactsForForward: (window.SawaChat && window.SawaChat.contacts ? window.SawaChat.contacts() : []), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendGroupMessage(liveGroup.id, text, replyTo),
                             onReact: cloudChat(liveGroup.id) ? (messageId, emoji) => cloudChat(liveGroup.id).react(liveGroup.id, messageId, emoji) : null,
                             onDeleteMessage: cloudChat(liveGroup.id) ? (messageId, scope) => { scope === "all" ? cloudChat(liveGroup.id).deleteForAll(liveGroup.id, messageId) : cloudChat(liveGroup.id).deleteForMe(liveGroup.id, messageId); showToast(scope === "all" ? t("ai_hdhft_lljmya") : t("ai_hdhft_andk"), "success"); } : null,
                             contacts: cloudChat(liveGroup.id) ? people : null,
@@ -4439,7 +4460,7 @@ function AppInner() {
                         const convMessages = messagesByConversation[chatsTop.data.id] || [];
                         const liveConvI = conversations.find((c) => c.id === chatsTop.data.id) || chatsTop.data;
                         const SCi = cloudChat(chatsTop.data.id);
-                        return (React.createElement(ChatInfoScreen, { conversation: liveConvI, messages: convMessages, background: chatThemes[chatsTop.data.id] || "default", setBackground: (themeKey) => setChatThemes((prev) => ({ ...prev, [chatsTop.data.id]: themeKey })), disappearing: SCi ? (liveConvI.disappear || 0) : chatDisappearing, setDisappearing: SCi ? (v) => SCi.setDisappear(chatsTop.data.id, v) : setChatDisappearing, isBlocked: blockedConversations.includes(chatsTop.data.id), onBlock: () => blockContact(chatsTop.data.id), onUnblock: () => unblockContact(chatsTop.data.id), onReport: (done) => { const SCr = window.SawaChat; if (SCr && SCr.reportSheet && SCi) SCr.reportSheet({ cid: chatsTop.data.id, name: liveConvI.name, kind: "dm", onBlock: () => blockContact(chatsTop.data.id), onDone: done }); else { showToast(t("tm_irsal_blaghk"), "success"); done && done(); } }, isLocked: lockedConversationIds.includes(chatsTop.data.id), onToggleLock: () => toggleChatLock(chatsTop.data.id), chatFolders: chatFolders, folderId: folderAssignments[chatsTop.data.id], onSetFolder: (folderId) => assignConversationFolder(chatsTop.data.id, folderId), notificationTone: conversationTones[chatsTop.data.id] || defaultNotificationTone, setNotificationTone: (tone) => setConversationTones((prev) => ({ ...prev, [chatsTop.data.id]: tone })), onBack: () => setChatsStack(chatsStack.slice(0, -1)) }));
+                        return (React.createElement(ChatInfoScreen, { conversation: liveConvI, messages: convMessages, background: chatThemes[chatsTop.data.id] || "default", setBackground: (themeKey) => setChatThemes((prev) => ({ ...prev, [chatsTop.data.id]: themeKey })), disappearing: SCi ? (liveConvI.disappear || 0) : chatDisappearing, setDisappearing: SCi ? (v) => SCi.setDisappear(chatsTop.data.id, v) : setChatDisappearing, isBlocked: blockedConversations.includes(chatsTop.data.id), onBlock: () => blockContact(chatsTop.data.id), onUnblock: () => unblockContact(chatsTop.data.id), onReport: (done) => { const SCr = window.SawaChat; if (SCr && SCr.reportSheet && SCi) SCr.reportSheet({ cid: chatsTop.data.id, name: liveConvI.name, kind: "dm", onBlock: () => blockContact(chatsTop.data.id), onDone: done }); else { showToast(t("tm_irsal_blaghk"), "success"); done && done(); } }, isLocked: lockedConversationIds.includes(chatsTop.data.id), onToggleLock: () => toggleChatLock(chatsTop.data.id), chatFolders: chatFolders, folderId: folderAssignments[chatsTop.data.id], onSetFolder: (folderId) => assignConversationFolder(chatsTop.data.id, folderId), notificationTone: conversationTones[chatsTop.data.id] || defaultNotificationTone, setNotificationTone: (tone) => setConversationTones((prev) => ({ ...prev, [chatsTop.data.id]: tone })), onBack: () => setChatsStack(chatsStack.slice(0, -1)), muteDuration: muteKeyOf(chatsTop.data.id), onSetMute: (k) => setConvMute(chatsTop.data.id, k) }));
                     }
                     if (chatsTop.type === "search") {
                         return (React.createElement(UnifiedSearchScreen, { conversations: conversations, groups: groups, shipments: shipments, taxiTripsHistory: taxiTripsHistory, messagesByConversation: messagesByConversation, groupMessages: groupMessages, onOpenChat: (c) => setChatsStack([{ type: "chat", data: c }]), onOpenGroup: (g) => setChatsStack([{ type: "group", data: g }]), onClose: () => setChatsStack([]) }));

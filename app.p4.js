@@ -1554,6 +1554,9 @@ function ChatSettingsScreen({ chatBackupEnabled, setChatBackupEnabled, chatFolde
     const { colors } = useTheme();
     const [showAddFolder, setShowAddFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState("");
+    // C314: إخفاء آخر ظهور (يتزامن بين أجهزتك عبر SawaChat)
+    const SCh = window.SawaChat && window.SawaChat.setHideSeen ? window.SawaChat : null;
+    const [hideSeenOn, setHideSeenOn] = useState(() => !!(SCh && SCh.hideSeen()));
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
         React.createElement(TopBar, { title: t("iadadat_almhadthat"), onBack: onBack }),
         React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
@@ -1586,6 +1589,13 @@ function ChatSettingsScreen({ chatBackupEnabled, setChatBackupEnabled, chatFolde
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
                     React.createElement("span", { className: "text-sm font-bold block mb-1", style: { color: colors.text } }, t("tdhkyrat_sla_alrhm")),
                     React.createElement("p", { className: "text-[10px]", style: { color: colors.textMuted } }, t("btaqat_tdhkyr_altwasl_walmwaayd")))),
+            SCh && React.createElement("p", { className: "text-xs font-bold mb-2", style: { color: colors.textMuted } }, tl("الخصوصيّة", "Privacy")),
+            SCh && React.createElement(Card, { className: `flex ${rowEnd()} items-start gap-2.5 mb-4` },
+                React.createElement("button", { role: "switch", "aria-checked": hideSeenOn, "aria-label": tl("إخفاء آخر ظهور", "Hide last seen"), onClick: () => { const v = !hideSeenOn; setHideSeenOn(v); SCh.setHideSeen(v); }, className: "w-11 h-6 rounded-full relative shrink-0 mt-0.5", style: { backgroundColor: hideSeenOn ? colors.primaryFill : colors.border } },
+                    React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [hideSeenOn ? "right" : "left"]: 2 } })),
+                React.createElement("div", { className: `flex-1 ${textStart()}` },
+                    React.createElement("span", { className: "text-sm font-bold block mb-1", style: { color: colors.text } }, tl("إخفاء آخر ظهور", "Hide last seen")),
+                    React.createElement("p", { className: "text-[10px]", style: { color: colors.textMuted } }, tl("لا يرى أحدٌ متى كنت متّصلاً آخر مرّة، ولن ترى آخر ظهور غيرك. «متّصل الآن» يبقى ظاهراً.", "No one sees when you were last online, and you won't see theirs. \"Online\" still shows.")))),
             React.createElement("p", { className: "text-xs font-bold mb-2", style: { color: colors.textMuted } }, t("aam")),
             React.createElement(Card, { className: `flex ${rowEnd()} items-start gap-2.5 mb-4` },
                 React.createElement("button", { onClick: () => setChatBackupEnabled(!chatBackupEnabled), className: "w-11 h-6 rounded-full relative shrink-0 mt-0.5", style: { backgroundColor: chatBackupEnabled ? colors.primaryFill : colors.border } },
@@ -2189,6 +2199,13 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                         React.createElement("div", { className: "flex-1", style: { textAlign: isRTL() ? "right" : "left" } },
                             React.createElement("span", { className: "text-[15.5px] font-bold block leading-snug", style: { color: colors.text } }, tl("مهامّي", "My tasks")),
                             React.createElement("span", { className: "text-[12.5px] block mt-0.5", style: { color: colors.textMuted } }, tl("ما أُسند إليك في كلّ المجموعات", "Assigned to you, across groups")))),
+                    // C314: الرسائل المفضّلة — كانت الشاشة موجودةً بلا مدخل منذ اختصار القائمة (C201)
+                    onOpenStarredMessages && React.createElement("button", { onClick: () => { setShowNewMenu(false); onOpenStarredMessages(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },
+                        React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "18" } },
+                            React.createElement(Star, { size: 20, color: colors.primary })),
+                        React.createElement("div", { className: "flex-1", style: { textAlign: isRTL() ? "right" : "left" } },
+                            React.createElement("span", { className: "text-[15.5px] font-bold block leading-snug", style: { color: colors.text } }, tl("الرسائل المفضّلة", "Starred messages")),
+                            React.createElement("span", { className: "text-[12.5px] block mt-0.5", style: { color: colors.textMuted } }, tl("ما حفظته من المحادثات والمجموعات", "Saved from your chats and groups")))),
                     React.createElement("button", { onClick: () => { setShowNewMenu(false); onScanQr(); }, className: "w-full flex flex-row items-center gap-4 px-4 py-3" },
                         React.createElement("div", { className: "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primary + "18" } },
                             React.createElement(QrCode, { size: 20, color: colors.primary })),
@@ -2244,7 +2261,15 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                 React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0", style: { backgroundColor: colors.accent, color: "#fff" } }, t("hdha_alasbwa")))),
             React.createElement("div", { className: "pb-24" },   // C201: صفوفٌ مسطّحة بعرض الشاشة (كانت بطاقاتٍ داخل هامش) + مسافةٌ للزرّ العائم
                 visibleConversations.length === 0 && groups.length === 0 && broadcastLists.length === 0 && React.createElement(EmptyState, { icon: MessageCircle, label: t("la_twjd_mhadthat_bad"), desc: tl("ابدأ محادثةً مع أحد أقاربك أو أصدقائك، أو شارك رمزك ليتواصلوا معك.", "Start a chat with family or friends, or share your code so they can reach you."), action: { icon: MessageCircle, label: t("mhadtha_jdyda"), onPress: onNewConversation } }),
-                activeTab === "starred" && tabConversations.length === 0 && React.createElement(EmptyState, { icon: Star, label: t("ma_hfzt_ay_mhadtha") }),
+                // C314: تبويب «المفضّلة» يفتح الرسائل المحفوظة (اضغط مطوّلاً على رسالة ← «حفظ الرسالة»)
+                activeTab === "starred" && onOpenStarredMessages && React.createElement("button", { onClick: onOpenStarredMessages, className: "w-full flex flex-row items-center gap-3 px-4 py-3.5 border-b", style: { borderColor: colors.border } },
+                    React.createElement("div", { className: "w-12 h-12 rounded-full flex items-center justify-center shrink-0", style: { backgroundColor: colors.primaryLight } },
+                        React.createElement(Star, { size: 21, color: colors.primary })),
+                    React.createElement("div", { className: "flex-1", style: { textAlign: isRTL() ? "right" : "left", minWidth: 0 } },
+                        React.createElement("span", { className: "font-extrabold text-[15px] block", style: { color: colors.text } }, tl("الرسائل المفضّلة", "Starred messages")),
+                        React.createElement("span", { className: "text-xs block mt-0.5", style: { color: colors.textMuted } }, tl("اضغط مطوّلاً على أيّ رسالة ثمّ «حفظ الرسالة»", "Long-press any message, then Star"))),
+                    React.createElement(ChevronLeft, { size: 16, color: colors.textMuted, style: { transform: isRTL() ? "none" : "scaleX(-1)" } })),
+                activeTab === "starred" && tabConversations.length === 0 && !onOpenStarredMessages && React.createElement(EmptyState, { icon: Star, label: t("ma_hfzt_ay_mhadtha") }),
                 activeTab === "unread" && tabConversations.length === 0 && React.createElement(EmptyState, { icon: MessageCircle, label: t("kl_almhadthat_mqrwa") }),
                 activeTab === "family" && tabConversations.length === 0 && tabGroups.length === 0 && (React.createElement("div", { className: "flex flex-col items-center gap-3 mt-8" },
                     React.createElement(EmptyState, { icon: Heart, label: t("ma_fy_mhadthat_ma") }),

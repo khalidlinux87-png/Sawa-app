@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c313";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c314";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -453,7 +453,7 @@
     var pr = state.presence[p.uid] || null;
     return { id: p.uid, uid: p.uid, name: displayName(p), realName: p.name || null, nick: nickOf(p.uid), anon: !!p.anon, tag: guestTag(p.uid), code: peerCode(p.uid), photo: photoOf(p.uid),
              families: p.families || [], via: p.via || [], onSawa: true, phone: p.phone || "",
-             online: !!(pr && pr.state === "online"), lastSeen: pr && pr.ts ? pr.ts : null };
+             online: !!(pr && pr.state === "online"), lastSeen: pr && pr.ts && !hideSeen() ? pr.ts : null };   // C314: من أخفى آخر ظهوره لا يرى آخر ظهور غيره
   }
   function contacts() {
     return state.people.map(decorate).sort(function (a, b) { return a.name.localeCompare(b.name, "ar"); });
@@ -634,9 +634,23 @@
         function (err) { LOG.warn("presence", { u: u, err: err && err.code }); });   // بلا صلاحيّة بعد (acl يُكتب مع people.list)
     });
   }
+  // C314: «إخفاء آخر ظهور» — الوقت يُكتب صفراً فلا يراه أحد (القواعد تشترط رقماً)؛ «متّصل الآن» يبقى. يتزامن بين أجهزتي (prefs.hideSeen)
+  //       ونسخةٌ محلّيّة تمنع كتابة الوقت قبل وصول الإعدادات من الخادم.
+  function hideSeen() { return prefsLoaded && prefs ? !!prefs.hideSeen : !!lsGet("sawa_hide_seen", false); }
+  function seenTs() { return hideSeen() ? 0 : firebase.database.ServerValue.TIMESTAMP; }
   function setMine(stateName) {
     if (!myStatusRef || !global.firebase) return;
-    try { myStatusRef.set({ state: stateName, ts: firebase.database.ServerValue.TIMESTAMP }); } catch (e) {}
+    try { myStatusRef.set({ state: stateName, ts: seenTs() }); } catch (e) {}
+  }
+  function armDisconnect() {
+    if (!myStatusRef || !global.firebase) return Promise.resolve();
+    try { return myStatusRef.onDisconnect().set({ state: "offline", ts: seenTs() }); } catch (e) { return Promise.resolve(); }
+  }
+  function setHideSeen(on) {
+    on = !!on; prefs = prefs || {}; prefs.hideSeen = on; lsSet("sawa_hide_seen", on);
+    savePrefs({ hideSeen: on });
+    armDisconnect(); setMine(document.visibilityState === "hidden" ? "offline" : "online");
+    publish(); publishChats();
   }
   // C50: إشارة الخادم (طلب تواصل / قبول / طلب تأكيد رقم) — كانت الطلبات لا تظهر إلا بإشعارٍ أو بعد عودةٍ من الخلفية
   var sigRef = null, sigSeen = -1;
@@ -662,7 +676,7 @@
     connRef.on("value", function (snap) {
       if (snap.val() !== true) return;
       // عند الانقطاع (إغلاق التطبيق/فقد الشبكة) يكتب الخادم «غير متّصل» بنفسه
-      myStatusRef.onDisconnect().set({ state: "offline", ts: firebase.database.ServerValue.TIMESTAMP }).then(function () {
+      armDisconnect().then(function () {
         setMine(document.visibilityState === "hidden" ? "offline" : "online");
       });
     });
@@ -1465,6 +1479,7 @@
   function loadPrefs(pre) {
     return (pre ? Promise.resolve(pre) : call("chat.prefs", {})).then(function (b) {
       prefs = b.prefs || {}; prefsLoaded = true;
+      if (!!prefs.hideSeen !== !!lsGet("sawa_hide_seen", false)) { lsSet("sawa_hide_seen", !!prefs.hideSeen); armDisconnect(); setMine(document.visibilityState === "hidden" ? "offline" : "online"); }   // C314
       var applied = {};
       Object.keys(PREF_SETTERS).forEach(function (k) {
         if (!(k in prefs)) return;
@@ -4321,6 +4336,7 @@
     Object.keys(chats).forEach(function (k) { var c1 = chats[k]; if (cl[k] && !(c1.last && c1.last.ts > cl[k])) return; n += unreadOf(c1); });
     if (n === badgeN) return; badgeN = n;
     try { if (navigator.setAppBadge) { n ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } } catch (e) {}
+    try { if (NB() && NB().setBadge) NB().setBadge(n); } catch (e) {}   // C314: تطبيق أندرويد (WebView لا يدعم setAppBadge)
   }
 
   // ==================================================================
@@ -6696,6 +6712,7 @@
     leaveGroup: leaveGroup, shareGroupInvite: shareGroupInvite, joinGroup: joinGroup,
     sendPoll: sendPoll, vote: vote, editPoll: editPoll, sendBill: sendBill, billPaid: billPaid, sendFund: sendFund, contribute: contribute,
     // C164: editTasks · notifAvatars · setNotifAvatars (C170: كان هذا التعليق في وسط السطر فعطّل ما بعده — react وdeleteForAll وpin…)
+    hideSeen: hideSeen, setHideSeen: setHideSeen,   // C314
     sendTasks: sendTasks, setTask: setTask, editTasks: editTasks, addTask: addTask, myTasks: myTasks, notifAvatars: notifAvatars, setNotifAvatars: setNotifAvatars, deleteForAll: deleteForAll, deleteForMe: deleteForMe, react: react, pin: pin,
     setDisappear: setDisappear, openDm: openDm, openSaved: openSaved, dmWith: function (u) { return state.uid ? dmWith(u) : null; },
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
