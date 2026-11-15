@@ -3119,10 +3119,11 @@ Khalid's notes on C314:
 - **Checks:** `node --check app.p5.js` · `javac` on MainActivity (only the expected missing-Android-SDK symbol errors) · the zip has the same file list as c281. **Swift not compiled here** (no compiler in the session; the `ios-build` workflow compiles it on a PR or on main). **Not tried on a phone.**
 - **Upload:** Android `sawa-native.zip` (c282, build runs on merge) · iOS: merge, then run `ios-testflight` · web: `app.p5.js` then `sw.js` (v501) last. Try: play a voice note, lift the phone to the ear (earpiece, screen off), lower it (loudspeaker from the same point), and let one finish at the ear.
 
-## 🔉 C319 — Low volume (and echo) in group calls and rooms, and when a video call becomes a group call · sawa-rtc (c319) · sw v502
+## 🔉 C319 — Low volume (and echo) in group calls and rooms, and when a video call becomes a group call · camera kept on · sawa-rtc (c319) · sw v502
 - **Report (after C317):** 1:1 voice and video calls sound better, but group calls and rooms are low, and the sound drops when a person is added to a video call.
 - **Cause found in code:** C317 kept the stored fallback mic mode (`sawa-mic-mode = plain`, no echo cancellation) for rooms. A group call moves to the room path (media server, `gMoveTo` ⇒ `roomJoin`), and adding a person to a 1:1 call makes it a group call. So on a phone that once saved the flag, every group call and room still opened the mic without echo cancellation. Without it, the Android WebView does not enter its call mode, so the other people's voices play as media while the phone is in call mode — quieter, with echo. The flag can be saved by a false alarm: a moment of digital silence during a route change.
 - **Fix:** the fallback is no longer stored on the phone. The old saved flag is deleted on load. It is kept in memory only, until the app is closed: still found automatically in a room where the mic is silent (Honor), but a false alarm no longer lasts. The diagnosis button "reset mic" clears the memory.
-- **sw.js:** v502 · `EXPECT['./sawa-rtc.js']` = 468,258.
+- **Camera turned off when a video call became a group call:** a group call that moves to the media server (`gMoveTo`) joined the room with only the title and mic state, and rooms start with the camera off. Now it passes `cam` (video call and camera not turned off), and the room turns the camera on once live (`r.startCam`, not in an audio-only room).
+- **sw.js:** v502 · `EXPECT['./sawa-rtc.js']` = 468,739.
 - **Checks:** `node --check` on `sawa-rtc.js` and `sw.js`. **Not tried on a phone.**
-- **Upload:** `sawa-rtc.js` then `sw.js` (v502) last. Try: a group call, a room, and adding a person to a video call; the volume should match a 1:1 call.
+- **Upload:** `sawa-rtc.js` then `sw.js` (v502) last. Try: a group call, a room, and adding a person to a video call; the volume should match a 1:1 call, and the camera should stay on after adding a person.

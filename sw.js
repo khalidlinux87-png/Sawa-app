@@ -15,7 +15,7 @@ const NOTES = '• زرّ «مكالمة جديدة» ثابتٌ أسفل الش
 const MOVED_TO = 'https://www.sawaaap.com';
 const MOVED = /\.netlify\.app$/i.test(self.location.hostname) || /^sawaap\.pages\.dev$/i.test(self.location.hostname) || /^sawaaap\.com$/i.test(self.location.hostname);
 // C139: الحجم المتوقَّع (بالبايت) للملفّات المرفوعة مع هذه النسخة — إن اختلف على الخادم (لم يُرفع، أو رُفع ناقصاً) يُسجَّل ويُنبَّه المستخدم
-const EXPECT = { './sawa-rtc.js': 468258, './sawa-chat.js': 601586 };
+const EXPECT = { './sawa-rtc.js': 468739, './sawa-chat.js': 601586 };
 const REPORT = [];
 const ASSETS = [
   './',

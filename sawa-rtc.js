@@ -2448,9 +2448,9 @@
   function gMoveTo(g, code) {
     if (g.done || g.movedTo) return;
     g.movedTo = code;
-    var title = g.title, mic = !g.muted;
+    var title = g.title, mic = !g.muted, cam = g.type === "video" && !g.camOff;   // C319: كانت الكاميرا تنطفئ عند الانتقال إلى خادم الوسائط
     gFinish(g, "moved");
-    setTimeout(function () { roomJoin(code, { title: title, mic: mic }); toast(L("انتقلت المكالمة إلى خادم الوسائط — جودةٌ أفضل للمجموعة", "The call moved to the media server for better group quality")); }, 150);
+    setTimeout(function () { roomJoin(code, { title: title, mic: mic, cam: cam }); toast(L("انتقلت المكالمة إلى خادم الوسائط — جودةٌ أفضل للمجموعة", "The call moved to the media server for better group quality")); }, 150);
   }
   function gSend(g, to, toSess, payload) {
     var o = { from: myUid(), fs: g.sess, tsn: toSess, ts: TS() };
@@ -2973,6 +2973,7 @@
     var r = rm = rNew({ code: code, title: opts.title || "", state: "starting" });
     if (rejoinEl) { try { rejoinEl.remove(); } catch (e) {} rejoinEl = null; }   // C119
     if (opts.mic === false) r.startMuted = true;
+    if (opts.cam) r.startCam = true;   // C319
     r.ref = db().ref("rooms/" + code);
     rShow(r);
     var me = myUid();
@@ -3120,7 +3121,9 @@
       if (r.done) return;
       r.live = true; r.joinedAt = Date.now();
       try { rRef(r, "members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
-      r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }); nativeSpk(true, true);   // C234: أندرويد أيضاً — كان صوت الغرف والجماعيّة يُفرض على سمّاعة الأذن (خافتاً جدّاً)   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
+      r.state = "live"; wakeOn(); rPaint(r);
+      if (r.startCam) { r.startCam = false; setTimeout(function () { if (!r.done && r.live && !r.camOn && !(r.meta && r.meta.audioOnly)) rToggleCam(r); }, 300); }   // C319: مكالمة فيديو جماعيّة انتقلت إلى الغرفة ⇒ الكاميرا تبقى
+      bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }); nativeSpk(true, true);   // C234: أندرويد أيضاً — كان صوت الغرف والجماعيّة يُفرض على سمّاعة الأذن (خافتاً جدّاً)   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
       LOG.info("room.live", { ms: Date.now() - (r.t0 || Date.now()) });
       // C66: المضيف ينشر جلسته في meta (مقروءة قبل العضويّة) ⇒ الوافد يعرض عليه فور دخوله بلا انتظار أوّل لقطةٍ من قائمة الأعضاء (رحلةٌ كاملة أقلّ حتى يُسمع الصوت)
       if (amHost(r)) rRef(r, "meta/hsess").set(r.sess).catch(function () {});
