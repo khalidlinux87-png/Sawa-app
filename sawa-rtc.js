@@ -141,7 +141,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c300";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
+  var RTC_BUILD = "c317";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -478,7 +478,8 @@
   //       ولا تظهر علامة التحدّث. حين يثبت ذلك (صمتٌ رقميّ بعد إعادة فتح الميكروفون) نفتحه بنمط الميكروفون العاديّ ونتذكّره لهذا الجهاز.
   var MICK = "sawa-mic-mode";
   function micPlain() { try { return localStorage.getItem(MICK) === "plain"; } catch (e) { return false; } }
-  function micAudio(plain) { return plain || micPlain() ? { echoCancellation: false, noiseSuppression: true, autoGainControl: true } : { echoCancellation: true, noiseSuppression: true, autoGainControl: true }; }
+  // C317: النمط البديل (بلا إلغاء صدى) للغرف فقط — كان يُطبَّق على كلّ المكالمات بعد أن يُحفَظ مرّةً للجهاز ⇒ صدى قويّ عند الطرف الآخر
+  function micAudio(plain) { return plain ? { echoCancellation: false, noiseSuppression: true, autoGainControl: true } : { echoCancellation: true, noiseSuppression: true, autoGainControl: true }; }
   function getMedia0(type, facing, plain) {
     var md = navigator.mediaDevices;
     var audio = micAudio(plain);
@@ -3087,7 +3088,7 @@
   function preCallAudio() { try { if (NB()) nativeSpk(true, true); } catch (e) {} }
   function rMedia(r) {
     preCallAudio();
-    return getMedia("audio").then(function (st) {
+    return getMedia("audio", null, micPlain()).then(function (st) {
       if (r.done) { stopStream(st); return; }
       r.local = st;
       if (r.startMuted) { r.mic = false; st.getAudioTracks().forEach(function (t) { t.enabled = false; }); }
@@ -3989,7 +3990,7 @@
     LOG.warn("room.mic.heal", { n: r.healN, st: a ? a.readyState : "none", muted: !!(a && a.muted), zero: !!zero });
     var plain = !!zero && (r.zeroN || 0) >= 2 && !micPlain();   // C278: الإعادة العاديّة لم تكفِ ⇒ نمط الميكروفون العاديّ
     if (plain) { r.plainCheck = true; LOG.warn("mic.plain.try"); }
-    getMedia("audio", null, plain).then(function (st) {
+    getMedia("audio", null, plain || micPlain()).then(function (st) {
       r.healing = false;
       var nt = st.getAudioTracks()[0];
       if (r.done || !r.local || !nt) { stopStream(st); return; }
