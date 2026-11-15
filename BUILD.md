@@ -3088,3 +3088,15 @@ Khalid's notes on C314:
 - **Starred messages are never deleted:** before deleting, the sweep reads the members' chat prefs (`starred`) and removes the timer from any message a member starred. If the prefs can't be read, nothing is deleted that round. The app no longer hides your own starred messages when their time passes.
 - **Checks:** `node --check` on every changed file and worker-3.js. Not run in a browser or on a device (no local server in this session).
 - **Upload order:** Worker `worker-3.js` (v135-dis3m) first · `app.p4.js`, `app.p5.js`, `app.p6.js`, `sawa-chat.js` · `sw.js` (v499) last. Merging to main publishes both automatically.
+
+## 🔈 C316 — Xiaomi and Tecno: call audio from the earpiece and the speaker at once · Android c281 (no web change)
+- **Report:** on Xiaomi and Tecno phones the voice-call audio comes out "from every direction".
+- **Likely cause (not confirmed on a device):** on Android 12+ we route with `setCommunicationDevice(earpiece)`, but the WebView raises the old speakerphone flag (`setSpeakerphoneOn(true)`) whenever it opens the microphone. Our check only looked at the communication device, so it saw "earpiece" and left the flag up. Some MIUI/HyperOS and HiOS builds then play on both the earpiece and the loudspeaker.
+- **Fix (MainActivity):**
+  - Before routing to the earpiece or a headset, the flag is lowered first, then the device is chosen.
+  - The 1.5 s check also treats a raised flag as a wrong route.
+  - At most 6 fixes per call, so a phone that always reports the flag cannot loop.
+  - Speaker mode is unchanged.
+- **Diagnosis:** the call audio log adds `spkFlag=` and `spkFlag off #n`. The admin route toast shows `+spkFlag` when the flag is up together with the earpiece.
+- **Checks:** `javac` syntax only. The zip has the same file list as c280 (only `SAWA_BUILD` and `MainActivity.java` differ). **Not tried on Xiaomi/Tecno.**
+- **Upload:** `sawa-native.zip` (c281) → the build runs on merge → install from `android-latest`. Try a voice call on the earpiece, then switch to the speaker and back.
