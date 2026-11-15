@@ -3100,3 +3100,12 @@ Khalid's notes on C314:
 - **Diagnosis:** the call audio log adds `spkFlag=` and `spkFlag off #n`. The admin route toast shows `+spkFlag` when the flag is up together with the earpiece.
 - **Checks:** `javac` syntax only. The zip has the same file list as c280 (only `SAWA_BUILD` and `MainActivity.java` differ). **Not tried on Xiaomi/Tecno.**
 - **Upload:** `sawa-native.zip` (c281) → the build runs on merge → install from `android-latest`. Try a voice call on the earpiece, then switch to the speaker and back.
+
+## 🔁 C317 — Strong echo in voice and video calls: the fallback mic mode (no echo cancellation) leaked from rooms into every call · sawa-rtc (c317) · sw v500
+- **Report:** heavy echo in voice and video calls, and the sound is very low.
+- **Cause found in code:** C278 added a fallback mic mode for Honor phones in **rooms**: the mic is opened with `echoCancellation: false`, and the device remembers it in `localStorage` (`sawa-mic-mode = plain`). But `micAudio()` read that stored flag for **every** `getUserMedia`: 1:1 voice, 1:1 video, group calls, and camera switching. Once a phone saved the flag (one room where the mic read digital silence twice is enough — it can happen briefly during a route change on many phones, not only Honor), all its later calls ran **without echo cancellation**. Then the other side hears its own voice back from this phone's speaker.
+- **Fix:** `micAudio(plain)` only uses the argument it is given. Only rooms pass the stored flag (`rMedia` and the room mic repair `rMicHeal`). 1:1 and group calls always open the mic with echo cancellation, noise suppression and auto gain.
+- **Low volume:** not changed in this step. It may be partly the same cause (without the call mode the WebView may not play on the call stream that `boostVolume` raises). Still waiting for: device, which side is low, earpiece or speaker, and a screenshot of the call audio log.
+- **sw.js:** v500 · `EXPECT['./sawa-rtc.js']` = 467,871.
+- **Checks:** `node --check` on `sawa-rtc.js` and `sw.js`. **Not tried on a phone.**
+- **Upload:** `sawa-rtc.js` then `sw.js` (v500) last. Try: a voice call and a video call on the loudspeaker between two phones; the other side should no longer hear itself. In the room diagnosis, `mic=plain` can still appear (rooms only).
