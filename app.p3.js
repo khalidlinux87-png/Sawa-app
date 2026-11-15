@@ -107,8 +107,9 @@ const RELIGIOUS_OCCASIONS = [
 // ============================================================================
 // C116: خدمات «قريباً» مخفيّة (مراجعو Google Play يرفضون الميزات التي لا تعمل؛ و«المحفظة» تستدعي أسئلة الخدمات الماليّة). true ⇒ تعود.
 const SHOW_SOON_SERVICES = false;
-// C320: المحفظة مخفيّةٌ عن الجميع (والمشرفين أيضاً) في الإصدار الأوّل على Google Play — تحويل المال يحتاج ترخيصاً. true يعيدها.
-const SHOW_WALLET = false;
+// C320/C321: مفتاح المحفظة كلّها. true = تظهر للمشرف والمدير فقط (useAdminAtLeast("moderator")) ولا تظهر للمستخدمين أبداً،
+//   ولا في نسخة Google Play. false = مخفيّةٌ عن الجميع.
+const SHOW_WALLET = true;
 function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOpenMoments, onOpenErsal, onOpenTaxi, onOpenWallet }) {
     const { colors } = useTheme();
     const intlAdm = useAdminAtLeast("moderator");   // C220: المحفظة (والتحويل الدوليّ التجريبيّ) للمشرف والمدير فقط
