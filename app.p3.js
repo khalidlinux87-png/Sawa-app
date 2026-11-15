@@ -107,6 +107,8 @@ const RELIGIOUS_OCCASIONS = [
 // ============================================================================
 // C116: خدمات «قريباً» مخفيّة (مراجعو Google Play يرفضون الميزات التي لا تعمل؛ و«المحفظة» تستدعي أسئلة الخدمات الماليّة). true ⇒ تعود.
 const SHOW_SOON_SERVICES = false;
+// C320: المحفظة مخفيّةٌ عن الجميع (والمشرفين أيضاً) في الإصدار الأوّل على Google Play — تحويل المال يحتاج ترخيصاً. true يعيدها.
+const SHOW_WALLET = false;
 function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOpenMoments, onOpenErsal, onOpenTaxi, onOpenWallet }) {
     const { colors } = useTheme();
     const intlAdm = useAdminAtLeast("moderator");   // C220: المحفظة (والتحويل الدوليّ التجريبيّ) للمشرف والمدير فقط
@@ -198,7 +200,7 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
             onOpenMoments && discoverSvcCard({ onPress: onOpenMoments, Icon: Images, color: SERVICE_COLORS.moments, title: tl("لحظات الأصدقاء", "Friends' moments"), sub: momNotes > 0 ? tl("إشعارات جديدة على لحظاتك: " + momNotes, "New activity on your moments: " + momNotes) : momNew > 0 ? tl(momNew + " لحظة جديدة من أصدقائك", momNew + " new from your friends") : tl("شارك صورك وأفكارك مع أصدقائك وأهلك", "Share photos and thoughts with friends and family"), count: momNew + momNotes }),
             // C226: «محفظة سوا» و«إرسال إكسبريس» بنمط بطاقات «استكشف» نفسه (تدرّج · أيقونةٌ بيضاء في مربّعٍ شفّاف · عنوانٌ كبير)
             //        مع شارة «تجريبيّ · للمشرف والمدير» بدل الإطار المتقطّع
-            intlAdm && onOpenWallet && discoverSvcCard({ onPress: onOpenWallet, Icon: Wallet, color: SERVICE_COLORS.wallet, demo: true, title: tl("محفظة سوا", "Sawa Wallet"), sub: tl("الرصيد والتحويل والعملات والبطاقات", "Balance, transfers, currencies and cards") }),
+            SHOW_WALLET && intlAdm && onOpenWallet && discoverSvcCard({ onPress: onOpenWallet, Icon: Wallet, color: SERVICE_COLORS.wallet, demo: true, title: tl("محفظة سوا", "Sawa Wallet"), sub: tl("الرصيد والتحويل والعملات والبطاقات", "Balance, transfers, currencies and cards") }),
             intlAdm && onOpenErsal && discoverSvcCard({ onPress: onOpenErsal, Icon: Truck, color: SERVICE_COLORS.ersal, demo: true, title: tl("إرسال إكسبريس", "Ersal Express"), sub: tl("شحنٌ وتوصيلٌ بين المدن", "Intercity shipping and delivery") }),
             SHOW_SOON_SERVICES && React.createElement("div", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("alkhdmat")),
             SHOW_SOON_SERVICES && React.createElement("div", { className: "grid grid-cols-2 gap-3" },
