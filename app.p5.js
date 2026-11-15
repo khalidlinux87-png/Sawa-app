@@ -288,7 +288,7 @@ function ChatMediaGallery({ messages = [] }) {
 // GroupInfoScreen — معلومات المجموعة وإدارة الأعضاء
 // المشرف وحده يرى أزرار التعديل والترقية والإزالة.
 // ============================================================
-function GroupInfoScreen({ messages = [], onMessageMember = null, group, myUserId, mediaCount = 0, onRename, onAddMembers, onRemoveMember, onToggleAdmin, onLeave, onBack, contacts = null, onInviteLink = null, onUpdate = null }) {
+function GroupInfoScreen({ muteKey = 0, onSetMute = null, messages = [], onMessageMember = null, group, myUserId, mediaCount = 0, onRename, onAddMembers, onRemoveMember, onToggleAdmin, onLeave, onBack, contacts = null, onInviteLink = null, onUpdate = null }) {
     const { colors } = useTheme();
     const [editingName, setEditingName] = useState(false);
     const [nameDraft, setNameDraft] = useState(group.name);
@@ -383,6 +383,13 @@ function GroupInfoScreen({ messages = [], onMessageMember = null, group, myUserI
             React.createElement("div", { className: "mt-3 px-4 py-3", style: { backgroundColor: colors.card } },
                 React.createElement("div", { className: `text-xs font-extrabold mb-2 ${textStart()}`, style: { color: colors.textMuted } }, tl("الوسائط والملفّات", "Media & files")),
                 React.createElement(ChatMediaGallery, { messages })),
+            // C314: كتم إشعارات المجموعة (أو العائلة) بمدّة — كان الكتم من قائمة المحادثات للفرديّة فقط
+            onSetMute && React.createElement("div", { className: "mt-3 px-4 py-3", style: { backgroundColor: colors.card } },
+                React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5 mb-2` },
+                    React.createElement(BellOff, { size: 14, color: muteKey ? colors.primary : colors.textMuted }),
+                    React.createElement("span", { className: "text-xs font-extrabold", style: { color: colors.textMuted } }, tl("كتم الإشعارات", "Mute notifications"))),
+                React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-2` }, MUTE_OPTIONS.map((o) => React.createElement(Chip, { key: o.key, label: t(o.labelKey), active: muteKey === o.key, onPress: () => onSetMute(o.key) }))),
+                React.createElement("p", { className: `text-[11px] mt-2 ${textStart()}`, style: { color: colors.textMuted } }, muteKey ? tl("لن تصلك إشعاراتها — إلّا إن أشار إليك أحدٌ بـ@", "You won't be notified — except when someone @mentions you") : tl("تصلك إشعارات كلّ رسالة", "You're notified of every message"))),
             isFamily && React.createElement("p", { className: `text-[11px] px-4 py-3 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } }, t("c3_family_managed")),
             !isFamily && onUpdate && React.createElement("div", { className: "mt-3 px-4 py-3", style: { backgroundColor: colors.card } },
                 React.createElement("div", { className: `text-xs font-extrabold mb-1.5 ${textStart()}`, style: { color: colors.textMuted } }, t("c3_desc")),
@@ -2372,7 +2379,7 @@ function GroupToolsBar({ groupId, messages, myUserId, win, toast }) {
             other.map((x) => row(x, isHid(x))),
             React.createElement("button", { onClick: () => { setShowAll(false); openMyTasks(); }, className: `w-full mt-3 py-2.5 rounded-xl text-[12px] font-extrabold`, style: { color: colors.primary, backgroundColor: colors.primary + "14" } }, tl("✅ كلّ مهامّي في كلّ المجموعات ›", "✅ All my tasks across groups ›"))));
 }
-function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, onEditTaskList, group, messages, myUserId, onSend, onSendFile, onSendVoice, onEditMessage, onReact, onDeleteMessage, onTyping, contactsForForward, onSendSticker, contacts = null, onInviteLink, onUpdateGroup, onCreatePoll, onEditPoll, onVotePoll, onCreateBillSplit, onPayBillSplit, onCreateFundraiser, onContributeFundraiser, onCreateTaskList, onToggleTaskStatus, onAddTaskNote, onForward, allConversations, allGroups, draft = "", onSaveDraft, unreadCount = 0, onBack, onRenameGroup, onAddGroupMembers, onRemoveGroupMember, onToggleGroupAdmin, onLeaveGroup }) {
+function GroupChatScreen({ muteKey = 0, onSetMute = null, onTogglePin, onToggleStar, onTaskPatch, onAddTask, onEditTaskList, group, messages, myUserId, onSend, onSendFile, onSendVoice, onEditMessage, onReact, onDeleteMessage, onTyping, contactsForForward, onSendSticker, contacts = null, onInviteLink, onUpdateGroup, onCreatePoll, onEditPoll, onVotePoll, onCreateBillSplit, onPayBillSplit, onCreateFundraiser, onContributeFundraiser, onCreateTaskList, onToggleTaskStatus, onAddTaskNote, onForward, allConversations, allGroups, draft = "", onSaveDraft, unreadCount = 0, onBack, onRenameGroup, onAddGroupMembers, onRemoveGroupMember, onToggleGroupAdmin, onLeaveGroup }) {
     var _a, _b;
     const { colors } = useTheme();
     useEffect(() => { try { if (group && group.id && window.SawaChat && window.SawaChat.clearNotifs) window.SawaChat.clearNotifs(group.id); } catch (e) { } }, [group && group.id]);   // C187: فتح المجموعة يزيل إشعارها
@@ -2611,7 +2618,7 @@ function GroupChatScreen({ onTogglePin, onToggleStar, onTaskPatch, onAddTask, on
     function renderMessageText(msgText, mine) { return renderRichText(msgText, { mine, colors, mentions: true }); }
     if (showGroupInfo) {
         return React.createElement(GroupInfoScreen, {
-            group: group,
+            group: group, muteKey, onSetMute,
             myUserId: myUserId,
             mediaCount: (messages || []).filter((m) => m.type === "image" || m.type === "video").length,
             messages: messages,

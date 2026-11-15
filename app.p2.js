@@ -1167,6 +1167,7 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
     const admRank = { viewer: 1, moderator: 2, admin: 3, owner: 4 }[admRole || (isAdm ? "owner" : "")] || 0;
     const admTag = admRole === "viewer" ? tl(" (مشاهدة)", " (view)") : admRole === "moderator" ? tl(" (مشرف)", " (moderator)") : admRole === "admin" ? tl(" (مدير)", " (admin)") : tl(" (للمدير)", " (admin)");
     const myDisplayName = cloudMe ? (myProfile.name || myProfile.googleName || "") : "";
+    const [viewMyPhoto, setViewMyPhoto] = useState(false);   // C314
     const editMe = () => { if (cloudMe && window.SawaChat.editProfile()) return; onOpenSettings(); };
     // C13c: لا اسمَ ولا رقمَ وهميّين — حالةٌ صادقة حتّى يصل الحساب (تحميل · تعذّر · لم يُسجَّل الدخول)
     const [meT0] = useState(() => Date.now());
@@ -1236,12 +1237,14 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
     const meGroups = ME_SEC_ORDER.map(([id, title]) => [id, title, listItems.filter((it) => (ME_SEC[it.key] || "admin") === id)]).filter((g) => g[2].length);
     // اختبار قلب الاتجاه — شاشة ثانية
     return (React.createElement("div", { dir: isRTL() ? "rtl" : "ltr", className: "flex-1 flex flex-col overflow-y-auto", style: { backgroundColor: colors.bg } },
+        viewMyPhoto && myProfile && myProfile.photo && React.createElement(PhotoViewer, { photo: myProfile.photo, hdId: myProfile.uid || null, title: tl("صورتي", "My photo"), onClose: () => setViewMyPhoto(false) }),   // C314
         React.createElement("div", { style: { background: `linear-gradient(160deg, ${colors.primaryFill} 0%, ${colors.primaryDark} 100%)`, paddingBottom: 132, position: "relative" } },
             React.createElement("div", { className: `flex ${rowStart()} items-center justify-between px-5 pt-5 pb-4` },
                 React.createElement("h2", { className: "text-xl font-extrabold text-white" }, t("hsaby")))),   // C196: عنوان التبويب «حسابي» مثل باقي التبويبات (كان «سوا» كبيراً و«حسابي» صغيراً)
         React.createElement("div", { className: "mx-4 rounded-2xl shadow-lg px-5 pt-5 pb-4", style: { backgroundColor: colors.card, marginTop: -120, position: "relative", zIndex: 2, border: `1px solid ${colors.border}` } },
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-4` },
-                React.createElement("div", { className: "shrink-0 rounded-2xl overflow-hidden flex items-center justify-center", style: { width: 68, height: 68, backgroundColor: colors.primaryLight, border: `3px solid ${colors.primary}` } },
+                // C314: الضغط على صورتك يفتحها كبيرة (بدقّتها العالية) · بلا صورة ⇒ تعديل الملفّ لإضافتها
+                React.createElement("button", { "aria-label": myProfile && myProfile.photo ? tl("عرض صورتي", "View my photo") : tl("أضف صورة", "Add a photo"), onClick: () => { if (myProfile && myProfile.photo) setViewMyPhoto(true); else editMe(); }, className: "shrink-0 rounded-2xl overflow-hidden flex items-center justify-center", style: { width: 68, height: 68, backgroundColor: colors.primaryLight, border: `3px solid ${colors.primary}` } },
                     myProfile && myProfile.photo && React.createElement("img", { src: myProfile.photo, alt: t("swrty"), className: "w-full h-full object-cover" }),
                     !(myProfile && myProfile.photo) && React.createElement("span", { className: "text-2xl font-extrabold", style: { color: colors.primary } }, myDisplayName ? myDisplayName.charAt(0) : t("s"))),
                 React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
