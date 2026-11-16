@@ -2,22 +2,54 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{db}/documents {
 
+    // ===== دوالّ مساعدة =====
     function signedIn() { return request.auth != null; }
     function uid()      { return request.auth.uid; }
     function isMember(g) {
       return signedIn() &&
         exists(/databases/$(db)/documents/groups/$(g)/members/$(uid()));
     }
-    function shortStr(d, k, n) { return !(k in d) || (d[k] is string && d[k].size() <= n); }
     function inChat(cid) {
       return signedIn() && uid() in get(/databases/$(db)/documents/chats/$(cid)).data.members;
     }
 
+    // ===== الوسائط: حدّ الوسيط الواحد 70 ميغابايت (73400320 بايت) · قطع base64 ≤ 700 ألف حرف · حتّى 140 قطعة =====
+    // يطابق MAX_MEDIA في sawa-chat.js و MEDIA_MAX / MEDIA_MAX_CHUNKS في worker-3.js
+    // q = وثيقة الحجز التي كتبها الخادم (mediaq · storyq · momentq) — لا رفع بلا حجز، ولا أكبر من الحجم المحجوز
+    function mediaMetaOk(d, q) {
+      return d.by == uid()
+        && d.done == false
+        && d.size is int && d.size > 0 && d.size <= 73400320
+        && d.n is int && d.n >= 1 && d.n <= 140
+        && d.n * 2100000 <= d.size * 4 + 2100008
+        && d.mime is string && d.mime.size() <= 100
+        && q.uid == uid() && d.size <= q.size;
+    }
+    function mediaDone() {
+      return signedIn() && resource.data.by == uid()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['done'])
+        && request.resource.data.done == true;
+    }
+    function chunkOk(i, meta) {
+      return meta.by == uid() && meta.done == false
+        && i.matches('^[0-9]{1,3}$') && int(i) < meta.n
+        && request.resource.data.keys().hasOnly(['d'])
+        && request.resource.data.d is string && request.resource.data.d.size() <= 750000;
+    }
+
+    // ===== الحساب: يقرؤه صاحبه فقط، والكتابة للخادم وحده =====
     match /accounts/{u} {
       allow read:  if signedIn() && uid() == u;
       allow write: if false;
     }
 
+    // ===== صور الحساب: يقرؤها كلّ مسجَّل، والكتابة للخادم =====
+    match /avatars/{id} {
+      allow read:  if signedIn();
+      allow write: if false;
+    }
+
+    // ===== العائلات (الشجرة): القراءة للأعضاء، والكتابة للخادم =====
     match /groups/{g} {
       allow read:  if isMember(g);
       allow write: if false;
@@ -27,6 +59,7 @@ service cloud.firestore {
       }
     }
 
+    // ===== المحادثات =====
     match /chats/{cid} {
       allow read:  if signedIn() && uid() in resource.data.members;
       allow write: if false;
@@ -35,30 +68,75 @@ service cloud.firestore {
         allow write: if false;
       }
       match /media/{mid} {
-        allow create: if inChat(cid) && request.resource.data.by == uid()
+        allow create: if inChat(cid)
           && request.resource.data.keys().hasOnly(['by', 'mime', 'size', 'name', 'n', 'ts', 'done'])
-          && request.resource.data.done == false
-          && request.resource.data.size is int && request.resource.data.size <= 73400320
-          && request.resource.data.n is int && request.resource.data.n >= 1 && request.resource.data.n <= 140
-          && request.resource.data.mime is string && request.resource.data.mime.size() <= 100
-          && request.resource.data.name is string && request.resource.data.name.size() <= 200;
-        allow update: if signedIn() && resource.data.by == uid()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['done'])
-          && request.resource.data.done == true;
+          && request.resource.data.name is string && request.resource.data.name.size() <= 200
+          && exists(/databases/$(db)/documents/mediaq/$(cid + '~' + mid))
+          && mediaMetaOk(request.resource.data, get(/databases/$(db)/documents/mediaq/$(cid + '~' + mid)).data);
+        allow update: if mediaDone();
         match /c/{i} {
           allow create: if inChat(cid)
-            && get(/databases/$(db)/documents/chats/$(cid)/media/$(mid)).data.by == uid()
-            && get(/databases/$(db)/documents/chats/$(cid)/media/$(mid)).data.done == false
-            && i.matches('^[0-9]{1,3}$')
-            && int(i) < get(/databases/$(db)/documents/chats/$(cid)/media/$(mid)).data.n
-            && request.resource.data.keys().hasOnly(['d'])
-            && request.resource.data.d is string && request.resource.data.d.size() <= 750000;
+            && chunkOk(i, get(/databases/$(db)/documents/chats/$(cid)/media/$(mid)).data);
         }
       }
     }
 
-    match /invites/{token} {
-      allow read, write: if false;
+    // ===== القصص =====
+    match /stories/{u} {
+      allow read:  if signedIn() && (uid() == u || uid() in resource.data.aud);
+      allow write: if false;
+      match /seen/{s} {
+        allow read:  if signedIn() && uid() == u;
+        allow write: if false;
+      }
+      match /media/{mid} {
+        allow read:  if signedIn() && (uid() == u || uid() in get(/databases/$(db)/documents/stories/$(u)).data.aud);
+        allow create: if signedIn() && uid() == u
+          && request.resource.data.keys().hasOnly(['by', 'mime', 'size', 'n', 'ts', 'done'])
+          && exists(/databases/$(db)/documents/storyq/$(u + '~' + mid))
+          && mediaMetaOk(request.resource.data, get(/databases/$(db)/documents/storyq/$(u + '~' + mid)).data);
+        allow update: if mediaDone();
+        match /c/{i} {
+          allow read:  if signedIn() && (uid() == u || uid() in get(/databases/$(db)/documents/stories/$(u)).data.aud);
+          allow create: if signedIn() && uid() == u
+            && chunkOk(i, get(/databases/$(db)/documents/stories/$(u)/media/$(mid)).data);
+        }
+      }
     }
+
+    // ===== لحظات الأصدقاء =====
+    match /moments/{pid} {
+      allow read:  if signedIn() && uid() in resource.data.aud;
+      allow write: if false;
+      match /cm/{cmid} {
+        allow read:  if signedIn() && uid() in get(/databases/$(db)/documents/moments/$(pid)).data.aud;
+        allow write: if false;
+      }
+      match /media/{mid} {
+        // تُرفع قبل نشر اللحظة (وثيقة اللحظة لم تُنشأ بعد) ⇒ صاحبها يقرؤها بالحجز، والجمهور بعد النشر
+        allow read:  if signedIn() && (resource.data.by == uid()
+          || uid() in get(/databases/$(db)/documents/moments/$(pid)).data.aud);
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['by', 'mime', 'size', 'n', 'ts', 'done'])
+          && exists(/databases/$(db)/documents/momentq/$(pid + '~' + mid))
+          && mediaMetaOk(request.resource.data, get(/databases/$(db)/documents/momentq/$(pid + '~' + mid)).data);
+        allow update: if mediaDone();
+        match /c/{i} {
+          allow read:  if signedIn() && (get(/databases/$(db)/documents/moments/$(pid)/media/$(mid)).data.by == uid()
+            || uid() in get(/databases/$(db)/documents/moments/$(pid)).data.aud);
+          allow create: if signedIn()
+            && chunkOk(i, get(/databases/$(db)/documents/moments/$(pid)/media/$(mid)).data);
+        }
+      }
+    }
+
+    // ===== إشعارات اللحظات: لصاحبها فقط =====
+    match /mnote/{u}/n/{n} {
+      allow read:  if signedIn() && uid() == u;
+      allow write: if false;
+    }
+
+    // كلّ ما سوى ذلك (invites · codes · pinvites · ginvites · scheds · purge · reviewQueue · mediaq · storyq · momentq ·
+    // quota · mset · kinrem …) للخادم وحده — ممنوعٌ افتراضيّاً.
   }
 }

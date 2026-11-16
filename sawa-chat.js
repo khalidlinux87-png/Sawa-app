@@ -2075,7 +2075,7 @@
     // C16: حجز الرفع من الخادم أوّلاً (القواعد تطلبه) — حدٌّ يوميّ، وما لم يُرسل يُحذف بعد 24 ساعة
     return call("media.begin", { cid: cid, mid: mid, size: blob.size }).catch(function (e) {
       var m = (e && e.message) || String(e);
-      if (/quota/.test(m)) throw new Error(L("تجاوزت حدّ الرفع اليوميّ (1 جيجابايت) — جرّب غداً", "Daily upload limit reached (1 GB)"));
+      if (/quota/.test(m)) throw new Error(L("تجاوزت حدّ الرفع اليوميّ (300 ميغابايت) — جرّب غداً", "Daily upload limit reached (300 MB)"));
       if (/unknown op/.test(m)) return null;   // خادمٌ أقدم
       throw e;
     }).then(function () { return blobToB64(blob); }).then(function (b64) {
