@@ -2073,12 +2073,17 @@
     var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
     var meta = d.collection("chats").doc(cid).collection("media").doc(mid);
     // C16: حجز الرفع من الخادم أوّلاً (القواعد تطلبه) — حدٌّ يوميّ، وما لم يُرسل يُحذف بعد 24 ساعة
-    return call("media.begin", { cid: cid, mid: mid, size: blob.size }).catch(function (e) {
+    return call("media.begin", { cid: cid, mid: mid, size: blob.size, r2: 1 }).catch(function (e) {
       var m = (e && e.message) || String(e);
       if (/quota/.test(m)) throw new Error(L("تجاوزت حدّ الرفع اليوميّ (300 ميغابايت) — جرّب غداً", "Daily upload limit reached (300 MB)"));
       if (/unknown op/.test(m)) return null;   // خادمٌ أقدم
       throw e;
-    }).then(function () { return blobToB64(blob); }).then(function (b64) {
+    }).then(function (r) {
+      // C326: الخادم أعطى رابط R2 ⇒ الملفّ يُرفع كما هو (بلا base64 ولا قطع) والخادم يكتب وصفه
+      if (r && r.up) return r2Put(R2_BASE + r.up, blob, onProgress).then(function () { return "r2"; });
+      return blobToB64(blob);
+    }).then(function (b64) {
+      if (b64 === "r2") return;
       var n = Math.max(1, Math.ceil(b64.length / CHUNK));
       return meta.set({ by: state.uid, mime: blob.type || "application/octet-stream", size: blob.size, name: String(extra.name || "").slice(0, 200), n: n, ts: Date.now(), done: false })
         .then(function () {
@@ -2118,11 +2123,50 @@
   }
   function idbGet(k) { return idb().then(function (db_) { if (!db_) return null; return new Promise(function (res) { try { var q = db_.transaction("m").objectStore("m").get(k); q.onsuccess = function () { res(q.result || null); }; q.onerror = function () { res(null); }; } catch (e) { res(null); } }); }); }
   function idbPut(k, v) { return idb().then(function (db_) { if (!db_) return; try { db_.transaction("m", "readwrite").objectStore("m").put(v, k); } catch (e) {} }); }
+  // ---------- C326: R2 — رفعٌ ثنائيّ بنسبة تقدّم، وتنزيلٌ برابطٍ موقَّع (رمزٌ لكلّ محادثة يُحفظ حتّى قبيل انتهائه) ----------
+  var R2_BASE = "https://sawa-deploy-test.khalidlinux87.workers.dev", r2Tok = {}, r2Kind = {};
+  function r2Put(url, blob, onProgress) {
+    return new Promise(function (res, rej) {
+      var x = new XMLHttpRequest();
+      x.open("PUT", url, true);
+      x.setRequestHeader("Content-Type", blob.type || "application/octet-stream");
+      if (onProgress) { onProgress(0); x.upload.onprogress = function (ev) { if (ev.lengthComputable) onProgress(Math.min(99, Math.round(ev.loaded * 100 / ev.total))); }; }
+      x.onload = function () {
+        var j = null; try { j = JSON.parse(x.responseText); } catch (e) {}
+        if (x.status >= 200 && x.status < 300 && j && j.ok) { if (onProgress) onProgress(100); res(j); }
+        else rej(new Error((j && j.error) || ("upload " + x.status)));
+      };
+      x.onerror = function () { rej(new Error(L("انقطع الاتّصال أثناء الرفع", "Connection lost while uploading"))); };
+      x.ontimeout = x.onerror; x.timeout = 30 * 60000;
+      x.send(blob);
+    });
+  }
+  function r2Url(cid, mid) {
+    var t = r2Tok[cid];
+    var p = t && t.exp - 3600000 > Date.now() ? Promise.resolve(t) : call("media.tok", { cid: cid }).then(function (r) {
+      if (!r || !r.r2 || !r.q) throw new Error("no r2");
+      r2Tok[cid] = { q: r.q, exp: r.exp || (Date.now() + 86400000) }; return r2Tok[cid];
+    });
+    return p.then(function (tk) { return R2_BASE + "/m/" + encodeURIComponent(cid) + "/" + encodeURIComponent(mid) + tk.q; });
+  }
+  function r2Fetch(cid, mid, mime) {
+    return r2Url(cid, mid).then(function (u) { return fetch(u); }).then(function (r) {
+      if (r.status === 404) throw new Error("gone");
+      if (!r.ok) { if (r.status === 403) delete r2Tok[cid]; throw new Error("http " + r.status); }
+      return r.blob();
+    }).then(function (b) { return mime && b.type !== mime ? new Blob([b], { type: mime }) : b; });
+  }
   function fetchMedia(cid, mid) {
     var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
+    if (r2Kind[mid]) return r2Fetch(cid, mid, r2Kind[mid].mime);
     var meta = d.collection("chats").doc(cid).collection("media").doc(mid);
-    return Promise.all([meta.get(), meta.collection("c").get()]).then(function (r) {
-      if (!r[0].exists) throw new Error("gone");
+    return meta.get().then(function (doc) {
+      if (!doc.exists) throw new Error("gone");
+      var m0 = doc.data() || {};
+      if (m0.r2) return r2Fetch(cid, mid, m0.mime);
+      return meta.collection("c").get().then(function (cs) { return [doc, cs]; });
+    }).then(function (r) {
+      if (r instanceof Blob) return r;
       var m = r[0].data() || {}, parts = [];
       r[1].forEach(function (doc) { parts.push({ i: Number(doc.id), d: (doc.data() || {}).d || "" }); });
       parts.sort(function (a, b) { return a.i - b.i; });
@@ -2150,6 +2194,16 @@
     var mk2 = mediaKeys[cid + "|" + mid], sec = e2eOn(chats[cid]) || /^sdm_/.test(String(cid));
     if (sec && !mk2) return Promise.resolve(null);   // C23: مفتاح الوسيط داخل رسالته المشفّرة — بعد فكّها
     mediaLoading[mid] = true;
+    // C326: فيديو في R2 (غير مشفّر) ⇒ يُشغَّل من الرابط مباشرةً وهو يُنزَّل — بلا انتظار الملفّ كلّه
+    var rk = r2Kind[mid];
+    if (rk && rk.type === "video" && !sec) {
+      return r2Url(cid, mid).then(function (u) { mediaUrls[mid] = u; delete mediaLoading[mid]; publishMessages(cid); return u; }, function (e) {
+        delete mediaLoading[mid]; mediaFailed[mid] = (e && e.message) || "x"; publishMessages(cid);
+        var n = (mediaTries[mid] = (mediaTries[mid] || 0) + 1);
+        if (n <= 5) setTimeout(function () { if (mediaFailed[mid] && !mediaUrls[mid]) { delete mediaFailed[mid]; ensureMedia(cid, mid, noCache); } }, [5000, 15000, 45000, 120000, 300000][n - 1]);
+        return null;
+      });
+    }
     return withTimeout(idbGet(mid), 4000, null).then(function (b) {
       var tmp = !!((chats[cid] || {}).disappear);   // C14: لا نحفظ وسائط المحادثات المؤقّتة على الجهاز
       return b || dlSlot(cid).then(function (done) {
@@ -3812,6 +3866,7 @@
     var ex = m.extra || {}, mid = ex.mid, url = localUrls[mid] || mediaUrls[mid] || null;
     var viewedByMe = !!(m.viewed && m.viewed[state.uid]);
     o.cloudMid = mid; o.cloudCid = cid; o.fileSize = ex.size || 0; o.mime = ex.mime || null;
+    if (ex.r2 && mid) r2Kind[mid] = { type: m.type, mime: ex.mime || null };   // C326
     if (m.type === "image" || m.type === "video") {
       o.viewOnce = !!ex.viewOnce; o.viewedOnce = !!ex.viewOnce && (mine || viewedByMe || !!m.gone);
       if (o.viewOnce && mine) o.peerViewed = !!m.gone || Object.keys(m.viewed || {}).some(function (u) { return u !== state.uid; });   // C100: المرسل يعرف هل فُتحت
@@ -3827,8 +3882,9 @@
     // C140: التنزيل المسبق — ما وصلني في آخر يومين يُنزَّل ولو لم تُفتح المحادثة بعد (فيكون جاهزاً عند فتحها)،
     //       والفيديو حتّى 16 ميغابايت على شبكةٍ جيّدة (كان 5 فيبقى «اضغط للتنزيل»)
     var fresh = !mine && (Date.now() - (m.ts || 0)) < 2 * 86400000;
-    var auto = (cid === openCid || (fresh && (m.type !== "video" || (ex.size || 0) <= AUTO_DL))) && !url && !mediaFailed[mid] && !(ex.viewOnce && (mine || viewedByMe || m.gone))
-      && (m.type !== "file") && (m.type !== "video" || (ex.size || 0) <= autoVideoMax());
+    var r2v = !!ex.r2 && m.type === "video" && !ex.fk;   // C326: فيديو R2 يُشغَّل من الرابط ⇒ «تنزيله» طلب رابطٍ فقط
+    var auto = (cid === openCid || (fresh && (m.type !== "video" || r2v || (ex.size || 0) <= AUTO_DL))) && !url && !mediaFailed[mid] && !(ex.viewOnce && (mine || viewedByMe || m.gone))
+      && (m.type !== "file") && (m.type !== "video" || r2v || (ex.size || 0) <= autoVideoMax());
     if (auto) setTimeout(function () { ensureMedia(cid, mid, !!ex.viewOnce); }, 0);
     return o;
   }
