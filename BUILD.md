@@ -3149,3 +3149,11 @@ Khalid's notes on C314:
 - **Change:** `well-known/assetlinks.json` (served at `/.well-known/assetlinks.json` via `_redirects`) now lists two SHA-256 fingerprints: the upload key (unchanged, for the APK from GitHub) and Play's app-signing key `C5:25:6A:…:E9:A1`.
 - **Still to do (owner):** add the Play app-signing **SHA-1 and SHA-256** to the Android app in Firebase (Project settings ⇒ com.sawaaap.app ⇒ Add fingerprint), or Google sign-in fails in the Play build.
 - **No sw.js change:** the file is outside the app cache.
+
+## ⏱ C324 — «جارٍ الربط…» تطول حين يكون الردّ من شاشة الهاتف · sawa-rtc c324 · sw v505 · Worker v136-boot
+- **الشكوى:** تأخّرٌ كبير في ربط المكالمة. الطرفان ردّا من شاشة الهاتف (والتطبيق مغلق).
+- **ما وُجد:** حين يُفتح التطبيق المغلق من «ردّ» لا تكون بيانات الوسيط (TURN) في الذاكرة، فينتظر الردُّ الخادمَ حتّى 2.5 ث على 4G قبل أن يُكتب، والمتّصل على «جارٍ الربط…». والتجهيز المسبق (C218) لا يعمل في هذه الحالة لأنّ الردّ يبدأ فوراً.
+- **الإصلاح:** بيانات الوسيط تُحفظ في الهاتف (`sawa-ice1`) وتُستعمل حتّى 4 ساعات (صلاحيّتها 6 عند Cloudflare و72 عند Metered)، وتُجدَّد في الخلفيّة. المحفوظ لحسابٍ آخر على الهاتف نفسه يُهمَل.
+- **قياسٌ جديد في «سجلّ المكالمات»:** ⏱فتح = من فتح التطبيق حتّى الردّ (للردّ من شاشة الهاتف) · الردّ = عند المتّصل من «ردّ» حتّى وصول ردّ الطرف الآخر · `ics` مصدر بيانات الوسيط (m ذاكرة · s محفوظ · f الخادم). إن بقي التأخير فهذه الأرقام تبيّن أين يذهب الوقت.
+- **الرفع:** Worker v136-boot أوّلاً ← `sawa-rtc.js` + `BUILD.md` ← `sw.js` (v505) أخيراً.
+- الفحص: `node --check` فقط (لا متصفّح في الجلسة) — التجربة على الهاتف.
