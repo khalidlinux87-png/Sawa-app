@@ -118,6 +118,7 @@
   var iceWarm = false;
   var iceBusy = null;
   function getIce(waitMs) {
+    if (iceUid && myUid() && iceUid !== myUid()) { iceCache = null; iceAt = 0; iceUid = ""; }   // C324: المحفوظ لحسابٍ آخر على الهاتف نفسه
     // C175: بعد 3 دقائق نجدّد في الخلفيّة (والمحفوظ يُستعمل فوراً) — فيصل تبديل المدير للوسيط الأساسيّ إلى الكلّ خلال دقائق
     if (iceCache && Date.now() - iceAt < 3 * 60 * 1000) return Promise.resolve(iceCache);
     if (iceCache && Date.now() - iceAt < 20 * 60 * 1000) { if (!iceBusy) { iceBusy = fetchIce(); iceBusy.then(function () { iceBusy = null; }, function () { iceBusy = null; }); } return Promise.resolve(iceCache); }
@@ -132,7 +133,7 @@
         var l = b && Array.isArray(b.iceServers) && b.iceServers.length ? b.iceServers : STUN;
         iceRelays = b && Array.isArray(b.relays) && b.relays.length ? b.relays : null;
         relayPrimary = b && (b.primary === "m" || b.primary === "cf" || b.primary === "p") ? b.primary : null;   // C165 · C228: p = الأقرب للطرفين
-        iceCache = relayIce() || l; iceAt = Date.now(); LOG.info("ice", { mode: b && b.turn ? "TURN" : "STUN", relays: iceRelays ? iceRelays.length : 0 }); relayAuto(); return iceCache;
+        iceCache = relayIce() || l; iceAt = Date.now(); iceSave(b); LOG.info("ice", { mode: b && b.turn ? "TURN" : "STUN", relays: iceRelays ? iceRelays.length : 0 }); relayAuto(); return iceCache;
       }),
       new Promise(function (r) { setTimeout(function () { r(iceCache || STUN); }, wait); })
     ]).catch(function () { return iceCache || STUN; });
@@ -141,12 +142,27 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c319";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
+  var RTC_BUILD = "c324";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
   function netKey() { var n = global.navigator && global.navigator.connection; return (n ? (n.type || "") + "/" + (n.effectiveType || "") : "") + "/" + (cfColo || ""); }
   try { var m0 = JSON.parse(lsGet("sawa-relay-ms2") || "null"); if (m0 && m0.ms && Date.now() - m0.at < 30 * 60000) { relayMs = m0.ms; relayAt = m0.at; relayNet = m0.net || ""; } } catch (e) {}
+  // C324: بيانات الوسيط تُحفظ في الهاتف (صالحة 6 ساعات عند Cloudflare و72 عند Metered — نستعملها 4 ساعات كما في الذاكرة).
+  //        كان التطبيق المغلق حين يُفتح من «ردّ» في شاشة الهاتف ينتظر الخادم (حتّى 2.5 ث على 4G) قبل كتابة الردّ — والمتّصل على «جارٍ الربط…».
+  var ICEK = "sawa-ice1", iceUid = "", iceSrc = "";
+  function iceSave(b) {
+    try { if (b && b.turn && Array.isArray(b.iceServers)) lsSet(ICEK, JSON.stringify({ at: iceAt, uid: myUid() || "", b: { iceServers: b.iceServers, relays: b.relays || null, primary: b.primary || null, turn: 1 } })); iceUid = myUid() || ""; iceSrc = "f"; } catch (e) {}
+  }
+  function iceLoad() {
+    try {
+      var o = JSON.parse(lsGet(ICEK) || "null"), b = o && o.b;
+      if (!b || !Array.isArray(b.iceServers) || !b.iceServers.length || !(Date.now() - o.at < 4 * 3600 * 1000)) return;
+      iceRelays = Array.isArray(b.relays) && b.relays.length ? b.relays : null;
+      relayPrimary = b.primary === "m" || b.primary === "cf" || b.primary === "p" ? b.primary : null;
+      iceCache = relayIce() || b.iceServers; iceAt = o.at; iceUid = o.uid || ""; iceSrc = "s";
+    } catch (e) {}
+  }
   // C165: وسيطٌ أساسيّ يحدّده الخادم (Metered افتراضاً) — يُقدَّم ما لم يفشل قياسه، والآخر احتياطٌ فقط
   function isPrim(r) { return relayPrimary === "cf" ? r.id === "cf" : relayPrimary === "m" ? /^m/.test(r.id) : false; }
   function relayRank() {
@@ -164,6 +180,7 @@
     (prim.length ? prim.slice(0, 2) : l.slice(0, 2)).forEach(function (r) { (r.iceServers || []).forEach(function (x) { out.push(x); }); });
     return out;
   }
+  iceLoad();
   function probeOne(rel) {
     return new Promise(function (res) {
       var srv = (rel.iceServers || []).map(function (x) {
@@ -1512,7 +1529,7 @@
       c.timers.conn = setTimeout(function () { if (!c.connectedAt) finish(c, "failed"); }, CONNECT_MS + 15000);
     }
     if (v.answer && !c.answerSet && c.pc) {
-      c.answerSet = true;   // الحدث يتكرّر (مرشّحو ICE يغيّرون السجلّ) — طبّق الردّ مرّةً واحدة
+      c.answerSet = true; if (c.accAt) c.aw = Date.now() - c.accAt;   // C324: من «ردّ» حتّى وصول ردّه · الحدث يتكرّر (مرشّحو ICE يغيّرون السجلّ) — طبّق الردّ مرّةً واحدة
       c.pc.setRemoteDescription(v.answer).then(function () { flushIceIn(c); }).catch(function (e) { LOG.warn("answer", { err: e && e.message }); finish(c, "failed"); });
     }
     if (v.reanswer && v.reanswer.n === c.reN && c.reSeen !== c.reN && c.pc) {
@@ -1644,6 +1661,8 @@
   function accept(audioOnly) {
     var c = cur; if (!c || c.role !== "callee" || c.state !== "incoming") return;
     c.accAt = Date.now();   // C179
+    if (c.fromSys) try { var pn = Math.round(global.performance.now()); if (pn < 120000) c.bt = pn; } catch (e) {}   // C324: من فتح التطبيق (أو الصفحة) حتّى الردّ — «ردّ» من شاشة الهاتف
+    c.icS = iceSrc || (iceCache ? "m" : "");   // C324: مصدر بيانات الوسيط: ذاكرة · محفوظ · الخادم
     nativeCallDone(c.id);   // C72: أوقف رنين الهاتف
     ckEnd(c.id, "answered");   // C151
     stopTone(); clearTimeout(c.timers.ring);
@@ -1823,7 +1842,8 @@
       v6l: c.v6l || 0, v6r: c.v6r || 0, pw: c.pw || 0,   // C217 · C218
       vb: c.darkS || 0, ch: c.camHeals || 0, pco: c.peerCamOff ? 1 : 0,   // C291: ثوانٍ بصورةٍ سوداء · مرّات إعادة فتح كاميرتي · كاميرا الطرف الآخر متوقّفة عند الانتهاء
       rsel: c.rsel || "", psel: c.psel || "", rms: c.rms == null ? null : c.rms, pms: c.pms == null ? null : c.pms,   // C228
-      cs: c.cs || "", r0: c.r0 || "", rup: c.relayUpTried ? 1 : 0 });   // C292: المرشّحات (طرفي|طرفٍ آخر) · المسار الأوّل · C300: هل حاول ترقية الوسيط→مباشر
+      cs: c.cs || "", r0: c.r0 || "", rup: c.relayUpTried ? 1 : 0,
+      bt: c.bt || null, aw: c.aw || null, ics: c.icS || "" });   // C324: زمن فتح التطبيق للردّ · زمن وصول الردّ للمتّصل · مصدر بيانات الوسيط   // C292: المرشّحات (طرفي|طرفٍ آخر) · المسار الأوّل · C300: هل حاول ترقية الوسيط→مباشر
   }
   // C216: سجلّ المكالمة لا يضيع. كان يُرسل مرّةً واحدة ويُهمل الخطأ — فإن فشل الطلب (شبكةٌ مزدحمة، التطبيق في الخلفيّة، انتهاء المهلة)
   //        ضاع السجلّ بصمت (مكالمة 01:02: سجلّ المستقبِل ⚡ لم يصل). الآن: يُحفظ في الهاتف قبل الإرسال ويُحذف عند نجاحه،
@@ -2030,7 +2050,7 @@
           row.firstChild.appendChild(el("span", "color:" + MUTED + ";direction:ltr", new Date(c.ts).toLocaleString(isAr() ? "ar-u-nu-latn" : "en", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" })));
           c.sides.forEach(function (y) {
             row.appendChild(el("div", "color:" + MUTED + ";direction:ltr;text-align:start;margin-top:2px;word-break:break-word",
-              [y.role, y.plat, y.eng, y.ck ? "📲sys" : "", y.vis === 0 ? "bg" : "", y.ok ? ms(y.setup) : (TEL_REASON[y.reason] ? L(TEL_REASON[y.reason][0], TEL_REASON[y.reason][1]) : y.reason), y.err ? "err " + y.err : "", y.up ? "📹+" : "", y.route ? y.route + "/" + (y.proto || "?") + (y.relay ? " " + y.relay : "") : "", y.lct ? y.lct + "↔" + (y.rct || "?") + (y.fam === "6" ? " IPv6" : "") : "", y.nat ? "NAT " + (NAT_TX[y.nat] ? L(NAT_TX[y.nat][0], NAT_TX[y.nat][1]) : y.nat) + (y.v6 ? " +v6" : "") : "", y.v6l || y.v6r ? "IPv6 " + (y.v6l ? "✓" : "✗") + "/" + (y.v6r ? "✓" : "✗") : "", y.rtt ? "RTT " + y.rtt.med : "", y.loss ? "loss " + y.loss.med + "%" : "", y.secs ? y.secs + "s" : "", y.qd ? "⏳" + (y.qd >= 60 ? Math.round(y.qd / 60) + "h" : y.qd + "m") : ""].filter(Boolean).join(" · ")));
+              [y.role, y.plat, y.eng, y.ck ? "📲sys" : "", y.vis === 0 ? "bg" : "", y.bt ? "⏱" + L("فتح ", "boot ") + ms(y.bt) : "", y.aw ? L("الردّ ", "ans ") + ms(y.aw) : "", y.ok ? ms(y.setup) : (TEL_REASON[y.reason] ? L(TEL_REASON[y.reason][0], TEL_REASON[y.reason][1]) : y.reason), y.err ? "err " + y.err : "", y.up ? "📹+" : "", y.route ? y.route + "/" + (y.proto || "?") + (y.relay ? " " + y.relay : "") : "", y.lct ? y.lct + "↔" + (y.rct || "?") + (y.fam === "6" ? " IPv6" : "") : "", y.nat ? "NAT " + (NAT_TX[y.nat] ? L(NAT_TX[y.nat][0], NAT_TX[y.nat][1]) : y.nat) + (y.v6 ? " +v6" : "") : "", y.v6l || y.v6r ? "IPv6 " + (y.v6l ? "✓" : "✗") + "/" + (y.v6r ? "✓" : "✗") : "", y.rtt ? "RTT " + y.rtt.med : "", y.loss ? "loss " + y.loss.med + "%" : "", y.secs ? y.secs + "s" : "", y.qd ? "⏳" + (y.qd >= 60 ? Math.round(y.qd / 60) + "h" : y.qd + "m") : ""].filter(Boolean).join(" · ")));
           });
           if (c.srv) row.appendChild(el("div", "color:" + MUTED + ";font-size:11px", L("الخادم: رنين ", "Server: ring ") + (c.srv.sent || 0)));
           row.appendChild(el("div", "color:#64748b;font-size:10.5px;direction:ltr;text-align:start", "call_id " + c.cid));
