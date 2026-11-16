@@ -1769,11 +1769,13 @@
   }
 
   // ==================================================================
-  // C4: الوسائط — صور (تُصغَّر) · فيديو · صوت · ملفّات (≤ 16 MB) · مشاهدة مرّة واحدة
+  // C4: الوسائط — صور (تُصغَّر) · فيديو · صوت · ملفّات (≤ 70 MB) · مشاهدة مرّة واحدة
   //     الرفع: الجهاز يكتب chats/{cid}/media/{mid} (+ قطع base64 ≤ 700 ألف حرف في c/{i}) مباشرةً (القواعد تسمح للعضو المالك)،
   //     ثمّ يُرسل الرسالة عبر الـWorker (يتحقّق أنّ الوسيط له واكتمل). التنزيل عند الحاجة، ويُحفظ في IndexedDB.
   // ==================================================================
-  var CHUNK = 700000, MAX_MEDIA = 16 * 1024 * 1024, AUTO_DL = 5 * 1024 * 1024;
+  var CHUNK = 700000, MAX_MEDIA = 70 * 1024 * 1024, AUTO_DL = 5 * 1024 * 1024;
+  var MAX_CHUNKS = Math.ceil(Math.ceil(MAX_MEDIA / 3) * 4 / CHUNK);   // 140 قطعة — يطابق n ≤ 140 في قواعد Firestore و MEDIA_MAX في الـWorker
+  var AUTO_VIDEO_MAX = 16 * 1024 * 1024;   // التنزيل التلقائيّ للفيديو يبقى حتّى 16 ميغابايت (الأكبر: «اضغط للتنزيل»)
   var mediaUrls = {}, mediaLoading = {}, localUrls = {}, mediaFailed = {};
   var MEDIA_TYPES = ["image", "video", "voice", "file"];
   function newMediaId() { return "f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 9); }
@@ -2023,7 +2025,7 @@
     if (secret && e2eState(chats[cid]) !== "ready") { toast(e2eUi(chats[cid]).title || ""); return null; }   // C23
     var src = opts.blob || (opts.dataUrl ? dataUrlToBlob(opts.dataUrl) : null);
     if (!src) { toast(L("تعذّر قراءة الملفّ", "Couldn't read the file")); return null; }
-    if (src.size > MAX_MEDIA - (secret ? 64 : 0)) { toast(L("الحدّ الأقصى 16 ميجابايت", "The limit is 16 MB")); return null; }
+    if (src.size > MAX_MEDIA - (secret ? 64 : 0)) { toast(L("الحدّ الأقصى 70 ميجابايت", "The limit is 70 MB")); return null; }
     var kind = opts.kind, id = newMsgId(), mid = newMediaId();
     var extra = { mid: mid, name: opts.name || src.name || null, mime: src.type || null, size: src.size };
     if (opts.viewOnce) extra.viewOnce = true;
@@ -2346,7 +2348,7 @@
       throw e;
     }).then(function () { return blobToB64(blob); }).then(function (b64) {
       var n = Math.max(1, Math.ceil(b64.length / CHUNK));
-      if (n > 33) throw new Error(L("الملفّ كبير — الحدّ 16 ميجابايت", "File too large (16 MB)"));
+      if (n > MAX_CHUNKS) throw new Error(L("الملفّ كبير — الحدّ 70 ميجابايت", "File too large (70 MB)"));
       return meta.set({ by: state.uid, mime: blob.type || "application/octet-stream", size: blob.size, n: n, ts: Date.now(), done: false }).then(function () {
         var i = 0, worker = function () { if (i >= n) return Promise.resolve(); var k = i++; return meta.collection("c").doc(String(k)).set({ d: b64.slice(k * CHUNK, (k + 1) * CHUNK) }).then(worker); };
         return Promise.all([worker(), worker(), worker()]);
@@ -2435,7 +2437,7 @@
       throw e;
     }).then(function () { return blobToB64(blob); }).then(function (b64) {
       var n = Math.max(1, Math.ceil(b64.length / CHUNK));
-      if (n > 33) throw new Error(L("الملفّ كبير — الحدّ 16 ميجابايت", "File too large (16 MB)"));
+      if (n > MAX_CHUNKS) throw new Error(L("الملفّ كبير — الحدّ 70 ميجابايت", "File too large (70 MB)"));
       return meta.set({ by: state.uid, mime: blob.type || "application/octet-stream", size: blob.size, n: n, ts: Date.now(), done: false }).then(function () {
         var i = 0, worker = function () { if (i >= n) return Promise.resolve(); var k = i++; return meta.collection("c").doc(String(k)).set({ d: b64.slice(k * CHUNK, (k + 1) * CHUNK) }).then(worker); };
         return Promise.all([worker(), worker(), worker()]);
@@ -3524,7 +3526,7 @@
         openMomentTrimmer(src, function (out) { prepareVideo(out).then(function (r2) { take(r2, out); }); });
       }
       if (video && f.size > MAX_MEDIA - 64) { trimThenTake(f); return; }
-      if (!video && f.size > MAX_MEDIA - 64) { toast(L("الحدّ 16 ميجابايت", "Limit is 16 MB")); return; }
+      if (!video && f.size > MAX_MEDIA - 64) { toast(L("الحدّ 70 ميجابايت", "Limit is 70 MB")); return; }
       (video ? prepareVideo(f) : prepareImage(f)).then(function (r) {
         if (video && (!r.duration || r.duration > MOMENT_MAX_VIDEO_SEC + 1)) { trimThenTake(f); return; }   // مدّة مجهولة ⇒ يُقصّ (المحرّر يحسبها)
         take(r, f);
@@ -3725,7 +3727,7 @@
     files.forEach(function (f) { lines.push((kindOfMime(f.mime) === "image" ? "🖼️ " : kindOfMime(f.mime) === "video" ? "🎬 " : "📎 ") + f.name + " · " + Math.max(1, Math.round(f.size / 1024)) + " KB"); });
     if (text) lines.push(text);
     pv.textContent = lines.join("\n") || "—"; s.box.appendChild(pv);
-    if (tooLarge.length || big.length) s.box.appendChild(note(L("لن يُرسل (أكبر من 16 ميجابايت): ", "Not sent (over 16 MB): ") + tooLarge.concat(big).map(function (f) { return f.name; }).join("، "), "#b42318", "#fdecec"));
+    if (tooLarge.length || big.length) s.box.appendChild(note(L("لن يُرسل (أكبر من 70 ميجابايت): ", "Not sent (over 70 MB): ") + tooLarge.concat(big).map(function (f) { return f.name; }).join("، "), "#b42318", "#fdecec"));
     var cap = null;
     if (files.length) { cap = mk("input", "width:100%;box-sizing:border-box;border:1px solid #dfe5ec;border-radius:12px;padding:10px 12px;font:600 14px var(--sawa-font,system-ui);margin-bottom:8px"); cap.placeholder = L("تعليق (اختياريّ)", "Caption (optional)");
       // C185: اسم الملف (وهو ما يصل نصّاً مع المشاركة من تطبيقٍ آخر) ليس تعليقاً — كان يُرسل رسالةً نصّيّة ثانية باسم الملف
@@ -3804,7 +3806,7 @@
   // يحوّل رسالة وسائط إلى شكل الواجهة (ويطلب التنزيل التلقائيّ للصغير في المحادثة المفتوحة)
   function autoVideoMax() {
     try { var cn = navigator.connection; if (cn && (cn.saveData || /(^|-)2g$/.test(String(cn.effectiveType || "")))) return AUTO_DL; } catch (e) {}
-    return MAX_MEDIA;
+    return AUTO_VIDEO_MAX;
   }
   function mediaShape(m, o, cid, mine) {
     var ex = m.extra || {}, mid = ex.mid, url = localUrls[mid] || mediaUrls[mid] || null;

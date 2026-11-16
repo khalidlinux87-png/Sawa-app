@@ -38,8 +38,8 @@ service cloud.firestore {
         allow create: if inChat(cid) && request.resource.data.by == uid()
           && request.resource.data.keys().hasOnly(['by', 'mime', 'size', 'name', 'n', 'ts', 'done'])
           && request.resource.data.done == false
-          && request.resource.data.size is int && request.resource.data.size <= 16777216
-          && request.resource.data.n is int && request.resource.data.n >= 1 && request.resource.data.n <= 33
+          && request.resource.data.size is int && request.resource.data.size <= 73400320
+          && request.resource.data.n is int && request.resource.data.n >= 1 && request.resource.data.n <= 140
           && request.resource.data.mime is string && request.resource.data.mime.size() <= 100
           && request.resource.data.name is string && request.resource.data.name.size() <= 200;
         allow update: if signedIn() && resource.data.by == uid()
@@ -49,7 +49,7 @@ service cloud.firestore {
           allow create: if inChat(cid)
             && get(/databases/$(db)/documents/chats/$(cid)/media/$(mid)).data.by == uid()
             && get(/databases/$(db)/documents/chats/$(cid)/media/$(mid)).data.done == false
-            && i.matches('^[0-9]{1,2}$')
+            && i.matches('^[0-9]{1,3}$')
             && int(i) < get(/databases/$(db)/documents/chats/$(cid)/media/$(mid)).data.n
             && request.resource.data.keys().hasOnly(['d'])
             && request.resource.data.d is string && request.resource.data.d.size() <= 750000;
