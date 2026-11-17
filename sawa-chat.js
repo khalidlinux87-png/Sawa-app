@@ -2121,39 +2121,59 @@
   // C332: القطع تُنزَّل واحدةً واحدة (4 في وقتٍ واحد) ولكلّ قطعةٍ مهلتها — كانت كلّها في استعلامٍ واحد تحت مهلة 90 ث ثابتة،
   //       فالصورة (حتّى 6 ميغابايت ⇒ ~12 قطعة) على شبكةٍ ضعيفة تنتهي مهلتها «اضغط لإعادة التنزيل» وكلّ إعادةٍ تبدأ من الصفر.
   //       الآن: ما نُزِّل من القطع يبقى (الإعادة تكمل لا تبدأ من جديد)، ونسبة التنزيل تظهر على الصورة.
-  var mediaParts = {}, mediaPct = {};
-  function fetchMedia(cid, mid, onPct) {
-    var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
-    var meta = d.collection("chats").doc(cid).collection("media").doc(mid);
-    return withTimeout(meta.get(), 30000, null, "timeout").then(function (snap) {
+  var mediaPct = {};
+  // C333: تنزيلٌ مشترك (المحادثات · القصص · اللحظات): قطعةً قطعة، 4 في وقتٍ واحد، مهلةٌ لكلّ قطعة، ويُكمل ما بدأه عند الإعادة.
+  //       كلّ قطعة تُفكّ إلى بايتات فور وصولها (طولها مضاعفٌ لـ4) — كان الفيديو الكبير (حتّى 70 ميغابايت) يُجمع نصّاً واحداً (~98 مليون حرف)
+  //       ثمّ يُفكّ ثمّ يُنسخ: ~300 ميغابايت ذاكرةً في لحظةٍ واحدة ⇒ يتجمّد WebView أو يُغلقه النظام.
+  var chunkCache = {};
+  function b64Bytes(s) { var bin = atob(s), n = bin.length, u = new Uint8Array(n); for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i); return u; }
+  function bytesB64(u) { var s = ""; for (var i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); }
+  function fetchChunked(meta, n, key, mime, onPct) {
+    var have = chunkCache[key] && chunkCache[key].n === n ? chunkCache[key] : (chunkCache[key] = { n: n, b: [] });
+    var todo = []; for (var k = 0; k < n; k++) if (have.b[k] == null) todo.push(k);
+    var got = n - todo.length, pct = function () { if (onPct) try { onPct(Math.round(got * 100 / n)); } catch (e) {} };
+    pct();
+    var worker = function () {
+      if (!todo.length) return Promise.resolve();
+      var k = todo.shift();
+      return withTimeout(meta.collection("c").doc(String(k)).get(), 45000, null, "timeout").then(function (c) {
+        if (!c.exists) throw new Error("incomplete");
+        var d = (c.data() || {}).d || "";
+        have.b[k] = d.length % 4 === 0 ? b64Bytes(d) : d;   // قطعةٌ بطولٍ غير معتاد تبقى نصّاً (نادر — انظر أدناه)
+        got++; pct();
+        return worker();
+      }, function (e) { todo.unshift(k); throw e; });
+    };
+    return Promise.all([worker(), worker(), worker(), worker()]).then(function () {
+      var parts = have.b;
+      if (parts.some(function (x) { return typeof x === "string"; }))   // احتياط: قطعٌ لا تُفكّ منفردة ⇒ نصٌّ واحد كالسابق
+        parts = [b64ToBlob(parts.map(function (x) { return typeof x === "string" ? x : bytesB64(x); }).join(""), mime)];
+      var blob = new Blob(parts, { type: mime || "application/octet-stream" });
+      delete chunkCache[key];
+      return blob;
+    });
+  }
+  // C333: وثيقة الوسيط أوّلاً (عدد القطع ونوع الملفّ) ثمّ القطع — للمحادثات والقصص واللحظات
+  function fetchByMeta(meta, key, mime, onPct) {
+    // قواعد Firestore أقدم قد لا تسمح بقراءة وثيقة الوسيط للقصص/اللحظات ⇒ نعود إلى قراءة القطع مباشرةً كما كان
+    var denied = function (e) { return /permission|insufficient/i.test(String((e && (e.code || e.message)) || "")); };
+    return withTimeout(meta.get(), 30000, null, "timeout").catch(function (e) { if (denied(e)) return { exists: true, data: function () { return {}; } }; throw e; }).then(function (snap) {
       if (!snap.exists) throw new Error("gone");
       var m = snap.data() || {};
-      if (!m.n) {   // وثيقةٌ قديمة بلا عدد القطع ⇒ الطريقة القديمة (استعلامٌ واحد)
+      if (!m.n) {   // وثيقةٌ قديمة بلا عدد القطع (أو لا تُقرأ) ⇒ الطريقة القديمة (استعلامٌ واحد)
         return withTimeout(meta.collection("c").get(), 90000, null, "timeout").then(function (q) {
           var parts = []; q.forEach(function (doc) { parts.push({ i: Number(doc.id), d: (doc.data() || {}).d || "" }); });
+          if (!parts.length) throw new Error("incomplete");
           parts.sort(function (a, b) { return a.i - b.i; });
-          return b64ToBlob(parts.map(function (p) { return p.d; }).join(""), m.mime);
+          return b64ToBlob(parts.map(function (p) { return p.d; }).join(""), m.mime || mime);
         });
       }
-      var n = m.n, have = mediaParts[mid] && mediaParts[mid].n === n ? mediaParts[mid] : (mediaParts[mid] = { n: n, d: [] });
-      var todo = []; for (var k = 0; k < n; k++) if (typeof have.d[k] !== "string") todo.push(k);
-      var got = n - todo.length, pct = function () { if (onPct) onPct(Math.round(got * 100 / n)); };
-      pct();
-      var worker = function () {
-        if (!todo.length) return Promise.resolve();
-        var k = todo.shift();
-        return withTimeout(meta.collection("c").doc(String(k)).get(), 45000, null, "timeout").then(function (c) {
-          if (!c.exists) throw new Error("incomplete");
-          have.d[k] = (c.data() || {}).d || ""; got++; pct();
-          return worker();
-        });
-      };
-      return Promise.all([worker(), worker(), worker(), worker()]).then(function () {
-        var b = b64ToBlob(have.d.join(""), m.mime);
-        delete mediaParts[mid];
-        return b;
-      });
+      return fetchChunked(meta, m.n, key, m.mime || mime, onPct);
     });
+  }
+  function fetchMedia(cid, mid, onPct) {
+    var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
+    return fetchByMeta(d.collection("chats").doc(cid).collection("media").doc(mid), "c:" + mid, null, onPct);
   }
   // C140: طابور تنزيل — 3 في وقتٍ واحد، المحادثة المفتوحة أوّلاً، والأحدث طلباً أوّلاً (آخر الرسائل قبل أقدمها).
   //       كان كلّ وسيطٍ في المحادثة يبدأ تنزيله معاً فتتزاحم وتتأخّر الصورة التي وصلت للتوّ.
@@ -2382,18 +2402,12 @@
       }).then(function () { return meta.update({ done: true }); }).then(function () { stUrls[mid] = URL.createObjectURL(blob); return mid; });
     });
   }
-  function stMedia(owner, it) {
+  function stMedia(owner, it, onPct) {
     if (stUrls[it.mid]) return Promise.resolve(stUrls[it.mid]);
-    return idbGet("st:" + it.mid).then(function (b) {
+    return withTimeout(idbGet("st:" + it.mid), 4000, null).then(function (b) {
       if (b) return b;
       var d = fsdb(), meta = d.collection("stories").doc(owner).collection("media").doc(it.mid);
-      return meta.collection("c").get().then(function (snap) {
-        var parts = []; snap.forEach(function (doc) { parts.push({ i: Number(doc.id), d: (doc.data() || {}).d || "" }); });
-        parts.sort(function (a, b) { return a.i - b.i; });
-        if (!parts.length || (it.n && parts.length < it.n)) throw new Error("incomplete");
-        var blob = b64ToBlob(parts.map(function (p) { return p.d; }).join(""), it.mime);
-        idbPut("st:" + it.mid, blob); return blob;
-      });
+      return fetchByMeta(meta, "st:" + it.mid, it.mime || null, onPct).then(function (blob) { idbPut("st:" + it.mid, blob); return blob; });   // C333
     }).then(function (blob) { return (stUrls[it.mid] = URL.createObjectURL(blob)); });
   }
   function stAgo(ts) { var m = Math.round((Date.now() - ts) / 60000); return m < 1 ? L("الآن", "now") : m < 60 ? L("قبل ", "") + m + L(" د", "m") : L("قبل ", "") + Math.round(m / 60) + L(" س", "h"); }
@@ -2471,18 +2485,12 @@
       }).then(function () { return meta.update({ done: true }); }).then(function () { mo.urls[mid] = URL.createObjectURL(blob); return mid; });
     });
   }
-  function moMedia(pid, it) {
+  function moMedia(pid, it, onPct) {
     if (mo.urls[it.mid]) return Promise.resolve(mo.urls[it.mid]);
-    return idbGet("mm:" + it.mid).then(function (b) {
+    return withTimeout(idbGet("mm:" + it.mid), 4000, null).then(function (b) {
       if (b) return b;
       var meta = fsdb().collection("moments").doc(pid).collection("media").doc(it.mid);
-      return meta.collection("c").get().then(function (snap) {
-        var parts = []; snap.forEach(function (doc) { parts.push({ i: Number(doc.id), d: (doc.data() || {}).d || "" }); });
-        parts.sort(function (a, b) { return a.i - b.i; });
-        if (!parts.length || (it.n && parts.length < it.n)) throw new Error("incomplete");
-        var blob = b64ToBlob(parts.map(function (p) { return p.d; }).join(""), it.mime);
-        idbPut("mm:" + it.mid, blob); return blob;
-      });
+      return fetchByMeta(meta, "mm:" + it.mid, it.mime || null, onPct).then(function (blob) { idbPut("mm:" + it.mid, blob); return blob; });   // C333
     }).then(function (blob) { return (mo.urls[it.mid] = URL.createObjectURL(blob)); });
   }
   function moPrefs() { if (mo.prefs) return Promise.resolve(mo.prefs); return call("moment.prefs", {}).then(function (r) { mo.prefs = { close: r.close || [], hide: r.hide || [], mute: r.mute || [], seen: r.seen || 0 }; moEmit(); return mo.prefs; }); }
@@ -2830,7 +2838,7 @@
     function show() {
       stage.innerHTML = ""; cnt.textContent = m.length > 1 ? (i + 1) + " / " + m.length : "";
       var it = m[i], sp = mk("div", "color:#fff;font:600 13px var(--sawa-font,system-ui)", L("جارٍ التحميل…", "Loading…")); stage.appendChild(sp);
-      moMedia(p.id, it).then(function (u) {
+      moMedia(p.id, it, function (pc) { if (pc > 0 && pc < 100 && sp.isConnected) sp.textContent = L("جارٍ التحميل… ", "Loading… ") + pc + "%"; }).then(function (u) {
         stage.innerHTML = "";
         var el = it.t === "video" ? mk("video", "max-width:100%;max-height:100%") : mk("img", "max-width:100%;max-height:100%;object-fit:contain");
         el.src = u; if (it.t === "video") { el.controls = true; el.playsInline = true; el.autoplay = true; if (it.poster) el.poster = it.poster; }
@@ -3624,7 +3632,7 @@
         var spin = mk("div", "position:relative;font:700 13px var(--sawa-font,system-ui);opacity:.85", L("جارٍ التحميل…", "Loading…")); holder.appendChild(spin);
         stage.appendChild(holder);
         var myIdx = idx, myOwner = cur;
-        stMedia(cur, it).then(function (u) {
+        stMedia(cur, it, function (pc) { if (pc > 0 && pc < 100 && spin.parentNode) spin.textContent = L("جارٍ التحميل… ", "Loading… ") + pc + "%"; }).then(function (u) {
           if (myIdx !== idx || myOwner !== cur || !ov.isConnected) return;
           holder.removeChild(spin);
           if (it.t === "video") {
