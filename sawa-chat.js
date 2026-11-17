@@ -1431,6 +1431,13 @@
   // C315: الرسائل المؤقّتة تبقى ثلاثة أشهر على الأقلّ من إرسالها (كما في الخادم)
   var DIS_MIN_MS = 7776000000;
   function disExpOf(m) { return m && m.exp ? Math.max(Number(m.exp) || 0, (Number(m.ts) || 0) + DIS_MIN_MS) : 0; }
+  // C328: بطاقة القصّة في ردٍّ عليها — للعرض فقط (الصورة المصغّرة data:image، والنصّ بلون خلفيّته)
+  function storyRefOf(ex, by) {
+    var r = ex.story || {}, t = r.t === "video" || r.t === "image" ? r.t : "text";
+    var th = typeof ex.thumb === "string" && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(ex.thumb) ? ex.thumb : null;
+    return { t: t, text: String(r.text || "").slice(0, 120), bg: stGrad(Number(r.bg) || 0), thumb: th, mine: by === state.uid,
+      owner: typeof r.owner === "string" ? r.owner : null, sid: typeof r.sid === "string" ? r.sid : null };
+  }
   function isStarredId(id) { return !!(prefs && prefs.starred && prefs.starred.some(function (s) { return s && s.id === id; })); }
   function appMessages(cid) {
     var c = chats[cid] || virtualChats[cid] || { members: [] }, hidden = (prefs && prefs.hidden) || {};
@@ -1457,6 +1464,7 @@
       if (group) { o.senderId = appId(m.by); o.senderName = personName(m.by, c); if (o.type === undefined) o.type = "text"; if (!m.del) toolShape(m, o, c); }
       else { o.senderUserId = appId(m.by); if (m.type === "system") { o.type = "system"; o.text = sysText(m, c); } }   // C23: إشعارات المحادثة السرّيّة في المحادثة الفرديّة
       if (m.e2eErr) o.e2eErr = true;
+      if (!m.del && m.extra && m.extra.story && typeof m.extra.story === "object") o.storyRef = storyRefOf(m.extra, m.by);   // C328
       if (!m.del && MEDIA_TYPES.indexOf(m.type) >= 0) mediaShape(m, o, cid, mine);
       if (!m.del && m.type === "contact") { var kk = cleanCard(m.extra && m.extra.card) || (m.contact ? cleanCard({ n: m.contact.name, uid: m.contact.uid }) : null); if (kk) o.card = kk; }   // C184
       if (!m.del && m.type === "location" && m.extra) { o.type = "location"; o.lat = Number(m.extra.lat); o.lng = Number(m.extra.lng); o.acc = m.extra.acc || null; o.text = m.extra.label || ""; }
@@ -2390,7 +2398,9 @@
       var unseen = items.filter(function (x) { return !stSeen[x.id]; }).length;
       return { owner: k, name: stName(k, s.name), photo: photoOf(k), items: items, unseen: unseen, last: items[items.length - 1].ts };
     }).filter(Boolean).sort(function (a, b) { return (b.unseen > 0) - (a.unseen > 0) || b.last - a.last; });
-    return { enabled: !!state.uid, me: { uid: state.uid, name: (state.me && state.me.name) || L("أنا", "Me"), photo: state.uid ? photoOf(state.uid) : null, items: mineItems, aud: stState.mine ? (stState.mine.aud || []).length : null, hide: (stState.mine && stState.mine.hide) || [] }, list: list };
+    var last = mineItems[mineItems.length - 1] || null;   // C328: غلاف «قصّتي» = آخر قصّة (إطارٌ من الفيديو · الصورة · النصّ بلونه)
+    var cover = last ? { thumb: last.thumb || null, t: last.t, text: last.t === "text" ? String(last.text || "").slice(0, 40) : "", bg: stGrad(last.bg) } : null;
+    return { enabled: !!state.uid, me: { cover: cover, uid: state.uid, name: (state.me && state.me.name) || L("أنا", "Me"), photo: state.uid ? photoOf(state.uid) : null, items: mineItems, aud: stState.mine ? (stState.mine.aud || []).length : null, hide: (stState.mine && stState.mine.hide) || [] }, list: list };
   }
   function stUpload(blob) {
     var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
@@ -3687,7 +3697,10 @@
           var v = inp.value.trim(); if (!v) return;
           var snip = it.t === "text" ? it.text.slice(0, 60) : it.t === "video" ? L("🎬 فيديو", "🎬 video") : L("📷 صورة", "📷 photo");
           var who = cur;
-          openDm(who).then(function (cid) { if (cid) send(cid, L("↩️ ردًّا على قصّتك («", "↩️ Reply to your story (“") + snip + L("»):\n", "”):\n") + v); });
+          // C328: الردّ يحمل بطاقة القصّة (صورة مصغّرة من الصورة/الفيديو، أو نصّها بلونها) ⇒ يُعرف في المحادثة على ماذا كان الردّ
+          var sref = { owner: who, sid: it.id, t: it.t, text: String(it.text || "").slice(0, 120), bg: Number(it.bg) || 0 };
+          var ex = { story: sref }; if (it.thumb && it.thumb.length <= 6000) ex.thumb = it.thumb;
+          openDm(who).then(function (cid) { if (cid) send(cid, v, { extra: ex }); });
           inp.value = ""; inp.blur(); toast(L("أُرسل الردّ في المحادثة الخاصّة ✓", "Reply sent ✓")); pause(false);
         };
         inp.onkeydown = function (e) { if (e.key === "Enter") go.onclick(); };
@@ -3756,6 +3769,11 @@
     q.oninput = paint; paint();
     var sv = mkBtn(L("حفظ", "Save"), "primary"); sv.style.marginTop = "10px"; s.box.appendChild(sv);
     sv.onclick = function () { sv.disabled = true; call("story.audience", { hide: Object.keys(hide) }).then(function (b) { toast(L("يرى قصصك " + b.aud + " ✓", "Saved ✓")); s.close(); }).catch(function (e) { sv.disabled = false; toast((e && e.message) || String(e)); }); };
+  }
+  function storyOpenRef(owner, sid) {
+    var S0 = stories(), live = owner === state.uid ? S0.me.items : ((S0.list.filter(function (x) { return x.owner === owner; })[0] || {}).items || []);
+    if (!live.some(function (x) { return x.id === sid; })) { toast(L("انتهت هذه القصّة (تختفي بعد 24 ساعة)", "This story has expired (stories last 24 hours)")); return; }
+    storyViewer(owner);
   }
   function storyOpenMine() { var me = stories().me; if (me.items.length) storyViewer(state.uid); else storyComposer(); }
 
@@ -6589,6 +6607,7 @@
       o.extra = { title: typeof tx.title === "string" ? tx.title.slice(0, 200) : "", tasks: tl0 };
     }
     if (m.type === "contact") { var kc = cleanCard(p.extra && p.extra.card); if (kc) o.extra = { card: kc }; else delete o.extra; }   // C184
+    if (m.type === "text" && p.extra && p.extra.story && typeof p.extra.story === "object") o.extra = { story: p.extra.story, thumb: p.extra.thumb };   // C328
     if (m.type === "location") {
       var lx = p.extra || {}, la = Number(lx.lat), ln = Number(lx.lng);
       if (!(la >= -90 && la <= 90 && ln >= -180 && ln <= 180)) { o.type = "text"; o.e2eErr = true; o.text = L("🔒 تعذّر فكّ تشفير هذه الرسالة", "🔒 Couldn't decrypt this message"); delete o.extra; return o; }
@@ -6793,7 +6812,7 @@
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
     _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,
     // C10
-    stories: stories, storyComposer: storyComposer, moments: { mount: momentsMount, compose: momentComposer, list: function () { return mo.list; }, start: function () { if (state.uid) startMoments(state.uid); }, open: moOpen, unread: moUnread, notes: moNotesSheet }, storyViewer: storyViewer, storyOpenMine: storyOpenMine, storyAudienceSheet: storyAudienceSheet,   // C90
+    stories: stories, storyComposer: storyComposer, storyOpenRef: storyOpenRef, moments: { mount: momentsMount, compose: momentComposer, list: function () { return mo.list; }, start: function () { if (state.uid) startMoments(state.uid); }, open: moOpen, unread: moUnread, notes: moNotesSheet }, storyViewer: storyViewer, storyOpenMine: storyOpenMine, storyAudienceSheet: storyAudienceSheet,   // C90
     saveBlob: saveBlob, saveMediaUrl: saveMediaUrl, shareInSheet: shareInSheet, nativeFiles: nativeFiles,   // C89
     saveFileBlob: function (f) { return saveBlob(f.blob, f.name, "save", f.mime); },   // C185
     codeSheet: codeSheet, findSheet: findSheet, phoneContactsSheet: phoneContactsSheet, smsText: smsText, openSms: openSms, setNick: setNick, peerCode: peerCode, fetchPeerCodes: fetchPeerCodes, verifySheet: verifySheet, requestsSheet: requestsSheet, emailSheet: emailSheet, linkSheet: linkSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, reportSheet: reportSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },

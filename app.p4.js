@@ -1838,10 +1838,15 @@ const StoriesRow = React.memo(function StoriesRow({ momentsPosts, onOpenMoments,
     const S = SC && SC.stories ? SC.stories() : null;
     if (!S || !S.enabled) return null;
     const ring = (on, seen) => on ? (seen ? colors.border : `conic-gradient(${colors.accent}, ${colors.primary}, ${colors.accent})`) : "transparent";
+    const cv = S.me.items.length ? S.me.cover : null;   // C328: «قصّتي» تُظهر آخر قصّة نشرتها (إطار الفيديو · الصورة · النصّ بلونه) بدل صورتي
     const circle = (key, name, photo, hasItems, allSeen, onPress, isMe) => React.createElement("button", { key, onClick: onPress, className: "flex flex-col items-center gap-1.5 shrink-0", style: { width: 70 } },
         React.createElement("div", { className: "relative rounded-full flex items-center justify-center", style: { width: 62, height: 62, background: ring(hasItems, allSeen), padding: hasItems ? 3 : 0 } },
             React.createElement("div", { className: "w-full h-full rounded-full flex items-center justify-center", style: { backgroundColor: colors.card, padding: hasItems ? 2 : 0 } },
-                React.createElement("div", { className: "w-full h-full rounded-full flex items-center justify-center overflow-hidden", style: { backgroundColor: colors.primaryLight, backgroundImage: photo ? `url(${photo})` : "none", backgroundSize: "cover", backgroundPosition: "center" } },
+                isMe && cv && (cv.thumb || cv.t === "text")
+                    ? React.createElement("div", { className: "w-full h-full rounded-full flex items-center justify-center overflow-hidden relative", style: { background: cv.thumb ? `#000 url(${cv.thumb}) center / cover no-repeat` : cv.bg } },
+                        !cv.thumb && React.createElement("span", { style: { color: "#fff", fontSize: 8, fontWeight: 800, lineHeight: 1.2, textAlign: "center", padding: 4, overflow: "hidden", maxHeight: "100%", wordBreak: "break-word" } }, cv.text),
+                        cv.thumb && cv.t === "video" && React.createElement("span", { style: { position: "absolute", color: "#fff", fontSize: 14, textShadow: "0 1px 4px rgba(0,0,0,.7)" } }, "▶"))
+                    : React.createElement("div", { className: "w-full h-full rounded-full flex items-center justify-center overflow-hidden", style: { backgroundColor: colors.primaryLight, backgroundImage: photo ? `url(${photo})` : "none", backgroundSize: "cover", backgroundPosition: "center" } },
                     !photo && React.createElement("span", { className: "text-xl font-extrabold", style: { color: colors.primaryInk } }, String(name || "؟").trim().charAt(0) || "؟"))),
             isMe && !hasItems && React.createElement("div", { className: "absolute rounded-full flex items-center justify-center", style: { bottom: 0, [isRTL() ? "left" : "right"]: 0, width: 22, height: 22, backgroundColor: colors.primaryFill, border: `2px solid ${colors.card}` } },
                 React.createElement(Plus, { size: 13, color: "#fff", strokeWidth: 3 }))),
@@ -1874,6 +1879,25 @@ function ArchivedChatsScreen({ conversations, archivedIds, mutedIds, onOpenChat,
                         React.createElement("div", { className: `text-xs mt-0.5 truncate ${textStart()}`, style: { color: colors.textMuted } }, c.lastMessage || tl("اضغط لفتح المحادثة", "Tap to open the chat"))),
                     mutedIds.includes(c.id) && React.createElement(BellOff, { size: 13, color: colors.textMuted, className: `shrink-0 ${ms("1.5")}` })),
                 React.createElement("button", { onClick: () => onUnarchive(c.id), className: `px-2.5 py-1.5 rounded-xl text-[10px] font-bold shrink-0 ${me("2")}`, style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, t("astaada"))))))));
+}
+// C328: بطاقة القصّة داخل الردّ عليها — صورة مصغّرة (فيديو بـ▶︎ · صورة · نصّ بلون خلفيّته) + «ردًّا على قصّتك/قصّته»؛ اللمس يفتحها إن لم تنتهِ
+function StoryRefCard({ r, mine }) {
+    const { colors } = useTheme();
+    const SC = window.SawaChat;
+    const label = r.mine ? tl("ردًّا على قصّته", "Replied to their story") : tl("ردًّا على قصّتك", "Replied to your story");
+    const kind = r.t === "video" ? tl("🎬 فيديو", "🎬 Video") : r.t === "image" ? tl("📷 صورة", "📷 Photo") : tl("✍️ نصّ", "✍️ Text");
+    const open = (e) => { e.stopPropagation(); if (SC && SC.storyOpenRef && r.owner && r.sid) SC.storyOpenRef(r.owner, r.sid); };
+    const thumb = r.thumb
+        ? React.createElement("div", { style: { position: "relative", width: 46, height: 64, borderRadius: 8, overflow: "hidden", flexShrink: 0, backgroundColor: "#000" } },
+            React.createElement("img", { src: r.thumb, alt: "", style: { width: "100%", height: "100%", objectFit: "cover", display: "block" } }),
+            r.t === "video" && React.createElement("div", { style: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 18, textShadow: "0 1px 4px rgba(0,0,0,.6)" } }, "▶"))
+        : React.createElement("div", { style: { width: 46, height: 64, borderRadius: 8, flexShrink: 0, background: r.t === "text" ? r.bg : colors.primaryLight, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", padding: 3, fontSize: 8, fontWeight: 800, lineHeight: 1.25, textAlign: "center", overflow: "hidden", wordBreak: "break-word" } },
+            r.t === "text" ? (r.text || "").slice(0, 40) : React.createElement("span", { style: { fontSize: 18 } }, r.t === "video" ? "🎬" : "📷"));
+    return React.createElement("div", { role: "button", onClick: open, className: `flex ${rowStart()} items-center gap-2 rounded-xl p-1.5 mb-1`, style: { backgroundColor: mine ? "rgba(255,255,255,0.15)" : colors.bg, cursor: "pointer", minWidth: 150 } },
+        thumb,
+        React.createElement("div", { className: "min-w-0", style: { flex: 1 } },
+            React.createElement("div", { className: "text-[11px] font-bold", style: { color: mine ? "#fff" : colors.primary } }, label),
+            React.createElement("div", { className: "text-[10.5px] truncate", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, r.t === "text" && r.text ? r.text : kind)));
 }
 // C184: بطاقة جهة الاتّصال داخل المحادثة — اسم وأرقام ورمز سوا، مع أزرار: مراسلة/إضافة في سوا/اتّصال/حفظ/دعوة
 function ContactCardBubble({ m, mine }) {
