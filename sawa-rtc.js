@@ -519,7 +519,16 @@
   // C230: auto = اختيار التطبيق (بداية مكالمة فيديو/جماعيّة) ⇒ لا يغلب سمّاعة رأس موصولة. زرّ المستخدم وحده يحوّل إلى المكبّر.
   function nativeSpk(on, auto) { try { var b = RB(), n = NB(); if (b) { if (auto && n && n.setSpeakerAuto) n.setSpeakerAuto(!!on); else if (b === iosRoute) iosRoute.setSpeaker(!!on, !!auto); else b.setSpeaker(!!on); } if (n && n.audioRoute) setTimeout(function () { try { routeDiag(n.audioRoute()); } catch (e) {} }, 700); } catch (e) {} }
   // C177: المدير يرى المسار الفعليّ بعد كلّ تحويل (Receiver/Speaker · earpiece/speaker) — لتشخيص «الصوت من المكبّر رغم السمّاعة»
-  function routeDiag(r) { try { if (r && isAdm()) { toast("🔈 " + r); if (cur) cur.osRoute = String(r).slice(0, 40); } } catch (e) {} }
+  function routeDiag(r) {
+    try {
+      if (!r) return;
+      var v = String(r).slice(0, 40);
+      if (cur) cur.osRoute = v;
+      if (gc && !gc.done) gc.osRoute = v;   // C236: مسار/وضع صوت الجماعيّة والغرفة في سجلّ المكالمة — لنعرف ما يختاره WebKit فعلاً
+      if (rm && !rm.done) rm.osRoute = v;
+      if (isAdm()) toast("🔈 " + r);
+    } catch (e) {}
+  }
   function nativeRoute(c, which, auto) {
     c.out = which; nativeSpk(which === "spk", auto);
     if (which === "ear") { wakeOff(); earArm(); } else { wakeOn(); earOff(); }
@@ -651,7 +660,8 @@
   // C127: تطبيق iOS — توجيه الصوت (السمّاعة/المكبّر) وحسّاس القرب ومنع القفل عبر جسر SawaIOS
   function IOSB() { try { return global.SawaIOS || null; } catch (e) { return null; } }
   var iosRoute = {
-    setSpeaker: function (on, auto) { try { IOSB().call("setSpeaker", { on: !!on, auto: !!auto }).then(function (r) { routeDiag(r && r.route); if (r && r.kind) audioOut(r.kind, r.hs); }); } catch (e) {} },   // C230: kind/hs من بناء iOS الجديد
+    // C236: التشخيص يعرض وضع الجلسة أيضاً (VideoChat/VoiceChat/Default)
+    setSpeaker: function (on, auto) { try { IOSB().call("setSpeaker", { on: !!on, auto: !!auto }).then(function (r) { routeDiag(r && r.route && (r.route + (r.mode ? " · " + String(r.mode).replace(/^AVAudioSessionMode/, "") : ""))); if (r && r.kind) audioOut(r.kind, r.hs); }); } catch (e) {} },   // C230: kind/hs من بناء iOS الجديد
     setProximity: function (on) { try { IOSB().call("setProximity", { on: !!on }); } catch (e) {} return true; },
     setInCall: function (on, multi) { try { IOSB().call("setInCall", { on: !!on, multi: !!multi }); } catch (e) {} }   // C235: multi = جماعيّة/غرفة (WebKit يملك جلسة الصوت)
   };
@@ -2504,7 +2514,7 @@
                  type: type, label: glabel, time: L("الآن", "Now"), duration: secs ? fmt(secs) : null, timestamp: Date.now(), participants: names.length ? names : null, cloud: true, cid: g.cid || null, gid: g.gid });
     }
     if (gc === g) gc = null;
-    if (g.gid && (g.live || g.role !== "incoming")) telSend({ id: g.gid, k: "group-" + g.type, mode: "mesh", role: g.role, ok: !!g.joinedAt, n: Object.keys(g.met || {}).length + 1,
+    if (g.gid && (g.live || g.role !== "incoming")) telSend({ id: g.gid, k: "group-" + g.type, mode: "mesh", osr: g.osRoute || null, role: g.role, ok: !!g.joinedAt, n: Object.keys(g.met || {}).length + 1,
       setup: g.joinedAt && g.t0 ? g.joinedAt - g.t0 : null, secs: g.joinedAt ? Math.round((Date.now() - g.joinedAt) / 1000) : 0, reason: reason });   // C179
     LOG.info("gend", { gid: g.gid, reason: reason });
     if (g.live && g.joinedAt && reason !== "moved") qaAfter(Math.round((Date.now() - g.joinedAt) / 1000), { kind: g.type === "video" ? "group-video" : "group-audio", engine: "web",
@@ -3552,11 +3562,15 @@
     var take = function (rep, map) {
       rep.forEach(function (x) {
         if (x.kind !== "audio" || typeof x.audioLevel !== "number") return;
-        if (x.type === "media-source") { mine = Math.max(mine || 0, x.audioLevel); return; }
+        if (x.type === "media-source") { mine = Math.max(mine || 0, x.audioLevel); r.lvSeen = true; return; }
         if (x.type !== "inbound-rtp") return;
         var u = map(x); if (u && r.peers[u]) r.peers[u].lv = x.audioLevel;
       });
     };
+    // C236: WebKit لا يعطي مستوى الميكروفون (media-source) في كلّ النسخ ⇒ بعد 5 قراءاتٍ بلا مستوى نعود إلى المحلّل للميكروفون وحده
+    //       (مرّةً واحدة عند الدخول — لا مع كلّ عضو، فلا يتكرّر ما تجنّبناه)
+    var any = !!(r.sfu && r.sfu.pc) || Object.keys(r.peers).some(function (u) { return r.peers[u].pc && !r.peers[u].sfu; });
+    if (any && !r.lvSeen && !r.an && r.local && (r.lvMiss = (r.lvMiss || 0) + 1) >= 5) { LOG.info("level.local.fallback"); rLevelWatch(r, "__me", r.local, true); }
     Object.keys(r.peers).forEach(function (u) {
       var p = r.peers[u]; if (!p.pc || p.sfu) return;
       p.pc.getStats().then(function (rep) { if (!r.done) take(rep, function () { return u; }); r.lv = mine; }).catch(function () {});
@@ -3569,8 +3583,8 @@
       r.lv = mine;
     }).catch(function () {});
   }
-  function rLevelWatch(r, uid, stream) {
-    if (lvByStats()) return;   // C235
+  function rLevelWatch(r, uid, stream, force) {
+    if (lvByStats() && !force) return;   // C235
     var p = uid === "__me" ? r : r.peers[uid];
     var ctx = audioCtx(); if (!ctx || !p || p.an) return;
     var tr = stream.getAudioTracks()[0]; if (!tr) return;
@@ -3830,7 +3844,7 @@
     opts = opts || {}; r.done = true;
     var keepA = reason === "retry";   // C235: إعادة الدخول الصامتة ⇒ لا نُطفئ وضع المكالمة ولا الميكروفون
     if (keepA) handSet({ stream: r.local }); else { bgAudio(false); handEnd(); }
-    if (reason !== "retry") telSend({ id: r.code + "-" + r.sess, k: "room", mode: rBig(r) ? "sfu" : "mesh", role: amHost(r) ? "host" : "member", ok: !!r.joinedAt, n: Object.keys(r.met || {}).length + 1,
+    if (reason !== "retry") telSend({ id: r.code + "-" + r.sess, k: "room", mode: rBig(r) ? "sfu" : "mesh", osr: r.osRoute || null, role: amHost(r) ? "host" : "member", ok: !!r.joinedAt, n: Object.keys(r.met || {}).length + 1,
       setup: r.joinedAt && r.t0 ? r.joinedAt - r.t0 : null, secs: r.joinedAt ? Math.round((Date.now() - r.joinedAt) / 1000) : 0, reason: reason });   // C179
     if (r.scr) { r.scr = false; var wasN = !!(r.scrTrack && r.scrTrack.__native); try { if (r.scrTrack) r.scrTrack.stop(); } catch (e) {} if (wasN) { nscrEnd(); try { NB().screenStop(); } catch (e) {} } } rScrBar(null);   // C115/C120 · C141: وإيقاف الالتقاط الأصليّ عند مغادرة الغرفة
     if (reason === "retry") r.silentRetry = true;
