@@ -5563,12 +5563,32 @@
     var GO_TXT = L("حذف حسابي نهائيّاً", "Delete my account"), wait = 5, done = false;
     var go = mkBtn(GO_TXT, "danger"); go.style.marginTop = "18px"; go.disabled = true; go.style.opacity = ".5";
     s.box.appendChild(cancel); s.box.appendChild(go);
-    var ok = function () { var v = inp.value.trim(); return wait <= 0 && (v === "حذف" || v.toUpperCase() === "DELETE"); };
-    var paint = function () { if (done) return; go.disabled = !ok(); go.style.opacity = ok() ? "1" : ".5"; go.textContent = wait > 0 ? GO_TXT + " (" + wait + ")" : GO_TXT; };
-    var tick = setInterval(function () { if (!go.isConnected) { clearInterval(tick); return; } wait--; paint(); if (wait <= 0) clearInterval(tick); }, 1000);
+    // C330: لوحات مفاتيح الهواتف تضيف أحرفاً خفيّة (علامة اتّجاه RLM عند التبديل إلى العربيّة، وصلٌ صفريّ، تطويل، تشكيل، نقطةٌ من التصحيح التلقائيّ)
+    //       فكانت «حذف» المكتوبة لا تطابق أبداً ويبقى زرّ الحذف معطّلاً. نطابق الحروف وحدها — الكلمة نفسها ما زالت مطلوبة بالضبط.
+    var word = function () {
+      var v = String(inp.value || "");
+      try { v = v.normalize("NFKC"); } catch (e) {}
+      return v.replace(/[\u064B-\u065F\u0670\u0640]/g, "")                                   // تشكيل وتطويل
+              .replace(/[\u00AD\u061C\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, "")   // أحرف اتّجاهٍ ووصلٍ خفيّة
+              .replace(/[\s.,،؛;:!?؟…"'«»()\-_*]/g, "").toLowerCase();
+    };
+    var typed = function () { var w = word(); return w === "حذف" || w === "delete"; };
+    var ok = function () { return wait <= 0 && typed(); };
+    var hint = mk("div", "font:600 12px var(--sawa-font,system-ui);color:#5b6b7c;text-align:center;min-height:16px;margin-top:6px", "");
+    s.box.insertBefore(hint, cancel);
+    var paint = function () {
+      if (done) return;
+      var on = ok(); go.disabled = !on; go.style.opacity = on ? "1" : ".5";
+      go.textContent = wait > 0 ? GO_TXT + " (" + wait + ")" : GO_TXT;
+      hint.textContent = on ? "" : !typed() ? (word() ? L("اكتب كلمة «حذف» فقط", "Type only the word DELETE") : "") : L("انتظر قليلاً…", "Wait a moment…");
+    };
+    // الأحداث وحدها لا تكفي في بعض لوحات المفاتيح (كتابةٌ مركّبة لم تُعتمد بعد) ⇒ فحصٌ دوريّ خفيف ما دامت النافذة مفتوحة
+    var tick = setInterval(function () { if (!document.body.contains(go)) { clearInterval(tick); return; } paint(); }, 400);
+    var t0 = Date.now(); wait = 5;
+    var secs = setInterval(function () { if (!document.body.contains(go)) { clearInterval(secs); return; } wait = Math.max(0, 5 - Math.floor((Date.now() - t0) / 1000)); paint(); if (!wait) clearInterval(secs); }, 250);
     paint();
-    inp.oninput = paint;
-    cancel.onclick = function () { clearInterval(tick); s.close(); };
+    ["input", "keyup", "change", "compositionend", "paste"].forEach(function (ev) { inp.addEventListener(ev, function () { setTimeout(paint, 0); }); });
+    cancel.onclick = function () { clearInterval(tick); clearInterval(secs); s.close(); };
     go.onclick = function () {
       if (!ok()) return;
       done = true;
