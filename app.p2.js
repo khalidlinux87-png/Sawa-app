@@ -1279,9 +1279,11 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
         React.createElement("div", { className: "mt-4 mx-4 rounded-2xl overflow-hidden border shrink-0", style: { backgroundColor: colors.card, borderColor: colors.border } },
             React.createElement("button", { onClick: onLogout, className: `w-full flex ${rowStart()} items-center gap-2 px-4 py-3.5` },
                 React.createElement(LogOut, { size: 18, color: colors.danger }),
-                React.createElement("span", { className: "text-sm font-bold", style: { color: colors.danger } }, t("tsjyl_alkhrwj"))),
-            // C11: حذف الحساب نهائيّاً (شرط Google Play) — نافذة تأكيد في SawaChat
-            cloudMe && SCm.deleteAccountSheet && React.createElement("button", { onClick: () => SCm.deleteAccountSheet(), className: `w-full flex ${rowStart()} items-center gap-2 px-4 py-3`, style: { borderTop: `1px solid ${colors.border}` } },
+                React.createElement("span", { className: "text-sm font-bold", style: { color: colors.danger } }, t("tsjyl_alkhrwj")))),
+        // C11: حذف الحساب نهائيّاً (شرط Google Play) — نافذة تأكيد في SawaChat
+        // C329: بطاقةٌ مستقلّة تحت «تسجيل الخروج» بفاصلٍ واضح — كانت ملاصقةً له فيُخشى لمسها بالخطأ
+        cloudMe && SCm.deleteAccountSheet && React.createElement("div", { className: "mt-8 mx-4 rounded-2xl overflow-hidden border shrink-0", style: { backgroundColor: colors.card, borderColor: colors.border } },
+            React.createElement("button", { onClick: () => SCm.deleteAccountSheet(), className: `w-full flex ${rowStart()} items-center gap-2 px-4 py-3` },
                 React.createElement(Trash2, { size: 16, color: colors.textMuted }),
                 React.createElement("span", { className: "text-xs font-bold", style: { color: colors.textMuted } }, tl("حذف حسابي", "Delete my account")))),
         // رقم النسخة — يُحقن آلياً من sw.js عند كل بناء (انظر build.sh)

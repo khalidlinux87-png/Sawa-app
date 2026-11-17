@@ -5558,14 +5558,20 @@
     s.box.appendChild(mk("div", "font:700 13px var(--sawa-font,system-ui);color:#5b6b7c;margin:6px 2px", L("للتأكيد اكتب: حذف", "To confirm, type: DELETE")));
     var inp = mk("input", "width:100%;box-sizing:border-box;border:1.5px solid #dfe5ec;color:#1A1A2E;background:#fff;border-radius:12px;padding:12px;font:700 16px var(--sawa-font,system-ui);text-align:center;outline:none");
     inp.autocomplete = "off"; s.box.appendChild(inp);
-    var go = mkBtn(L("حذف حسابي نهائيّاً", "Delete my account"), "danger"); go.style.marginTop = "10px"; go.disabled = true; go.style.opacity = ".5";
-    var cancel = mkBtn(L("إلغاء", "Cancel")); cancel.style.marginTop = "8px";
-    s.box.appendChild(go); s.box.appendChild(cancel);
-    var ok = function () { var v = inp.value.trim(); return v === "حذف" || v.toUpperCase() === "DELETE"; };
-    inp.oninput = function () { go.disabled = !ok(); go.style.opacity = ok() ? "1" : ".5"; };
-    cancel.onclick = s.close;
+    // C329: أمانٌ من اللمس بالخطأ — «إلغاء» هو الزرّ البارز أوّلاً، وزرّ الحذف معطّلٌ حتّى تُكتب الكلمة ويمضي عدٌّ تنازليّ (5 ث) من فتح النافذة
+    var cancel = mkBtn(L("إلغاء — أبقِ حسابي", "Cancel — keep my account"), "primary"); cancel.style.marginTop = "10px";
+    var GO_TXT = L("حذف حسابي نهائيّاً", "Delete my account"), wait = 5, done = false;
+    var go = mkBtn(GO_TXT, "danger"); go.style.marginTop = "18px"; go.disabled = true; go.style.opacity = ".5";
+    s.box.appendChild(cancel); s.box.appendChild(go);
+    var ok = function () { var v = inp.value.trim(); return wait <= 0 && (v === "حذف" || v.toUpperCase() === "DELETE"); };
+    var paint = function () { if (done) return; go.disabled = !ok(); go.style.opacity = ok() ? "1" : ".5"; go.textContent = wait > 0 ? GO_TXT + " (" + wait + ")" : GO_TXT; };
+    var tick = setInterval(function () { if (!go.isConnected) { clearInterval(tick); return; } wait--; paint(); if (wait <= 0) clearInterval(tick); }, 1000);
+    paint();
+    inp.oninput = paint;
+    cancel.onclick = function () { clearInterval(tick); s.close(); };
     go.onclick = function () {
       if (!ok()) return;
+      done = true;
       go.disabled = true; cancel.disabled = true; go.textContent = L("جارٍ الحذف…", "Deleting…");
       call("account.delete", { confirm: "DELETE" }).then(function () {
         s.box.innerHTML = "";
@@ -5573,7 +5579,7 @@
         s.box.appendChild(note(L("شكراً لاستعمالك سوا. يُعاد تشغيل التطبيق الآن.", "Thanks for using Sawa. Restarting…")));
         wipeLocal();
       }).catch(function (e) {
-        go.disabled = false; cancel.disabled = false; go.textContent = L("حذف حسابي نهائيّاً", "Delete my account");
+        done = false; go.disabled = false; cancel.disabled = false; go.textContent = GO_TXT;
         toast(L("تعذّر الحذف: ", "Couldn't delete: ") + codeErr(e));
       });
     };
