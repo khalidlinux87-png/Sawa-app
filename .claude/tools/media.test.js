@@ -12,7 +12,10 @@ const chunkDoc = (k) => ({ get: () => { calls.push(k); inflight++; maxIn = Math.
 const metaRef = { get: () => deny ? Promise.reject(Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" })) : Promise.resolve({ exists: !!metaDoc, data: () => metaDoc }),
   collection: () => ({ doc: (k) => chunkDoc(Number(k)), get: () => Promise.resolve({ forEach: (f) => chunks.forEach((d, k) => f({ id: String(k), data: () => ({ d }) })) }) }) };
 const fsdbMock = () => ({ collection: () => ({ doc: () => ({ collection: () => ({ doc: () => metaRef }) }) }) });
-const api = new Function("fsdb", code + "; return { fetchMedia, fetchByMeta, chunkCache };")(fsdbMock);
+let tokCalls = 0, r2Hits = [], r2Status = 200, r2Bytes = null;
+const callMock = (op) => { tokCalls++; return op === "media.tok" ? Promise.resolve({ r2: true, q: "?u=a&e=1&s=x", exp: Date.now() + 86400000 }) : Promise.reject(new Error("op")); };
+global.fetch = async (u) => { r2Hits.push(u); return new Response(r2Status === 200 ? r2Bytes : "{}", { status: r2Status, headers: { "Content-Length": String(r2Status === 200 ? r2Bytes.length : 2), "Content-Type": "video/mp4" } }); };
+const api = new Function("fsdb", "call", "L", code + "; return { fetchMedia, fetchByMeta, chunkCache, r2Kind };")(fsdbMock, callMock, (a) => a);
 const realST = setTimeout; global.setTimeout = (f, ms, ...a) => realST(f, ms >= 30000 ? 60 : ms, ...a);   // مهلات 30/45 ث ⇒ 60 مللي ث للاختبار
 let fail = 0, pass = 0; const ok = (c, m) => { if (c) pass++; else { fail++; console.log("✗ " + m); } };
 const same = async (blob, bytes) => Buffer.compare(Buffer.from(await blob.arrayBuffer()), Buffer.from(bytes)) === 0;
@@ -45,6 +48,18 @@ const same = async (blob, bytes) => Buffer.compare(Buffer.from(await blob.arrayB
   ok(await same(b6, vid) && b6.type === "video/mp4", "meta read denied (old rules) → falls back, exact, mime kept");
   metaDoc = null; err = null; try { await api.fetchMedia("c", "v7"); } catch (e) { err = e.message; }
   ok(err === "gone", "deleted media → gone (" + err + ")");
+  // C334: الوسيط في R2 — وثيقة الوسيط r2:true ⇒ ملفٌّ ثنائيّ من الرابط الموقَّع بنسبة تنزيل، بلا قراءة القطع
+  r2Bytes = crypto.randomBytes(2 * 1024 * 1024 + 5); metaDoc = { r2: true, mime: "video/mp4", n: 0, done: true }; calls = []; pcts = [];
+  const r1 = await api.fetchMedia("cc1", "fr2a", (p) => pcts.push(p));
+  ok(await same(r1, r2Bytes) && r1.type === "video/mp4", "r2: bytes identical, mime kept");
+  ok(calls.length === 0, "r2: no chunk reads (" + calls.length + ")");
+  ok(r2Hits.length === 1 && /\/m\/cc1\/fr2a\?u=a&e=1&s=x$/.test(r2Hits[0]), "r2: signed URL (" + r2Hits[0] + ")");
+  ok(pcts.length > 0 && pcts[pcts.length - 1] >= 90, "r2: progress reported (" + pcts.slice(-3).join(",") + ")");
+  api.r2Kind["fr2b"] = { type: "image", mime: "image/jpeg" }; metaDoc = null; r2Hits = [];
+  const r2b = await api.fetchMedia("cc1", "fr2b");
+  ok(await same(r2b, r2Bytes) && r2b.type === "image/jpeg" && tokCalls === 1, "r2: known from the message ⇒ no meta read, token reused (tok " + tokCalls + ")");
+  r2Status = 404; err = null; try { await api.fetchMedia("cc1", "fr2b"); } catch (e) { err = e.message; }
+  ok(err === "gone", "r2: 404 → gone (" + err + ")");
   console.log(fail ? "✗ media C333: " + fail + " failed, " + pass + " passed" : "✓ media C333: " + pass + " passed, 0 failed");
   process.exit(fail ? 1 : 0);
 })();

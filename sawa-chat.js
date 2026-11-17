@@ -1431,6 +1431,13 @@
   // C315: الرسائل المؤقّتة تبقى ثلاثة أشهر على الأقلّ من إرسالها (كما في الخادم)
   var DIS_MIN_MS = 7776000000;
   function disExpOf(m) { return m && m.exp ? Math.max(Number(m.exp) || 0, (Number(m.ts) || 0) + DIS_MIN_MS) : 0; }
+  // C336: بطاقة القصّة في ردٍّ عليها — للعرض فقط (الصورة المصغّرة data:image، والنصّ بلون خلفيّته)
+  function storyRefOf(ex, by) {
+    var r = ex.story || {}, t = r.t === "video" || r.t === "image" ? r.t : "text";
+    var th = typeof ex.thumb === "string" && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(ex.thumb) ? ex.thumb : null;
+    return { t: t, text: String(r.text || "").slice(0, 120), bg: stGrad(Number(r.bg) || 0), thumb: th, mine: by === state.uid,
+      owner: typeof r.owner === "string" ? r.owner : null, sid: typeof r.sid === "string" ? r.sid : null };
+  }
   function isStarredId(id) { return !!(prefs && prefs.starred && prefs.starred.some(function (s) { return s && s.id === id; })); }
   function appMessages(cid) {
     var c = chats[cid] || virtualChats[cid] || { members: [] }, hidden = (prefs && prefs.hidden) || {};
@@ -1457,6 +1464,7 @@
       if (group) { o.senderId = appId(m.by); o.senderName = personName(m.by, c); if (o.type === undefined) o.type = "text"; if (!m.del) toolShape(m, o, c); }
       else { o.senderUserId = appId(m.by); if (m.type === "system") { o.type = "system"; o.text = sysText(m, c); } }   // C23: إشعارات المحادثة السرّيّة في المحادثة الفرديّة
       if (m.e2eErr) o.e2eErr = true;
+      if (!m.del && m.extra && m.extra.story && typeof m.extra.story === "object") o.storyRef = storyRefOf(m.extra, m.by);   // C336
       if (!m.del && MEDIA_TYPES.indexOf(m.type) >= 0) mediaShape(m, o, cid, mine);
       if (!m.del && m.type === "contact") { var kk = cleanCard(m.extra && m.extra.card) || (m.contact ? cleanCard({ n: m.contact.name, uid: m.contact.uid }) : null); if (kk) o.card = kk; }   // C184
       if (!m.del && m.type === "location" && m.extra) { o.type = "location"; o.lat = Number(m.extra.lat); o.lng = Number(m.extra.lng); o.acc = m.extra.acc || null; o.text = m.extra.label || ""; }
@@ -2073,12 +2081,17 @@
     var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
     var meta = d.collection("chats").doc(cid).collection("media").doc(mid);
     // C16: حجز الرفع من الخادم أوّلاً (القواعد تطلبه) — حدٌّ يوميّ، وما لم يُرسل يُحذف بعد 24 ساعة
-    return call("media.begin", { cid: cid, mid: mid, size: blob.size }).catch(function (e) {
+    return call("media.begin", { cid: cid, mid: mid, size: blob.size, r2: 1 }).catch(function (e) {
       var m = (e && e.message) || String(e);
       if (/quota/.test(m)) throw new Error(L("تجاوزت حدّ الرفع اليوميّ (300 ميغابايت) — جرّب غداً", "Daily upload limit reached (300 MB)"));
       if (/unknown op/.test(m)) return null;   // خادمٌ أقدم
       throw e;
-    }).then(function () { return blobToB64(blob); }).then(function (b64) {
+    }).then(function (r) {
+      // C334: الخادم أعطى رابط R2 ⇒ الملفّ يُرفع كما هو (بلا base64 ولا قطع) والخادم يكتب وصفه
+      if (r && r.up) return r2Put(R2_BASE + r.up, blob, onProgress).then(function () { return "r2"; });
+      return blobToB64(blob);
+    }).then(function (b64) {
+      if (b64 === "r2") return;
       var n = Math.max(1, Math.ceil(b64.length / CHUNK));
       return meta.set({ by: state.uid, mime: blob.type || "application/octet-stream", size: blob.size, name: String(extra.name || "").slice(0, 200), n: n, ts: Date.now(), done: false })
         .then(function () {
@@ -2153,13 +2166,59 @@
       return blob;
     });
   }
+  // ---------- C334: R2 — رفعٌ ثنائيّ بنسبة تقدّم، وتنزيلٌ برابطٍ موقَّع (رمزٌ لكلّ محادثة يُحفظ حتّى قبيل انتهائه) ----------
+  var R2_BASE = "https://sawa-deploy-test.khalidlinux87.workers.dev", r2Tok = {}, r2Kind = {};
+  function r2Put(url, blob, onProgress) {
+    return new Promise(function (res, rej) {
+      var x = new XMLHttpRequest();
+      x.open("PUT", url, true);
+      x.setRequestHeader("Content-Type", blob.type || "application/octet-stream");
+      if (onProgress) { onProgress(0); x.upload.onprogress = function (ev) { if (ev.lengthComputable) onProgress(Math.min(99, Math.round(ev.loaded * 100 / ev.total))); }; }
+      x.onload = function () {
+        var j = null; try { j = JSON.parse(x.responseText); } catch (e) {}
+        if (x.status >= 200 && x.status < 300 && j && j.ok) { if (onProgress) onProgress(100); res(j); }
+        else rej(new Error((j && j.error) || ("upload " + x.status)));
+      };
+      x.onerror = function () { rej(new Error(L("انقطع الاتّصال أثناء الرفع", "Connection lost while uploading"))); };
+      x.ontimeout = x.onerror; x.timeout = 30 * 60000;
+      x.send(blob);
+    });
+  }
+  function r2Url(cid, mid) {
+    var t = r2Tok[cid];
+    var p = t && t.exp - 3600000 > Date.now() ? Promise.resolve(t) : call("media.tok", { cid: cid }).then(function (r) {
+      if (!r || !r.r2 || !r.q) throw new Error("no r2");
+      r2Tok[cid] = { q: r.q, exp: r.exp || (Date.now() + 86400000) }; return r2Tok[cid];
+    });
+    return p.then(function (tk) { return R2_BASE + "/m/" + encodeURIComponent(cid) + "/" + encodeURIComponent(mid) + tk.q; });
+  }
+  // ملفٌّ ثنائيّ من R2 مع نسبة التنزيل (يُقرأ مجرىً ويُجمع قطعاً — بلا base64)
+  function r2Fetch(cid, mid, mime, onPct) {
+    return r2Url(cid, mid).then(function (u) { return fetch(u); }).then(function (r) {
+      if (r.status === 404) throw new Error("gone");
+      if (!r.ok) { if (r.status === 403) delete r2Tok[cid]; throw new Error("http " + r.status); }
+      var total = Number(r.headers.get("Content-Length")) || 0, type = mime || r.headers.get("Content-Type") || "application/octet-stream";
+      if (!r.body || !r.body.getReader || !total) return r.blob().then(function (b) { return b.type !== type ? new Blob([b], { type: type }) : b; });
+      var rd = r.body.getReader(), parts = [], got = 0, last = -1;
+      var pump = function () {
+        return rd.read().then(function (x) {
+          if (x.done) return new Blob(parts, { type: type });
+          parts.push(x.value); got += x.value.length;
+          var p = Math.min(99, Math.round(got * 100 / total)); if (onPct && p !== last) { last = p; try { onPct(p); } catch (e) {} }
+          return pump();
+        });
+      };
+      return pump();
+    });
+  }
   // C333: وثيقة الوسيط أوّلاً (عدد القطع ونوع الملفّ) ثمّ القطع — للمحادثات والقصص واللحظات
-  function fetchByMeta(meta, key, mime, onPct) {
+  function fetchByMeta(meta, key, mime, onPct, onR2) {
     // قواعد Firestore أقدم قد لا تسمح بقراءة وثيقة الوسيط للقصص/اللحظات ⇒ نعود إلى قراءة القطع مباشرةً كما كان
     var denied = function (e) { return /permission|insufficient/i.test(String((e && (e.code || e.message)) || "")); };
     return withTimeout(meta.get(), 30000, null, "timeout").catch(function (e) { if (denied(e)) return { exists: true, data: function () { return {}; } }; throw e; }).then(function (snap) {
       if (!snap.exists) throw new Error("gone");
       var m = snap.data() || {};
+      if (m.r2 && onR2) return onR2(m);   // C334: الملفّ في R2 لا في القطع
       if (!m.n) {   // وثيقةٌ قديمة بلا عدد القطع (أو لا تُقرأ) ⇒ الطريقة القديمة (استعلامٌ واحد)
         return withTimeout(meta.collection("c").get(), 90000, null, "timeout").then(function (q) {
           var parts = []; q.forEach(function (doc) { parts.push({ i: Number(doc.id), d: (doc.data() || {}).d || "" }); });
@@ -2173,7 +2232,9 @@
   }
   function fetchMedia(cid, mid, onPct) {
     var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
-    return fetchByMeta(d.collection("chats").doc(cid).collection("media").doc(mid), "c:" + mid, null, onPct);
+    if (r2Kind[mid]) return r2Fetch(cid, mid, r2Kind[mid].mime, onPct);   // C334
+    return fetchByMeta(d.collection("chats").doc(cid).collection("media").doc(mid), "c:" + mid, null, onPct,
+      function (m) { return r2Fetch(cid, mid, m.mime, onPct); });
   }
   // C140: طابور تنزيل — 3 في وقتٍ واحد، المحادثة المفتوحة أوّلاً، والأحدث طلباً أوّلاً (آخر الرسائل قبل أقدمها).
   //       كان كلّ وسيطٍ في المحادثة يبدأ تنزيله معاً فتتزاحم وتتأخّر الصورة التي وصلت للتوّ.
@@ -2195,6 +2256,16 @@
     var mk2 = mediaKeys[cid + "|" + mid], sec = e2eOn(chats[cid]) || /^sdm_/.test(String(cid));
     if (sec && !mk2) return Promise.resolve(null);   // C23: مفتاح الوسيط داخل رسالته المشفّرة — بعد فكّها
     mediaLoading[mid] = true;
+    // C334: فيديو في R2 (غير مشفّر) ⇒ يُشغَّل من الرابط مباشرةً وهو يُنزَّل — بلا انتظار الملفّ كلّه
+    var rk = r2Kind[mid];
+    if (rk && rk.type === "video" && !sec) {
+      return r2Url(cid, mid).then(function (u) { mediaUrls[mid] = u; delete mediaLoading[mid]; publishMessages(cid); return u; }, function (e) {
+        delete mediaLoading[mid]; mediaFailed[mid] = (e && e.message) || "x"; publishMessages(cid);
+        var n = (mediaTries[mid] = (mediaTries[mid] || 0) + 1);
+        if (n <= 5) setTimeout(function () { if (mediaFailed[mid] && !mediaUrls[mid]) { delete mediaFailed[mid]; ensureMedia(cid, mid, noCache); } }, [5000, 15000, 45000, 120000, 300000][n - 1]);
+        return null;
+      });
+    }
     return withTimeout(idbGet(mid), 4000, null).then(function (b) {
       var tmp = !!((chats[cid] || {}).disappear);   // C14: لا نحفظ وسائط المحادثات المؤقّتة على الجهاز
       return b || dlSlot(cid).then(function (done) {
@@ -2383,7 +2454,9 @@
       var unseen = items.filter(function (x) { return !stSeen[x.id]; }).length;
       return { owner: k, name: stName(k, s.name), photo: photoOf(k), items: items, unseen: unseen, last: items[items.length - 1].ts };
     }).filter(Boolean).sort(function (a, b) { return (b.unseen > 0) - (a.unseen > 0) || b.last - a.last; });
-    return { enabled: !!state.uid, me: { uid: state.uid, name: (state.me && state.me.name) || L("أنا", "Me"), photo: state.uid ? photoOf(state.uid) : null, items: mineItems, aud: stState.mine ? (stState.mine.aud || []).length : null, hide: (stState.mine && stState.mine.hide) || [] }, list: list };
+    var last = mineItems[mineItems.length - 1] || null;   // C336: غلاف «قصّتي» = آخر قصّة (إطارٌ من الفيديو · الصورة · النصّ بلونه)
+    var cover = last ? { thumb: last.thumb || null, t: last.t, text: last.t === "text" ? String(last.text || "").slice(0, 40) : "", bg: stGrad(last.bg) } : null;
+    return { enabled: !!state.uid, me: { cover: cover, uid: state.uid, name: (state.me && state.me.name) || L("أنا", "Me"), photo: state.uid ? photoOf(state.uid) : null, items: mineItems, aud: stState.mine ? (stState.mine.aud || []).length : null, hide: (stState.mine && stState.mine.hide) || [] }, list: list };
   }
   function stUpload(blob) {
     var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
@@ -3668,7 +3741,10 @@
           var v = inp.value.trim(); if (!v) return;
           var snip = it.t === "text" ? it.text.slice(0, 60) : it.t === "video" ? L("🎬 فيديو", "🎬 video") : L("📷 صورة", "📷 photo");
           var who = cur;
-          openDm(who).then(function (cid) { if (cid) send(cid, L("↩️ ردًّا على قصّتك («", "↩️ Reply to your story (“") + snip + L("»):\n", "”):\n") + v); });
+          // C336: الردّ يحمل بطاقة القصّة (صورة مصغّرة من الصورة/الفيديو، أو نصّها بلونها) ⇒ يُعرف في المحادثة على ماذا كان الردّ
+          var sref = { owner: who, sid: it.id, t: it.t, text: String(it.text || "").slice(0, 120), bg: Number(it.bg) || 0 };
+          var ex = { story: sref }; if (it.thumb && it.thumb.length <= 6000) ex.thumb = it.thumb;
+          openDm(who).then(function (cid) { if (cid) send(cid, v, { extra: ex }); });
           inp.value = ""; inp.blur(); toast(L("أُرسل الردّ في المحادثة الخاصّة ✓", "Reply sent ✓")); pause(false);
         };
         inp.onkeydown = function (e) { if (e.key === "Enter") go.onclick(); };
@@ -3684,8 +3760,16 @@
       var r = stage.getBoundingClientRect(), xr = (e.clientX - r.left) / (r.width || 1);
       var back = isAr() ? xr > 0.7 : xr < 0.3;
       if (back) prev(); else next();
+      // C335: آخر قصّة ⇒ أُغلق العارض عند رفع الإصبع، فكانت «النقرة» التي تليه تقع على ما تحته (محادثة) فتفتحها
+      if (!ov.isConnected) swallowNextClick();
     });
     load(queue[qi]);
+  }
+  function swallowNextClick() {
+    var h = function (e) { e.stopPropagation(); e.preventDefault(); done(); };
+    var done = function () { document.removeEventListener("click", h, true); clearTimeout(t); };
+    document.addEventListener("click", h, true);
+    var t = setTimeout(done, 700);
   }
   function stSeenCount(it, btn) {
     var d = fsdb(); if (!d) return;
@@ -3729,6 +3813,11 @@
     q.oninput = paint; paint();
     var sv = mkBtn(L("حفظ", "Save"), "primary"); sv.style.marginTop = "10px"; s.box.appendChild(sv);
     sv.onclick = function () { sv.disabled = true; call("story.audience", { hide: Object.keys(hide) }).then(function (b) { toast(L("يرى قصصك " + b.aud + " ✓", "Saved ✓")); s.close(); }).catch(function (e) { sv.disabled = false; toast((e && e.message) || String(e)); }); };
+  }
+  function storyOpenRef(owner, sid) {
+    var S0 = stories(), live = owner === state.uid ? S0.me.items : ((S0.list.filter(function (x) { return x.owner === owner; })[0] || {}).items || []);
+    if (!live.some(function (x) { return x.id === sid; })) { toast(L("انتهت هذه القصّة (تختفي بعد 24 ساعة)", "This story has expired (stories last 24 hours)")); return; }
+    storyViewer(owner);
   }
   function storyOpenMine() { var me = stories().me; if (me.items.length) storyViewer(state.uid); else storyComposer(); }
 
@@ -3847,6 +3936,7 @@
     var ex = m.extra || {}, mid = ex.mid, url = localUrls[mid] || mediaUrls[mid] || null;
     var viewedByMe = !!(m.viewed && m.viewed[state.uid]);
     o.cloudMid = mid; o.cloudCid = cid; o.fileSize = ex.size || 0; o.mime = ex.mime || null;
+    if (ex.r2 && mid) r2Kind[mid] = { type: m.type, mime: ex.mime || null };   // C334
     if (m.type === "image" || m.type === "video") {
       o.viewOnce = !!ex.viewOnce; o.viewedOnce = !!ex.viewOnce && (mine || viewedByMe || !!m.gone);
       if (o.viewOnce && mine) o.peerViewed = !!m.gone || Object.keys(m.viewed || {}).some(function (u) { return u !== state.uid; });   // C100: المرسل يعرف هل فُتحت
@@ -3863,8 +3953,9 @@
     // C140: التنزيل المسبق — ما وصلني في آخر يومين يُنزَّل ولو لم تُفتح المحادثة بعد (فيكون جاهزاً عند فتحها)،
     //       والفيديو حتّى 16 ميغابايت على شبكةٍ جيّدة (كان 5 فيبقى «اضغط للتنزيل»)
     var fresh = !mine && (Date.now() - (m.ts || 0)) < 2 * 86400000;
-    var auto = (cid === openCid || (fresh && (m.type !== "video" || (ex.size || 0) <= AUTO_DL))) && !url && !mediaFailed[mid] && !(ex.viewOnce && (mine || viewedByMe || m.gone))
-      && (m.type !== "file") && (m.type !== "video" || (ex.size || 0) <= autoVideoMax());
+    var r2v = !!ex.r2 && m.type === "video" && !ex.fk;   // C334: فيديو R2 يُشغَّل من الرابط ⇒ «تنزيله» طلب رابطٍ فقط
+    var auto = (cid === openCid || (fresh && (m.type !== "video" || r2v || (ex.size || 0) <= AUTO_DL))) && !url && !mediaFailed[mid] && !(ex.viewOnce && (mine || viewedByMe || m.gone))
+      && (m.type !== "file") && (m.type !== "video" || r2v || (ex.size || 0) <= autoVideoMax());
     if (auto) setTimeout(function () { ensureMedia(cid, mid, !!ex.viewOnce); }, 0);
     return o;
   }
@@ -5520,6 +5611,9 @@
 
   // ---------- حذف الحساب (شرط Google Play) ----------
   function wipeLocal() {
+    // C335: لا يعيد التطبيق حفظ ما في الذاكرة (سجلّ المكالمات وغيره) عند pagehide بعد المسح — كان يُكتب من جديد فيبقى بعد حذف الحساب
+    try { global.__sawaWiping = true; } catch (e) {}
+    try { localStorage.clear(); } catch (e) {}
     var done = function () {
       try { localStorage.clear(); } catch (e) {}
       try { sessionStorage.clear(); } catch (e) {}
@@ -6589,6 +6683,7 @@
       o.extra = { title: typeof tx.title === "string" ? tx.title.slice(0, 200) : "", tasks: tl0 };
     }
     if (m.type === "contact") { var kc = cleanCard(p.extra && p.extra.card); if (kc) o.extra = { card: kc }; else delete o.extra; }   // C184
+    if (m.type === "text" && p.extra && p.extra.story && typeof p.extra.story === "object") o.extra = { story: p.extra.story, thumb: p.extra.thumb };   // C336
     if (m.type === "location") {
       var lx = p.extra || {}, la = Number(lx.lat), ln = Number(lx.lng);
       if (!(la >= -90 && la <= 90 && ln >= -180 && ln <= 180)) { o.type = "text"; o.e2eErr = true; o.text = L("🔒 تعذّر فكّ تشفير هذه الرسالة", "🔒 Couldn't decrypt this message"); delete o.extra; return o; }
@@ -6793,7 +6888,7 @@
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
     _chats: function () { return chats; }, _days: function () { return days; }, _pend: function () { return pend; }, _flushMarks: flushMarks, _appMessages: appMessages,
     // C10
-    stories: stories, storyComposer: storyComposer, moments: { mount: momentsMount, compose: momentComposer, list: function () { return mo.list; }, start: function () { if (state.uid) startMoments(state.uid); }, open: moOpen, unread: moUnread, notes: moNotesSheet }, storyViewer: storyViewer, storyOpenMine: storyOpenMine, storyAudienceSheet: storyAudienceSheet,   // C90
+    stories: stories, storyComposer: storyComposer, storyOpenRef: storyOpenRef, moments: { mount: momentsMount, compose: momentComposer, list: function () { return mo.list; }, start: function () { if (state.uid) startMoments(state.uid); }, open: moOpen, unread: moUnread, notes: moNotesSheet }, storyViewer: storyViewer, storyOpenMine: storyOpenMine, storyAudienceSheet: storyAudienceSheet,   // C90
     saveBlob: saveBlob, saveMediaUrl: saveMediaUrl, shareInSheet: shareInSheet, nativeFiles: nativeFiles,   // C89
     saveFileBlob: function (f) { return saveBlob(f.blob, f.name, "save", f.mime); },   // C185
     codeSheet: codeSheet, findSheet: findSheet, phoneContactsSheet: phoneContactsSheet, smsText: smsText, openSms: openSms, setNick: setNick, peerCode: peerCode, fetchPeerCodes: fetchPeerCodes, verifySheet: verifySheet, requestsSheet: requestsSheet, emailSheet: emailSheet, linkSheet: linkSheet, loadRequests: loadRequests, deleteAccountSheet: deleteAccountSheet, reportSheet: reportSheet, sendVerify: sendVerify, emailVerified: function () { var u = emailUser(); return u ? !!u.emailVerified : null; },
