@@ -152,6 +152,7 @@ function stripMediaPayload(value) {
 let storageWarned = false;
 function savePersisted(key, value) {
     var _a;
+    if (window.__sawaWiping) return false;   // C327: مسحٌ جارٍ (حذف الحساب · الخروج) ⇒ لا نعيد الكتابة
     try {
         const safe = key === "messages" || key === "groupMessages" || key === "momentsPosts"
             ? stripMediaPayload(value)

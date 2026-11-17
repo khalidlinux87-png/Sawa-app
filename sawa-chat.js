@@ -3703,8 +3703,16 @@
       var r = stage.getBoundingClientRect(), xr = (e.clientX - r.left) / (r.width || 1);
       var back = isAr() ? xr > 0.7 : xr < 0.3;
       if (back) prev(); else next();
+      // C327: آخر قصّة ⇒ أُغلق العارض عند رفع الإصبع، فكانت «النقرة» التي تليه تقع على ما تحته (محادثة) فتفتحها
+      if (!ov.isConnected) swallowNextClick();
     });
     load(queue[qi]);
+  }
+  function swallowNextClick() {
+    var h = function (e) { e.stopPropagation(); e.preventDefault(); done(); };
+    var done = function () { document.removeEventListener("click", h, true); clearTimeout(t); };
+    document.addEventListener("click", h, true);
+    var t = setTimeout(done, 700);
   }
   function stSeenCount(it, btn) {
     var d = fsdb(); if (!d) return;
@@ -5540,6 +5548,9 @@
 
   // ---------- حذف الحساب (شرط Google Play) ----------
   function wipeLocal() {
+    // C327: لا يعيد التطبيق حفظ ما في الذاكرة (سجلّ المكالمات وغيره) عند pagehide بعد المسح — كان يُكتب من جديد فيبقى بعد حذف الحساب
+    try { global.__sawaWiping = true; } catch (e) {}
+    try { localStorage.clear(); } catch (e) {}
     var done = function () {
       try { localStorage.clear(); } catch (e) {}
       try { sessionStorage.clear(); } catch (e) {}

@@ -1120,6 +1120,7 @@ function AppInner() {
     function fullLocalReset() {
         // آخر حلّ في «نسيت الرمز»: خروجٌ من الحساب ومسحُ كلّ ما على الجهاز (كحذف الحساب محلّيّاً)
         try { if (window.SawaChat && window.SawaChat.wipeLocal) { window.SawaChat.wipeLocal(); return; } } catch (e) { }
+        try { window.__sawaWiping = true; } catch (e) { }   // C327
         try { localStorage.clear(); } catch (e) { }
         try { location.replace(location.pathname); } catch (e) { }
     }
