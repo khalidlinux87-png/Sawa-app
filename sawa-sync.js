@@ -103,6 +103,7 @@
         // أوّل نداءٍ لـ onAuthStateChanged يأتي بعد اكتمال الاسترجاع — عندها فقط نقرّر.
         var firstAuth = true;
         auth.onAuthStateChanged(function (user) {
+          authSettled = true; fireAuthListeners();
           if (firstAuth) {
             firstAuth = false;
             if (!user) {
@@ -945,10 +946,12 @@
     if (sg) {
       // مربوطةٌ سلفاً: استبدالٌ في مكانها (تبقى المشاركة والأعضاء)
       if (roleOf(sg) !== "owner") { toast(L("استبدال الشجرة كلّها للمالك وحده", "Only the owner can replace the whole tree")); return Promise.resolve(null); }
-      var ok = global.confirm(L("استبدال نسخة الخادم بشجرة هذا الجهاز؟ ما ليس على هذا الجهاز يُزال من الخادم. المشاركة والأعضاء يبقون كما هم.",
-                                "Replace the server copy with this device's tree? Anything not on this device is removed from the server. Sharing stays as is."));
-      if (!ok) return Promise.resolve(null);
-      return doUpload(localGid, gp, rels, { groupId: sg, replace: true });
+      return ask(L("استبدال نسخة الخادم بشجرة هذا الجهاز؟ ما ليس على هذا الجهاز يُزال من الخادم. المشاركة والأعضاء يبقون كما هم.",
+                   "Replace the server copy with this device's tree? Anything not on this device is removed from the server. Sharing stays as is."),
+                 { ok: L("استبدال", "Replace"), danger: true }).then(function (ok) {   // C290
+        if (!ok) return null;
+        return doUpload(localGid, gp, rels, { groupId: sg, replace: true });
+      });
     }
     // غير مربوطة: هل الشجرة نفسها على حسابك سلفاً؟
     toast(L("أتحقّق إن كانت الشجرة مرفوعةً مسبقاً…", "Checking whether this tree is already uploaded…"));
@@ -1100,7 +1103,7 @@
       if (/Cancel/i.test(m)) return;   // أغلق المستخدم النافذة
       if (/NoGoogleConfig/i.test(m)) { toast(L("الدخول بـGoogle غير متاحٍ في هذه النسخة — استعمل Apple أو البريد", "Google sign-in isn't available in this version — use Apple or email")); return; }
       if (/NoCredential/i.test(m)) { toast(L("لا يوجد حساب Google على هذا الهاتف — أضفه من إعدادات الهاتف ← الحسابات", "No Google account on this phone — add one in Settings → Accounts")); return; }
-      toast(L("تعذّر الدخول بـGoogle: ", "Google sign-in failed: ") + m.slice(0, 120));
+      LOG.warn("google.fail", { err: m }); toast(L("تعذّر الدخول بـGoogle. ", "Google sign-in failed. ") + friendlyErr(m));
     });
   }
   // C123: Sign in with Apple (تطبيق iOS) — شرط App Store ما دام Google متاحاً. الاسم يأتي في أوّل دخولٍ فقط
@@ -1112,14 +1115,14 @@
     return IOSB().call("appleSignIn").then(function (r) {
       if (!r || !r.ok || !r.idToken) {
         var m = String((r && r.error) || "");
-        if (!/Cancel/i.test(m)) toast(L("تعذّر الدخول بـApple: ", "Apple sign-in failed: ") + m.slice(0, 120));
+        if (!/Cancel/i.test(m)) { LOG.warn("apple.fail", { err: m }); toast(L("تعذّر الدخول بـApple. ", "Apple sign-in failed. ") + friendlyErr(m)); }
         return;
       }
       var cred = new firebase.auth.OAuthProvider("apple.com").credential({ idToken: r.idToken, rawNonce: r.rawNonce });
       return idpCredential(cred, "Apple", r.name || null).catch(function (e) {
         var code = (e && e.code) || "";
         if (code === "auth/operation-not-allowed") toast(L("الدخول بـApple غير مفعّل في الخادم بعد", "Apple sign-in isn't enabled on the server yet"));
-        else toast(L("تعذّر الدخول: ", "Sign-in failed: ") + (code || (e && e.message) || e));
+        else { LOG.warn("signin.fail", { err: code || (e && e.message) || e }); toast(L("تعذّر الدخول. ", "Sign-in failed. ") + friendlyErr(e)); }
       });
     });
   }
@@ -1178,7 +1181,7 @@
         var code = e && e.code;
         if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment" || code === "auth/cancelled-popup-request") return auth.signInWithRedirect(provider);
         if (code === "auth/popup-closed-by-user") return;
-        toast(L("تعذّر الدخول: ", "Sign-in failed: ") + ((e && (e.code || e.message)) || e));
+        LOG.warn("signin.fail", { err: (e && (e.code || e.message)) || e }); toast(L("تعذّر الدخول. ", "Sign-in failed. ") + friendlyErr(e));
       });
     }
     var oldTokP = user.getIdToken();
@@ -1196,7 +1199,7 @@
           return signIn.then(function () { return adoptFrom(oldTok); }).then(function () {
             return afterLinked(L("دخلتَ بحسابك على Google ✓ ونُقلت عائلات هذا الجهاز إليه", "Signed in with Google ✓ — this device's families moved to your account"));
           });
-        }).catch(function (x) { toast(L("تعذّر الدخول: ", "Sign-in failed: ") + ((x && x.message) || x)); });
+        }).catch(function (x) { LOG.warn("signin.fail", { err: (x && (x.code || x.message)) || x }); toast(L("تعذّر الدخول. ", "Sign-in failed. ") + friendlyErr(x)); });
       }
       if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment" || code === "auth/cancelled-popup-request") {
         // بديل: إعادة التوجيه. نحفظ رمز الهويّة الحالية لتبنّيها بعد العودة.
@@ -1239,6 +1242,71 @@
     if (!hasFirebase()) return Promise.reject({ code: "sawa/no-server" });
     return firebase.auth().sendPasswordResetEmail(String(email || "").trim().toLowerCase());
   }
+  // C284: استرداد رمز القفل/المحفظة بإثبات ملكيّة الحساب — إعادة المصادقة (لا دخولٌ جديد): Firebase يرفض حساباً آخر (auth/user-mismatch)
+  // C285: كانت شاشة «نسيت الرمز» تقرأ الحساب مرّةً واحدة لحظة فتحها — إن لم يكن Firebase قد استرجع الجلسة بعد
+  // ظهرت «حسابك ضيف» لحسابٍ مربوط. الآن: مستمعون يُبلَّغون عند كلّ تغيّرٍ في الهويّة، و authSettled يميّز «لم يُسترجع بعد» عن «ضيف».
+  var authSettled = false, authListeners = [];
+  function fireAuthListeners() { authListeners.slice().forEach(function (f) { try { f(); } catch (e) {} }); }
+  function onAuthChange(cb) {
+    authListeners.push(cb);
+    var off = null;
+    try { if (hasFirebase()) off = firebase.auth().onAuthStateChanged(function () { authSettled = true; try { cb(); } catch (e) {} }); } catch (e) {}
+    return function () { authListeners = authListeners.filter(function (f) { return f !== cb; }); try { if (off) off(); } catch (e) {} };
+  }
+  // "loading" (لم يُسترجع بعد) | "guest" | "linked" (يصلح للتحقّق) | "other" (مربوطٌ بمزوّدٍ لا يصلح هنا، مثل Apple خارج iOS)
+  function accountStatus() {
+    try {
+      if (!hasFirebase()) return "guest";
+      var u = firebase.auth().currentUser;
+      if (!u) return authSettled ? "guest" : "loading";
+      if (u.isAnonymous) return "guest";
+      return recoveryAccount() ? "linked" : "other";
+    } catch (e) { return "guest"; }
+  }
+  function recoveryAccount() {
+    try {
+      var u = hasFirebase() && firebase.auth().currentUser; if (!u || u.isAnonymous) return null;
+      var ids = (u.providerData || []).map(function (p) { return p && p.providerId; });
+      var r = { email: u.email || null, password: ids.indexOf("password") >= 0 && !!u.email, google: ids.indexOf("google.com") >= 0 && hasGoogle() };
+      return r.password || r.google ? r : null;
+    } catch (e) { return null; }
+  }
+  function nativeGoogleToken() {
+    return new Promise(function (res, rej) {
+      var id = "gr" + (++natSeq) + "_" + Date.now();
+      var to = setTimeout(function () { delete natCbs[id]; rej(new Error("timeout")); }, 120000);
+      natCbs[id] = function (r) { clearTimeout(to); if (r.ok && r.idToken) res(r.idToken); else rej(new Error(r.error || "cancelled")); };
+      if (IOSB()) { IOSB().call("googleSignIn").then(natCbs[id]); return; }
+      try { NB().googleSignIn(id); } catch (e) { clearTimeout(to); delete natCbs[id]; rej(e); }
+    });
+  }
+  // kind: "password" (مع كلمة المرور) | "google" — يعيد Promise يُحلّ عند النجاح
+  function reauthAccount(kind, pass) {
+    if (!hasFirebase()) return Promise.reject({ code: "sawa/no-server" });
+    var u = firebase.auth().currentUser;
+    if (!u || u.isAnonymous) return Promise.reject({ code: "sawa/no-account" });
+    if (kind === "password") {
+      if (!u.email) return Promise.reject({ code: "sawa/no-email" });
+      return u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email, String(pass || "")));
+    }
+    if (NB() || IOSB()) {
+      return nativeGoogleToken().then(function (tok) { return u.reauthenticateWithCredential(firebase.auth.GoogleAuthProvider.credential(tok)); });
+    }
+    var provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account", login_hint: u.email || "" });
+    return u.reauthenticateWithPopup(provider);
+  }
+  // رسالةٌ مفهومة لأخطاء إعادة المصادقة
+  function reauthError(e) {
+    var c = (e && e.code) || String((e && e.message) || e || "");
+    if (c === "auth/wrong-password" || c === "auth/invalid-credential" || c === "auth/invalid-login-credentials") return L("كلمة المرور غير صحيحة", "Wrong password");
+    if (c === "auth/user-mismatch") return L("هذا حسابٌ آخر — اختر الحساب المسجَّل به في سوا", "That's a different account — choose the one you use in Sawa");
+    if (c === "auth/too-many-requests") return L("محاولات كثيرة — انتظر قليلاً ثمّ أعد المحاولة", "Too many attempts — wait a bit and try again");
+    if (c === "auth/network-request-failed" || c === "sawa/no-server") return L("لا اتّصال بالخادم — تحقّق من الإنترنت", "Can't reach the server — check your internet");
+    if (c === "auth/popup-closed-by-user" || c === "auth/cancelled-popup-request" || /cancel/i.test(c)) return "";
+    if (c === "auth/popup-blocked" || c === "auth/operation-not-supported-in-this-environment") return L("تعذّر فتح نافذة Google هنا — استعمل طريقةً أخرى", "Couldn't open the Google window here — use another way");
+    return L("تعذّر التحقّق: ", "Couldn't verify: ") + c;
+  }
   function authInfo() {
     try { var u = firebase.auth().currentUser; if (!u) return null;
       return { uid: u.uid, anon: !!u.isAnonymous, email: u.email || null, name: u.displayName || null,
@@ -1261,7 +1329,7 @@
           if (!cred) return;
           auth.signInWithCredential(cred).then(function () { return oldTok ? adoptFrom(oldTok) : null; })
             .then(function () { afterLinked(L("دخلتَ بحسابك على Google ✓", "Signed in with Google ✓")); })
-            .catch(function (x) { toast(L("تعذّر الدخول: ", "Sign-in failed: ") + ((x && x.message) || x)); });
+            .catch(function (x) { LOG.warn("signin.fail", { err: (x && (x.code || x.message)) || x }); toast(L("تعذّر الدخول. ", "Sign-in failed. ") + friendlyErr(x)); });
         }
       });
     } catch (e) {}
@@ -1282,9 +1350,9 @@
         navigator.share({ title: "سوا", text: text, url: url }).catch(function () {});
       } else if (global.navigator && navigator.clipboard) {
         navigator.clipboard.writeText(text + " " + url).then(function () { toast(L("نُسخ الرابط ✓", "Link copied ✓")); },
-          function () { global.prompt(L("انسخ الرابط:", "Copy the link:"), url); });
+          function () { copyBox(url); });
       } else {
-        global.prompt(L("انسخ الرابط:", "Copy the link:"), url);
+        copyBox(url);
       }
     }).catch(function (e) {
       var m = (e && e.message) || String(e);
@@ -1388,8 +1456,11 @@
     onReady(function () {
       whenApp(function () {
         // C156: «هل أنت فلان؟» قبل القبول ⇒ الخادم يربط إن كانت الدعوة لهذا الشخص نفسه (لا ربط بعد الانضمام بمجرّد الاختيار)
-        var claim = jp && global.confirm(L("دعوةٌ باسم «" + jpn + "» في شجرة العائلة — هل أنت «" + jpn + "»؟", "This invite is for «" + jpn + "» in the family tree — are you «" + jpn + "»?")) ? jp : null;
-        call("invite.accept", { token: tok, claim: claim || undefined }).then(function (b) {
+        // C290: السؤال بنافذة سوا (كان confirm()) — «نعم» يربطه بالشخص، و«لا» ينضمّ فقط
+        (jp ? ask(L("دعوةٌ باسم «" + jpn + "» في شجرة العائلة — هل أنت «" + jpn + "»؟", "This invite is for «" + jpn + "» in the family tree — are you «" + jpn + "»?"),
+                  { ok: L("نعم، أنا «" + jpn + "»", "Yes, I'm «" + jpn + "»"), cancel: L("لا، انضمّ فقط", "No, just join") }) : Promise.resolve(false)).then(function (yes) {
+        var claim = yes ? jp : null;
+        return call("invite.accept", { token: tok, claim: claim || undefined }).then(function (b) {
           var rp = Promise.resolve(restoreGroup(b.groupId, b.name, b.role));
           toast(L("انضممتَ إلى «" + (b.name || "العائلة") + "» (" + roleLabel(b.role) + ") ✓",
                   "Joined «" + (b.name || "family") + "» (" + roleLabel(b.role) + ") ✓"));
@@ -1406,7 +1477,8 @@
           var m = (e && e.message) || "";
           LOG.warn("join.fail", { err: m });
           var t = joinErr(m); toast(t);
-          if (/removed from this family/.test(m)) try { global.alert(t); } catch (x) {}
+          if (/removed from this family/.test(m)) ask(t, { ok: L("حسناً", "OK"), noCancel: true });   // C290
+        });
         }).then(function () {
           try { var u = new URL(global.location.href); u.searchParams.delete("join"); u.searchParams.delete("p"); u.searchParams.delete("pn"); global.history.replaceState(null, "", u.toString()); } catch (e) {}
         });
@@ -1438,24 +1510,27 @@
   }
   function deleteGroup(sg) {
     var g = (myGroups || []).filter(function (x) { return x.groupId === sg; })[0] || { name: "", personCount: 0 };
-    var ok = global.confirm(L(
+    ask(L(
       "حذف «" + g.name + "» (" + fmtNum(g.personCount) + " شخصاً، أُنشئت " + fmtWhen(g.createdTs) + ") من الخادم؟\n" +
       "يفقد كلّ من شاركتها معهم الوصول إليها، وتتوقّف روابط دعوتها. نسخ الأجهزة المحلّية لا تُحذف.",
       "Delete «" + g.name + "» (" + g.personCount + " people, created " + fmtWhen(g.createdTs) + ") from the server?\n" +
-      "Everyone you shared it with loses access and its invite links stop working. Local copies on devices stay."));
+      "Everyone you shared it with loses access and its invite links stop working. Local copies on devices stay."), { ok: L("حذف من الخادم", "Delete from server"), danger: true }).then(function (ok) {   // C290
     if (!ok) return;
     call("group.delete", { groupId: sg }).then(function () {
       unmap(sg);
       toast(L("حُذفت العائلة من الخادم ✓", "Family deleted from the server ✓"));
       refreshMyGroups(); renderPanel();
     }).catch(function (e) { toast(L("تعذّر الحذف: ", "Couldn't delete: ") + ((e && e.message) || e)); });
+    });
   }
   function leaveGroup(sg) {
     var g = (myGroups || []).filter(function (x) { return x.groupId === sg; })[0] || { name: "" };
-    if (!global.confirm(L("مغادرة «" + g.name + "»؟ لن تصلك تحديثاتها بعد الآن.", "Leave «" + g.name + "»? You'll stop receiving its updates."))) return;
+    ask(L("مغادرة «" + g.name + "»؟ لن تصلك تحديثاتها بعد الآن.", "Leave «" + g.name + "»? You'll stop receiving its updates."), { ok: L("مغادرة", "Leave"), danger: true }).then(function (ok) {   // C290
+    if (!ok) return;
     call("group.leave", { groupId: sg }).then(function () {
       unmap(sg); toast(L("غادرتَ العائلة ✓", "You left the family ✓")); refreshMyGroups(); renderPanel();
     }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+    });
   }
   function groupName(lg) {
     var groups = lastGroups || lsRead("familyGroups", []);
@@ -1548,10 +1623,10 @@
         else if (act === "rv-reject") resolveReview(t.getAttribute("data-rid"), "reject");
         else if (act === "relink-new") {
           var cg = currentLocalGid(), csg = serverGid(cg);
-          if (csg && global.confirm(L("فكّ ربط هذه العائلة بنسختها القديمة ورفعها كعائلةٍ جديدة على الحساب الحاليّ؟",
-                                      "Unlink this family from its old copy and upload it as a new family on the current account?"))) {
-            unmap(csg); uploadCurrent();
-          }
+          if (csg) ask(L("فكّ ربط هذه العائلة بنسختها القديمة ورفعها كعائلةٍ جديدة على الحساب الحاليّ؟",
+                         "Unlink this family from its old copy and upload it as a new family on the current account?"), { ok: L("رفعها كعائلةٍ جديدة", "Upload as new") }).then(function (ok) {   // C290
+            if (ok) { unmap(csg); uploadCurrent(); }
+          });
         }
         else if (act === "leave") leaveGroup(t.getAttribute("data-gid"));
         else if (act === "share-viewer") shareLink("viewer");
@@ -1662,12 +1737,27 @@
   }
 
   // C196: رسالة خطأٍ يفهمها المستخدم بدل نصّ Firebase الخامّ بالإنجليزيّة (يبقى الخامّ في السجلّ LOG).
+  // C290: التأكيد بنافذة سوا (sawa-chat) بدل confirm()/alert() — Promise<boolean>؛ والأصليّ احتياطاً إن لم تُحمَّل
+  function ask(msg, opts) {
+    try { if (global.SawaChat && global.SawaChat.confirm) return global.SawaChat.confirm(msg, opts || {}); } catch (e) {}
+    if (opts && opts.noCancel) { try { global.alert(msg); } catch (e) {} return Promise.resolve(true); }
+    return Promise.resolve(global.confirm(msg));
+  }
+  // C289: نسخٌ يدويّ بنافذة سوا (sawa-chat) بدل prompt() الأصليّ
+  function copyBox(t) { try { if (global.SawaChat && global.SawaChat.copySheet) { global.SawaChat.copySheet(t); return; } } catch (e) {} global.prompt(L("انسخ الرابط:", "Copy the link:"), t); }
   function friendlyErr(e) {
     var r = String((e && (e.code || e.message)) || e || "");
     if (/network|timeout|unavailable|offline|failed to fetch/i.test(r)) return L("تعذّر الاتّصال بالإنترنت. تحقّق من الاتّصال ثمّ أعد المحاولة.", "Couldn't connect. Check your internet and try again.");
     if (/popup-closed|cancelled-popup|user-cancel/i.test(r)) return L("أُلغي الدخول.", "Sign-in was cancelled.");
     if (/too-many-requests/i.test(r)) return L("محاولاتٌ كثيرة. انتظر قليلاً ثمّ أعد المحاولة.", "Too many attempts. Wait a moment and try again.");
-    return L("حدث خطأ غير متوقّع. أعد المحاولة بعد قليل.", "Something went wrong. Try again in a moment.");
+    // C289: رموز Firebase الشائعة بعبارةٍ مفهومة؛ وغير المعروف يُذكر رمزه مختصراً بين قوسين للدعم الفنّيّ فقط.
+    if (/popup-blocked/i.test(r)) return L("منع المتصفّح نافذة الدخول. اسمح بالنوافذ المنبثقة ثمّ أعد المحاولة.", "The browser blocked the sign-in window. Allow pop-ups and try again.");
+    if (/account-exists-with-different-credential|credential-already-in-use|email-already-in-use/i.test(r)) return L("هذا البريد مرتبطٌ بحسابٍ آخر. ادخل بالطريقة التي أنشأت بها حسابك.", "This email belongs to another account. Sign in the way you created it.");
+    if (/invalid-credential|wrong-password|invalid-login|user-not-found|invalid-email/i.test(r)) return L("بيانات الدخول غير صحيحة. تحقّق منها ثمّ أعد المحاولة.", "Those sign-in details aren't right. Check them and try again.");
+    if (/user-disabled/i.test(r)) return L("هذا الحساب موقوف. تواصل مع الدعم.", "This account is disabled. Contact support.");
+    if (/operation-not-allowed|unauthorized-domain|NoGoogleConfig/i.test(r)) return L("طريقة الدخول هذه غير متاحة الآن. جرّب طريقةً أخرى.", "This sign-in method isn't available right now. Try another one.");
+    var code = (r.match(/auth\/[a-z-]+/) || [])[0] || "";
+    return L("حدث خطأ غير متوقّع. أعد المحاولة بعد قليل.", "Something went wrong. Try again in a moment.") + (code ? " (" + code.replace("auth/", "") + ")" : "");
   }
 
   function reviewsSection(lg, sg) {
@@ -1810,7 +1900,7 @@
   global.SawaSync = {
     connect: connect, onReady: onReady, getToken: getToken,
     push: push, observe: observe, bindApp: bindApp,
-    uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, linkApple: linkApple, hasApple: hasApple, hasGoogle: hasGoogle, isIOSApp: function () { return !!IOSB(); }, renderGoogleButton: renderGoogleButton, googleCredential: googleCredential, gisPrompt: gisPrompt, loadGsi: loadGsi, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, syncAuthName: syncAuthName, shareLink: shareLink,
+    uploadCurrent: uploadCurrent, openPanel: openPanel, linkGoogle: linkGoogle, linkApple: linkApple, hasApple: hasApple, hasGoogle: hasGoogle, isIOSApp: function () { return !!IOSB(); }, renderGoogleButton: renderGoogleButton, googleCredential: googleCredential, gisPrompt: gisPrompt, loadGsi: loadGsi, linkEmail: linkEmail, resetPassword: resetPassword, authInfo: authInfo, recoveryAccount: recoveryAccount, accountStatus: accountStatus, onAuthChange: onAuthChange, reauthAccount: reauthAccount, reauthError: reauthError,   /* C284 */  syncAuthName: syncAuthName, shareLink: shareLink,
     watchGroup: watchGroup, serverGid: serverGid,
     // C106: «هذا أنا» على الخادم — يربط حسابي بشخصٍ في الشجرة (أو يفكّه بـ null)
     inviteFor: inviteFor, adoptGroup: adoptGroup,   // C107

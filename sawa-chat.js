@@ -115,6 +115,10 @@
   global.__sawaNativeOpen = function (url) {
     try {
       var u = new URL(url, global.location.href), p = u.searchParams, d = null;
+      // C287: only the app's own page is handled in place. Any other path (the invoice pay page /pay/<token>,
+      // /privacy.html …) needs a real page load: this used to answer "handled" for them, so a pay link opened
+      // in the Android app (it claims every www.sawaaap.com link) showed nothing.
+      if (!(u.pathname === "/" || u.pathname === "/index.html" || u.pathname === "")) return false;
       if (p.get("call")) d = { t: "call", call: p.get("call"), answer: p.get("answer") === "1" ? 1 : 0 };
       else if (p.get("room")) d = { room: p.get("room") };
       else if (p.get("chat")) d = { cid: p.get("chat") };
@@ -239,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c228";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c315";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -449,7 +453,7 @@
     var pr = state.presence[p.uid] || null;
     return { id: p.uid, uid: p.uid, name: displayName(p), realName: p.name || null, nick: nickOf(p.uid), anon: !!p.anon, tag: guestTag(p.uid), code: peerCode(p.uid), photo: photoOf(p.uid),
              families: p.families || [], via: p.via || [], onSawa: true, phone: p.phone || "",
-             online: !!(pr && pr.state === "online"), lastSeen: pr && pr.ts ? pr.ts : null };
+             online: !!(pr && pr.state === "online"), lastSeen: pr && pr.ts && !hideSeen() ? pr.ts : null };   // C314: من أخفى آخر ظهوره لا يرى آخر ظهور غيره
   }
   function contacts() {
     return state.people.map(decorate).sort(function (a, b) { return a.name.localeCompare(b.name, "ar"); });
@@ -630,9 +634,23 @@
         function (err) { LOG.warn("presence", { u: u, err: err && err.code }); });   // بلا صلاحيّة بعد (acl يُكتب مع people.list)
     });
   }
+  // C314: «إخفاء آخر ظهور» — الوقت يُكتب صفراً فلا يراه أحد (القواعد تشترط رقماً)؛ «متّصل الآن» يبقى. يتزامن بين أجهزتي (prefs.hideSeen)
+  //       ونسخةٌ محلّيّة تمنع كتابة الوقت قبل وصول الإعدادات من الخادم.
+  function hideSeen() { return prefsLoaded && prefs ? !!prefs.hideSeen : !!lsGet("sawa_hide_seen", false); }
+  function seenTs() { return hideSeen() ? 0 : firebase.database.ServerValue.TIMESTAMP; }
   function setMine(stateName) {
     if (!myStatusRef || !global.firebase) return;
-    try { myStatusRef.set({ state: stateName, ts: firebase.database.ServerValue.TIMESTAMP }); } catch (e) {}
+    try { myStatusRef.set({ state: stateName, ts: seenTs() }); } catch (e) {}
+  }
+  function armDisconnect() {
+    if (!myStatusRef || !global.firebase) return Promise.resolve();
+    try { return myStatusRef.onDisconnect().set({ state: "offline", ts: seenTs() }); } catch (e) { return Promise.resolve(); }
+  }
+  function setHideSeen(on) {
+    on = !!on; prefs = prefs || {}; prefs.hideSeen = on; lsSet("sawa_hide_seen", on);
+    savePrefs({ hideSeen: on });
+    armDisconnect(); setMine(document.visibilityState === "hidden" ? "offline" : "online");
+    publish(); publishChats();
   }
   // C50: إشارة الخادم (طلب تواصل / قبول / طلب تأكيد رقم) — كانت الطلبات لا تظهر إلا بإشعارٍ أو بعد عودةٍ من الخلفية
   var sigRef = null, sigSeen = -1;
@@ -658,7 +676,7 @@
     connRef.on("value", function (snap) {
       if (snap.val() !== true) return;
       // عند الانقطاع (إغلاق التطبيق/فقد الشبكة) يكتب الخادم «غير متّصل» بنفسه
-      myStatusRef.onDisconnect().set({ state: "offline", ts: firebase.database.ServerValue.TIMESTAMP }).then(function () {
+      armDisconnect().then(function () {
         setMine(document.visibilityState === "hidden" ? "offline" : "online");
       });
     });
@@ -698,7 +716,7 @@
       var text = L("أضفني إلى جهات اتّصالك في سوا (الرابط صالح أسبوعاً):", "Add me as a contact on Sawa (link valid for a week):");
       if (global.navigator && navigator.share) return navigator.share({ title: "سوا", text: text, url: inv.url }).catch(function () {}).then(function () { return inv; });
       if (global.navigator && navigator.clipboard) return navigator.clipboard.writeText(text + " " + inv.url).then(function () { toast(L("نُسخ الرابط ✓", "Link copied ✓")); return inv; });
-      global.prompt(L("انسخ الرابط:", "Copy the link:"), inv.url); return inv;
+      copySheet(inv.url); return inv;   // C289
     }).catch(function (e) { toast(L("تعذّر إنشاء الرابط: ", "Couldn't create the link: ") + ((e && e.message) || e)); return null; });
   }
   // مكتبة QR تُحمَّل عند الحاجة فقط (cdnjs)
@@ -863,10 +881,11 @@
     var u = null; try { u = new URL(t); } catch (e) {}
     if (u && /(^|\.)sawaaap\.com$/i.test(u.hostname) || (u && u.origin === global.location.origin)) {
       if (u.searchParams.get("join")) {
-        if (global.confirm(L("هذا رابط دعوة للانضمام إلى عائلة في «صلة رحم». الانضمام؟", "This is a family invite. Join?"))) {
+        confirmSheet(L("هذا رابط دعوة للانضمام إلى عائلة في «صلة رحم». الانضمام؟", "This is a family invite. Join?"), { ok: L("انضمام", "Join") }).then(function (ok) {   // C289
+          if (!ok) return;
           if (global.SawaSync && global.SawaSync.join) global.SawaSync.join(u.searchParams.get("join"), u.searchParams.get("p"), u.searchParams.get("pn"));   // C114
           else global.location.assign(global.location.origin + "/?join=" + encodeURIComponent(u.searchParams.get("join")));
-        }
+        });
         return "join";
       }
       if (global.__sawaNativeOpen && global.__sawaNativeOpen(u.href) && (u.searchParams.get("chat") || u.searchParams.get("call") || u.searchParams.get("requests"))) return "link";
@@ -1409,11 +1428,16 @@
       try { if (app.setGroups) app.setGroups(groups); } catch (e) {}
     }, 40);
   }
+  // C315: الرسائل المؤقّتة تبقى ثلاثة أشهر على الأقلّ من إرسالها (كما في الخادم)
+  var DIS_MIN_MS = 7776000000;
+  function disExpOf(m) { return m && m.exp ? Math.max(Number(m.exp) || 0, (Number(m.ts) || 0) + DIS_MIN_MS) : 0; }
+  function isStarredId(id) { return !!(prefs && prefs.starred && prefs.starred.some(function (s) { return s && s.id === id; })); }
   function appMessages(cid) {
     var c = chats[cid] || virtualChats[cid] || { members: [] }, hidden = (prefs && prefs.hidden) || {};
     var clearedAt = (prefs && prefs.cleared && prefs.cleared[cid]) || 0;
     var dd = days[cid] || {}, arr = [], now = Date.now();   // C14: المؤقّتة تختفي عند انتهاء أجلها (لا تنتظر تنظيف الخادم)
-    Object.keys(dd).forEach(function (day) { var mm = dd[day]; Object.keys(mm).forEach(function (id) { var m = mm[id]; if (m && !hidden[id] && (m.ts || 0) > clearedAt && !(m.exp && m.exp < now)) arr.push({ m: m, day: day }); }); });
+    // C315: الأجل الفعليّ ثلاثة أشهر على الأقلّ، والمفضّلة لا تختفي أبداً (الخادم يزيل أجلها)
+    Object.keys(dd).forEach(function (day) { var mm = dd[day]; Object.keys(mm).forEach(function (id) { var m = mm[id]; if (m && !hidden[id] && (m.ts || 0) > clearedAt && !(m.exp && disExpOf(m) < now && !isStarredId(id))) arr.push({ m: m, day: day }); }); });
     if (e2eOn(c)) {
       arr = arr.filter(function (x) { var m0 = x.m; return !(m0.type === "system" && m0.extra && m0.extra.ev === "e2e_rekey" && m0.by !== state.uid); });
       (lsGet(NOTES, {})[cid] || []).forEach(function (n) { if (n.ts > clearedAt) arr.push({ m: { id: n.id, by: "", ts: n.ts, type: "system", extra: { ev: "local" }, text: n.text } }); });
@@ -1429,6 +1453,7 @@
                 forwarded: !!m.fwd, reaction: mineRe || anyRe || null, reactions: re, replyTo: m.reply || null,
                 replyToText: m.reply ? (m.reply.missing ? L("رسالة غير متاحة", "Message unavailable") : m.reply.del ? L("🚫 رسالة محذوفة", "🚫 Deleted message") : (m.reply.text || replyLabel(cid, m.reply.id) || (m.reply.id ? L("📎 وسيط", "📎 Media") : null))) : null, replyThumb: m.reply ? replyThumb(cid, m.reply.id) : null, contact: m.contact || null, extra: m.extra || null, cloud: true,
                 starred: !!(prefs && prefs.starred && prefs.starred.some(function (s) { return s.id === m.id; })) };
+      if (m.exp && !o.starred && !m.del) o.expiresAt = disExpOf(m);   // C315: لشريط «ستُحذف قريباً»
       if (group) { o.senderId = appId(m.by); o.senderName = personName(m.by, c); if (o.type === undefined) o.type = "text"; if (!m.del) toolShape(m, o, c); }
       else { o.senderUserId = appId(m.by); if (m.type === "system") { o.type = "system"; o.text = sysText(m, c); } }   // C23: إشعارات المحادثة السرّيّة في المحادثة الفرديّة
       if (m.e2eErr) o.e2eErr = true;
@@ -1460,6 +1485,7 @@
   function loadPrefs(pre) {
     return (pre ? Promise.resolve(pre) : call("chat.prefs", {})).then(function (b) {
       prefs = b.prefs || {}; prefsLoaded = true;
+      if (!!prefs.hideSeen !== !!lsGet("sawa_hide_seen", false)) { lsSet("sawa_hide_seen", !!prefs.hideSeen); armDisconnect(); setMine(document.visibilityState === "hidden" ? "offline" : "online"); }   // C314
       var applied = {};
       Object.keys(PREF_SETTERS).forEach(function (k) {
         if (!(k in prefs)) return;
@@ -1528,7 +1554,7 @@
       var text = L("انضمّ إلى مجموعة «" + name + "» في سوا (صالح أسبوعاً):", "Join the «" + name + "» group on Sawa (valid for a week):");
       if (global.navigator && navigator.share) return navigator.share({ title: "سوا", text: text, url: url }).catch(function () {});
       if (global.navigator && navigator.clipboard) return navigator.clipboard.writeText(text + " " + url).then(function () { toast(L("نُسخ الرابط ✓", "Link copied ✓")); });
-      global.prompt(L("انسخ الرابط:", "Copy the link:"), url);
+      copySheet(url);   // C289
     }).catch(fail);
   }
   function joinGroup(tok) {
@@ -1743,11 +1769,13 @@
   }
 
   // ==================================================================
-  // C4: الوسائط — صور (تُصغَّر) · فيديو · صوت · ملفّات (≤ 16 MB) · مشاهدة مرّة واحدة
+  // C4: الوسائط — صور (تُصغَّر) · فيديو · صوت · ملفّات (≤ 70 MB) · مشاهدة مرّة واحدة
   //     الرفع: الجهاز يكتب chats/{cid}/media/{mid} (+ قطع base64 ≤ 700 ألف حرف في c/{i}) مباشرةً (القواعد تسمح للعضو المالك)،
   //     ثمّ يُرسل الرسالة عبر الـWorker (يتحقّق أنّ الوسيط له واكتمل). التنزيل عند الحاجة، ويُحفظ في IndexedDB.
   // ==================================================================
-  var CHUNK = 700000, MAX_MEDIA = 16 * 1024 * 1024, AUTO_DL = 5 * 1024 * 1024;
+  var CHUNK = 700000, MAX_MEDIA = 70 * 1024 * 1024, AUTO_DL = 5 * 1024 * 1024;
+  var MAX_CHUNKS = Math.ceil(Math.ceil(MAX_MEDIA / 3) * 4 / CHUNK);   // 140 قطعة — يطابق n ≤ 140 في قواعد Firestore و MEDIA_MAX في الـWorker
+  var AUTO_VIDEO_MAX = 16 * 1024 * 1024;   // التنزيل التلقائيّ للفيديو يبقى حتّى 16 ميغابايت (الأكبر: «اضغط للتنزيل»)
   var mediaUrls = {}, mediaLoading = {}, localUrls = {}, mediaFailed = {};
   var MEDIA_TYPES = ["image", "video", "voice", "file"];
   function newMediaId() { return "f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 9); }
@@ -1997,7 +2025,7 @@
     if (secret && e2eState(chats[cid]) !== "ready") { toast(e2eUi(chats[cid]).title || ""); return null; }   // C23
     var src = opts.blob || (opts.dataUrl ? dataUrlToBlob(opts.dataUrl) : null);
     if (!src) { toast(L("تعذّر قراءة الملفّ", "Couldn't read the file")); return null; }
-    if (src.size > MAX_MEDIA - (secret ? 64 : 0)) { toast(L("الحدّ الأقصى 16 ميجابايت", "The limit is 16 MB")); return null; }
+    if (src.size > MAX_MEDIA - (secret ? 64 : 0)) { toast(L("الحدّ الأقصى 70 ميجابايت", "The limit is 70 MB")); return null; }
     var kind = opts.kind, id = newMsgId(), mid = newMediaId();
     var extra = { mid: mid, name: opts.name || src.name || null, mime: src.type || null, size: src.size };
     if (opts.viewOnce) extra.viewOnce = true;
@@ -2320,7 +2348,7 @@
       throw e;
     }).then(function () { return blobToB64(blob); }).then(function (b64) {
       var n = Math.max(1, Math.ceil(b64.length / CHUNK));
-      if (n > 33) throw new Error(L("الملفّ كبير — الحدّ 16 ميجابايت", "File too large (16 MB)"));
+      if (n > MAX_CHUNKS) throw new Error(L("الملفّ كبير — الحدّ 70 ميجابايت", "File too large (70 MB)"));
       return meta.set({ by: state.uid, mime: blob.type || "application/octet-stream", size: blob.size, n: n, ts: Date.now(), done: false }).then(function () {
         var i = 0, worker = function () { if (i >= n) return Promise.resolve(); var k = i++; return meta.collection("c").doc(String(k)).set({ d: b64.slice(k * CHUNK, (k + 1) * CHUNK) }).then(worker); };
         return Promise.all([worker(), worker(), worker()]);
@@ -2409,7 +2437,7 @@
       throw e;
     }).then(function () { return blobToB64(blob); }).then(function (b64) {
       var n = Math.max(1, Math.ceil(b64.length / CHUNK));
-      if (n > 33) throw new Error(L("الملفّ كبير — الحدّ 16 ميجابايت", "File too large (16 MB)"));
+      if (n > MAX_CHUNKS) throw new Error(L("الملفّ كبير — الحدّ 70 ميجابايت", "File too large (70 MB)"));
       return meta.set({ by: state.uid, mime: blob.type || "application/octet-stream", size: blob.size, n: n, ts: Date.now(), done: false }).then(function () {
         var i = 0, worker = function () { if (i >= n) return Promise.resolve(); var k = i++; return meta.collection("c").doc(String(k)).set({ d: b64.slice(k * CHUNK, (k + 1) * CHUNK) }).then(worker); };
         return Promise.all([worker(), worker(), worker()]);
@@ -2700,9 +2728,10 @@
       add(L("✏️ تعديل النصّ", "✏️ Edit text"), "", function () { moEdit(p); });   // C135
       add(L("👥 من يراها", "👥 Who can see it"), "", function () { moAudInfo(p); });
       add(L("🗑 حذف اللحظة", "🗑 Delete moment"), "danger", function () {
-        if (!global.confirm(L("حذف هذه اللحظة نهائيّاً؟", "Delete this moment permanently?"))) return;
+        confirmSheet(L("حذف هذه اللحظة نهائيّاً؟", "Delete this moment permanently?"), { ok: L("حذف", "Delete"), danger: true }).then(function (ok) { if (!ok) return;   // C289
         mo.list = mo.list.filter(function (x) { return x.id !== p.id; }); moEmit();
         call("moment.delete", { pid: p.id }).then(function () { toast(L("حُذفت ✓", "Deleted ✓")); }, function (e) { toast(L("تعذّر الحذف: ", "Couldn't delete: ") + ((e && e.message) || e)); });
+        });
       });
     } else {
       add(L("💬 مراسلة ", "💬 Message ") + moName(p.by, p.name), "", function () { try { openDm(p.by); } catch (e) { openDmWith(p.by); } });
@@ -2852,10 +2881,11 @@
     }
     function cDelete(c) {
       var kids = list.filter(function (x) { return x.re === c.id; }).length;
-      if (!global.confirm(kids ? L("حذف التعليق وردوده؟", "Delete this comment and its replies?") : L("حذف هذا التعليق؟", "Delete this comment?"))) return;
+      confirmSheet(kids ? L("حذف التعليق وردوده؟", "Delete this comment and its replies?") : L("حذف هذا التعليق؟", "Delete this comment?"), { ok: L("حذف", "Delete"), danger: true }).then(function (ok) { if (!ok) return;   // C289
       if (editing && editing.id === c.id) setEdit(null);
       list = list.filter(function (x) { return x.id !== c.id && x.re !== c.id; }); paint();
       call("moment.uncomment", { pid: p.id, cmid: c.id }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+      });
     }
     // C136: ضغطةٌ مطوّلة على التعليق ⇒ تفاعلات سريعة + ردّ · نسخ · تعديل · حذف (بدل تحديد النصّ)
     function cMenu(c) {
@@ -3291,7 +3321,7 @@
     ov.dir = isAr() ? "rtl" : "ltr"; document.body.appendChild(ov);
     var top = mk("div", "display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;border-bottom:1px solid " + T.border);
     var x = mk("button", "width:38px;height:38px;border-radius:50%;border:0;background:" + T.bg + ";display:flex;align-items:center;justify-content:center;color:" + T.text); x.appendChild(moIcon(MI.x, 20));
-    x.onclick = function () { if (busy) return; if ((ta.value.trim() || media.length || poll || loc) && !global.confirm(L("تجاهل هذه اللحظة؟", "Discard this moment?"))) return; close(); };
+    x.onclick = function () { if (busy) return; if (!(ta.value.trim() || media.length || poll || loc)) { close(); return; } confirmSheet(L("تجاهل هذه اللحظة؟", "Discard this moment?"), { ok: L("تجاهل", "Discard"), cancel: L("متابعة الكتابة", "Keep editing"), danger: true }).then(function (ok) { if (ok) close(); }); };   // C289
     top.appendChild(x); top.appendChild(mk("div", "flex:1;font:800 17px var(--sawa-font,system-ui)", L("لحظة جديدة", "New moment")));
     var post = mk("button", "height:38px;border-radius:19px;border:0;padding:0 18px;background:" + T.primary + ";color:#fff;font:800 14px var(--sawa-font,system-ui)", L("نشر", "Post"));
     top.appendChild(post); ov.appendChild(top);
@@ -3496,7 +3526,7 @@
         openMomentTrimmer(src, function (out) { prepareVideo(out).then(function (r2) { take(r2, out); }); });
       }
       if (video && f.size > MAX_MEDIA - 64) { trimThenTake(f); return; }
-      if (!video && f.size > MAX_MEDIA - 64) { toast(L("الحدّ 16 ميجابايت", "Limit is 16 MB")); return; }
+      if (!video && f.size > MAX_MEDIA - 64) { toast(L("الحدّ 70 ميجابايت", "Limit is 70 MB")); return; }
       (video ? prepareVideo(f) : prepareImage(f)).then(function (r) {
         if (video && (!r.duration || r.duration > MOMENT_MAX_VIDEO_SEC + 1)) { trimThenTake(f); return; }   // مدّة مجهولة ⇒ يُقصّ (المحرّر يحسبها)
         take(r, f);
@@ -3591,7 +3621,7 @@
         var add = mk("button", "border:0;border-radius:14px;padding:12px 14px;background:rgba(255,255,255,.14);color:#fff;font:800 14px var(--sawa-font,system-ui)", "＋");
         add.onclick = function () { close(); storyComposer(); };
         var del = mk("button", "border:0;border-radius:14px;padding:12px 14px;background:rgba(239,68,68,.3);color:#fff;font:800 14px var(--sawa-font,system-ui)", "🗑");
-        del.onclick = function () { pause(true); if (!global.confirm(L("حذف هذه القصّة؟", "Delete this story?"))) { pause(false); return; } call("story.delete", { sid: it.id }).then(function () { toast(L("حُذفت", "Deleted")); close(); }).catch(function (e) { toast((e && e.message) || String(e)); pause(false); }); };
+        del.onclick = function () { pause(true); confirmSheet(L("حذف هذه القصّة؟", "Delete this story?"), { ok: L("حذف", "Delete"), danger: true }).then(function (ok) { if (!ok) { pause(false); return; } call("story.delete", { sid: it.id }).then(function () { toast(L("حُذفت", "Deleted")); close(); }).catch(function (e) { toast((e && e.message) || String(e)); pause(false); }); }); };   // C289
         foot.appendChild(sv); foot.appendChild(add); foot.appendChild(del);
         stSeenCount(it, sv);
       } else {
@@ -3697,7 +3727,7 @@
     files.forEach(function (f) { lines.push((kindOfMime(f.mime) === "image" ? "🖼️ " : kindOfMime(f.mime) === "video" ? "🎬 " : "📎 ") + f.name + " · " + Math.max(1, Math.round(f.size / 1024)) + " KB"); });
     if (text) lines.push(text);
     pv.textContent = lines.join("\n") || "—"; s.box.appendChild(pv);
-    if (tooLarge.length || big.length) s.box.appendChild(note(L("لن يُرسل (أكبر من 16 ميجابايت): ", "Not sent (over 16 MB): ") + tooLarge.concat(big).map(function (f) { return f.name; }).join("، "), "#b42318", "#fdecec"));
+    if (tooLarge.length || big.length) s.box.appendChild(note(L("لن يُرسل (أكبر من 70 ميجابايت): ", "Not sent (over 70 MB): ") + tooLarge.concat(big).map(function (f) { return f.name; }).join("، "), "#b42318", "#fdecec"));
     var cap = null;
     if (files.length) { cap = mk("input", "width:100%;box-sizing:border-box;border:1px solid #dfe5ec;border-radius:12px;padding:10px 12px;font:600 14px var(--sawa-font,system-ui);margin-bottom:8px"); cap.placeholder = L("تعليق (اختياريّ)", "Caption (optional)");
       // C185: اسم الملف (وهو ما يصل نصّاً مع المشاركة من تطبيقٍ آخر) ليس تعليقاً — كان يُرسل رسالةً نصّيّة ثانية باسم الملف
@@ -3776,7 +3806,7 @@
   // يحوّل رسالة وسائط إلى شكل الواجهة (ويطلب التنزيل التلقائيّ للصغير في المحادثة المفتوحة)
   function autoVideoMax() {
     try { var cn = navigator.connection; if (cn && (cn.saveData || /(^|-)2g$/.test(String(cn.effectiveType || "")))) return AUTO_DL; } catch (e) {}
-    return MAX_MEDIA;
+    return AUTO_VIDEO_MAX;
   }
   function mediaShape(m, o, cid, mine) {
     var ex = m.extra || {}, mid = ex.mid, url = localUrls[mid] || mediaUrls[mid] || null;
@@ -4189,8 +4219,13 @@
       return upd;
     });
   }
+  // C290: التأكيد أثناء المكالمة بنافذة سوا (كان confirm())
+  function askEndCall() { return confirmSheet(L("ستنتهي المكالمة الحاليّة. تحديث الآن؟", "This will end the current call. Update now?"), { ok: L("تحديث الآن", "Update now"), cancel: L("لاحقاً", "Later"), danger: true }); }
   function forceUpdate() {
-    if (upd.inCall() && !global.confirm(L("ستنتهي المكالمة الحاليّة. تحديث الآن؟", "This will end the current call. Update now?"))) return;
+    if (upd.inCall()) { askEndCall().then(function (ok) { if (ok) forceUpdateNow(); }); return; }
+    forceUpdateNow();
+  }
+  function forceUpdateNow() {
     var jobs = [];
     try {
       if (global.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k.indexOf("sawa-") === 0; }).map(function (k) { return caches.delete(k); })); }));
@@ -4260,7 +4295,7 @@
       var yes = btn(L("تحديث", "Update"), true); yes.style.background = "#fff"; yes.style.color = "#2774BA";
       var no = btn(L("لاحقاً", "Later")); no.style.color = "#e3f2fd";
       // C83: إن لم يتبدّل عامل الخدمة بعد (التحديث لم يُنزَّل) فإعادة التحميل لا تكفي ⇒ تحديثٌ قسريّ
-      yes.onclick = function () { if (upd.available && navigator.serviceWorker && !reloading) { forceUpdate(); return; } if (inCall() && !global.confirm(L("ستنتهي المكالمة الحاليّة. تحديث الآن؟", "This will end the current call. Update now?"))) return; reload(); };
+      yes.onclick = function () { if (upd.available && navigator.serviceWorker && !reloading) { forceUpdate(); return; } if (inCall()) { askEndCall().then(function (ok) { if (ok) reload(); }); return; } reload(); };   // C290
       no.onclick = function () { if (upd.server) lsSet("sawa_upd_dismissed", upd.server); try { upEl.remove(); } catch (e) {} upEl = null; };
       upEl.appendChild(txt); upEl.appendChild(yes); upEl.appendChild(no); document.body.appendChild(upEl);
     }
@@ -4309,6 +4344,7 @@
     Object.keys(chats).forEach(function (k) { var c1 = chats[k]; if (cl[k] && !(c1.last && c1.last.ts > cl[k])) return; n += unreadOf(c1); });
     if (n === badgeN) return; badgeN = n;
     try { if (navigator.setAppBadge) { n ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } } catch (e) {}
+    try { if (NB() && NB().setBadge) NB().setBadge(n); } catch (e) {}   // C314: تطبيق أندرويد (WebView لا يدعم setAppBadge)
   }
 
   // ==================================================================
@@ -4349,11 +4385,18 @@
     if (/rate_limited/.test(m)) return L("محاولاتٌ كثيرة — انتظر قليلاً ثمّ أعد المحاولة", "Too many tries — wait a little");
     if (/too_many_pending/.test(m)) return L("لديك 20 طلباً بانتظار الموافقة — ألغِ بعضها أوّلاً", "You have 20 pending requests — cancel some first");
     if (/not_found/.test(m)) return L("لا يوجد حسابٌ بهذا الرمز", "No account with this code");
+    if (/bad_phone_sd/.test(m)) return L("رقمك السودانيّ غير صحيح: بعد ‎+249 يجب ٩ أرقام (مثال: ‎+249912345678). صحّحه من «حسابي» ← القلم.", "Your Sudanese number is wrong: +249 must be followed by 9 digits (e.g. +249912345678). Fix it in Me → pencil.");   // C313
     if (/bad_phone/.test(m)) return L("رقم الهاتف غير صحيح — مثال: +249912345678", "Invalid phone — e.g. +249912345678");
     if (/no_phone/.test(m)) return L("أضف رقم هاتفك أوّلاً من «حسابي»", "Add your phone number first (Me)");
     if (/no_targets/.test(m)) return L("اختر شخصاً واحداً على الأقلّ", "Pick at least one person");
     if (/not_eligible/.test(m)) return L("لتأكيد الآخرين يلزم حسابٌ بـGoogle أو بريدٍ مؤكَّد أو رقمٍ موثَّق", "To confirm others you need a Google / confirmed-email account or a verified number");
     if (/not_contact/.test(m)) return L("لستما جهتي اتّصال", "You're not contacts");
+    if (/no_fb_phone/.test(m)) return L("لم يُربط الرقم بعد — أعد المحاولة", "The number isn't linked yet — try again");   // C308
+    if (/sms_expired/.test(m)) return L("انتهت صلاحيّة الرمز — اطلب رمزاً جديداً", "Code expired — request a new one");   // C304
+    if (/sms_auth/.test(m)) return L("مزوّد الرسائل رفض بيانات الدخول — راجع SMSGATE_USER وSMSGATE_PASS (أو مفاتيح Twilio)", "The SMS provider rejected the credentials — check SMSGATE_USER and SMSGATE_PASS (or the Twilio keys)");   // C306 · C312
+    if (/sms_failed:net/.test(m)) return L("تعذّر الوصول إلى بوّابة الرسائل — حاول بعد قليل", "Couldn't reach the SMS gateway — try again shortly");
+    if (/sms_failed/.test(m)) { var tm = m.match(/sms_failed:(\w+)(?::(.*))?/) || [], tc = tm[1], tw = tm[2]; return L("تعذّر إرسال الرسالة", "Couldn't send the SMS") + (tc ? " (" + tc + (tw ? ": " + tw : "") + ")" : L(" — حاول لاحقاً", " — try later")); }
+    if (/manager_only/.test(m)) return L("التحقّق بالرمز للمدير فقط", "Code verification is for the manager only");   // C303
     // C198
     if (/guest_limited/.test(m)) return L("البحث بالرقم أو البريد يحتاج ربط حسابك بـGoogle أو Apple أو بريد — ويمكنك البحث بالرمز الآن", "Searching by phone or email needs a linked Google / Apple / email account — you can search by code now");
     if (/voucher_too_new/.test(m)) return L("حسابك جديد — يمكنك تأكيد أرقام الآخرين بعد 30 يوماً من إنشائه، أو بعد توثيق رقمك عبر واتساب", "Your account is new — you can confirm others' numbers 30 days after creating it, or after verifying your number via WhatsApp");
@@ -4371,7 +4414,7 @@
   function mk(tag, css, text) { var e = document.createElement(tag); if (css) e.style.cssText = fsx(css); if (text != null) e.textContent = text; return e; }
   function mkBtn(text, kind) {
     // C196: الزرّ الأساسيّ وزرّ الرابط بلون المظهر في كلّ النوافذ (كان الأساسيّ أخضر ثابتاً والرابط أزرق ثابتاً)
-    var css = kind === "primary" ? "background:var(--sawa-primary,#2774BA);color:#fff;border:0"
+    var css = kind === "primary" ? "background:var(--sawa-primary-fill,var(--sawa-primary,#2774BA));color:#fff;border:0"   /* C302 */
       : kind === "danger" ? "background:#fdecec;color:#b42318;border:0"
       : kind === "ghost" ? "background:transparent;color:var(--sawa-primary,#2774BA);border:0"
       : "background:var(--sawa-btn-fill,#E7ECF2);color:var(--sawa-text,#1A1A2E);border:0";   // C204: ثانويٌّ صلب بلا حدٍّ رفيع
@@ -4427,6 +4470,54 @@
     ov.onclick = function (e) { if (e.target === ov) api.close(); };
     return api;
   }
+  // C289: بديلا confirm() وprompt() الأصليّين — كانا يظهران بنافذة المتصفّح (وفي تطبيقَي أندرويد وiOS بعنوان الموقع) وبلا الوضع الداكن.
+  //   confirmSheet تُرجع Promise<boolean>؛ الإغلاق بلمس الخلفيّة = لا. opts: { ok, cancel, danger }
+  function confirmSheet(msg, opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      var s = sheet(opts.title || ""), done = false;
+      s.ov.style.zIndex = "2147483647";   // فوق كلّ النوافذ (عارض القصص واللحظات أعلى من النافذة العاديّة)
+      var fin = function (v) { if (done) return; done = true; s.close(); resolve(v); };
+      s.ov.onclick = function (e) { if (e.target === s.ov) fin(false); };
+      s.box.appendChild(mk("div", "font:600 15px/1.8 var(--sawa-font,system-ui);text-align:center;margin:4px 4px 14px;white-space:pre-line", msg));
+      var y = mkBtn(opts.ok || L("تأكيد", "Confirm"), opts.danger ? "danger" : "primary");
+      y.onclick = function () { fin(true); }; s.box.appendChild(y);
+      if (!opts.noCancel) {   // C290: noCancel ⇒ رسالةٌ بزرّ «حسناً» وحده (بدل alert)
+        var n = mkBtn(opts.cancel || L("إلغاء", "Cancel"));
+        n.style.marginTop = "8px"; n.onclick = function () { fin(false); }; s.box.appendChild(n);
+      }
+      try { y.focus(); } catch (e) {}
+    });
+  }
+  // C290: بديل prompt() — حقلٌ واحد، تُرجع Promise بالنصّ أو null عند الإلغاء. opts: { placeholder, type, inputMode, ok }
+  function inputSheet(title, opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      var s = sheet(title), done = false;
+      s.ov.style.zIndex = "2147483647";
+      var fin = function (v) { if (done) return; done = true; s.close(); resolve(v); };
+      s.ov.onclick = function (e) { if (e.target === s.ov) fin(null); };
+      var f = mk("input", "width:100%;box-sizing:border-box;border:1.5px solid #dfe5ec;border-radius:12px;padding:12px;font:600 16px var(--sawa-font,system-ui);background:#fff;color:#1A1A2E;margin:4px 0 10px");
+      f.type = opts.type || "text"; if (opts.inputMode) f.inputMode = opts.inputMode; if (opts.placeholder) f.placeholder = opts.placeholder;
+      if (opts.type === "tel") f.dir = "ltr";
+      var y = mkBtn(opts.ok || L("متابعة", "Continue"), "primary"), n = mkBtn(L("إلغاء", "Cancel"));
+      n.style.marginTop = "8px";
+      y.onclick = function () { fin(f.value); }; n.onclick = function () { fin(null); };
+      f.onkeydown = function (e) { if (e.key === "Enter") fin(f.value); };
+      s.box.appendChild(f); s.box.appendChild(y); s.box.appendChild(n);
+      setTimeout(function () { try { f.focus(); } catch (e) {} }, 50);
+    });
+  }
+  // نسخٌ يدويّ حين يرفض المتصفّح الحافظة: النصّ محدَّدٌ في حقلٍ للقراءة فقط
+  function copySheet(text) {
+    var s = sheet(L("انسخ النصّ", "Copy the text")); s.ov.style.zIndex = "2147483647";
+    var f = mk("textarea", "width:100%;box-sizing:border-box;min-height:84px;border:1.5px solid #dfe5ec;border-radius:12px;padding:10px;font:500 14px/1.6 ui-monospace,Menlo,monospace;direction:ltr;resize:none;background:#f8fafc;color:#1A1A2E");
+    f.readOnly = true; f.value = text;
+    s.box.appendChild(note(L("المس النصّ مطوّلاً ثمّ اختر «نسخ».", "Long-press the text, then choose Copy.")));
+    s.box.appendChild(f);
+    var c = mkBtn(L("تمّ", "Done"), "primary"); c.style.marginTop = "10px"; c.onclick = s.close; s.box.appendChild(c);
+    setTimeout(function () { try { f.focus(); f.select(); } catch (e) {} }, 50);
+  }
   function note(text, color, bg) { return mk("div", "font:500 12.5px/1.7 var(--sawa-font,system-ui);color:" + (color || "#5b6b7c") + ";" + (bg ? "background:" + bg + ";border-radius:10px;padding:8px 10px;" : "") + "margin:6px 0", text); }
   function avatar(name, size) {
     size = size || 52;
@@ -4434,8 +4525,8 @@
   }
   function copyText(t) {
     var done = function () { toast(L("نُسخ ✓", "Copied ✓")); };
-    try { if (navigator.clipboard) return navigator.clipboard.writeText(t).then(done, function () { global.prompt(L("انسخ:", "Copy:"), t); }); } catch (e) {}
-    global.prompt(L("انسخ:", "Copy:"), t);
+    try { if (navigator.clipboard) return navigator.clipboard.writeText(t).then(done, function () { copySheet(t); }); } catch (e) {}
+    copySheet(t);
   }
   function shareText(t) {
     try { if (NB() && NB().share) { NB().share("سوا", t); return Promise.resolve(); } } catch (e) {}   // C84: WebView لا يعرف navigator.share
@@ -4741,7 +4832,8 @@
   function verifySheet() {
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return false; }
     var p = profile();
-    if (p.phoneVerified) { toast(L("رقمك موثَّق ✓", "Your number is verified ✓")); return true; }
+    var mgrHint = adminAtLeast("admin");   // C305: المدير يفتح الورقة ولو كان رقمه موثَّقاً — ليصل إلى خيارات الرمز (واتساب/SMS)
+    if (p.phoneVerified && !mgrHint) { toast(L("رقمك موثَّق ✓", "Your number is verified ✓")); return true; }
     var s = sheet(L("توثيق رقمك", "Verify your number"));
     if (!p.phone) { s.box.appendChild(note(L("أضف رقم هاتفك أوّلاً من «حسابي» ← القلم.", "Add your phone number first (Me → pencil)."), "#8a6d00", "#fff7e0")); var ab = mkBtn(L("أضف رقمي", "Add my number"), "primary"); ab.onclick = function () { s.close(); editProfile(); }; s.box.appendChild(ab); return true; }
     var body = mk("div"); s.box.appendChild(body);
@@ -4753,12 +4845,15 @@
       body.appendChild(mk("div", "font:600 13px var(--sawa-font,system-ui);color:#5b6b7c;direction:ltr;text-align:center;margin:2px 0 8px", p.phone));
       body.appendChild(note(L("جارٍ التحميل…", "Loading…")));
       Promise.all([call("phone.status", {}), call("profile.get", {}).catch(function () { return {}; })]).then(function (rr) {
-        var st = rr[0] || {}, wa = !!(rr[1] && rr[1].verify && rr[1].verify.whatsapp);
+        var st = rr[0] || {}, wa = !!(rr[1] && rr[1].verify && rr[1].verify.whatsapp), mgr = !!(rr[1] && rr[1].verify && rr[1].verify.mgr), sms = !!(rr[1] && rr[1].verify && rr[1].verify.sms), vc = (rr[1] && rr[1].verify) || {};
+        // C306: للمدير — ما الذي ينقص الخادم (أسماء فقط)
+        var missNote = function (miss) { if (!miss || !miss.length) return null; var n = note(L("ينقص في أسرار الـWorker: ", "Missing Worker secrets: ") + miss.join("، ") + "\n" + L("يراها الخادم الآن: ", "The Worker sees: ") + ((vc.envSeen && vc.envSeen.length) ? vc.envSeen.join("، ") : L("لا شيء", "none")), "#5b6b7c"); n.style.whiteSpace = "pre-line"; return n; };   // C303: الرمز للمدير فقط
         state.waReady = wa;
         body.innerHTML = "";
         body.appendChild(mk("div", "font:600 13px var(--sawa-font,system-ui);color:#5b6b7c;direction:ltr;text-align:center;margin:2px 0 8px", p.phone));
-        if (st.phoneVerified) { state.me = Object.assign({}, state.me || {}, { phoneVerified: true, verifiedBy: st.verifiedBy || "whatsapp" }); publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} body.appendChild(note(L("رقمك موثَّق ✓", "Verified ✓"), "#187854", "#e6f5ec")); return; }
+        if (st.phoneVerified) { state.me = Object.assign({}, state.me || {}, { phoneVerified: true, verifiedBy: st.verifiedBy || "whatsapp" }); publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} body.appendChild(note(L("رقمك موثَّق ✓", "Verified ✓"), "#187854", "#e6f5ec")); if (!mgr) return; body.appendChild(note(L("للمدير: يمكنك إعادة التوثيق بالرمز.", "Manager: you can re-verify with a code."), "#5b6b7c")); }
         // 1) عبر المعارف
+        if (!st.phoneVerified) {
         var c1 = mk("div", "border:1px solid #e2e5e9;border-radius:16px;padding:12px;margin:8px 0");
         c1.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui)", L("👥 عبر معارفك", "👥 Through people you know")));
         c1.appendChild(note(L("اطلب من اثنين من جهات اتّصالك (بحساب Google أو بريدٍ مؤكَّد) أن يؤكّدا أنّ هذا رقمك. بلا رسائل ولا تكلفة.", "Ask two of your contacts (with a Google or confirmed-email account) to confirm this is your number. No messages, no cost.")));
@@ -4771,12 +4866,23 @@
         var ask = mkBtn(L("اطلب من معارفك", "Ask my contacts"), "primary"); c1.appendChild(ask);
         ask.onclick = function () { pickVouchers(function () { home(); }); };
         body.appendChild(c1);
-        // 2) عبر واتساب
+        }
+        // 2) عبر واتساب (رمز OTP) — C303: للمدير فقط؛ لا يظهر لغيره
+        if (!mgr) return;
         var c2 = mk("div", "border:1px solid #e2e5e9;border-radius:16px;padding:12px;margin:8px 0");
-        c2.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui)", L("💬 عبر واتساب", "💬 Via WhatsApp")));
+        c2.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui)", L("💬 عبر واتساب (رمز تحقّق)", "💬 Via WhatsApp (verification code)")));
+        c2.appendChild(mk("div", "display:inline-block;font:700 11px var(--sawa-font,system-ui);color:#8a6d00;background:#fff7e0;border-radius:8px;padding:2px 8px;margin:4px 0", L("للمدير فقط", "Manager only")));
         if (wa) { c2.appendChild(note(L("ترسل رمزاً قصيراً إلى رقم سوا على واتساب فيُوثَّق رقمك فوراً.", "Send a short code to Sawa's WhatsApp and your number is verified instantly."))); var g2 = mkBtn(L("ابدأ — افتح واتساب", "Start — open WhatsApp")); g2.onclick = intro; c2.appendChild(g2); }
-        else c2.appendChild(note(L("قيد التجهيز — سيُفعَّل قريباً.", "Coming soon."), "#8a6d00", "#fff7e0"));
+        else { c2.appendChild(note(L("قيد التجهيز — سيُفعَّل قريباً.", "Coming soon."), "#8a6d00", "#fff7e0")); var m2 = missNote(vc.waMissing); if (m2) c2.appendChild(m2); }
         body.appendChild(c2);
+        // 3) C304: عبر رسالة SMS — للمدير فقط
+        var c3 = mk("div", "border:1px solid #e2e5e9;border-radius:16px;padding:12px;margin:8px 0");
+        c3.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui)", L("✉️ عبر رسالة SMS (رمز تحقّق)", "✉️ Via SMS (verification code)")));
+        c3.appendChild(mk("div", "display:inline-block;font:700 11px var(--sawa-font,system-ui);color:#8a6d00;background:#fff7e0;border-radius:8px;padding:2px 8px;margin:4px 0", L("للمدير فقط", "Manager only")));
+        // C308: Twilio إن كان مهيّأً، وإلّا Firebase Phone Auth (Blaze) — بلا أسرار
+        c3.appendChild(note(L("نرسل رمزاً إلى رقمك برسالة نصّيّة، فتكتبه هنا.", "We text a code to your number; you type it here.")));
+        var g3 = mkBtn(L("أرسل الرمز", "Send the code")); g3.onclick = sms ? smsSend : function () { fbSmsSend(g3); }; c3.appendChild(g3);
+        body.appendChild(c3);
       }).catch(function (e) { body.innerHTML = ""; body.appendChild(note(codeErr(e), "#b42318")); });
     }
     // اختيار المعارف (حتى 5)
@@ -4803,6 +4909,131 @@
           s2.close(); done();
         }).catch(function (e) { snd.disabled = false; snd.textContent = L("إرسال الطلب", "Send request"); toast(codeErr(e)); });
       };
+    }
+    // C304: SMS — phone.smsStart ⇒ رسالة إلى رقم الحساب · phone.smsCheck { code } ⇒ موثَّق
+    function smsDone(q) {
+      state.me = Object.assign({}, state.me || {}, { phone: q.phone, phoneVerified: true, verifiedBy: "sms" });
+      lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
+      publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {}
+      toast(L("تمّ توثيق رقمك ✓ " + q.phone, "Number verified ✓ " + q.phone));
+      s.close();
+    }
+    function smsSend() {
+      body.innerHTML = "";
+      body.appendChild(note(L("جارٍ الإرسال…", "Sending…")));
+      call("phone.smsStart", {}).then(function (r) {
+        if (!r.enabled) { body.innerHTML = ""; body.appendChild(note(L("التحقّق برسالة SMS قيد التجهيز — سيُفعَّل قريباً.", "SMS verification is being set up — coming soon."), "#8a6d00", "#fff7e0")); return; }
+        smsStage(r);
+      }, function (e) { home(); toast(codeErr(e)); });
+    }
+    function smsStage(r) {
+      body.innerHTML = "";
+      body.appendChild(note(L("أرسلنا رمزاً إلى رقمك. اكتبه هنا (صالحٌ ١٠ دقائق).", "We sent a code to your number. Type it here (valid 10 minutes).")));
+      body.appendChild(mk("div", "font:600 13px var(--sawa-font,system-ui);color:#5b6b7c;direction:ltr;text-align:center;margin:2px 0 8px", r.phone));
+      var inp = mk("input", "width:100%;box-sizing:border-box;font:800 24px ui-monospace,Menlo,monospace;letter-spacing:6px;text-align:center;direction:ltr;border:1px solid #cbd5e1;border-radius:14px;padding:10px;margin:6px 0");
+      inp.inputMode = "numeric"; inp.autocomplete = "one-time-code"; inp.maxLength = 10; inp.setAttribute("aria-label", L("رمز التحقّق", "Verification code"));
+      body.appendChild(inp);
+      var ok = mkBtn(L("تحقّق", "Verify"), "primary"); ok.disabled = true; body.appendChild(ok);
+      var again = mkBtn(L("أرسل رمزاً جديداً", "Send a new code")); body.appendChild(again);
+      again.onclick = smsSend;
+      var digits = function () { return String(inp.value || "").replace(/[\u0660-\u0669]/g, function (d) { return "٠١٢٣٤٥٦٧٨٩".indexOf(d); }).replace(/\D/g, ""); };
+      inp.oninput = function () { ok.disabled = digits().length < 4; };
+      inp.onkeydown = function (ev) { if (ev.key === "Enter" && !ev.isComposing && !ok.disabled) ok.onclick(); };
+      ok.onclick = function () {
+        ok.disabled = true; ok.textContent = "…";
+        call("phone.smsCheck", { code: digits() }).then(function (q) {
+          if (q.verified) { smsDone(q); return; }
+          ok.disabled = false; ok.textContent = L("تحقّق", "Verify");
+          toast(q.enabled === false ? L("قيد التجهيز", "Coming soon") : L("الرمز غير صحيح", "Wrong code"));
+        }, function (e) { ok.disabled = false; ok.textContent = L("تحقّق", "Verify"); toast(/bad_code/.test((e && e.message) || "") ? L("الرمز غير صحيح", "Wrong code") : codeErr(e)); });
+      };
+      setTimeout(function () { try { inp.focus(); } catch (e) {} }, 60);
+    }
+    // C308: SMS عبر Firebase Phone Auth — Firebase يرسل الرمز ويربط الرقم بحساب Firebase، ثمّ phone.fbCheck يقرأ phone_number من الرمز الموقَّع
+    function e164(x) {
+      var t = String(x || "").replace(/[\u0660-\u0669]/g, function (d) { return "٠١٢٣٤٥٦٧٨٩".indexOf(d); }).replace(/[\s\-().]/g, "");
+      if (t.indexOf("00") === 0) t = "+" + t.slice(2);
+      if (/^0\d{9}$/.test(t)) t = "+249" + t.slice(1);
+      return /^\+\d{8,15}$/.test(t) ? t : null;
+    }
+    function fbErr(e) {
+      var c = (e && e.code) || "", m = (e && e.message) || "", tag = " (" + (c || "?") + ")";
+      // C309: Firebase يعيد operation-not-allowed لسببين — البلد محجوب في SMS region policy، أو مزوّد Phone معطَّل. نصّ الخطأ يفرّق بينهما.
+      if (/region/i.test(m)) return L("Firebase لا يسمح بإرسال SMS إلى هذا البلد — فعّل السودان في Authentication ← Settings ← SMS region policy", "SMS to this country is blocked — allow Sudan in Authentication → Settings → SMS region policy") + tag;
+      if (/operation-not-allowed/.test(c)) return L("Firebase رفض الإرسال: فعّل «Phone» في Authentication ← Sign-in method واحفظ، ثمّ تأكّد من السماح بالسودان في Settings ← SMS region policy", "Firebase refused: enable Phone in Sign-in method and save, then allow Sudan in SMS region policy") + tag + (m ? "\n" + m.replace(/^Firebase:\s*/, "").slice(0, 160) : "");
+      if (/invalid-verification-code/.test(c)) return L("الرمز غير صحيح", "Wrong code");
+      if (/code-expired|session-expired/.test(c)) return L("انتهت صلاحيّة الرمز — اطلب رمزاً جديداً", "Code expired — request a new one");
+      if (/credential-already-in-use|account-exists/.test(c)) return L("هذا الرقم مربوطٌ بحسابٍ آخر في سوا", "This number is linked to another Sawa account");
+      if (/too-many-requests|quota-exceeded/.test(c)) return L("محاولاتٌ كثيرة — انتظر قليلاً", "Too many tries — wait a little");
+      if (/invalid-phone-number|missing-phone-number/.test(c)) return L("رقم الهاتف غير صحيح — مثال: +249912345678", "Invalid phone — e.g. +249912345678");
+      if (/captcha|app-not-authorized|unauthorized-domain/.test(c)) return L("تعذّر التحقّق من الجهاز (reCAPTCHA) — جرّب من المتصفّح", "Device check (reCAPTCHA) failed — try in the browser");
+      if (/sms|region|unsupported/i.test(c + m)) return L("لا يُسمح بإرسال SMS إلى هذا البلد — فعّله في Firebase ← Authentication ← Settings ← SMS region policy", "SMS to this country is blocked — allow it in Firebase SMS region policy");
+      return codeErr(e) + (c ? " (" + c + ")" : "");
+    }
+    var fbVerifier = null;
+    function fbClear() { try { if (fbVerifier) fbVerifier.clear(); } catch (e) {} fbVerifier = null; }
+    var origClose2 = s.close; s.close = function () { fbClear(); origClose2(); };
+    function fbFinish() {
+      var u = firebase.auth().currentUser;
+      return u.getIdToken(true).then(function () { return call("phone.fbCheck", {}); }).then(function (q) { fbClear(); smsDone(q); });
+    }
+    function fbSmsSend(btn) {
+      var u = null, ph = e164(p.phone);
+      try { u = firebase.auth().currentUser; } catch (e) {}
+      if (!u || !global.firebase || !firebase.auth.PhoneAuthProvider) { toast(L("تعذّر الوصول إلى Firebase", "Firebase unavailable")); return; }
+      if (!ph) { toast(L("رقم الهاتف غير صحيح — مثال: +249912345678", "Invalid phone — e.g. +249912345678")); return; }
+      if (u.phoneNumber === ph) { fbFinish().catch(function (e) { toast(fbErr(e)); }); return; }   // مربوطٌ أصلاً بحساب Firebase
+      btn.disabled = true; btn.textContent = "…";
+      fbClear();
+      var rc = mk("div"); rc.style.cssText = "position:absolute;width:0;height:0;overflow:hidden"; s.box.appendChild(rc);   // حاوية reCAPTCHA الخفيّة (تبقى بعد تبديل الشاشة)
+      try { fbVerifier = new firebase.auth.RecaptchaVerifier(rc, { size: "invisible" }); } catch (e) { btn.disabled = false; btn.textContent = L("أرسل الرمز", "Send the code"); toast(fbErr(e)); return; }
+      // C310: نافذة reCAPTCHA (صور) طبقتها ≈ 2e9 — ورقتنا 2147483002 كانت تغطّيها، فيلمس المستخدم الخلفيّة فتُغلق الورقة.
+      //   أثناء التحقّق: الورقة تحت reCAPTCHA، ولمس الخلفيّة لا يغلقها. تعود كما كانت بعد النتيجة.
+      var z0 = s.ov.style.zIndex, tap0 = s.ov.onclick;
+      s.ov.style.zIndex = "1999999000"; s.ov.onclick = null;
+      var restore = function () { s.ov.style.zIndex = z0; s.ov.onclick = tap0; };
+      new firebase.auth.PhoneAuthProvider().verifyPhoneNumber(ph, fbVerifier).then(function (vid) { restore(); fbStage(vid, ph); }, function (e) {
+        restore(); fbClear(); btn.disabled = false; btn.textContent = L("أرسل الرمز", "Send the code"); toast(fbErr(e));
+        if (/operation-not-allowed/.test((e && e.code) || "") || /region/i.test((e && e.message) || "")) fbCfgNote(btn, e);
+      });
+    }
+    // C311: ما المحفوظ فعلاً في Firebase؟ (الخادم يقرؤه بحساب الخدمة) — يظهر تحت الزرّ للمدير
+    function fbCfgNote(btn, e) {
+      var host = btn.parentNode; if (!host) return;
+      var old = host.querySelector("[data-fbcfg]"); if (old) old.remove();
+      var n = note(L("جارٍ قراءة إعداد Firebase…", "Reading Firebase settings…"), "#5b6b7c"); n.setAttribute("data-fbcfg", "1"); n.style.whiteSpace = "pre-line"; host.appendChild(n);
+      call("phone.smsConfig", {}).then(function (c) {
+        var raw = ((e && e.message) || "").replace(/^Firebase:\s*/, "").slice(0, 200);
+        if (!c.ok2) { n.textContent = L("تعذّرت قراءة إعداد Firebase", "Couldn't read Firebase settings") + " (" + (c.status || "") + " " + (c.err || "") + ")\n" + raw; return; }
+        var rg = String(c.region || ""), allowSD = /^allow:.*\bSD\b/.test(rg) || (/^deny:/.test(rg) && !/\bSD\b/.test(rg)) || rg === "default";
+        n.textContent = L("إعداد Firebase المحفوظ فعلاً (", "Saved Firebase settings (") + c.project + "):\n" +
+          "• Phone: " + (c.phone ? L("مفعَّل ✓", "enabled ✓") : L("معطَّل ✗", "disabled ✗")) + "\n" +
+          "• SMS region policy: " + (rg === "default" ? L("بلا سياسة (الكلّ مسموح)", "none (all allowed)") : rg.replace(/^allow:/, L("السماح فقط: ", "allow only: ")).replace(/^deny:/, L("المنع: ", "deny: "))) + (allowSD ? " ✓" : " ✗") + "\n" +
+          L("• أرقام التجربة: ", "• Test numbers: ") + c.tests + "\n" + L("نصّ Firebase: ", "Firebase says: ") + raw;
+        n.style.color = (c.phone && allowSD) ? "#8a6d00" : "#b42318";
+      }, function (er) { n.textContent = codeErr(er); });
+    }
+    function fbStage(vid, ph) {
+      body.innerHTML = "";
+      body.appendChild(note(L("أرسلنا رمزاً إلى رقمك. اكتبه هنا.", "We sent a code to your number. Type it here.")));
+      body.appendChild(mk("div", "font:600 13px var(--sawa-font,system-ui);color:#5b6b7c;direction:ltr;text-align:center;margin:2px 0 8px", ph));
+      var inp = mk("input", "width:100%;box-sizing:border-box;font:800 24px ui-monospace,Menlo,monospace;letter-spacing:6px;text-align:center;direction:ltr;border:1px solid #cbd5e1;border-radius:14px;padding:10px;margin:6px 0");
+      inp.inputMode = "numeric"; inp.autocomplete = "one-time-code"; inp.maxLength = 6; inp.setAttribute("aria-label", L("رمز التحقّق", "Verification code"));
+      body.appendChild(inp);
+      var ok = mkBtn(L("تحقّق", "Verify"), "primary"); ok.disabled = true; body.appendChild(ok);
+      var again = mkBtn(L("أرسل رمزاً جديداً", "Send a new code")); body.appendChild(again);
+      again.onclick = function () { fbClear(); home(); };
+      var digits = function () { return String(inp.value || "").replace(/[\u0660-\u0669]/g, function (d) { return "٠١٢٣٤٥٦٧٨٩".indexOf(d); }).replace(/\D/g, ""); };
+      inp.oninput = function () { ok.disabled = digits().length !== 6; };
+      inp.onkeydown = function (ev) { if (ev.key === "Enter" && !ev.isComposing && !ok.disabled) ok.onclick(); };
+      ok.onclick = function () {
+        ok.disabled = true; ok.textContent = "…";
+        var u = firebase.auth().currentUser, cred = firebase.auth.PhoneAuthProvider.credential(vid, digits());
+        (u.phoneNumber ? u.updatePhoneNumber(cred) : u.linkWithCredential(cred)).then(fbFinish).catch(function (e) {
+          ok.disabled = false; ok.textContent = L("تحقّق", "Verify"); toast(fbErr(e));
+        });
+      };
+      setTimeout(function () { try { inp.focus(); } catch (e) {} }, 60);
     }
     function intro() {
       body.innerHTML = "";
@@ -4836,7 +5067,7 @@
         if (Date.now() > r.exp || n > 100) { stopPoll(); st.textContent = L("انتهت صلاحيّة الرمز — اطلب رمزاً جديداً.", "Code expired — request a new one."); st.style.color = "#b42318"; var again = mkBtn(L("رمز جديد", "New code"), "primary"); again.onclick = intro; body.appendChild(again); return; }
         if (document.visibilityState !== "visible" && n % 5) return;
         call("phone.status", {}).then(function (q) {
-          if (!q.phoneVerified) return;
+          if (!q.phoneVerified || q.otpOpen) return;   // C305: رمزٌ ما زال معلَّقاً ⇒ لم يصل بعد (للمدير الموثَّق أصلاً)
           stopPoll();
           state.me = Object.assign({}, state.me || {}, { phone: q.phone, phoneVerified: true, verifiedBy: q.verifiedBy || "whatsapp" });
           lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
@@ -4871,7 +5102,7 @@
     var shr = mkBtn(L("واتساب وغيره", "WhatsApp & more"), "primary"), man = mkBtn(L("رقمٌ آخر", "Another number"));
     top.appendChild(shr); top.appendChild(man); s.box.appendChild(top);
     shr.onclick = function () { shareText(body()); };
-    man.onclick = function () { var n = global.prompt(L("رقم الهاتف:", "Phone number:"), ""); if (n && n.replace(/\D/g, "").length >= 6) openSms(n, body()); };
+    man.onclick = function () { inputSheet(L("رقم الهاتف", "Phone number"), { type: "tel", inputMode: "tel", placeholder: "09XXXXXXXX", ok: L("كتابة الرسالة", "Write message") }).then(function (n) { if (!n) return; if (n.replace(/\D/g, "").length >= 6) openSms(n, body()); else toast(L("الرقم قصير — اكتبه كاملاً", "That number is too short")); }); };   // C290
     var area = mk("div", "margin-top:6px"); s.box.appendChild(area);
     loadCode().then(function (b) { code = b.code; }).catch(function () {});
     var all = [];
@@ -4966,7 +5197,9 @@
       }).catch(function (e) { cb.checked = !v; toast(codeErr(e)); });
     };
     reset.onclick = function () {
-      if (!global.confirm(L("تغيير رمزك؟ الرمز القديم يتوقّف فوراً.", "Change your code? The old one stops working."))) return;
+      confirmSheet(L("تغيير رمزك؟ الرمز القديم يتوقّف فوراً.", "Change your code? The old one stops working."), { ok: L("تغيير الرمز", "Change code"), danger: true }).then(function (ok) { if (ok) doReset(); });   // C289
+    };
+    var doReset = function () {
       reset.disabled = true;
       call("code.reset", {}).then(function (b) {
         state.me = Object.assign({}, state.me || {}, { code: b.code, findable: b.findable }); lsSet("sawa_people_cache", { uid: state.uid, me: state.me, people: state.people });
@@ -5166,8 +5399,9 @@
       var err = function (e) { toast(L("تعذّر: ", "Failed: ") + codeErr(e)); };
       if (it.pid) {
         btn(L("🗑 حذف المحتوى", "🗑 Delete content"), "#ef4444", function () {
-          if (!global.confirm(L("حذف هذا المحتوى نهائيّاً وإغلاق البلاغ؟", "Delete this content permanently and close the report?"))) return;
+          confirmSheet(L("حذف هذا المحتوى نهائيّاً وإغلاق البلاغ؟", "Delete this content permanently and close the report?"), { ok: L("حذف", "Delete"), danger: true }).then(function (ok) { if (!ok) return;   // C290
           (it.cmid ? call("moment.uncomment", { pid: it.pid, cmid: it.cmid }) : call("moment.delete", { pid: it.pid })).then(function () { return closeR(false); }).catch(err);
+          });
         });
         btn(L("✓ لا مخالفة", "✓ No violation"), "#16a34a", function () { closeR(true).catch(err); });
       } else btn(L("إغلاق البلاغ", "Close report"), "#6b7280", function () { closeR(false).catch(err); });
@@ -5227,8 +5461,8 @@
         ["viewer", "moderator", "admin"].forEach(function (k) { var o = mk("option", "", RL[k]); o.value = k; if (m.role === k) o.selected = true; sel.appendChild(o); });
         sel.onchange = function () { sel.disabled = true; call("admin.team", { email: m.email, role: sel.value }).then(function (x) { toast(L("تمّ ✓", "Done ✓")); paint(x); }, function (e) { sel.disabled = false; toast(errT(e)); }); };
         var del = mk("button", "border:0;background:#fdecec;color:#b42318;border-radius:10px;padding:6px 10px;font:800 12px var(--sawa-font,system-ui)", L("حذف", "Remove"));
-        del.onclick = function () { if (!global.confirm(L("إزالة " + m.email + " من الفريق؟", "Remove " + m.email + "?"))) return; del.disabled = true;
-          call("admin.team", { email: m.email, role: null }).then(function (x) { toast(L("أُزيل ✓", "Removed ✓")); paint(x); }, function (e) { del.disabled = false; toast(errT(e)); }); };
+        del.onclick = function () { confirmSheet(L("إزالة " + m.email + " من الفريق؟", "Remove " + m.email + "?"), { ok: L("إزالة", "Remove"), danger: true }).then(function (ok) { if (!ok) return; del.disabled = true;   // C290
+          call("admin.team", { email: m.email, role: null }).then(function (x) { toast(L("أُزيل ✓", "Removed ✓")); paint(x); }, function (e) { del.disabled = false; toast(errT(e)); }); }); };
         row.appendChild(sel); row.appendChild(del); list.appendChild(row);
       });
       var lg = r.log || [];
@@ -5256,6 +5490,7 @@
       try { if (global.indexedDB) indexedDB.deleteDatabase("firebaseLocalStorageDb"); } catch (e) {}
       try { if (global.indexedDB) indexedDB.deleteDatabase("sawa-media"); } catch (e) {}   // C14: الصور والصوتيّات المنزّلة أيضاً (كما تعد نافذة الحذف)
       try { if (global.indexedDB) indexedDB.deleteDatabase("sawa-e2e"); } catch (e) {}   // C23: مفاتيح المحادثات السرّيّة
+      try { if (global.indexedDB) indexedDB.deleteDatabase("sawa-import"); } catch (e) {}   // C281: إيصالات الاستيراد المحفوظة
       // C58: ذاكرة Firestore المحلّيّة (C53) وأيّ مخزنٍ آخر — حتى لا تبقى محادثات الحساب السابق على الجهاز
       try { if (global.indexedDB && indexedDB.databases) indexedDB.databases().then(function (l) { (l || []).forEach(function (d) { if (d && d.name) try { indexedDB.deleteDatabase(d.name); } catch (e) {} }); }).catch(function () {}); } catch (e) {}
       try { if (global.indexedDB) indexedDB.deleteDatabase("firestore/[DEFAULT]/sawa-test-9770f/main"); } catch (e) {}
@@ -5934,7 +6169,7 @@
     if (c && c.uid === uid) { state.me = c.me; state.people = c.people || []; publish(); }
     else { state.me = null; try { if (app && app.setMyProfile) app.setMyProfile(null); if (app && app.setPeople) app.setPeople([]); } catch (e) {}
       // C14: حسابٌ آخر على هذا الجهاز ⇒ وسائط الحساب السابق المنزّلة تُمسح
-      if (c && c.uid) { try { idbP = null; if (global.indexedDB) indexedDB.deleteDatabase("sawa-media"); } catch (e) {} } }
+      if (c && c.uid) { try { idbP = null; if (global.indexedDB) { indexedDB.deleteDatabase("sawa-media"); indexedDB.deleteDatabase("sawa-import"); } } catch (e) {} } }   // C281: وإيصالات الاستيراد
     state.cachedUid = null;
     startMyPresence(uid);
     // C57: اسمٌ كُتب في شاشة البداية قبل أن تجهز الهويّة
@@ -6461,6 +6696,7 @@
   }
 
   global.SawaChat = {
+    confirm: confirmSheet, copySheet: copySheet,   // C289
     build: CHAT_BUILD,   // C160
     version: VERSION,
     bindApp: bindApp, refresh: refresh, contacts: contacts,
@@ -6484,6 +6720,7 @@
     leaveGroup: leaveGroup, shareGroupInvite: shareGroupInvite, joinGroup: joinGroup,
     sendPoll: sendPoll, vote: vote, editPoll: editPoll, sendBill: sendBill, billPaid: billPaid, sendFund: sendFund, contribute: contribute,
     // C164: editTasks · notifAvatars · setNotifAvatars (C170: كان هذا التعليق في وسط السطر فعطّل ما بعده — react وdeleteForAll وpin…)
+    hideSeen: hideSeen, setHideSeen: setHideSeen,   // C314
     sendTasks: sendTasks, setTask: setTask, editTasks: editTasks, addTask: addTask, myTasks: myTasks, notifAvatars: notifAvatars, setNotifAvatars: setNotifAvatars, deleteForAll: deleteForAll, deleteForMe: deleteForMe, react: react, pin: pin,
     setDisappear: setDisappear, openDm: openDm, openSaved: openSaved, dmWith: function (u) { return state.uid ? dmWith(u) : null; },
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
@@ -6497,6 +6734,7 @@
     retryFailed: retryFailed, discardFailed: discardFailed, failedSheet: failedSheet,   // C14
     retryMedia: retryMedia,   // C18
     scanAny: scanAny, routeScanned: routeScanned, signOutSheet: signOutSheet,   // C20
+    wipeLocal: wipeLocal,   // C283: «إعادة تعيين كاملة» من «نسيت رمز القفل»
     e2eSupported: function () { return e2e.ok(); }, e2eStartDm: e2eStartDm, e2eNewSheet: e2eNewSheet, e2eAct: e2eAct, e2eSafety: e2eSafety,   // C23
     adminCached: adminCached, checkAdmin: checkAdmin, adminReports: adminReports, voipTest: voipTest,   // C24
     adminRole: adminRoleCached, adminAtLeast: adminAtLeast, adminTeam: adminTeamSheet,   // C195

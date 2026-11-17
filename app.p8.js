@@ -41,7 +41,7 @@ function LinkedDevicesScreen({ onBack }) {
             React.createElement("div", { className: "mx-4 mt-4 p-4 rounded-2xl", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
                 React.createElement("p", { className: `text-xs ${textStart()} leading-relaxed`, style: { color: colors.textMuted } }, t("arbt_swa_bmtsfhk_aw"))),
             React.createElement("div", { className: "px-4 mt-4" },
-                React.createElement("button", { "aria-label": t("idafa"), onClick: () => setShowQr(!showQr), className: `w-full flex ${rowStart()} items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm`, style: { backgroundColor: colors.primary, color: "#fff" } },
+                React.createElement("button", { "aria-label": t("idafa"), onClick: () => setShowQr(!showQr), className: `w-full flex ${rowStart()} items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm`, style: { backgroundColor: colors.primaryFill, color: "#fff" } },
                     React.createElement(Plus, { size: 16, color: "#fff" }),
                     t("rbt_jhaz_jdyd"))),
             showQr && (React.createElement("div", { className: "mx-4 mt-4 p-5 rounded-2xl flex flex-col items-center gap-3", style: { backgroundColor: colors.card, border: `1px solid ${colors.border}` } },
@@ -84,7 +84,7 @@ function SawaWrappedScreen({ onBack, conversations, groups, showToast = () => { 
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col", style: { backgroundColor: colors.bg } },
         React.createElement(TopBar, { title: t("ihsayyaty"), onBack: onBack }),
         React.createElement("div", { className: "flex-1 overflow-y-auto p-4" },
-            React.createElement("div", { className: "rounded-2xl p-5 mb-4 text-center", style: { background: `linear-gradient(135deg, ${colors.primary}, ${colors.accent})` } },
+            React.createElement("div", { className: "rounded-2xl p-5 mb-4 text-center", style: { background: `linear-gradient(135deg, ${colors.primaryFill}, ${colors.accent})` } },
                 React.createElement("p", { className: "text-white text-xs font-bold mb-1 opacity-80" }, t("swa_mlkhsk_hdha_alshhr")),
                 React.createElement("p", { className: "text-white text-2xl font-extrabold" }, t("342_rsala")),
                 React.createElement("p", { className: "text-white text-xs opacity-75 mt-1" }, t("ant_mn_akthr_almstkhdmyn"))),
@@ -108,7 +108,7 @@ function SawaWrappedScreen({ onBack, conversations, groups, showToast = () => { 
                     React.createElement("div", { className: "flex-1 p-2.5 rounded-xl text-center", style: { backgroundColor: colors.primary + "15" } },
                         React.createElement("p", { className: "text-lg font-extrabold", style: { color: colors.primary } }, "3"),
                         React.createElement("p", { className: "text-[10px] mt-0.5", style: { color: colors.textMuted } }, t("mnasbat_hnat"))))),
-            React.createElement("button", { "aria-label": t("msharka"), onClick: () => showToast(t("tm_nskh_almlkhs_jahz"), "success"), className: `w-full mt-4 py-3 rounded-2xl font-bold text-sm flex ${rowStart()} items-center justify-center gap-2`, style: { backgroundColor: colors.primaryLight, color: colors.primary } },
+            React.createElement("button", { "aria-label": t("msharka"), onClick: () => showToast(t("tm_nskh_almlkhs_jahz"), "success"), className: `w-full mt-4 py-3 rounded-2xl font-bold text-sm flex ${rowStart()} items-center justify-center gap-2`, style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } },
                 React.createElement(Share2, { size: 15, color: colors.primary }),
                 t("shark_mlkhsk")),
             React.createElement("div", { className: "h-6" }))));
@@ -151,9 +151,9 @@ function ScheduleRoomModal({ onSave, onClose }) {
                 React.createElement("div", { className: `rounded-xl px-3 py-2.5 mb-4 flex ${rowStart()} items-center gap-2`, style: { backgroundColor: colors.primaryLight, border: `1px solid ${colors.primary}33` } },
                     React.createElement(Link2, { size: 14, color: colors.primary }),
                     React.createElement("span", { className: `flex-1 ${textStart()} text-xs font-bold truncate`, style: { color: colors.primary }, dir: "ltr" }, link),
-                    React.createElement("button", { onClick: () => { copyText(link); showToast(t("nskh_alrabt_2"), "success"); }, className: "text-[10px] font-extrabold px-2 py-1 rounded-lg", "aria-label": t("nskh"), style: { backgroundColor: colors.primary, color: "#fff" } }, t("nskh"))),
+                    React.createElement("button", { onClick: () => { copyText(link); showToast(t("nskh_alrabt_2"), "success"); }, className: "text-[10px] font-extrabold px-2 py-1 rounded-lg", "aria-label": t("nskh"), style: { backgroundColor: colors.primaryFill, color: "#fff" } }, t("nskh"))),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
-                    React.createElement("button", { onClick: save, className: "flex-1 py-3 rounded-xl text-sm font-extrabold", style: { backgroundColor: colors.primary, color: "#fff" } }, t("hfz_almwad")),
+                    React.createElement("button", { onClick: save, className: "flex-1 py-3 rounded-xl text-sm font-extrabold", style: { backgroundColor: colors.primaryFill, color: "#fff" } }, t("hfz_almwad")),
                     React.createElement("button", { onClick: onClose, className: "flex-1 py-3 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, t("ilgha")))))));
 }
 function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, groups = [], onSendTasksToGroup }) {
@@ -391,12 +391,12 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                 React.createElement("p", { className: "text-xs font-bold mb-0.5", style: { color: "#94a3b8" } }, t("rabt_aldawa")),
                 editingSlug ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-1.5` },
                     React.createElement("input", { dir: "ltr", value: slugDraft, autoFocus: true, onChange: (e) => setSlugDraft(e.target.value), onKeyDown: (e) => e.key === "Enter" && saveSlug(), placeholder: t("asm_alghrfa"), className: "flex-1 rounded-lg px-2 py-1 text-xs font-bold", style: { backgroundColor: "#111827", color: "#e2e8f0", border: "1px solid #475569", minWidth: 0 } }),
-                    React.createElement("button", { onClick: saveSlug, className: "text-[10px] font-extrabold px-2 py-1 rounded-lg", style: { backgroundColor: colors.primary, color: "#fff" } }, t("hfz")))) : (React.createElement("button", { onClick: () => { setSlugDraft(customSlug || ""); setEditingSlug(true); }, className: `w-full ${textStart()}`, "aria-label": t("tadyl_alrabt") },
+                    React.createElement("button", { onClick: saveSlug, className: "text-[10px] font-extrabold px-2 py-1 rounded-lg", style: { backgroundColor: colors.primaryFill, color: "#fff" } }, t("hfz")))) : (React.createElement("button", { onClick: () => { setSlugDraft(customSlug || ""); setEditingSlug(true); }, className: `w-full ${textStart()}`, "aria-label": t("tadyl_alrabt") },
                     React.createElement("p", { className: "text-sm font-extrabold truncate", style: { color: "#e2e8f0" }, dir: "ltr" }, roomLink),
                     React.createElement("p", { className: "text-[9px] mt-0.5", style: { color: colors.primary } }, t("adght_ltkhsys_alasm"))))),
             React.createElement("button", { "aria-label": t("nskh"), onClick: copyLink, className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: "#334155" } },
                 React.createElement(Copy, { size: 15, color: "#94a3b8" })),
-            React.createElement("button", { "aria-label": t("rmz_qr"), onClick: () => setShowQr(true), className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: showQr ? colors.primary : "#334155" } },
+            React.createElement("button", { "aria-label": t("rmz_qr"), onClick: () => setShowQr(true), className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: showQr ? colors.primaryFill : "#334155" } },
                 React.createElement(QrCode, { size: 15, color: showQr ? "#fff" : "#94a3b8" }))),
         amHost && waitingQueue.length > 0 && (React.createElement("div", { className: "mx-4 mt-2 rounded-xl px-3 py-2", style: { backgroundColor: colors.primary + "1a", border: `1px solid ${colors.primary}55` } },
             React.createElement("p", { className: `text-[11px] font-extrabold ${textStart()} mb-1.5`, style: { color: colors.primary } },
@@ -416,7 +416,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
         isTyping ? (React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 shrink-0`, style: { backgroundColor: "#111827", borderBottom: "1px solid #1e293b", height: 40, transition: "height .25s" } },
             React.createElement("span", { className: "text-[9px] font-bold shrink-0", style: { color: "#475569" } }, t("rm_msharkwn")),
             participants.map((p) => (React.createElement("div", { key: p.id, className: "w-7 h-7 rounded-full flex items-center justify-center font-extrabold text-xs shrink-0", style: {
-                    backgroundColor: p.id === "p-1" ? colors.primary : "#334155",
+                    backgroundColor: p.id === "p-1" ? colors.primaryFill : "#334155",
                     color: "#fff",
                     border: activeSpeaker === p.id && p.mic ? "2px solid #16A34A"
                         : p.id === "p-1" ? `2px solid ${colors.primary}88` : "2px solid #475569",
@@ -435,7 +435,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                     transition: "border-color .25s, box-shadow .25s",
                     cursor: amHost && p.id !== "p-1" ? "pointer" : "default",
                 } },
-                React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center font-extrabold text-sm mb-1", style: { backgroundColor: p.id === "p-1" ? colors.primary : "#334155", color: "#fff" } }, p.cam && !lowDataMode ? React.createElement(Video, { size: 14, color: "#fff" }) : p.avatar),
+                React.createElement("div", { className: "w-8 h-8 rounded-full flex items-center justify-center font-extrabold text-sm mb-1", style: { backgroundColor: p.id === "p-1" ? colors.primaryFill : "#334155", color: "#fff" } }, p.cam && !lowDataMode ? React.createElement(Video, { size: 14, color: "#fff" }) : p.avatar),
                 React.createElement("p", { className: "text-[9px] font-bold text-white truncate px-1", style: { maxWidth: "100%" } }, p.name),
                 React.createElement("div", { className: "absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center", style: { backgroundColor: p.mic ? "#16a34a33" : "#ef444433" } }, p.mic ? React.createElement(Mic, { size: 8, color: "#16a34a" }) : React.createElement(MicOff, { size: 8, color: "#ef4444" })),
                 raisedHands.includes(p.id) && React.createElement("div", { className: "absolute bottom-1 left-1 text-xs" }, "\u270B")))),
@@ -452,7 +452,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                     minHeight: 120,
                     cursor: amHost && p.id !== "p-1" ? "pointer" : "default",
                 } },
-                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center font-extrabold text-xl mb-2", style: { backgroundColor: p.id === "p-1" ? colors.primary : "#334155", color: "#fff" } }, p.cam && !lowDataMode ? React.createElement(Video, { size: 24, color: "#fff" }) : p.avatar),
+                React.createElement("div", { className: "w-14 h-14 rounded-full flex items-center justify-center font-extrabold text-xl mb-2", style: { backgroundColor: p.id === "p-1" ? colors.primaryFill : "#334155", color: "#fff" } }, p.cam && !lowDataMode ? React.createElement(Video, { size: 24, color: "#fff" }) : p.avatar),
                 React.createElement("p", { className: "text-xs font-bold text-white truncate px-2", style: { maxWidth: "100%" } }, p.name),
                 React.createElement("div", { className: "absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center", style: { backgroundColor: p.mic ? "#16a34a33" : "#ef444433" } }, p.mic ? React.createElement(Mic, { size: 11, color: "#16a34a" }) : React.createElement(MicOff, { size: 11, color: "#ef4444" })),
                 p.host && (React.createElement("div", { className: "absolute top-2 left-2 px-1.5 py-0.5 rounded-full", style: { backgroundColor: colors.primary + "55" } },
@@ -464,7 +464,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                 familyMembers.length > 0 && (React.createElement("span", { className: "text-[9px] font-bold", style: { color: colors.accent } }, t("aw_ada_alaayla"))))))),
         chatOpen && (React.createElement("div", { className: "mx-4 mb-2 rounded-2xl overflow-hidden flex flex-col", style: { backgroundColor: "#1e293b", border: "1px solid #334155", flex: isTyping ? 1 : "0 0 auto", maxHeight: isTyping ? "none" : 220, transition: "flex .25s, max-height .25s" } },
             React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 py-2 border-b shrink-0`, style: { borderColor: "#334155" } },
-                React.createElement("div", { className: `flex ${rowStart()} rounded-lg overflow-hidden shrink-0`, style: { border: "1px solid #334155" } }, [{ k: "casual", l: t("rm_drdsha") }, { k: "business", l: t("rm_amal") }].map((chatMode_item) => (React.createElement("button", { key: chatMode_item.k, onClick: () => setChatMode(chatMode_item.k), className: "px-2.5 py-1 text-[10px] font-extrabold", style: { backgroundColor: chatMode === chatMode_item.k ? colors.primary : "transparent", color: chatMode === chatMode_item.k ? "#fff" : "#94a3b8" } }, chatMode_item.l)))),
+                React.createElement("div", { className: `flex ${rowStart()} rounded-lg overflow-hidden shrink-0`, style: { border: "1px solid #334155" } }, [{ k: "casual", l: t("rm_drdsha") }, { k: "business", l: t("rm_amal") }].map((chatMode_item) => (React.createElement("button", { key: chatMode_item.k, onClick: () => setChatMode(chatMode_item.k), className: "px-2.5 py-1 text-[10px] font-extrabold", style: { backgroundColor: chatMode === chatMode_item.k ? colors.primaryFill : "transparent", color: chatMode === chatMode_item.k ? "#fff" : "#94a3b8" } }, chatMode_item.l)))),
                 React.createElement("div", { className: "flex-1" }),
                 chatMode === "business" && (React.createElement("button", { onClick: () => setShowSummary(true), className: "px-2 py-1 rounded-lg text-[10px] font-bold shrink-0", style: { backgroundColor: "#16A34A22", color: "#16A34A" } },
                     t("rm_mhdr_adad"),
@@ -494,7 +494,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                 v.label))))),
             React.createElement("div", { className: `flex ${rowStart()} gap-2 px-3 pb-2` },
                 React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: chatText, onChange: (e) => setChatText(e.target.value), onFocus: () => setIsTyping(true), onBlur: () => setIsTyping(false), onKeyDown: (e) => e.key === "Enter" && sendChat(), placeholder: chatMode === "business" ? t("rm_sjl_") + NOTE_KINDS[noteKind].label + "..." : t("rm_aktb_rsala"), className: "flex-1 rounded-xl px-3 py-1.5 text-xs", style: { backgroundColor: "#111827", color: "#e2e8f0", border: `1px solid ${isTyping ? colors.primary + "88" : "#334155"}`, minWidth: 0 } }),
-                React.createElement("button", { "aria-label": t("irsal"), onClick: () => { sendChat(); setIsTyping(false); }, className: "w-8 h-8 rounded-xl flex items-center justify-center", style: { backgroundColor: colors.primary } },
+                React.createElement("button", { "aria-label": t("irsal"), onClick: () => { sendChat(); setIsTyping(false); }, className: "w-8 h-8 rounded-xl flex items-center justify-center", style: { backgroundColor: colors.primaryFill } },
                     React.createElement(Send, { size: 13, color: "#fff", style: { transform: "scaleX(-1)" } }))))),
         showQr && (React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setShowQr(false), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.6)" } }),
@@ -505,7 +505,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                     React.createElement(QrCode, { size: 130, color: "#000" })),
                 React.createElement("p", { className: "text-[11px] text-center font-bold mb-4", style: { color: "#e2e8f0" }, dir: "ltr" }, roomLink),
                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
-                    React.createElement("button", { onClick: copyLink, className: "flex-1 py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: colors.primary, color: "#fff" } }, t("nskh_alrabt")),
+                    React.createElement("button", { onClick: copyLink, className: "flex-1 py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: colors.primaryFill, color: "#fff" } }, t("nskh_alrabt")),
                     React.createElement("button", { onClick: () => setShowQr(false), className: "flex-1 py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: "#334155", color: "#94a3b8" } }, t("ighlaq")))))),
         confirmLeave && (React.createElement(React.Fragment, null,
             React.createElement("div", { onClick: () => setConfirmLeave(false), style: { position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.6)" } }),
@@ -545,7 +545,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                         const on = pickedFamily.includes(m.id);
                         const late = isContactOverdue(m);
                         return (React.createElement("button", { key: m.id, onClick: () => setPickedFamily((p) => on ? p.filter((x) => x !== m.id) : [...p, m.id]), className: `w-full flex ${rowStart()} items-center gap-3 px-2 py-2.5 rounded-xl mb-1`, style: { backgroundColor: on ? colors.primary + "22" : "transparent" } },
-                            React.createElement("span", { className: "w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2", style: { borderColor: on ? colors.primary : "#475569", backgroundColor: on ? colors.primary : "transparent" } }, on && React.createElement(Check, { size: 11, color: "#fff" })),
+                            React.createElement("span", { className: "w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2", style: { borderColor: on ? colors.primaryFill : "#475569", backgroundColor: on ? colors.primaryFill : "transparent" } }, on && React.createElement(Check, { size: 11, color: "#fff" })),
                             React.createElement("div", { className: `flex-1 ${textStart()}`, style: { minWidth: 0 } },
                                 React.createElement("p", { className: "text-xs font-bold text-white truncate" }, m.local_name),
                                 React.createElement("p", { className: "text-[10px]", style: { color: late ? "#ef4444" : "#64748b" } },
@@ -559,7 +559,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                             showToast(t("arslt_aldawa_ila", { count: chosen.length }), "success");
                             setShowFamilyInvite(false);
                             setPickedFamily([]);
-                        }, disabled: pickedFamily.length === 0, className: "flex-1 py-2.5 rounded-xl text-xs font-extrabold", style: { backgroundColor: pickedFamily.length ? colors.primary : "#334155", color: pickedFamily.length ? "#fff" : "#64748b" } },
+                        }, disabled: pickedFamily.length === 0, className: "flex-1 py-2.5 rounded-xl text-xs font-extrabold", style: { backgroundColor: pickedFamily.length ? colors.primaryFill : "#334155", color: pickedFamily.length ? "#fff" : "#64748b" } },
                         t("rm_irsal_aldawa"),
                         pickedFamily.length,
                         ")"),
@@ -663,7 +663,7 @@ function SawaRoomScreen({ roomCode, onBack, familyMembers = [], onInviteFamily, 
                             else
                                 transferHost(hostConfirm.p.id);
                             setHostConfirm(null);
-                        }, className: "flex-1 py-2.5 rounded-xl text-xs font-extrabold", style: { backgroundColor: hostConfirm.action === "remove" ? "#ef4444" : colors.primary, color: "#fff" } }, hostConfirm.action === "remove" ? t("rm_izala") : t("rm_nql")),
+                        }, className: "flex-1 py-2.5 rounded-xl text-xs font-extrabold", style: { backgroundColor: hostConfirm.action === "remove" ? "#ef4444" : colors.primaryFill, color: "#fff" } }, hostConfirm.action === "remove" ? t("rm_izala") : t("rm_nql")),
                     React.createElement("button", { onClick: () => setHostConfirm(null), className: "flex-1 py-2.5 rounded-xl text-xs font-bold", style: { backgroundColor: "#334155", color: "#e2e8f0" } }, t("ilgha")))))),
         floatingReactions.length > 0 && (React.createElement("div", { style: { position: "fixed", inset: 0, pointerEvents: "none", zIndex: 35 } }, floatingReactions.map((r) => (React.createElement("span", { key: r.id, className: "sawa-float-up", style: { position: "absolute", bottom: 110, left: r.left + "%", fontSize: 30 } }, r.emoji))))),
         showReactionBar && (React.createElement("div", { className: `mx-4 mb-2 rounded-2xl px-3 py-2 flex ${rowStart()} items-center justify-around`, style: { backgroundColor: "#1e293b", border: "1px solid #334155" } }, ROOM_REACTIONS.map((e) => (React.createElement("button", { key: e, onClick: () => sendReaction(e), style: { fontSize: 24 }, "aria-label": t("rm_tfaal") + e }, e))))),
@@ -715,7 +715,7 @@ function FirstRunScreen({ onStartFresh, onViewDemo }) {
                 React.createElement("p", { className: "text-sm font-extrabold mb-3", style: { color: colors.text } }, tl("\u0627\u0628\u062F\u0623 \u0628\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0644 \u0642\u0631\u064A\u0628 \u0644\u0643", "Add your first relative")),
                 React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: firstName, onChange: (e) => setFirstName(e.target.value), placeholder: t("misc_aktb_asm"), className: "w-full border rounded-xl px-4 py-3 text-sm mb-4 outline-none", style: { borderColor: firstName ? colors.primary : colors.border, color: colors.text, backgroundColor: colors.bg }, autoFocus: true }),
                 React.createElement("button", { onClick: () => firstName.trim() && onStartFresh(firstName.trim()), className: "w-full py-3 rounded-xl text-sm font-extrabold", style: {
-                        backgroundColor: firstName.trim() ? colors.primary : colors.border,
+                        backgroundColor: firstName.trim() ? colors.primaryFill : colors.border,
                         color: "#fff",
                         opacity: firstName.trim() ? 1 : 0.5,
                     } },
@@ -758,7 +758,7 @@ function MatchCandidatesCard({ matchCandidates, matchDecisions, setMatchDecision
             m.allMatches.length > 1 && (React.createElement("p", { className: "text-[10px] " + textStart() + " mb-1.5", style: { color: colors.danger } }, t("tshabh_fy_alasm_takd"))),
             React.createElement("div", { className: "flex " + rowStart() + " gap-2" },
                 React.createElement("button", { onClick: () => setMatchDecisions((d) => ({ ...d, [m.low]: "same" })), className: "flex-1 py-1.5 rounded-lg text-[10px] font-extrabold", style: {
-                        backgroundColor: matchDecisions[m.low] === "same" ? colors.primary : colors.card,
+                        backgroundColor: matchDecisions[m.low] === "same" ? colors.primaryFill : colors.card,
                         color: matchDecisions[m.low] === "same" ? "#fff" : colors.text,
                         border: "1px solid " + (matchDecisions[m.low] === "same" ? colors.primary : colors.border),
                     } }, t("hw_nfsh")),
@@ -805,7 +805,7 @@ function HelpScreen({ onBack, onRestartTour }) {
                     React.createElement(ChevronLeft, { size: 14, color: colors.textMuted, style: { transform: openFaq === i ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform 0.2s", flexShrink: 0 } })),
                 openFaq === i && (React.createElement("div", { className: "px-4 pb-4 text-xs leading-relaxed " + (textStart()), style: { color: colors.textMuted } }, faq.a))))),
             React.createElement("div", { className: "mt-4 mb-2" },
-                React.createElement("button", { onClick: onRestartTour, className: "w-full py-3 rounded-xl text-sm font-extrabold", style: { backgroundColor: colors.primaryLight, color: colors.primary } }, t("hp_abda_aljwla"))))));
+                React.createElement("button", { onClick: onRestartTour, className: "w-full py-3 rounded-xl text-sm font-extrabold", style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, t("hp_abda_aljwla"))))));
 }
 function OnboardingScreen({ onDone }) {
     const { colors } = useTheme();
@@ -819,7 +819,7 @@ function OnboardingScreen({ onDone }) {
             idx === 0 ? (React.createElement("img", { src: IS_RAHIM ? APP_LOGO_RAHIM : SAWA_LOGO, alt: t("shaar_swa"), style: { width: 120, height: 120, objectFit: "contain", marginBottom: 20 } })) : (React.createElement("div", { className: "w-20 h-20 rounded-full flex items-center justify-center mb-5", style: { backgroundColor: colors.primaryLight } }, React.createElement(slide.icon, { size: 36, color: colors.primary }))),
             React.createElement("h2", { className: "text-lg font-extrabold text-center mb-2", style: { color: colors.text } }, t(slide.titleKey)),
             React.createElement("p", { className: "text-sm text-center", style: { color: colors.textMuted } }, t(slide.bodyKey))),
-        React.createElement("div", { className: `flex ${rowStart()} justify-center gap-1.5 pb-4` }, ONBOARDING_SLIDES.map((_, i) => (React.createElement("span", { key: i, className: "rounded-full", style: { width: i === idx ? 18 : 6, height: 6, backgroundColor: i === idx ? colors.primary : colors.border, transition: "width 0.2s" } })))),
+        React.createElement("div", { className: `flex ${rowStart()} justify-center gap-1.5 pb-4` }, ONBOARDING_SLIDES.map((_, i) => (React.createElement("span", { key: i, className: "rounded-full", style: { width: i === idx ? 18 : 6, height: 6, backgroundColor: i === idx ? colors.primaryFill : colors.border, transition: "width 0.2s" } })))),
         React.createElement("div", { className: "p-4" },
             React.createElement(Button, { label: isLast ? t("mnw_abda_alan") : t("altaly"), onPress: () => (isLast ? onDone() : setIdx((i) => i + 1)) }))));
 }
@@ -854,7 +854,7 @@ function CaptionSendSheet({ items, colors, onCancel, onSend }) {
             React.createElement("input", { value: cap, onChange: (e) => setCap(e.target.value), maxLength: 1000, autoFocus: true, placeholder: tl("أضف تعليقاً…", "Add a caption…"), dir: isRTL() ? "rtl" : "ltr", className: "w-full border rounded-xl px-3 py-2.5 text-sm mb-3", style: { borderColor: colors.border, color: colors.text, backgroundColor: colors.bg } }),
             React.createElement("div", { className: "flex items-center gap-2" },
                 React.createElement("button", { onClick: onCancel, className: "flex-1 py-2.5 rounded-xl text-sm font-bold", style: { backgroundColor: colors.btnFill, color: colors.text } }, tl("إلغاء", "Cancel")),
-                React.createElement("button", { onClick: () => onSend(cap.trim()), className: "flex-1 py-2.5 rounded-xl text-sm font-bold text-white", style: { backgroundColor: colors.primary } }, tl("إرسال", "Send")))));
+                React.createElement("button", { onClick: () => onSend(cap.trim()), className: "flex-1 py-2.5 rounded-xl text-sm font-bold text-white", style: { backgroundColor: colors.primaryFill } }, tl("إرسال", "Send")))));
 }
 function FeedbackSheet({ onClose, currentScreen = "" }) {
     const { colors } = useTheme();
@@ -923,7 +923,7 @@ function FeedbackSheet({ onClose, currentScreen = "" }) {
                         React.createElement(Check, { size: 26, color: colors.primary })),
                     React.createElement("p", { className: "text-sm font-extrabold mb-1", style: { color: colors.text } }, t("shkra_lk")),
                     React.createElement("p", { className: "text-xs mb-5", style: { color: colors.textMuted } }, t("mlahztk_tsna_alfrq_kl")),
-                    React.createElement("button", { onClick: onClose, className: "w-full rounded-xl py-3 text-xs font-extrabold", style: { backgroundColor: colors.primary, color: "#fff" } }, t("ighlaq"))))));
+                    React.createElement("button", { onClick: onClose, className: "w-full rounded-xl py-3 text-xs font-extrabold", style: { backgroundColor: colors.primaryFill, color: "#fff" } }, t("ighlaq"))))));
     }
     return (React.createElement("div", { className: "absolute inset-0 z-50 flex items-end justify-center", style: { backgroundColor: "rgba(0,0,0,0.5)" }, onClick: onClose },
         React.createElement("div", { className: "w-full rounded-t-2xl max-h-[92%] overflow-y-auto", style: { backgroundColor: colors.card }, onClick: (e) => e.stopPropagation() },
@@ -942,12 +942,12 @@ function FeedbackSheet({ onClose, currentScreen = "" }) {
                     React.createElement("p", { className: `text-[11px] font-extrabold mb-0.5 ${textStart()}`, style: { color: colors.text } }, t("swal_wahd_in_smht")),
                     React.createElement("p", { className: `text-[10px] mb-2.5 ${textStart()}`, style: { color: colors.textMuted } }, t("tdhkyrat_sla_alrhm_kyf")),
                     React.createElement("div", { className: `flex ${rowStart()} flex-wrap gap-1.5` }, feelings.map((f) => (React.createElement("button", { key: f.k, onClick: () => setFeeling(feeling === f.k ? null : f.k), className: "rounded-full px-2.5 py-1 text-[10px] font-bold", style: {
-                            backgroundColor: feeling === f.k ? colors.primary : "transparent",
+                            backgroundColor: feeling === f.k ? colors.primaryFill : "transparent",
                             color: feeling === f.k ? "#fff" : colors.textMuted,
                             border: `1px solid ${feeling === f.k ? colors.primary : colors.border}`,
                         } }, f.label))))),
                 React.createElement("button", { onClick: send, disabled: !text.trim(), className: `w-full rounded-xl py-3 flex ${rowStart()} items-center justify-center gap-2`, style: {
-                        backgroundColor: text.trim() ? colors.primary : colors.border,
+                        backgroundColor: text.trim() ? colors.primaryFill : colors.border,
                         opacity: text.trim() ? 1 : 0.6,
                     } },
                     React.createElement(Send, { size: 15, color: "#fff" }),
@@ -971,7 +971,7 @@ function ContributionAmountModal({ onConfirm, onClose, walletBalance }) {
                 React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } },
                     (walletBalance || 0).toLocaleString(loc()),
                     " \u062C.\u0633"),
-                React.createElement("div", { className: "w-4 h-4 rounded flex items-center justify-center", style: { backgroundColor: useWallet ? colors.primary : "transparent", border: `1px solid ${useWallet ? colors.primary : colors.border}` } }, useWallet && React.createElement(Check, { size: 10, color: "#fff" })))),
+                React.createElement("div", { className: "w-4 h-4 rounded flex items-center justify-center", style: { backgroundColor: useWallet ? colors.primaryFill : "transparent", border: `1px solid ${useWallet ? colors.primary : colors.border}` } }, useWallet && React.createElement(Check, { size: 10, color: "#fff" })))),
             walletInsufficient && (React.createElement("p", { className: "text-[10px] text-center mb-2", style: { color: colors.danger } }, t("alrsyd_ghyr_kaf"))),
             React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                 React.createElement(Button, { label: t("tbra_alan"), disabled: !amount || numAmount <= 0 || walletInsufficient, onPress: () => onConfirm(numAmount, useWallet), style: { flex: 1 } }),
@@ -1003,9 +1003,14 @@ function AppInner() {
     const [showHelp, setShowHelp] = useState(false);
     function markTooltipSeen(key) { setSeenTooltips(function(p){return Object.assign({},p,{[key]:true});}); }
     function resetTooltips() { setSeenTooltips({}); } // onboarding | setup | locked | forgot | postRecoveryCodes | app
-    const [pin, setPin] = useState(null);
-    const [recoveryCodes, setRecoveryCodes] = useState([]);
-    const [biometricEnabled, setBiometricEnabled] = useState(false);
+    // C283: رمز قفل التطبيق محفوظٌ على الجهاز سجلّاً مُجزّأً { v, salt, hash, codes } (كرمز المحفظة) — لا نصّاً
+    const [appLockRaw, setAppLock] = usePersistedState("appLock", null);
+    const pin = isWalletSecret(appLockRaw) ? appLockRaw : null;
+    const [recoveryCodes, setRecoveryCodes] = useState([]); // نصّاً للعرض مرّةً واحدة فقط (لا يُحفظ)
+    const [appLockPasskeyId, setAppLockPasskeyId] = usePersistedState("appLockPasskeyId", null); // البصمة: WebAuthn حقيقيّ
+    const biometricEnabled = !!appLockPasskeyId;
+    // القفل مفعّلٌ ⇒ يبدأ التطبيق مقفولاً. غطاءٌ فوق التطبيق (لا تغيير flow) فلا تضيع حالة الشاشات ولا تنقطع مكالمة
+    const [lockView, setLockView] = useState(() => (isWalletSecret(loadPersisted("appLock", null)) && loadPersisted("appLockOn", false) === true ? "locked" : null)); // null | locked | forgot | codes
     const [statusOption, setStatusOption] = usePersistedState("statusOption", "online");
     const [customStatusMessage, setCustomStatusMessage] = useState("");
     const [profilePhoto, setProfilePhoto] = usePersistedState("profilePhoto", null);
@@ -1020,7 +1025,7 @@ function AppInner() {
     // setLocale يكتب في window، وReact لا يراه. المفتاح على الغلاف
     // يجبر إعادة بناء الشجرة كاملة فتُقرأ الاتجاهات والنصوص من جديد.
     React.useEffect(() => { setLocale(interfaceLanguage); }, [interfaceLanguage]);
-    const [pinLockEnabled, setPinLockEnabled] = useState(true);
+    const [pinLockEnabled, setPinLockEnabled] = usePersistedState("appLockOn", false); // C283: معطّلٌ حتى يفعّله المستخدم
     const [browserNotifEnabled, setBrowserNotifEnabled] = useState(false);
     const [blockUnsolicited, setBlockUnsolicited] = useState(true);
     const [identityVerified, setIdentityVerified] = useState(false);
@@ -1078,7 +1083,46 @@ function AppInner() {
                 showToast(t("ma_wafqt_ala_idhn"), "error");
         });
     }
-    const [autoLockDelay, setAutoLockDelay] = useState(0);
+    const [autoLockDelay, setAutoLockDelay] = usePersistedState("autoLockDelay", 60); // C283: ثوانٍ في الخلفيّة قبل القفل
+    const lockActive = pinLockEnabled && !!pin;
+    // C283: القفل التلقائيّ — يُقفل عند العودة إن بقي التطبيق في الخلفيّة autoLockDelay ثانيةً أو أكثر
+    const hiddenAtRef = useRef(0);
+    useEffect(() => {
+        if (!lockActive) return;
+        const onVis = () => {
+            if (document.visibilityState === "hidden") { hiddenAtRef.current = Date.now(); return; }
+            const at = hiddenAtRef.current; hiddenAtRef.current = 0;
+            if (at && Date.now() - at >= (Number(autoLockDelay) || 0) * 1000) setLockView((v) => v || "locked");
+        };
+        document.addEventListener("visibilitychange", onVis);
+        return () => document.removeEventListener("visibilitychange", onVis);
+    }, [lockActive, autoLockDelay]);
+    function saveAppPin(newPin, codes) {
+        setAppLock(makeSecretRecord(newPin, codes));
+        walletLockoutReset(APP_LOCKOUT_KEY);
+    }
+    function toggleAppLock() {
+        if (pinLockEnabled) {
+            // الإيقاف يمسح الرمز والبصمة — لا رمزٌ منسيٌّ يبقى في الخلفيّة
+            setPinLockEnabled(false); setAppLock(null); setAppLockPasskeyId(null); setRecoveryCodes([]);
+            walletLockoutReset(APP_LOCKOUT_KEY);
+            return;
+        }
+        if (pin) { setPinLockEnabled(true); return; }
+        setFlow("setup"); // يُفعَّل بعد تعيين الرمز
+    }
+    async function toggleAppLockBiometric() {
+        if (appLockPasskeyId) { setAppLockPasskeyId(null); return; }
+        const r = await registerWalletPasskey();
+        if (r.ok && r.credentialId) { setAppLockPasskeyId(r.credentialId); showToast(tl("فُعّل الفتح بالبصمة", "Biometric unlock is on"), "success"); }
+        else showToast(t("tadhr_altsjyl", { error: r.error || "" }), "error");
+    }
+    function fullLocalReset() {
+        // آخر حلّ في «نسيت الرمز»: خروجٌ من الحساب ومسحُ كلّ ما على الجهاز (كحذف الحساب محلّيّاً)
+        try { if (window.SawaChat && window.SawaChat.wipeLocal) { window.SawaChat.wipeLocal(); return; } } catch (e) { }
+        try { localStorage.clear(); } catch (e) { }
+        try { location.replace(location.pathname); } catch (e) { }
+    }
     const [tab, setTab] = useState(IS_RAHIM ? "discover" : "chats");   // C13e: التطبيق يفتح على المحادثات
     const [stack, setStack] = useState([]); // 'security' | 'demo' | 'sessions' | 'wallet' | 'stats' | 'notifications'
     const [notes, setNotes] = useState([]);
@@ -1340,6 +1384,7 @@ function AppInner() {
         showToast(t("tmt_alarshfa"), "success");
     }, [showToast]);
     const handleMuteConv = useCallback((id) => {
+        setMuteUntil((m) => { if (!m || !m[id]) return m; const n = { ...m }; delete n[id]; return n; });   // C314
         setMutedConversations((p) => {
             const on = p.includes(id);
             showToast(on ? t("ai_rf_alktm") : t("ai_tm_alktm"), "success");
@@ -1403,6 +1448,26 @@ function AppInner() {
     }, []);
     const [showFamilyReminders, setShowFamilyReminders] = usePersistedState("showFamilyReminders", true);
     const [mutedConversations, setMutedConversations] = usePersistedState("mutedConvs", []);
+    // C314: كتمٌ بمدّة (ساعة · ٨ ساعات · دائم) لمحادثةٍ أو مجموعة — muteUntil = { [id]: { u: وقت الانتهاء, k: الخيار } } على هذا الجهاز؛
+    //       الكتم نفسه في mutedConversations (يتزامن، والخادم لا يرسل إشعاراتها). عند انتهاء المدّة يُرفع الكتم هنا فيتزامن.
+    const [muteUntil, setMuteUntil] = usePersistedState("muteUntil", {});
+    const setConvMute = useCallback((id, key) => {
+        const on = key !== 0;
+        setMutedConversations((p) => on ? (p.includes(id) ? p : [...p, id]) : p.filter((x) => x !== id));
+        setMuteUntil((m) => { const n = { ...(m || {}) }; if (key > 0) n[id] = { u: Date.now() + key * 1000, k: key }; else delete n[id]; return n; });
+    }, []);
+    const muteKeyOf = (id) => !mutedConversations.includes(id) ? 0 : (muteUntil && muteUntil[id] && muteUntil[id].k) || -1;
+    useEffect(() => {
+        const tick = () => {
+            const now = Date.now(), ids = Object.keys(muteUntil || {}).filter((k) => muteUntil[k] && muteUntil[k].u <= now);
+            if (!ids.length) return;
+            setMutedConversations((p) => p.filter((x) => !ids.includes(x)));
+            setMuteUntil((m) => { const n = { ...(m || {}) }; ids.forEach((k) => delete n[k]); return n; });
+        };
+        tick();
+        const iv = setInterval(tick, 30000);
+        return () => clearInterval(iv);
+    }, [muteUntil]);
     const [showLinkedDevices, setShowLinkedDevices] = useState(false);
     const [showWrapped, setShowWrapped] = useState(false);
     const [showFeedback, setShowFeedback] = useState(false);
@@ -2197,7 +2262,9 @@ function AppInner() {
     }
     // ------------------------------- المحفظة -------------------------------
     const [walletUnlocked, setWalletUnlocked] = useState(false);
-    const [walletPin, setWalletPin] = useState(null); // منفصل تماماً عن PIN قفل التطبيق
+    // C282: محفوظٌ على الجهاز كسجلٍّ مُجزّأ { v, salt, hash, codes } — لا نصّاً — فيبقى بعد إعادة التشغيل
+    const [walletSecretRaw, setWalletPin] = usePersistedState("walletSecret", null); // منفصل تماماً عن PIN قفل التطبيق
+    const walletPin = isWalletSecret(walletSecretRaw) ? walletSecretRaw : null;
     const [linkedPaymentMethods, setLinkedPaymentMethods] = useState([]);
     const [blockedConversations, setBlockedConversations] = usePersistedState("blockedConvs", []);
     const [lockedConversationIds, setLockedConversationIds] = usePersistedState("lockedConvs", []);
@@ -2373,7 +2440,7 @@ function AppInner() {
         showToast(t("tm_ilgha_alhzr"), "success");
     }
     const [spendingLimit, setSpendingLimit] = useState(null);
-    const [walletPasskeyId, setWalletPasskeyId] = useState(null);
+    const [walletPasskeyId, setWalletPasskeyId] = usePersistedState("walletPasskeyId", null); // C282: معرّف البصمة ليس سرّاً
     const [walletBalance, setWalletBalance] = useState(45200);
     const walletCardNumber = "4532123456781234";
     const [kycStatus, setKycStatus] = useState("none"); // none | pending | verified
@@ -2447,17 +2514,18 @@ function AppInner() {
     function handleLogout() {
         // C20: خروجٌ حقيقيّ (Firebase + الإشعارات + البيانات المحلّيّة) بنافذة تأكيد — كان يقفل الشاشة برمزٍ لم يُضبط
         if (window.SawaChat && window.SawaChat.signOutSheet && window.SawaChat.signOutSheet()) return;
-        if (window.confirm(t("tsjyl_alkhrwj_sthtaj_ila"))) {
+        sawaConfirm(t("tsjyl_alkhrwj_sthtaj_ila"), { ok: tl("تسجيل الخروج", "Sign out"), danger: true }).then((ok) => {   // C289
+            if (!ok)
+                return;
             setStack([]);
             setTab("me");
-            setFlow("locked");
-        }
+            if (lockActive) setLockView("locked");
+        });
     }
     function deleteEncryptionKeys() {
         // إصلاح: الرسالة تدّعي مسح "كل البيانات المحلية" — قبل كانت تمسح رمز
         // القفل والملاحظات بس، تاركة صلة الرحم والمحفظة وسجل النشاط كما هي.
-        // الآن تمسح فعلياً كل حالة محلية لتطابق الادّعاء بصدق
-        setPin(null);
+        // الآن تمسح فعلياً كل حالة محلية لتطابق الادّعاء بصدق (رمز القفل يُمسح أدناه — C283)
         setNotes([]);
         setGroupPersons({});
         setKinshipRelations([]);
@@ -2473,9 +2541,18 @@ function AppInner() {
         setWalletBalance(0);
         setWalletTransactions([]);
         setLinkedPaymentMethods([]);
+        setWalletPin(null);
+        setWalletPasskeyId(null);
+        setWalletUnlocked(false);
+        walletLockoutReset();
+        setAppLock(null);
+        setAppLockPasskeyId(null);
+        setPinLockEnabled(false);
+        setRecoveryCodes([]);
+        walletLockoutReset(APP_LOCKOUT_KEY);
         setRedeemedReferralCode(null);
         setStack([]);
-        setFlow("setup");
+        setFlow("app"); // C283: قفل التطبيق اختياريّ — لا نفرض رمزاً جديداً
         showToast(t("tm_hdhf_mfatyh_altshfyr"), "success");
     }
     function addPaymentMethod(data) {
@@ -2984,6 +3061,9 @@ function AppInner() {
         var _a;
         const { relation, linkedTo, ancestorChain, ...personData } = data;
         const newPersonId = `gp-${Date.now()}`;
+        if (personData.local_name != null) personData.local_name = cleanArabicNameInput(personData.local_name);   // C271
+        // C271: «نفسي» جديدٌ لا يُضاف متوفّى
+        { const why = selfDeceasedBlock(null, personData, null); if (why) { showToast(why, "error"); return; } }
         // C203: النموذج يمنع هذا قبل الحفظ؛ وهنا حارسٌ ثانٍ لكلّ مسارٍ آخر يصل إلى addPerson
         if (relation && relation.relatedToId && (relation.relationType === "spouse" || relation.relationType === "ex_spouse")) {
             const why = marriageCheck((groupPersons[groupId] || []).concat([{ ...personData, id: newPersonId }]), kinshipRelations.filter((r) => r.groupId === groupId), newPersonId, relation.relatedToId, relation.relationType);
@@ -3105,9 +3185,26 @@ function AppInner() {
             ? t("adyf_w_mn_aswlh", { local_name: personData.local_name, length: newAncestors.length })
             : `تمت إضافة ${personData.local_name}${(relation === null || relation === void 0 ? void 0 : relation.relatedToId) ? t("ai_wrbtha") : " ✓"}`, "success");
     }
+    // C271: الشخص كما يراه هذا المستخدم (القرابة المحسوبة + kinStored + acctMe) — لحارس «لا تسجّل نفسك متوفّى»
+    function ownViewOf(groupId, personId) {
+        const raw = (groupPersons[groupId] || []).find((p) => p.id === personId) || null;
+        const shown = (famPersons[groupId] || []).find((p) => p.id === personId) || null;
+        if (!raw && !shown) return null;
+        return Object.assign({}, raw || {}, shown ? { kinship: shown.kinship, kinStored: raw ? raw.kinship : shown.kinStored, acctMe: shown.acctMe } : {});
+    }
+    function myPidIn(groupId) {
+        const me = (famPersons[groupId] || []).find((p) => p.kinship === SELF_KINSHIP || p.acctMe);
+        return (me && me.id) || (famMe || {})[groupId] || null;
+    }
     function editPerson(groupId, personId, data) {
         var _a;
         const { linkedTo, motherApplicable, motherId, motherCandidateIds, kinLabel, kinAlso, kinComputed, kinStored, kinSection, ancestorChain, ...personData0 } = data;
+        if (personData0.local_name != null) personData0.local_name = cleanArabicNameInput(personData0.local_name);   // C271: تطويل/محارف خفيّة/مسافات
+        // C271: ملفّ صاحب الحساب لا يُسجَّل متوفّى (النموذج يمنعه؛ هنا حارسٌ لكلّ مسارٍ آخر)
+        if (data.alive === false) {
+            const why = selfDeceasedBlock(ownViewOf(groupId, personId), Object.assign({ alive: false }, data.kinship ? { kinship: data.kinship } : {}), myPidIn(groupId));
+            if (why) { showToast(why, "error"); return; }
+        }
         // C203: تغيير الجنس لا يُنشئ زواجاً بين جنسٍ واحد ولا والدَين من جنسٍ واحد
         {
             const list = groupPersons[groupId] || [], cur = list.find((p) => p.id === personId);
@@ -3653,12 +3750,14 @@ function AppInner() {
                 const current = countPersons(groupPersons);
                 // ⛔ استبدالٌ لا دمج: دمج شجرتين من جهازين يوحّد أشخاصاً
                 // بمعرّفات مختلفة ولا رجعة فيه. الاستبدال يُفهَم ويُتوقَّع.
-                if (!window.confirm(t("ex_takyd", { current: current.toLocaleString(loc()), incoming: incoming.toLocaleString(loc()) })))
-                    return;
-                setFamilyGroups(data.groups);
-                setGroupPersons(data.persons);
-                setKinshipRelations(data.relations);
-                showToast(t("ex_tm_alastyrad", { n: incoming.toLocaleString(loc()) }), "success");
+                sawaConfirm(t("ex_takyd", { current: current.toLocaleString(loc()), incoming: incoming.toLocaleString(loc()) }), { ok: tl("استبدال الشجرة", "Replace tree"), danger: true }).then((ok) => {   // C289
+                    if (!ok)
+                        return;
+                    setFamilyGroups(data.groups);
+                    setGroupPersons(data.persons);
+                    setKinshipRelations(data.relations);
+                    showToast(t("ex_tm_alastyrad", { n: incoming.toLocaleString(loc()) }), "success");
+                });
             };
             reader.readAsText(f);
         };
@@ -3705,6 +3804,70 @@ function AppInner() {
         }));
         showToast(t("sjlna_twaslk_alhyn"), "success");
     }
+    // ── C271: مواعيد صلة الرحم المرنة ──
+    // مدّةٌ لقريبٍ بعينه (أيّام) أو null ⇒ مدّة درجته. على هذا الجهاز وحده (عادةٌ شخصيّة، مثل lastContactDate).
+    function setContactEvery(groupId, personId, days) {
+        const d = kinClampDays(days);
+        setGroupPersons((prev) => ({
+            ...prev,
+            [groupId]: (prev[groupId] || []).map((p) => (p.id === personId ? Object.assign({}, p, { contactEvery: d }, p.lastContactDate || p.addedAt ? {} : { addedAt: Date.now() }) : p)),
+        }));
+        const nm = (((groupPersons[groupId] || []).find((p) => p.id === personId)) || {}).local_name || "";
+        showToast(d ? tl("سنذكّرك بـ" + String(nm).split(" ")[0] + ": " + kinFreqLabel(d), "We'll remind you about " + String(nm).split(" ")[0] + ": " + kinFreqLabel(d).toLowerCase())
+            : tl("عادت المدّة إلى درجة القرابة", "Back to the kinship-degree interval"), "success");
+    }
+    const [kinRemindRev, setKinRemindRev] = useState(0);
+    useEffect(() => {
+        const on = () => setKinRemindRev((n) => n + 1);
+        window.addEventListener("sawa-kinremind", on);
+        return () => window.removeEventListener("sawa-kinremind", on);
+    }, []);
+    // الخطّة إلى الخادم (Worker v126 ⇐ kinrem/{uid}): بعد ٤ ثوانٍ من آخر تغيير، وفقط إن تغيّرت فعلاً
+    const kinSentRef = useRef("");
+    useEffect(() => {
+        if (flow !== "app") return;
+        const SS = window.SawaSync;
+        if (!SS || !SS.isReady || !SS.isReady() || !SS.call) return;
+        const s = kinRemindSettings();
+        // ⛔ famPersons لا groupPersons: القرابة محسوبةٌ من منظوري (للعضو: صاحب الشجرة قريبٌ يُذكَّر به، وأنا «نفسي» لا أُذكَّر بنفسي)
+        const payload = { on: !!s.on, hour: kinClampHour(s.hour), tz: new Date().getTimezoneOffset(), lang: isRTL() ? "ar" : "en", items: s.on ? kinRemindPlan(famPersons) : [] };
+        const sig = JSON.stringify(payload);
+        if (sig === kinSentRef.current) return;
+        const tmr = setTimeout(() => {
+            SS.call("kin.remind.set", payload).then((b) => {
+                kinSentRef.current = sig;
+                try { if (b && b.ok !== false) localStorage.setItem("sawa:kinRemindSrv", String(payload.on && payload.items.length ? Date.now() : 0)); } catch (e) { }
+            }).catch(() => { try { localStorage.removeItem("sawa:kinRemindSrv"); } catch (e) { } });   // خادمٌ قديم/بلا شبكة ⇒ التنبيه المحلّيّ يتولّى
+        }, 4000);
+        return () => clearTimeout(tmr);
+    }, [flow, famPersons, kinRemindRev]);
+    // التنبيه المحلّيّ الاحتياطيّ: عند الفتح، وكلّ ٣٠ دقيقة والتطبيق ظاهر
+    const groupPersonsRef = useRef(famPersons);
+    groupPersonsRef.current = famPersons;
+    useEffect(() => {
+        if (flow !== "app") return;
+        const tick = () => { if (!document.hidden) kinRemindLocalTick(groupPersonsRef.current); };
+        const t0 = setTimeout(tick, 8000), iv = setInterval(tick, 30 * 60000);
+        return () => { clearTimeout(t0); clearInterval(iv); };
+    }, [flow]);
+    // فتح «من حان التواصل معه» — من الإشعار (‎?kin=1‎ أو رسالة عامل الخدمة)
+    const openKinDue = () => {
+        const g = familyGroups.find((x) => (famPersons[x.id] || []).some((p) => isContactOverdue(p))) || familyGroups[0];
+        setTab("discover");
+        setDiscoverStack(g ? [{ type: "groups" }, { type: "groupDetail", data: g, filter: "overdue" }] : [{ type: "groups" }]);
+    };
+    const openKinDueRef = useRef(openKinDue);
+    openKinDueRef.current = openKinDue;
+    useEffect(() => {
+        if (flow !== "app") return;
+        try {
+            const u = new URL(window.location.href);
+            if (u.searchParams.get("kin")) { u.searchParams.delete("kin"); history.replaceState(null, "", u.pathname + (u.search && u.search !== "?" ? u.search : "") + u.hash); setTimeout(() => openKinDueRef.current(), 300); }
+        } catch (e) { }
+        const onMsg = (ev) => { const m = ev && ev.data; if (m && (m.type === "sawa-open") && m.data && m.data.t === "kin") openKinDueRef.current(); };
+        try { if (navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", onMsg); } catch (e) { }
+        return () => { try { if (navigator.serviceWorker) navigator.serviceWorker.removeEventListener("message", onMsg); } catch (e) { } };
+    }, [flow]);
     // ── C37: منازل الأقارب وتنبيه القرب ──
     const [proxEnabled, setProxEnabled] = usePersistedState("ui.proxAlerts", false, 50);
     const [proxRadius, setProxRadius] = usePersistedState("ui.proxRadius", 1000, 50);   // C37b: النطاق العامّ لكلّ الأقارب
@@ -3850,6 +4013,8 @@ function AppInner() {
         setEvents((prev) => [{ id: `e-${Date.now()}`, groupId, personId, type, title, desc: desc || "", dateTimestamp: ts }, ...prev]);
         // C75: حدث «وفاة» يُسجّل القريب متوفّى (كانت التذكيرات والمواعيد تستمرّ له)، و«مرض/عملية» تجعل حالته «مريض»
         const target = personId && (groupPersons[groupId] || []).find((p) => p.id === personId);
+        // C271: لا حدث «وفاة» لصاحب الحساب
+        if (target && type === "death") { const why = selfDeceasedBlock(ownViewOf(groupId, personId), { alive: false }, myPidIn(groupId)); if (why) { showToast(why, "error"); return; } }
         if (target && type === "death" && target.alive !== false) {
             const d = new Date(ts), iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
             setGroupPersons((prev) => ({ ...prev, [groupId]: (prev[groupId] || []).map((p) => p.id === personId ? { ...p, alive: false, death_date: p.death_date || iso, status_detail: null } : p) }));
@@ -3893,14 +4058,14 @@ function AppInner() {
     const discoverTop = liveFam && liveFam !== discoverTop0.data ? { ...discoverTop0, data: liveFam } : discoverTop0;
     let discoverContent;
     if (!discoverTop) {
-        discoverContent = (React.createElement(DiscoverHomeScreen, { personCount: totalPersons, groupPersons: famPersons, onOpenFamily: () => setDiscoverStack([{ type: "groups" }]), onOpenMoments: () => { setMomentsReturnTab(null); setDiscoverStack([{ type: "moments" }]); }, onOpenErsal: () => setDiscoverStack([{ type: "ersal" }]), onOpenTaxi: () => setDiscoverStack([{ type: "taxi" }]), onOpenWallet: () => setStack(["wallet"]) }));
+        discoverContent = (React.createElement(DiscoverHomeScreen, { personCount: totalPersons, groupPersons: famPersons, onOpenFamily: () => setDiscoverStack([{ type: "groups" }]), onOpenMoments: () => { setMomentsReturnTab(null); setDiscoverStack([{ type: "moments" }]); }, onOpenErsal: () => setDiscoverStack([{ type: "ersal" }]), onOpenTaxi: () => setDiscoverStack([{ type: "taxi" }]), onOpenWallet: SHOW_WALLET && canIntl ? () => setStack(["wallet"]) : undefined }));
     }
     else if (discoverTop.type === "moments") {
         discoverContent = React.createElement(MomentsHost, { broadcastLists: broadcastLists, conversations: conversations, legacy: { posts: momentsPosts, myUserId: myUserId, onAddPost: addMomentPost, onToggleLike: toggleMomentLike, onAddComment: addMomentComment, onDeletePost: deleteMomentPost, onViewPost: viewMomentPost, onReplyPrivately: replyToMomentPrivately, onVotePoll: voteMomentPoll }, onBack: () => { setDiscoverStack([]); if (momentsReturnTab) { const back = momentsReturnTab; setMomentsReturnTab(null); setTab(back); } } });
     }
     else if (discoverTop.type === "ersal") {   // C225: للمشرف والمدير فقط — غير المخوَّل يعود إلى «استكشف»
         if (!canIntl) { setTimeout(() => setDiscoverStack([]), 0); }
-        else discoverContent = (React.createElement(ErsalScreen, { walletBalance: walletBalance, walletPin: walletPin, canWallet: canIntl, shipments: shipments, onCreateShipment: createShipment, onMarkFailed: markShipmentFailed, onBulkCreateShipments: bulkCreateShipments, onChangeAddress: changeShipmentAddress, onConfirmPickup: confirmShipmentPickup, onSimulateDays: simulateShipmentDays, onCancelShipment: cancelShipment, onRateCourier: rateCourier, onReorderShipment: reorderShipment, onBack: () => setDiscoverStack([]) }));
+        else discoverContent = (React.createElement(ErsalScreen, { walletBalance: walletBalance, walletPin: walletPin, canWallet: SHOW_WALLET && canIntl, shipments: shipments, onCreateShipment: createShipment, onMarkFailed: markShipmentFailed, onBulkCreateShipments: bulkCreateShipments, onChangeAddress: changeShipmentAddress, onConfirmPickup: confirmShipmentPickup, onSimulateDays: simulateShipmentDays, onCancelShipment: cancelShipment, onRateCourier: rateCourier, onReorderShipment: reorderShipment, onBack: () => setDiscoverStack([]) }));
     }
     else if (discoverTop.type === "taxi") {
         discoverContent = (React.createElement(TaxiScreen, { ride: taxiRide, tripsHistory: taxiTripsHistory, scheduledRides: scheduledTaxiRides, onRequestRide: requestTaxiRide, onScheduleRide: scheduleRide, onCancelScheduledRide: cancelScheduledRide, onTriggerScheduledRide: triggerScheduledRide, onCancelRide: cancelTaxiRide, onNewRide: () => setTaxiRide(null), onRateDriver: rateDriverTrip, onBack: () => setDiscoverStack([]) }));
@@ -4019,7 +4184,7 @@ function AppInner() {
                     [gid]: (prev[gid] || []).map((p) => p.id === pid ? { ...p, noChildren: false, neverMarried: false } : p),
                 }));
                 showToast(t("sysal_anh_fy_alaqtrahat"), "info");
-            }, onSimulateProximity: (personId) => simulateProximity(personId, freshPerson.local_name), onMarkContact: (personId) => markContactNow(currentGroupIdForPerson, personId), onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
+            }, onSimulateProximity: (personId) => simulateProximity(personId, freshPerson.local_name), onMarkContact: (personId) => markContactNow(currentGroupIdForPerson, personId), onSetContactEvery: (personId, days) => setContactEvery(currentGroupIdForPerson, personId, days), onBack: () => setDiscoverStack(discoverStack.slice(0, -1)) }));
     }
     else if (discoverTop.type === "tree") {
         const canEditTree = famCanEdit(discoverTop.data);
@@ -4069,6 +4234,7 @@ function AppInner() {
             }, onSetAlive: (personId, alive) => {
                 var _a;
                 const gid = discoverTop.data.id;
+                if (alive === false) { const why = selfDeceasedBlock(ownViewOf(gid, personId), { alive: false }, myPidIn(gid)); if (why) { showToast(why, "error"); return; } }   // C271
                 const nm = ((_a = (groupPersons[gid] || []).find((p) => p.id === personId)) === null || _a === void 0 ? void 0 : _a.local_name) || t("ai_alqryb");
                 setGroupPersons((prev) => ({
                     ...prev,
@@ -4115,25 +4281,31 @@ function AppInner() {
     }
     return (React.createElement(PhoneFrame, { dir: interfaceLanguage === "en" ? "ltr" : "rtl" },
         flow === "onboarding" && React.createElement(OnboardingScreen, { onDone: () => setFlow("setup") }),
-        flow === "setup" && (React.createElement(SetupPinScreen, { onDone: (newPin, newCodes) => {
-                setPin(newPin);
-                setRecoveryCodes(newCodes);
+        flow === "setup" && (React.createElement(SetupPinScreen, { onCancel: () => setFlow("app"), onDone: (newPin, newCodes) => {
+                saveAppPin(newPin, newCodes);
+                setPinLockEnabled(true);
+                setRecoveryCodes([]);
                 setFlow(backendLinked || backendSkipped ? "app" : "connectBackend");
             } })),
         flow === "connectBackend" && (React.createElement(ConnectBackendScreen, { onDone: () => { setBackendLinked(true); setFlow("app"); }, onSkip: () => { setBackendSkipped(true); setFlow("app"); } })),
-        flow === "locked" && (React.createElement(LockScreen, { correctPin: pin, biometricEnabled: biometricEnabled, onUnlock: () => setFlow("app"), onForgot: () => setFlow("forgot") })),
-        flow === "forgot" && (React.createElement(ForgotPinScreen, { validCodes: recoveryCodes, onBack: () => setFlow("locked"), onRecovered: (newPin, newCodes, wipe) => {
-                if (wipe) {
-                    setPin(null);
-                    setNotes([]);
-                    setFlow("setup");
-                    return;
-                }
-                setPin(newPin);
-                setRecoveryCodes(newCodes);
-                setFlow("postRecoveryCodes");
-            } })),
-        flow === "postRecoveryCodes" && (React.createElement(PostRecoveryCodesScreen, { codes: recoveryCodes, onDone: () => setFlow("app") })),
+        // C283: شاشة القفل غطاءٌ فوق كلّ شيء (حتى نوافذ SawaChat) — التطبيق تحتها يبقى كما هو
+        lockActive && lockView && React.createElement("div", { role: "dialog", "aria-modal": "true", "aria-label": t("adkhl_rmz_alqfl"), className: "flex flex-col", style: { position: "fixed", inset: 0, zIndex: 2147483000, backgroundColor: colors.bg } },
+            React.createElement("div", { className: "flex-1 min-h-0 flex flex-col", dir: interfaceLanguage === "en" ? "ltr" : "rtl" },
+                lockView === "locked" && React.createElement(LockScreen, { correctPin: pin, biometricEnabled: biometricEnabled, onBiometric: () => authenticateWalletPasskey(appLockPasskeyId), onUnlock: () => setLockView(null), onForgot: () => setLockView("forgot") }),
+                lockView === "forgot" && React.createElement(ForgotPinScreen, { onBack: () => setLockView("locked"), onBiometric: appLockPasskeyId ? () => authenticateWalletPasskey(appLockPasskeyId) : null,
+                    checkCode: (code) => {
+                        const i = walletCodeIndex(pin, code);
+                        if (i < 0) return false;
+                        setAppLock(Object.assign({}, pin, { codes: pin.codes.filter((_, j) => j !== i) })); // يُستهلك فوراً
+                        return true;
+                    },
+                    onRecovered: (newPin, newCodes, wipe) => {
+                        if (wipe) { fullLocalReset(); return; }
+                        saveAppPin(newPin, newCodes);
+                        setRecoveryCodes(newCodes);
+                        setLockView("codes");
+                    } }),
+                lockView === "codes" && React.createElement(PostRecoveryCodesScreen, { codes: recoveryCodes, onDone: () => { setRecoveryCodes([]); setLockView(null); } }))),
         flow === "app" && proxAlert && React.createElement(ProximitySheet, { alert: proxAlert, onClose: () => setProxAlert(null),
             onVisit: () => { markContactNow(proxAlert.gid, proxAlert.person.id); logActivity(proxAlert.gid, tl("زيارة " + proxAlert.person.local_name, "Visited " + proxAlert.person.local_name)); setProxAlert(null); },
             onCall: (phone) => { const a = proxAlert; setProxAlert(null); markContactNow(a.gid, a.person.id); if (phone) { try { location.href = "tel:" + phone.replace(/[^\d+]/g, ""); } catch (e) { } } else showToast(tl("لا رقم مسجَّلاً له — أضفه من ملفّه", "No phone saved — add it in their profile"), "error"); },
@@ -4180,7 +4352,7 @@ function AppInner() {
         flow === "app" && !activeRoom && !showLinkedDevices && !showWrapped && (React.createElement("div", { className: "flex-1 flex flex-col overflow-hidden" },
         showHelp && React.createElement("div", { className: "absolute inset-0 z-50 flex flex-col", style: { backgroundColor: "white" } }, React.createElement(HelpScreen, { onBack: function(){setShowHelp(false);}, onRestartTour: function(){resetTooltips();setShowHelp(false);} })),
         isDemoMode && React.createElement("div", { className: "flex items-center justify-between px-3 py-1.5", style: { backgroundColor: "#F59E0B", flexShrink: 0 } }, React.createElement("span", { className: "text-[10px] font-bold text-white" }, tl("⚠️ عرض توضيحي — البيانات وهمية", "⚠️ Demo — data is not real")), React.createElement("button", { onClick: function(){ setFamilyGroups([{id:"g-main",name:"عائلتي",description:"",role:"owner",ownerPersonId:null}]); setGroupPersons({"g-main":[]}); setIsDemoMode(false); }, className: "text-[10px] font-extrabold text-white underline" }, tl("ابدأ من صفر", "Start from scratch"))),
-            React.createElement("div", { className: "flex-1 overflow-hidden flex flex-col" }, stack[stack.length - 1] === "security" ? (React.createElement(ProfileSettingsScreen, { onBack: () => setStack([]), onChangePin: () => setFlow("setup"), biometricEnabled: biometricEnabled, setBiometricEnabled: setBiometricEnabled, autoLockDelay: autoLockDelay, setAutoLockDelay: setAutoLockDelay, remainingCodes: recoveryCodes.length, onLockNow: () => setFlow("locked"), onOpenSessions: () => setStack(["security", "sessions"]), profilePhoto: profilePhoto, setProfilePhoto: setProfilePhoto, interfaceLanguage: interfaceLanguage, setInterfaceLanguage: setInterfaceLanguage, pinLockEnabled: pinLockEnabled, setPinLockEnabled: setPinLockEnabled, browserNotifEnabled: browserNotifEnabled, onToggleBrowserNotif: toggleBrowserNotif, statusOption: statusOption, setStatusOption: setStatusOption, customStatusMessage: customStatusMessage, setCustomStatusMessage: setCustomStatusMessage, redeemedReferralCode: redeemedReferralCode, onRedeemReferral: redeemReferral, blockUnsolicited: blockUnsolicited, setBlockUnsolicited: setBlockUnsolicited, identityVerified: identityVerified, chatBackupEnabled: chatBackupEnabled, setChatBackupEnabled: setChatBackupEnabled, onDeleteKeys: deleteEncryptionKeys, backendLinked: backendLinked, onUnlink: () => setBackendLinked(false) })) : stack[stack.length - 1] === "sessions" ? (React.createElement(SessionsScreen, { sessions: sessions, onRevoke: revokeSession, onRevokeAll: revokeAllSessions, onBack: () => setStack(["security"]) })) : stack[0] === "wallet" && !walletUnlocked ? (React.createElement(ServiceTheme, { color: SERVICE_COLORS.wallet }, React.createElement(WalletLockScreen, { onUnlock: () => setWalletUnlocked(true), onBack: () => setStack([]), walletPasskeyId: walletPasskeyId, onPasskeyRegistered: setWalletPasskeyId, walletPin: walletPin, onSetWalletPin: setWalletPin }))) : stack[0] === "wallet" && walletUnlocked ? (React.createElement(ServiceTheme, { color: SERVICE_COLORS.wallet }, React.createElement(WalletScreen, { balance: walletBalance, transactions: walletTransactions, cardNumber: walletCardNumber, walletPinForConfirm: walletPin, kycStatus: kycStatus, kycDismissed: kycDismissed, onDismissKyc: () => setKycDismissed(true), onSubmitKyc: submitKyc, onTopUp: topUpWallet, onTransfer: transferWallet, onScanPay: scanPay, canIntl: canIntl, intlHistory: intlHistory, onIntlTransfer: intlTransfer, kycMeta: kycMeta, fxAccounts: fxAccounts, onOpenFx: openFx, onExchange: fxExchange, cards: vCards, onCardsChange: setVCards, holder: (myProfile && (myProfile.name || myProfile.googleName)) || "", onBack: () => { setStack([]); setWalletUnlocked(false); }, linkedMethods: linkedPaymentMethods, onAddPaymentMethod: addPaymentMethod, onRemovePaymentMethod: removePaymentMethod, spendingLimit: spendingLimit, onSetSpendingLimit: setSpendingLimit, jamiyaList: jamiyaList, onPayJamiya: payJamiya, onCreateJamiya: createJamiya, CURRENT_USER_ID: CURRENT_USER_ID }))) : stack[0] === "stats" ? (React.createElement(StatsScreen, { transactions: walletTransactions, onBack: () => setStack([]) })) : stack[0] === "notifications" ? (React.createElement(NotificationCenterScreen, { notifications: notifications, onMarkRead: markNotificationRead, onBack: () => setStack([]) })) : stack[stack.length - 1] === "demo" ? (React.createElement(EncryptedNotesDemoScreen, { onBack: () => setStack([]), notes: notes, onAdd: (text) => setNotes((prev) => [{ id: Date.now(), text }, ...prev]), onDelete: (id) => setNotes((prev) => prev.filter((n) => n.id !== id)) })) : (React.createElement(React.Fragment, null,
+            React.createElement("div", { className: "flex-1 overflow-hidden flex flex-col" }, stack[stack.length - 1] === "security" ? (React.createElement(ProfileSettingsScreen, { onBack: () => setStack([]), onChangePin: () => setFlow("setup"), biometricEnabled: biometricEnabled, setBiometricEnabled: toggleAppLockBiometric, autoLockDelay: autoLockDelay, setAutoLockDelay: setAutoLockDelay, remainingCodes: pin ? pin.codes.length : 0, onLockNow: () => lockActive && setLockView("locked"), onOpenSessions: () => setStack(["security", "sessions"]), profilePhoto: profilePhoto, setProfilePhoto: setProfilePhoto, interfaceLanguage: interfaceLanguage, setInterfaceLanguage: setInterfaceLanguage, pinLockEnabled: lockActive, setPinLockEnabled: toggleAppLock, browserNotifEnabled: browserNotifEnabled, onToggleBrowserNotif: toggleBrowserNotif, statusOption: statusOption, setStatusOption: setStatusOption, customStatusMessage: customStatusMessage, setCustomStatusMessage: setCustomStatusMessage, redeemedReferralCode: redeemedReferralCode, onRedeemReferral: redeemReferral, blockUnsolicited: blockUnsolicited, setBlockUnsolicited: setBlockUnsolicited, identityVerified: identityVerified, chatBackupEnabled: chatBackupEnabled, setChatBackupEnabled: setChatBackupEnabled, onDeleteKeys: deleteEncryptionKeys, backendLinked: backendLinked, onUnlink: () => setBackendLinked(false) })) : stack[stack.length - 1] === "sessions" ? (React.createElement(SessionsScreen, { sessions: sessions, onRevoke: revokeSession, onRevokeAll: revokeAllSessions, onBack: () => setStack(["security"]) })) : stack[0] === "wallet" && SHOW_WALLET && canIntl && !walletUnlocked ? (React.createElement(ServiceTheme, { color: SERVICE_COLORS.wallet }, React.createElement(WalletLockScreen, { onUnlock: () => setWalletUnlocked(true), onBack: () => setStack([]), walletPasskeyId: walletPasskeyId, onPasskeyRegistered: setWalletPasskeyId, walletPin: walletPin, onSetWalletPin: setWalletPin, appPin: pin }))) : stack[0] === "wallet" && SHOW_WALLET && canIntl && walletUnlocked ? (React.createElement(ServiceTheme, { color: SERVICE_COLORS.wallet }, React.createElement(WalletScreen, { balance: walletBalance, transactions: walletTransactions, cardNumber: walletCardNumber, walletPinForConfirm: walletPin, kycStatus: kycStatus, kycDismissed: kycDismissed, onDismissKyc: () => setKycDismissed(true), onSubmitKyc: submitKyc, onTopUp: topUpWallet, onTransfer: transferWallet, onScanPay: scanPay, canIntl: canIntl, intlHistory: intlHistory, onIntlTransfer: intlTransfer, kycMeta: kycMeta, fxAccounts: fxAccounts, onOpenFx: openFx, onExchange: fxExchange, cards: vCards, onCardsChange: setVCards, holder: (myProfile && (myProfile.name || myProfile.googleName)) || "", onBack: () => { setStack([]); setWalletUnlocked(false); }, linkedMethods: linkedPaymentMethods, onAddPaymentMethod: addPaymentMethod, onRemovePaymentMethod: removePaymentMethod, spendingLimit: spendingLimit, onSetSpendingLimit: setSpendingLimit, jamiyaList: jamiyaList, onPayJamiya: payJamiya, onCreateJamiya: createJamiya, CURRENT_USER_ID: CURRENT_USER_ID }))) : stack[0] === "stats" ? (React.createElement(StatsScreen, { transactions: walletTransactions, onBack: () => setStack([]) })) : stack[0] === "notifications" ? (React.createElement(NotificationCenterScreen, { notifications: notifications, onMarkRead: markNotificationRead, onBack: () => setStack([]) })) : stack[stack.length - 1] === "demo" ? (React.createElement(EncryptedNotesDemoScreen, { onBack: () => setStack([]), notes: notes, onAdd: (text) => setNotes((prev) => [{ id: Date.now(), text }, ...prev]), onDelete: (id) => setNotes((prev) => prev.filter((n) => n.id !== id)) })) : (React.createElement(React.Fragment, null,
                 tab === "chats" && (() => {
                     const chatsTop = chatsStack[chatsStack.length - 1];
                     if (!backendLinked) {
@@ -4208,7 +4380,7 @@ function AppInner() {
                             }, onBack: () => setChatsStack([]) }));
                     }
                     if (chatsTop.type === "lockedChats") {
-                        return (React.createElement(LockedChatsScreen, { conversations: conversations, lockedConversationIds: lockedConversationIds, correctPin: pin, onOpenChat: (c) => setChatsStack([{ type: "chat", data: c }]), onClose: () => setChatsStack([]), onForgot: () => { setChatsStack([]); setFlow("forgot"); } }));
+                        return (React.createElement(LockedChatsScreen, { conversations: conversations, lockedConversationIds: lockedConversationIds, correctPin: pin, onOpenChat: (c) => setChatsStack([{ type: "chat", data: c }]), onClose: () => setChatsStack([]), onForgot: () => { setChatsStack([]); if (lockActive) setLockView("forgot"); } }));
                     }
                     if (chatsTop.type === "starredMessages") {
                         return (React.createElement(StarredMessagesScreen, { starredMessages: starredMessages, onOpenConversation: (conversationId) => {
@@ -4230,7 +4402,7 @@ function AppInner() {
                     }
                     if (chatsTop.type === "group") {
                         const liveGroup = groups.find((g) => g.id === chatsTop.data.id) || chatsTop.data;
-                        return (React.createElement(GroupChatScreen, { key: "g:" + liveGroup.id, group: liveGroup, onTogglePin: (mid) => togglePinMessage(liveGroup.id, mid), onToggleStar: (mid, text) => toggleStarMessage(liveGroup.id, mid, text), messages: groupMessages[liveGroup.id] || [], myUserId: myUserId, draft: chatDrafts["g:" + liveGroup.id] || "", onSaveDraft: (v) => saveChatDraft("g:" + liveGroup.id, v), onTyping: () => { const c = cloudChat(liveGroup.id); if (c) c.typing(liveGroup.id); }, onSendSticker: (emoji) => sendGroupSticker(liveGroup.id, emoji), contactsForForward: (window.SawaChat && window.SawaChat.contacts ? window.SawaChat.contacts() : []), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendGroupMessage(liveGroup.id, text, replyTo),
+                        return (React.createElement(GroupChatScreen, { key: "g:" + liveGroup.id, group: liveGroup, muteKey: muteKeyOf(liveGroup.id), onSetMute: (k) => setConvMute(liveGroup.id, k), onTogglePin: (mid) => togglePinMessage(liveGroup.id, mid), onToggleStar: (mid, text) => toggleStarMessage(liveGroup.id, mid, text), messages: groupMessages[liveGroup.id] || [], myUserId: myUserId, draft: chatDrafts["g:" + liveGroup.id] || "", onSaveDraft: (v) => saveChatDraft("g:" + liveGroup.id, v), onTyping: () => { const c = cloudChat(liveGroup.id); if (c) c.typing(liveGroup.id); }, onSendSticker: (emoji) => sendGroupSticker(liveGroup.id, emoji), contactsForForward: (window.SawaChat && window.SawaChat.contacts ? window.SawaChat.contacts() : []), unreadCount: chatsTop.data.unreadOnOpen || 0, onSend: (text, replyTo) => sendGroupMessage(liveGroup.id, text, replyTo),
                             onReact: cloudChat(liveGroup.id) ? (messageId, emoji) => cloudChat(liveGroup.id).react(liveGroup.id, messageId, emoji) : null,
                             onDeleteMessage: cloudChat(liveGroup.id) ? (messageId, scope) => { scope === "all" ? cloudChat(liveGroup.id).deleteForAll(liveGroup.id, messageId) : cloudChat(liveGroup.id).deleteForMe(liveGroup.id, messageId); showToast(scope === "all" ? t("ai_hdhft_lljmya") : t("ai_hdhft_andk"), "success"); } : null,
                             contacts: cloudChat(liveGroup.id) ? people : null,
@@ -4288,7 +4460,7 @@ function AppInner() {
                         const convMessages = messagesByConversation[chatsTop.data.id] || [];
                         const liveConvI = conversations.find((c) => c.id === chatsTop.data.id) || chatsTop.data;
                         const SCi = cloudChat(chatsTop.data.id);
-                        return (React.createElement(ChatInfoScreen, { conversation: liveConvI, messages: convMessages, background: chatThemes[chatsTop.data.id] || "default", setBackground: (themeKey) => setChatThemes((prev) => ({ ...prev, [chatsTop.data.id]: themeKey })), disappearing: SCi ? (liveConvI.disappear || 0) : chatDisappearing, setDisappearing: SCi ? (v) => SCi.setDisappear(chatsTop.data.id, v) : setChatDisappearing, isBlocked: blockedConversations.includes(chatsTop.data.id), onBlock: () => blockContact(chatsTop.data.id), onUnblock: () => unblockContact(chatsTop.data.id), onReport: (done) => { const SCr = window.SawaChat; if (SCr && SCr.reportSheet && SCi) SCr.reportSheet({ cid: chatsTop.data.id, name: liveConvI.name, kind: "dm", onBlock: () => blockContact(chatsTop.data.id), onDone: done }); else { showToast(t("tm_irsal_blaghk"), "success"); done && done(); } }, isLocked: lockedConversationIds.includes(chatsTop.data.id), onToggleLock: () => toggleChatLock(chatsTop.data.id), chatFolders: chatFolders, folderId: folderAssignments[chatsTop.data.id], onSetFolder: (folderId) => assignConversationFolder(chatsTop.data.id, folderId), notificationTone: conversationTones[chatsTop.data.id] || defaultNotificationTone, setNotificationTone: (tone) => setConversationTones((prev) => ({ ...prev, [chatsTop.data.id]: tone })), onBack: () => setChatsStack(chatsStack.slice(0, -1)) }));
+                        return (React.createElement(ChatInfoScreen, { conversation: liveConvI, messages: convMessages, background: chatThemes[chatsTop.data.id] || "default", setBackground: (themeKey) => setChatThemes((prev) => ({ ...prev, [chatsTop.data.id]: themeKey })), disappearing: SCi ? (liveConvI.disappear || 0) : chatDisappearing, setDisappearing: SCi ? (v) => SCi.setDisappear(chatsTop.data.id, v) : setChatDisappearing, isBlocked: blockedConversations.includes(chatsTop.data.id), onBlock: () => blockContact(chatsTop.data.id), onUnblock: () => unblockContact(chatsTop.data.id), onReport: (done) => { const SCr = window.SawaChat; if (SCr && SCr.reportSheet && SCi) SCr.reportSheet({ cid: chatsTop.data.id, name: liveConvI.name, kind: "dm", onBlock: () => blockContact(chatsTop.data.id), onDone: done }); else { showToast(t("tm_irsal_blaghk"), "success"); done && done(); } }, isLocked: lockedConversationIds.includes(chatsTop.data.id), onToggleLock: () => toggleChatLock(chatsTop.data.id), chatFolders: chatFolders, folderId: folderAssignments[chatsTop.data.id], onSetFolder: (folderId) => assignConversationFolder(chatsTop.data.id, folderId), notificationTone: conversationTones[chatsTop.data.id] || defaultNotificationTone, setNotificationTone: (tone) => setConversationTones((prev) => ({ ...prev, [chatsTop.data.id]: tone })), onBack: () => setChatsStack(chatsStack.slice(0, -1)), muteDuration: muteKeyOf(chatsTop.data.id), onSetMute: (k) => setConvMute(chatsTop.data.id, k) }));
                     }
                     if (chatsTop.type === "search") {
                         return (React.createElement(UnifiedSearchScreen, { conversations: conversations, groups: groups, shipments: shipments, taxiTripsHistory: taxiTripsHistory, messagesByConversation: messagesByConversation, groupMessages: groupMessages, onOpenChat: (c) => setChatsStack([{ type: "chat", data: c }]), onOpenGroup: (g) => setChatsStack([{ type: "group", data: g }]), onClose: () => setChatsStack([]) }));
@@ -4325,7 +4497,7 @@ function AppInner() {
                         React.createElement(Icon, { size: 26, color: active ? colors.primary : colors.textMuted, style: { width: "min(calc(26px * var(--sfs, 1)), 30px)", height: "min(calc(26px * var(--sfs, 1)), 30px)" } }),   // C154: شريط التبويبات يكبر قليلاً فقط كي لا تتلاصق الأسماء
                         tabItem.key === "calls" && missedNew > 0 && (React.createElement("span", { className: "absolute -top-1.5 -left-2 min-w-[14px] h-3.5 px-0.5 rounded-full flex items-center justify-center text-[8px] font-bold text-white", style: { backgroundColor: colors.danger } }, missedNew))),
                     React.createElement("span", { className: "mt-1 whitespace-nowrap leading-tight", style: { fontSize: "min(calc(12px * var(--sfs, 1)), 13.5px)", color: active ? colors.primary : colors.textMuted, fontWeight: active ? 800 : 600 } }, t(IS_RAHIM && tabItem.key === "discover" ? "sla_alrhm" : tabItem.labelKey)),
-                    active && React.createElement("div", { className: "w-1.5 h-1.5 rounded-full mt-0.5", style: { backgroundColor: colors.primary } })));
+                    active && React.createElement("div", { className: "w-1.5 h-1.5 rounded-full mt-0.5", style: { backgroundColor: colors.primaryFill } })));
             }))))),
         showAddSchedule && (() => { const schGid = (editingSchedule && editingSchedule.groupId) || (discoverTop && (discoverTop.type === "schedules" || discoverTop.type === "tree") && discoverTop.data && discoverTop.data.id) || (discoverTop && discoverTop.type === "personDetail" && discoverTop.groupId) || currentGroupId; return React.createElement(FamilyAddScheduleSheet, { allPersons: famPersons[schGid] || [], persons: (famPersons[schGid] || []).filter((p) => !isSelfPerson(p) && (p.alive !== false || (editingSchedule && editingSchedule.personId === p.id))), relations: kinshipRelations.filter((r) => r.groupId === schGid), preselectedPersonId: preselectedSchedulePersonId, initial: editingSchedule, onSave: (personId, action, freqKey) => (editingSchedule ? updateSchedule(editingSchedule.id, personId, action, freqKey) : addSchedule(schGid, personId, action, freqKey)), onClose: () => { setShowAddSchedule(false); setPreselectedSchedulePersonId(null); setEditingSchedule(null); } }); })(),
         showAddEvent && (() => { const evGid = (editingEvent && editingEvent.groupId) || (discoverTop && discoverTop.type === "events" && discoverTop.data && discoverTop.data.id) || (discoverTop && discoverTop.type === "personDetail" && discoverTop.groupId) || currentGroupId; return React.createElement(FamilyAddEventSheet, { persons: groupPersons[evGid] || [], relations: kinshipRelations.filter((r) => r.groupId === evGid), initial: editingEvent, onSave: (personId, type, title, ts, desc) => (editingEvent ? updateEvent(editingEvent.id, personId, type, title, ts, desc) : addEvent(evGid, personId, type, title, ts, desc)), onClose: () => { setShowAddEvent(false); setEditingEvent(null); } }); })(),

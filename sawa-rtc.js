@@ -113,10 +113,12 @@
   // ---------- خوادم ICE (STUN + TURN إن وُجد) ----------
   // C65: هل في القائمة خادم TURN؟ (هاتفان على 4G لا يتّصلان مباشرةً غالباً — بدونه لا يرى أحدهما الآخر)
   function hasTurn(list) { return (list || []).some(function (x) { return [].concat(x.urls || x.url || []).some(function (u) { return /^turns?:/.test(String(u)); }); }); }
-  var STUN = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
+  // C300: خوادم STUN: مزيج IPv4 و IPv6 لتفضيل الاتّصال المباشر — خادمان يكفيان لفحص نوع NAT (eim/sym)
+  var STUN = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }, { urls: "stun:stun.cloudflare.com:3478" }];
   var iceWarm = false;
   var iceBusy = null;
   function getIce(waitMs) {
+    if (iceUid && myUid() && iceUid !== myUid()) { iceCache = null; iceAt = 0; iceUid = ""; }   // C324: المحفوظ لحسابٍ آخر على الهاتف نفسه
     // C175: بعد 3 دقائق نجدّد في الخلفيّة (والمحفوظ يُستعمل فوراً) — فيصل تبديل المدير للوسيط الأساسيّ إلى الكلّ خلال دقائق
     if (iceCache && Date.now() - iceAt < 3 * 60 * 1000) return Promise.resolve(iceCache);
     if (iceCache && Date.now() - iceAt < 20 * 60 * 1000) { if (!iceBusy) { iceBusy = fetchIce(); iceBusy.then(function () { iceBusy = null; }, function () { iceBusy = null; }); } return Promise.resolve(iceCache); }
@@ -131,7 +133,7 @@
         var l = b && Array.isArray(b.iceServers) && b.iceServers.length ? b.iceServers : STUN;
         iceRelays = b && Array.isArray(b.relays) && b.relays.length ? b.relays : null;
         relayPrimary = b && (b.primary === "m" || b.primary === "cf" || b.primary === "p") ? b.primary : null;   // C165 · C228: p = الأقرب للطرفين
-        iceCache = relayIce() || l; iceAt = Date.now(); LOG.info("ice", { mode: b && b.turn ? "TURN" : "STUN", relays: iceRelays ? iceRelays.length : 0 }); relayAuto(); return iceCache;
+        iceCache = relayIce() || l; iceAt = Date.now(); iceSave(b); LOG.info("ice", { mode: b && b.turn ? "TURN" : "STUN", relays: iceRelays ? iceRelays.length : 0 }); relayAuto(); return iceCache;
       }),
       new Promise(function (r) { setTimeout(function () { r(iceCache || STUN); }, wait); })
     ]).catch(function () { return iceCache || STUN; });
@@ -140,12 +142,27 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c233";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات
+  var RTC_BUILD = "c324";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
   function netKey() { var n = global.navigator && global.navigator.connection; return (n ? (n.type || "") + "/" + (n.effectiveType || "") : "") + "/" + (cfColo || ""); }
   try { var m0 = JSON.parse(lsGet("sawa-relay-ms2") || "null"); if (m0 && m0.ms && Date.now() - m0.at < 30 * 60000) { relayMs = m0.ms; relayAt = m0.at; relayNet = m0.net || ""; } } catch (e) {}
+  // C324: بيانات الوسيط تُحفظ في الهاتف (صالحة 6 ساعات عند Cloudflare و72 عند Metered — نستعملها 4 ساعات كما في الذاكرة).
+  //        كان التطبيق المغلق حين يُفتح من «ردّ» في شاشة الهاتف ينتظر الخادم (حتّى 2.5 ث على 4G) قبل كتابة الردّ — والمتّصل على «جارٍ الربط…».
+  var ICEK = "sawa-ice1", iceUid = "", iceSrc = "";
+  function iceSave(b) {
+    try { if (b && b.turn && Array.isArray(b.iceServers)) lsSet(ICEK, JSON.stringify({ at: iceAt, uid: myUid() || "", b: { iceServers: b.iceServers, relays: b.relays || null, primary: b.primary || null, turn: 1 } })); iceUid = myUid() || ""; iceSrc = "f"; } catch (e) {}
+  }
+  function iceLoad() {
+    try {
+      var o = JSON.parse(lsGet(ICEK) || "null"), b = o && o.b;
+      if (!b || !Array.isArray(b.iceServers) || !b.iceServers.length || !(Date.now() - o.at < 4 * 3600 * 1000)) return;
+      iceRelays = Array.isArray(b.relays) && b.relays.length ? b.relays : null;
+      relayPrimary = b.primary === "m" || b.primary === "cf" || b.primary === "p" ? b.primary : null;
+      iceCache = relayIce() || b.iceServers; iceAt = o.at; iceUid = o.uid || ""; iceSrc = "s";
+    } catch (e) {}
+  }
   // C165: وسيطٌ أساسيّ يحدّده الخادم (Metered افتراضاً) — يُقدَّم ما لم يفشل قياسه، والآخر احتياطٌ فقط
   function isPrim(r) { return relayPrimary === "cf" ? r.id === "cf" : relayPrimary === "m" ? /^m/.test(r.id) : false; }
   function relayRank() {
@@ -163,6 +180,7 @@
     (prim.length ? prim.slice(0, 2) : l.slice(0, 2)).forEach(function (r) { (r.iceServers || []).forEach(function (x) { out.push(x); }); });
     return out;
   }
+  iceLoad();
   function probeOne(rel) {
     return new Promise(function (res) {
       var srv = (rel.iceServers || []).map(function (x) {
@@ -426,6 +444,8 @@
       });
       else sdp = sdp.replace(m[0], m[0] + "\r\na=fmtp:" + pt + " " + want);
       // C113: أُلغيت إطارات 40 مللي ث (C110) — ضياع حزمةٍ كان يُسقط ضعف المدّة فيُسمع تقطّعاً
+      // C300: رفع أولويّة المرشّحين المباشرين (srflx) في العرض والردّ — الأزواج المباشرة تُفحص قبل الوسيط
+      sdp = boostDirectCandidates(sdp);
       if (typeof d.sdp === "string" && !(d instanceof global.RTCSessionDescription)) { d.sdp = sdp; return d; }
       return { type: d.type, sdp: sdp };
     } catch (e) { return d; }
@@ -468,12 +488,21 @@
     } catch (e) {}
     return st;
   }
-  function getMedia(type, facing) {
-    return getMedia0(type, facing).then(ensureAec);
+  function getMedia(type, facing, plain) {
+    return getMedia0(type, facing, plain).then(ensureAec);
   }
-  function getMedia0(type, facing) {
+  // C278: بعض الهواتف (Honor) تُسكت التقاط WebView بنمط «المكالمات» (إلغاء الصدى ⇒ مصدر VOICE_COMMUNICATION) فلا يصل صوتي في الغرف
+  //       ولا تظهر علامة التحدّث. حين يثبت ذلك (صمتٌ رقميّ بعد إعادة فتح الميكروفون) نفتحه بنمط الميكروفون العاديّ ونتذكّره لهذا الجهاز.
+  // C319: لم يعد يُحفَظ في الهاتف — كان إنذارٌ كاذب واحد (صمتٌ لحظة تبديل المسار) يُبقي الغرف والجماعيّة بلا إلغاء صدى إلى الأبد:
+  //       أندرويد يُخرج صوت الطرف الآخر حينها «وسائط» تخفضها المكالمة ⇒ صوتٌ منخفض وصدى. الآن يبقى حتّى إغلاق التطبيق فقط.
+  var MICK = "sawa-mic-mode", micPlainMem = false;
+  try { localStorage.removeItem(MICK); } catch (e) {}
+  function micPlain() { return micPlainMem; }
+  // C317: النمط البديل (بلا إلغاء صدى) للغرف فقط — كان يُطبَّق على كلّ المكالمات بعد أن يُحفَظ مرّةً للجهاز ⇒ صدى قويّ عند الطرف الآخر
+  function micAudio(plain) { return plain ? { echoCancellation: false, noiseSuppression: true, autoGainControl: true } : { echoCancellation: true, noiseSuppression: true, autoGainControl: true }; }
+  function getMedia0(type, facing, plain) {
     var md = navigator.mediaDevices;
-    var audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    var audio = micAudio(plain);
     if (type !== "video") return md.getUserMedia({ audio: audio, video: false });
     // 640×480 كافية وخفيفة على الشبكات الضعيفة
     // الكاميرا مشغولة (تبويبٌ آخر/تطبيق) أو مرفوضة وحدها ⇒ نكمل بالصوت بدل أن تفشل المكالمة
@@ -524,7 +553,7 @@
       if (!r) return;
       var v = String(r).slice(0, 40);
       if (cur) cur.osRoute = v;
-      if (gc && !gc.done) gc.osRoute = v;   // C236: مسار/وضع صوت الجماعيّة والغرفة في سجلّ المكالمة — لنعرف ما يختاره WebKit فعلاً
+      if (gc && !gc.done) gc.osRoute = v;   // C327: مسار/وضع صوت الجماعيّة والغرفة في سجلّ المكالمة — لنعرف ما يختاره WebKit فعلاً
       if (rm && !rm.done) rm.osRoute = v;
       if (isAdm()) toast("🔈 " + r);
     } catch (e) {}
@@ -549,7 +578,7 @@
   function earlyRoute(c) { if (!c || c.done || !RB() || c.out) return; nativeRoute(c, c.type === "video" ? "spk" : "ear", true); }
   function toggleRoute() { var c = cur; if (!c) return; var w = c.out === "ear" ? "spk" : "ear"; c.userRoute = true; if (c.routes) setRoute(c, w); else if (RB()) nativeRoute(c, w); }
   function stopStream(s) { try { s && s.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} }
-  // C235: تسليم الصوت بين مكالمةٍ وأخرى (ثنائيّة ⇒ جماعيّة ⇒ غرفة · إعادة دخول الغرفة) بلا هدم جلسة الصوت:
+  // C326: تسليم الصوت بين مكالمةٍ وأخرى (ثنائيّة ⇒ جماعيّة ⇒ غرفة · إعادة دخول الغرفة) بلا هدم جلسة الصوت:
   //       كان الانتقال يُطفئ وضع المكالمة (bgAudio(false)) ويُنهي CallKit ويغلق الميكروفون ثمّ يفتحه فوراً — فيتسابق الإطفاء
   //       مع فتح الميكروفون الجديد فيصمت الآيفون أو يضعف عند الآخرين، ويتأرجح وضع الصوت في أندرويد.
   //       hand = { stream, at, wait, ck }: الميكروفون المفتوح (يُعاد استخدامه) · مهلةٌ بعد المحرّك الأصليّ · مكالمة CallKit تُنهى في آخر السلسلة
@@ -561,16 +590,16 @@
   }
   function streamLive(st) { try { var a = st && st.getAudioTracks && st.getAudioTracks()[0]; return !!(a && a.readyState === "live" && !st.native); } catch (e) { return false; } }
   // الميكروفون للمكالمة الجديدة: المسلَّم إن كان حيّاً ومناسباً، وإلّا جديد (بعد مهلةٍ إن كان المحرّك الأصليّ يُغلق جلسته الآن)
-  function takeMedia(type, audioOnly) {
+  function takeMedia(type, audioOnly, plain) {
     var h = hand, st = h && h.stream, wait = h && h.wait && Date.now() - h.at < h.wait ? h.wait - (Date.now() - h.at) : 0;
     if (h) { h.stream = null; h.wait = 0; }
-    if (st && Date.now() - h.at < 30000 && streamLive(st)) {
+    if (st && !plain && Date.now() - h.at < 30000 && streamLive(st)) {   // C278: النمط البديل (بلا إلغاء صدى) يحتاج ميكروفوناً جديداً
       st.getAudioTracks().forEach(function (t) { t.enabled = true; });   // كتم المكالمة السابقة لا ينتقل صامتاً — المكالمة الجديدة تطبّق كتمها هي
       if (audioOnly) { st.getVideoTracks().forEach(function (t) { try { t.stop(); } catch (e) {} }); return Promise.resolve(new global.MediaStream(st.getAudioTracks())); }
       if (type !== "video" || st.getVideoTracks().some(function (t) { return t.readyState === "live"; })) return Promise.resolve(st);
     }
     stopStream(st);
-    return (wait > 0 ? new Promise(function (ok) { setTimeout(ok, wait); }) : Promise.resolve()).then(function () { return getMedia(audioOnly ? "audio" : type); });
+    return (wait > 0 ? new Promise(function (ok) { setTimeout(ok, wait); }) : Promise.resolve()).then(function () { return getMedia(audioOnly ? "audio" : type, null, plain); });
   }
   // نهاية السلسلة: تُنهى مكالمة CallKit التي بقيت من المكالمة الثنائيّة (بقاؤها يُبقي جلسة الصوت حيّة أثناء الانتقال)
   function handEnd() {
@@ -660,10 +689,10 @@
   // C127: تطبيق iOS — توجيه الصوت (السمّاعة/المكبّر) وحسّاس القرب ومنع القفل عبر جسر SawaIOS
   function IOSB() { try { return global.SawaIOS || null; } catch (e) { return null; } }
   var iosRoute = {
-    // C236: التشخيص يعرض وضع الجلسة أيضاً (VideoChat/VoiceChat/Default)
+    // C327: التشخيص يعرض وضع الجلسة أيضاً (VideoChat/VoiceChat/Default)
     setSpeaker: function (on, auto) { try { IOSB().call("setSpeaker", { on: !!on, auto: !!auto }).then(function (r) { routeDiag(r && r.route && (r.route + (r.mode ? " · " + String(r.mode).replace(/^AVAudioSessionMode/, "") : ""))); if (r && r.kind) audioOut(r.kind, r.hs); }); } catch (e) {} },   // C230: kind/hs من بناء iOS الجديد
     setProximity: function (on) { try { IOSB().call("setProximity", { on: !!on }); } catch (e) {} return true; },
-    setInCall: function (on, multi) { try { IOSB().call("setInCall", { on: !!on, multi: !!multi }); } catch (e) {} }   // C235: multi = جماعيّة/غرفة (WebKit يملك جلسة الصوت)
+    setInCall: function (on, multi) { try { IOSB().call("setInCall", { on: !!on, multi: !!multi }); } catch (e) {} }   // C326: multi = جماعيّة/غرفة (WebKit يملك جلسة الصوت)
   };
   // جسر التوجيه: أندرويد (SawaNativeBridge) أو iOS (SawaIOS) — null في المتصفّح
   function RB() { var n = NB(); if (n && n.setSpeaker) return n; return IOSB() ? iosRoute : null; }
@@ -678,7 +707,7 @@
   global.__sawaCallKitRinging = function (id) { ckRing[id] = 1; if (cur && cur.id === id && cur.state === "incoming") stopTone(); };
   global.__sawaNativeMute = function (m) {
     if (cur && cur.local) { if (!!cur.muted !== !!m) toggleMute(); return; }
-    // C235: مكالمة CallKit تبقى بعد الترقية إلى جماعيّة/غرفة ⇒ زرّ الكتم في شاشة النظام يكتمها هي
+    // C326: مكالمة CallKit تبقى بعد الترقية إلى جماعيّة/غرفة ⇒ زرّ الكتم في شاشة النظام يكتمها هي
     if (gc && gc.local && !gc.done) { if (!!gc.muted !== !!m) gToggleMute(); return; }
     if (rm && rm.local && !rm.done && !!rm.mic === !!m) rToggleMic(rm);
   };
@@ -714,10 +743,10 @@
         }
       }
       var c = cur;
-      if (c && !c.done && c.type === "video" && c.local && !hidden) {
-        // الكاميرا انتهت في الخلفيّة ⇒ نفتحها من جديد بالاتّجاه نفسه
-        var vt = c.local.getVideoTracks()[0];
-        if (vt && vt.readyState === "ended" && !c.switching) { c.facing = c.facing === "user" ? "environment" : "user"; switchCam(); }
+      if (c && !c.done && c.type === "video" && c.local) {
+        // C291: الكاميرا «متوقّفة مؤقّتاً» (muted) أو منتهية بعد الخلفيّة/الردّ من شاشة النظام ⇒ نفتحها من جديد (كان يُعالَج «المنتهية» وحدها)
+        camMark(c);
+        if (!hidden) { c.camHealN = 0; setTimeout(function () { camHeal(c, "visible"); }, 1500); }
       }
     });
   } catch (e) {}
@@ -742,10 +771,10 @@
   function earArm() {
     clearTimeout(earT);
     if (RB()) {
-      if (cur && cur.out === "ear" && !cur.hs && !cur.done && cur.state === "connected") { try { earNative = !!RB().setProximity(true) || true; } catch (e) {} }   // C230: لا حسّاس قربٍ مع سمّاعة الرأس
+      if (cur && cur.out === "ear" && !cur.hs && !cur.done && cur.state === "connected" && cur.type !== "video") { try { earNative = !!RB().setProximity(true) || true; } catch (e) {} }   // C230: لا حسّاس قربٍ مع سمّاعة الرأس
       return;
     }
-    earT = setTimeout(function () { if (cur && cur.out === "ear" && !cur.done && cur.state === "connected") earOn(); }, 5000);
+    earT = setTimeout(function () { if (cur && cur.out === "ear" && !cur.done && cur.state === "connected" && cur.type !== "video") earOn(); }, 5000);   // C291: لا شاشة سوداء في مكالمة الفيديو
   }
   // C26: إشعارات المكالمات (فائتة · رنين) تُغلق حين تُفتح شاشة المكالمات أو تنتهي المكالمة
   function clearCallNotifications() {
@@ -761,7 +790,23 @@
   //  واجهة المكالمة
   // ============================================================
   var ui = { root: null };
-  function el(tag, css, txt) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (txt != null) e.textContent = txt; return e; }
+  // C291: أيقوناتُ خطٍّ بدل الرموز التعبيريّة (تختلف شكلاً بين أندرويد وiOS وويندوز). مرسومة بخطٍّ بلون النصّ الحاليّ.
+  var SVG_ICONS = {
+    mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+    "mic-off": '<path d="M3 3l18 18"/><path d="M9 9v2a3 3 0 0 0 5.1 2.1M15 9.3V6a3 3 0 0 0-5.7-1.3"/><path d="M5 11a7 7 0 0 0 11.5 5.3M19 11a7 7 0 0 1-.6 2.8M12 18v3"/>',
+    video: '<rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/>',
+    phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>',
+    hangup: '<g transform="rotate(135 12 12)"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></g>',
+    screen: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
+    signal: '<path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 20V4"/>',
+    lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    door: '<path d="M4 22h16M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18"/><circle cx="14" cy="13" r="1"/>',
+    headphones: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1v-7h3zM3 19a2 2 0 0 0 2 2h1v-7H3z"/>',
+    eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    volume: '<path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/>'
+  };
+  function ico(name, size) { return '<svg viewBox="0 0 24 24" width="' + (size || 24) + '" height="' + (size || 24) + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (SVG_ICONS[name] || '') + '</svg>'; }
+  function el(tag, css, txt) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (txt != null) { if (typeof txt === "string" && txt.indexOf("<svg") === 0) e.innerHTML = txt; else e.textContent = txt; } return e; }
   function btn(icon, label, bg, onclick) {
     var w = el("div", "display:flex;flex-direction:column;align-items:center;gap:5px;min-width:54px;flex:1 1 0");
     var b = el("button", "width:54px;height:54px;border-radius:50%;border:0;font-size:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;background:" + bg, icon);
@@ -886,8 +931,10 @@
   function paintStatus(c) {
     if (!ui.root || c !== cur && c.state !== "ended") return;
     ui.st.textContent = statusText(c);
-    var vid = c.type === "video" && c.remoteVideo && (c.state === "connected" || c.state === "reconnecting");
-    ui.rv.style.display = vid ? "block" : "none";
+    var vidOn = c.type === "video" && c.remoteVideo && (c.state === "connected" || c.state === "reconnecting");
+    var vid = vidOn && !c.peerCamOff && !c.vBlack;   // C291: صورةٌ حقيقيّة فقط — وإلّا صورة الحساب
+    ui.rv.style.display = vidOn ? "block" : "none"; ui.rv.style.opacity = vid ? "1" : "0";   // يبقى العنصر يعمل (شفّافاً) لنعرف متى تصل الصورة
+    if (c.type === "video" && c.state === "connected" && !vid && ui.sub) ui.sub.textContent = (c.peerCamOff ? L("الكاميرا متوقّفة عند الطرف الآخر", "Their camera is off") : c.remoteVideo && c.vSeen ? L("لا تصل الصورة الآن…", "No picture right now…") : "") + (isAdm() ? (c.peerCamOff || c.remoteVideo ? " · " : "") + callNetText(c) : "");
     ui.mid.style.visibility = vid && c.state === "connected" ? "hidden" : "visible";
     ui.topName.style.opacity = vid ? "1" : "0";
     if (vid && c.state === "connected") ui.topName.textContent = (c.name || "") + " · " + statusText(c) + (isAdm() ? (c.route ? " · " + callNetText(c) : "") + (c.q != null && c.q <= 1 ? " · " + (c.q === 0 ? L("شبكة سيّئة", "bad network") : L("شبكة ضعيفة", "weak network")) : "") : (netLine(c) ? " · " + netLine(c) : ""));   // C115   // C93: والتأخير في الفيديو أيضاً
@@ -901,24 +948,24 @@
     if (c.state === "ended") return;
     if (c.state === "incoming") {
       // بالعربيّة (من اليمين): ردّ · بالصوت · رفض
-      bar.appendChild(btn(c.type === "video" ? "📹" : "📞", L("ردّ", "Answer"), "#21a366", function () { accept(false); }));
-      if (c.type === "video") bar.appendChild(btn("🎤", L("ردّ بالصوت", "Voice only"), "#3c6e5a", function () { accept(true); }));
+      bar.appendChild(btn(c.type === "video" ? ico("video") : ico("phone"), L("ردّ", "Answer"), "#21a366", function () { accept(false); }));
+      if (c.type === "video") bar.appendChild(btn(ico("mic"), L("ردّ بالصوت", "Voice only"), "#3c6e5a", function () { accept(true); }));
       bar.appendChild(btn("✕", L("رفض", "Decline"), "#d64545", decline));
       return;
     }
-    var mute = btn(c.muted ? "🔇" : "🎤", c.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), c.muted ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleMute);
+    var mute = btn(c.muted ? ico("mic-off") : ico("mic"), c.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), c.muted ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleMute);
     if (c.muted) mute._b.style.color = "#123";
     bar.appendChild(mute);
     if (c.type === "video" && c.hasCam) {
       bar.appendChild(btn(c.camOff ? "🚫" : "📷", c.camOff ? L("تشغيل الكاميرا", "Camera on") : L("الكاميرا", "Camera"), c.camOff ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleCam));
       bar.appendChild(btn("🔄", L("تبديل", "Flip"), "rgba(255,255,255,.16)", switchCam));
     }
-    if (c.routes || (RB())) { var sp = c.out !== "ear"; var rb = btn(sp ? "🔊" : c.hs ? "🎧" : "👂", sp ? L("المكبّر", "Speaker") : c.hs ? L("سمّاعة الرأس", "Headset") : L("السمّاعة", "Earpiece"), sp ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
+    if (c.routes || (RB())) { var sp = c.out !== "ear"; var rb = btn(sp ? ico("volume") : c.hs ? ico("headphones") : ico("phone"), sp ? L("المكبّر", "Speaker") : c.hs ? L("سمّاعة الرأس", "Headset") : L("السمّاعة", "Earpiece"), sp ? "#e6f5ec" : "rgba(255,255,255,.16)", toggleRoute); if (sp) rb._b.style.color = "#123"; bar.appendChild(rb); }
     // C111: تحويل المكالمة الصوتيّة إلى فيديو (بموافقة الطرف الآخر)
-    if (c.state === "connected" && c.type !== "video") bar.appendChild(btn("📹", c.vreqOut ? L("…بانتظاره", "…waiting") : L("فيديو", "Video"), "rgba(255,255,255,.16)", function () { askVideo(cur); }));
+    if (c.state === "connected" && c.type !== "video") bar.appendChild(btn(ico("video"), c.vreqOut ? L("…بانتظاره", "…waiting") : L("فيديو", "Video"), "rgba(255,255,255,.16)", function () { askVideo(cur); }));
     if (c.state === "connected") bar.appendChild(btn("➕", L("إضافة", "Add"), "rgba(255,255,255,.16)", function () { pickPerson(cur); }));
     if (c.held) bar.appendChild(btn("▶", L("استئناف", "Resume"), "#21a366", resumeHold));   // C234
-    bar.appendChild(btn("📞", L("إنهاء", "End"), "#d64545", function () { hangup(); }));
+    bar.appendChild(btn(ico("hangup"), L("إنهاء", "End"), "#d64545", function () { hangup(); }));
     bar.lastChild._b.style.transform = "rotate(135deg)";
   }
   function attachLocal(c) {
@@ -929,6 +976,72 @@
     ui.lv.style.display = hasVid && !c.camOff ? "block" : "none";
     ui.lv.style.transform = c.facing === "environment" ? "none" : "scaleX(-1)";
     if (hasVid) try { ui.lv.play().catch(function () {}); } catch (e) {}
+    if (hasVid) { var vt0 = c.local.getVideoTracks()[0]; if (vt0 && !vt0.__c291) { vt0.__c291 = 1; vt0.addEventListener("mute", function () { camMark(c); }); vt0.addEventListener("unmute", function () { camMark(c); }); vt0.addEventListener("ended", function () { camMark(c); setTimeout(function () { camHeal(c, "ended"); }, 800); }); } }
+    camMark(c);
+  }
+  // C291: حالة كاميرتي للطرف الآخر (cam_caller / cam_callee): 1 تعمل · 0 متوقّفة (أطفأتُها، أو أوقفها النظام في الخلفيّة/قبل فتح التطبيق).
+  //       الطرف الآخر يعرض صورة الحساب بدل شاشةٍ سوداء. يُكتب عند التغيّر فقط.
+  function camState(c) {
+    if (!c.local || c.local.native) return null;
+    var vt = c.local.getVideoTracks()[0];
+    return vt && !c.camOff && vt.readyState === "live" && !vt.muted ? 1 : 0;
+  }
+  function camMark(c) {
+    try {
+      if (!c || c.done || c.type !== "video" || !c.ref || !c.live) return;
+      var v = camState(c); if (v == null || v === c.camSent) return;
+      c.camSent = v; var u = {}; u["cam_" + c.role] = v; c.ref.update(u).catch(function () {});
+      LOG.info("cam.state", { on: v });
+    } catch (e) {}
+  }
+  // C291: تطبيق أندرويد (c279+) — خدمة المكالمة تحمل نوع «الكاميرا» في مكالمة الفيديو، فلا يقطع النظام الكاميرا حين تخرج من سوا
+  function camFgs(c) { try { var n = NB(); if (n && n.callVideo && c && c.type === "video" && !c.done) n.callVideo(true); } catch (e) {} }
+  function camBits(c, v) {
+    var x = v["cam_" + (c.role === "caller" ? "callee" : "caller")];
+    var off = x === 0;
+    if (off !== !!c.peerCamOff) { c.peerCamOff = off; if (cur === c) paintStatus(c); }
+  }
+  // C291: الكاميرا متوقّفة مؤقّتاً (muted) أو منتهية والتطبيق أمامك ⇒ نلتقطها من جديد ونستبدل المسار بلا إعادة تفاوض (حتّى ٦ مرّات لكلّ عودة)
+  function camHeal(c, why) {
+    if (!c || c.done || cur !== c || c.native || !c.local || c.local.native || !c.pc || !c.pc.getSenders || c.camOff || c.switching || c.healing) return;
+    if (document.visibilityState !== "visible") return;
+    var vt = c.local.getVideoTracks()[0];
+    if (!vt || (vt.readyState === "live" && !vt.muted)) return;
+    if ((c.camHealN || 0) >= 6) return;
+    c.camHealN = (c.camHealN || 0) + 1; c.healing = true; c.camHeals = (c.camHeals || 0) + 1;
+    LOG.info("cam.heal", { why: why, st: vt.readyState + (vt.muted ? "/muted" : "") });
+    var snd = c.pc.getSenders().filter(function (x) { return x.track === vt || (x.track && x.track.kind === "video"); })[0];
+    try { vt.stop(); } catch (e) {}   // الآيفون لا يفتح الكاميرا مرّتين
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: c.facing || "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } }, audio: false })
+      .then(function (s) {
+        var nt = s.getVideoTracks()[0];
+        if (c.done || cur !== c || !nt) { stopStream(s); return null; }
+        nt.enabled = !c.camOff;
+        try { c.local.removeTrack(vt); } catch (e) {}
+        c.local.addTrack(nt); attachLocal(c); paint(c);
+        return snd ? snd.replaceTrack(nt) : null;
+      })
+      .catch(function (e) { LOG.warn("cam.heal", { err: e && (e.name || e.message) }); })
+      .then(function () { c.healing = false; camMark(c); });
+  }
+  // C291: الصورة الواردة سوداء تماماً (كاميرا الطرف الآخر متوقّفة لكنّ مساره يرسل إطاراتٍ سوداء) — عيّنة 16×12 من الإطار المعروض
+  var darkCv = null;
+  function rvDark() {
+    try {
+      var v = ui.rv; if (!v || !v.videoWidth || v.readyState < 2) return null;
+      darkCv = darkCv || document.createElement("canvas"); darkCv.width = 16; darkCv.height = 12;
+      var x = darkCv.getContext("2d", { willReadFrequently: true }); x.drawImage(v, 0, 0, 16, 12);
+      var d = x.getImageData(0, 0, 16, 12).data, mx = 0;
+      for (var i = 0; i < d.length; i += 4) { var l = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11; if (l > mx) mx = l; }
+      return mx < 8;
+    } catch (e) { return null; }
+  }
+  function vTick(c) {   // كلّ ثانية في مكالمة الفيديو
+    if (c.type !== "video" || !c.remoteVideo) { c.darkN = 0; return; }
+    var dk = rvDark();
+    if (dk === true) { c.darkN = (c.darkN || 0) + 1; c.darkS = (c.darkS || 0) + 1; }
+    else { c.darkN = 0; if (dk === false || (c.nullN = (c.nullN || 0) + 1) >= 2) c.vSeen = true; }   // لا نستطيع القياس ⇒ لا نُخفي الصورة
+    c.vBlack = !c.vSeen || c.darkN >= 3 || !!c.vStall;
   }
   function attachRemote(c) {
     if (!ui.root || !c.remote) return;
@@ -968,11 +1081,12 @@
     o.timers = {}; o.offs = []; o.iceOut = []; o.iceIn = []; o.remoteSet = false;
     o.muted = false; o.camOff = false; o.facing = "user"; o.reN = 0; o.reSeen = 0;
     o.t0 = Date.now();   // C179: لزمن إنشاء الاتّصال
+    if (o.type === "video") o.vt = 1;   // C291: الفيديو يبدأ 480×360 · 350 ك ويرتفع حين تثبت الشبكة (كان يبدأ بأعلى درجة فيخنق الشبكة الضعيفة في الثواني الأولى)
     return o;
   }
   function setState(c, s) {
     c.state = s; paint(c);
-    if (s === "connected" && !c.tick) { var n = 0; c.tick = setInterval(function () { paintStatus(c); if (++n % 3 === 0) cStatsTick(c); }, 1000); }
+    if (s === "connected" && !c.tick) { var n = 0; c.tick = setInterval(function () { try { vTick(c); } catch (e) {} paintStatus(c); if (++n % 3 === 0) cStatsTick(c); }, 1000); }
   }
   function listen(c, ref, ev, fn, onErr) {
     var h = ref.on(ev, fn, onErr || function () {});
@@ -980,7 +1094,40 @@
   }
   function clearTimers(c) { for (var k in c.timers) { clearTimeout(c.timers[k]); } c.timers = {}; if (c.tick) clearInterval(c.tick); c.tick = null; }
 
+  // C300: تضمين TURN-over-TLS على المنفذ 443 — شبكاتٌ تحجب UDP وTCP العاديّ لكنّ 443 يمرّ (4% من المكالمات)
+  function ensureTurnTls(iceList) {
+    if (!iceList || !iceList.length) return iceList;
+    var hasTls443 = false;
+    iceList.forEach(function (s) { [].concat(s.urls || []).forEach(function (u) { if (/^turns:/.test(u) && /:443(\?|$)/.test(u)) hasTls443 = true; }); });
+    if (hasTls443) return iceList;
+    // أنشئ turns:443 من أوّل turn: في القائمة
+    var out = iceList.slice();
+    for (var i = 0; i < iceList.length; i++) {
+      var s = iceList[i], urls = [].concat(s.urls || []);
+      for (var j = 0; j < urls.length; j++) {
+        var u = urls[j];
+        if (/^turn:/.test(u) && !/^turns:/.test(u)) {
+          var host = u.replace(/^turn:/, "").split(/[:?]/)[0];
+          if (host) { out.push({ urls: "turns:" + host + ":443?transport=tcp", username: s.username, credential: s.credential }); return out; }
+        }
+      }
+    }
+    return out;
+  }
+  // C300: تحسين ترتيب أولويّة المرشّحين في SDP — رفع أولويّة المباشر (srflx/prflx) فيُجرّبه المحرّك أوّلاً قبل الوسيط
+  // يفيد حين يكون أحد الطرفين «ثابتاً» (EIM) — ثانيةٌ أبكر في الوصول المباشر
+  function boostDirectCandidates(sdp) {
+    if (!sdp) return sdp;
+    // المحرّك يرتّب الأزواج حسب الأولويّة: نرفع أولويّة srflx بـ 65536 (نقلةٌ واحدة في المكوّن المحلّيّ)
+    // آمن: لا يغيّر عدد المرشّحين ولا يحذف — يُعيد الترتيب فقط
+    return sdp.replace(/^a=candidate:(\S+) (\d+) (\S+) (\d+) (\S+) (\d+) typ srflx (.*)$/gm, function (line, foundation, component, proto, priority, addr, port, rest) {
+      var p = parseInt(priority, 10);
+      if (isNaN(p) || p > 2147000000) return line;   // بالفعل عالٍ جدّاً
+      return "a=candidate:" + foundation + " " + component + " " + proto + " " + Math.min(p + 65536, 2147483647) + " " + addr + " " + port + " typ srflx " + rest;
+    });
+  }
   function makePc(c, ice, pre) {
+    ice = ensureTurnTls(ice);   // C300: ضمان وجود TURN-over-TLS/443
     var pc = pre || (c.native ? new NativePC(ice) : new global.RTCPeerConnection({ iceServers: ice }));   // C95 · C218: أو اتّصالٌ جُهِّز أثناء الرنين
     var side = c.role === "caller" ? "ic_caller" : "ic_callee";
     // C66: المرشّحات دفعةً كلّ 120 ms بدل كتابةٍ لكلّ مرشّح
@@ -1040,11 +1187,11 @@
     if (c.done || !c.pc || c.state !== "connected") return;
     c.pc.getStats().then(function (rep) {
       if (c.done) return;
-      var rtt = null, lostIn = 0, recvIn = 0, lostOut = null, pair = null, jbD = 0, jbN = 0, jitS = null, fpsS = null, hS = null;
+      var rtt = null, lostIn = 0, recvIn = 0, lostOut = null, pair = null, jbD = 0, jbN = 0, jitS = null, fpsS = null, hS = null, fdS = null;
       rep.forEach(function (x) {
         if (x.type === "transport" && x.selectedCandidatePairId) pair = rep.get(x.selectedCandidatePairId);
         if (x.type === "inbound-rtp" && x.kind === "audio") { lostIn += x.packetsLost || 0; recvIn += x.packetsReceived || 0; jbD += x.jitterBufferDelay || 0; jbN += x.jitterBufferEmittedCount || 0; if (typeof x.jitter === "number") jitS = x.jitter * 1000; }
-        if (x.type === "inbound-rtp" && x.kind === "video") { if (typeof x.framesPerSecond === "number") fpsS = x.framesPerSecond; if (x.frameHeight) hS = x.frameHeight; }   // C179
+        if (x.type === "inbound-rtp" && x.kind === "video") { if (typeof x.framesPerSecond === "number") fpsS = x.framesPerSecond; if (x.frameHeight) hS = x.frameHeight; fdS = (fdS || 0) + (x.framesDecoded || 0); }   // C179 · C291
         if (x.type === "remote-inbound-rtp" && x.kind === "audio") { if (typeof x.fractionLost === "number") lostOut = x.fractionLost; if (typeof x.roundTripTime === "number") rtt = x.roundTripTime * 1000; }
       });
       if (!pair) rep.forEach(function (x) { if (x.type === "candidate-pair" && x.state === "succeeded" && (x.selected || x.nominated)) pair = pair || x; });
@@ -1064,6 +1211,15 @@
       qaSample(c, rtt, c.jb, loss, pair);   // C131
       c.snapN = (c.snapN || 0) + 1; if (c.snapN % 5 === 1) telLive(c);   // C216: لقطة كلّ ~15ث
       telSample(c, jitS, fpsS, hS);   // C179
+      if (c.type === "video") {   // C291: لا إطاراتٍ تُفكّ 6 ث ⇒ لا صورة (صورة الحساب) · كاميرتي متوقّفة والتطبيق أمامي ⇒ تُفتح من جديد
+        c.vfps = fpsS; c.vh = hS;
+        var fdD = fdS == null ? null : fdS - (c.sFd || 0); if (fdS != null) c.sFd = fdS;
+        c.fdZ = c.remoteVideo && fdD === 0 ? (c.fdZ || 0) + 1 : 0; c.vStall = c.fdZ >= 2;
+        var lv0 = c.local && !c.local.native && c.local.getVideoTracks()[0];
+        c.camMuteN = lv0 && !c.camOff && (lv0.muted || lv0.readyState === "ended") ? (c.camMuteN || 0) + 1 : 0;
+        if (c.camMuteN >= 2) camHeal(c, "stall");
+        camMark(c);
+      }
       if (c === cur && ui.sub && c.type !== "video") ui.sub.textContent = netLine(c);
       c.qHist = (c.qHist || []).concat([q]).slice(-6);
       var h = c.qHist, bad = h.length >= 2 && h.slice(-2).every(function (x) { return x <= 1; }), good = h.length >= 4 && h.slice(-4).every(function (x) { return x >= 2; });
@@ -1082,6 +1238,7 @@
         if (vt1 >= 2 && c.type === "video" && !c.camOff && !c.lowToast) { c.lowToast = true; toast(L("الشبكة ضعيفة — خفّضتُ جودة الصورة ليبقى الصوت واضحاً", "Weak network — lowered video quality to keep audio clear")); }
       }
       if (c === cur) paintStatus(c);
+      routeInfo(c);   // C292: المسار يُقرأ كلّ 3 ثوانٍ (كان مرّةً بعد 0.8 ث من الاتّصال — المكالمة تبدأ بالوسيط ثم تنتقل مباشرةً فتُسجَّل وسيطاً خطأً)
     }).catch(function () {});
   }
   // C110: تراكم التأخير (bufferbloat) — خالد: «شبكة 6274 ← 7203 مللي ث» تزيد كلّ دقيقة: نُرسل أكثر ممّا تحمله شبكة الجوّال
@@ -1127,7 +1284,20 @@
     var net = Math.round((c.rtt || 0) / 2), jb = Math.round(c.jb || 0), lag = net + jb;
     var cf = !c.relayId || c.relayId === "cf";
     return (c.route === "relay" ? L("عبر وسيط", "relay") + (c.relayLbl ? " " + c.relayLbl : "") : c.route ? L("مباشر", "direct") : "") + (c.proto ? "/" + c.proto : "") + (cfColo && cf ? " " + cfColo : "") +
-      (c.rtt != null ? " · ⏱ " + lag + L(" مللي ث", " ms") + " (" + L("شبكة ", "net ") + net + " + " + L("مخزن ", "buffer ") + jb + ")" : "") + (c.loss > 0.03 ? " · " + L("فقد ", "loss ") + Math.round(c.loss * 100) + "%" : "") + (c.abi ? " · 🎚" + Math.round(ABR[c.abi] / 1000) + "k" : "") + (c.native ? " · ⚡" : "");
+      (c.rtt != null ? " · ⏱ " + lag + L(" مللي ث", " ms") + " (" + L("شبكة ", "net ") + net + " + " + L("مخزن ", "buffer ") + jb + ")" : "") + (c.loss > 0.03 ? " · " + L("فقد ", "loss ") + Math.round(c.loss * 100) + "%" : "") + (c.abi ? " · 🎚" + Math.round(ABR[c.abi] / 1000) + "k" : "") + (c.native ? " · ⚡" : "") +
+      (c.type === "video" && c.remoteVideo ? " · 📹 " + (c.vfps != null ? Math.round(c.vfps) + "fps" : "0fps") + (c.vh ? " " + c.vh + "p" : "") + (c.vBlack ? " ⬛" : "") + (c.peerCamOff ? " 🚫" : "") : "");   // C291
+  }
+  // C292: ملخّص مرشّحي طرفٍ واحد من إحصاءات المحرّك: h = host · s = srflx · p = prflx · r = relay · v = IPv6 عامّ · m = عنوان .local (مخفيّ)
+  function candSum(cands, local) {
+    var n = { h: 0, s: 0, p: 0, r: 0, v: 0, m: 0 };
+    for (var k in cands) {
+      var x = cands[k], isL = x.type === "local-candidate";
+      if (isL !== !!local) continue;
+      var t = x.candidateType, ad = String(x.address || x.ip || "").toLowerCase();
+      if (t === "host") n.h++; else if (t === "srflx") n.s++; else if (t === "prflx") n.p++; else if (t === "relay") n.r++;
+      if (/\.local$/.test(ad)) n.m++; else if (ad.indexOf(":") >= 0 && !/^fe80:/.test(ad)) n.v++;
+    }
+    return "h" + n.h + "s" + n.s + "p" + n.p + "r" + n.r + "v" + n.v + "m" + n.m;
   }
   function routeInfo(c) {
     try {
@@ -1141,6 +1311,7 @@
         if (!pair) return;
         var lc = cands[pair.localCandidateId] || {}, rc = cands[pair.remoteCandidateId] || {};
         var relay = lc.candidateType === "relay" || rc.candidateType === "relay";
+        var first = !c.r0;   // C292: أوّل قياسٍ للمسار (يُحفظ في r0)
         c.route = relay ? "relay" : "direct"; c.proto = String(lc.relayProtocol || lc.protocol || "").toLowerCase() || null;
         c.lct = lc.candidateType || null; c.rct = rc.candidateType || null;   // C215: نوع العنوانين المختارين (host · srflx · prflx · relay)
         var la = String(lc.address || lc.ip || ""); c.fam = la ? (la.indexOf(":") >= 0 ? "6" : "4") : null;
@@ -1152,7 +1323,10 @@
         var rr = lc.candidateType === "relay" ? relayOfUrl(lc.url) : null; c.relayLbl = rr ? rr.label : null; c.relayId = rr ? rr.id : null;   // C94: أيّ وسيط
         if (!rr && rc.candidateType === "relay") c.relayLbl = L("وسيط الطرف الآخر", "peer's relay");   // C167: الوسيط من جهة الطرف الآخر (قد تكون نسخته أقدم)
         LOG.info("ice.pair", { local: lc.candidateType, remote: rc.candidateType, proto: c.proto });
-        if (ui.sub && c === cur && isAdm()) ui.sub.textContent = relay ? L("عبر خادم وسيط", "via relay") : L("اتّصال مباشر", "direct");   // C115: للمدير فقط
+        // C292: ما أرسله كلّ طرفٍ وما استقبله، والمسار الأوّل — يُكتب في السجلّ (المسار النهائيّ هو c.route)
+        c.cs = candSum(cands, true) + "|" + candSum(cands, false);
+        if (first) c.r0 = c.route;
+        if (first && ui.sub && c === cur && isAdm()) ui.sub.textContent = relay ? L("عبر خادم وسيط", "via relay") : L("اتّصال مباشر", "direct");   // C115: للمدير فقط · C292: مرّةً واحدة حتّى لا يتعارض مع سطر الشبكة
       }).catch(function () {});
     } catch (e) {}
   }
@@ -1181,11 +1355,29 @@
     }, 15000);
     return true;
   }
+  // C300: ترقية الوسيط → مباشر — إن اتّصلت المكالمة عبر وسيط وأحد الطرفين على الأقلّ «ثابت» (EIM)، أعد التفاوض بعد 8 ث:
+  // ICE restart يجمع مرشّحين جُدداً وقد يجد طريقاً مباشراً لم يكن متاحاً (تأخّر STUN أو مرشّح prflx).
+  // مرّةً واحدة فقط (لا تكرار)، ولا يقطع المكالمة: إن لم يعمل يبقى الوسيط.
+  function tryRelayUpgrade(c) {
+    if (!c || c.done || c.role !== "caller" || c.relayUpTried) return;
+    c.timers.relayUp = setTimeout(function () {
+      delete c.timers.relayUp;
+      if (c.done || c.state !== "connected" || !c.pc) return;
+      // هل نحن فعلاً على وسيط؟
+      if (c.route !== "relay") return;
+      // هل NAT المحلّيّ يسمح بالمباشر (eim أو v6)؟
+      var canDirect = (natInfo && natInfo.t === "eim") || (natInfo && natInfo.v6) || (c.v6l && c.v6r);
+      if (!canDirect) return;
+      c.relayUpTried = true;
+      LOG.info("relay.upgrade", { nat: natInfo && natInfo.t, v6l: c.v6l, v6r: c.v6r });
+      iceRestart(c, true);
+    }, 8000);
+  }
   function onConn(c, s) {
     if (c.done) return;
     if (s === "connected") {
-      clearTimeout(c.timers.conn); clearTimeout(c.timers.lost); delete c.timers.lost;
-      if (!c.connectedAt) { c.connectedAt = Date.now(); engMark(c); softDrop(c); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); }); if (c.out === "ear" && RB()) setTimeout(earArm, 0);
+      clearTimeout(c.timers.conn); clearTimeout(c.timers.lost); delete c.timers.lost; clearTimeout(c.timers.rq); delete c.timers.rq; clearTimeout(c.timers.restart); delete c.timers.restart;   // C291
+      if (!c.connectedAt) { c.connectedAt = Date.now(); engMark(c); softDrop(c); stopTone(); capVideo(c); wakeOn(); bgAudio(true, c.name, function () { hangup(); }); camFgs(c); if (c.out === "ear" && RB()) setTimeout(earArm, 0);
         if (RB()) { nativeRoute(c, c.out || (c.type === "video" ? "spk" : "ear"), !c.userRoute);   // C92 · C196: يبقى اختيار المستخدم · C230: والتلقائيّ لا يغلب سمّاعة الرأس
           setTimeout(function () { if (cur === c && !c.done && RB()) nativeSpk(c.out === "spk", !c.userRoute); }, 1500); }   // C196: WebView يعيد المكبّر حين يبدأ صوت الطرف الآخر
         if (!c.native && !RB()) audioRoutes().then(function (rt) {   // C177: مع التطبيق الأصليّ التوجيه له وحده — تبديل الميكروفون كان يُرجع الوضع «عاديّاً» في بعض أندرويد   // C15: المكالمة الصوتيّة تبدأ على سمّاعة الأذن كالهاتف، والفيديو على المكبّر
@@ -1193,19 +1385,30 @@
           c.routes = rt; c.out = "spk";
           if (c.type !== "video") setRoute(c, "ear", true); else paint(c);
         }); }
-      setState(c, "connected"); setTimeout(function () { routeInfo(c); }, 800); loadColo();
+      setState(c, "connected"); setTimeout(function () { routeInfo(c); tryRelayUpgrade(c); }, 800); loadColo();
     } else if (s === "disconnected" || s === "failed") {
       if (!c.connectedAt) { if (s === "failed") finish(c, "failed"); return; }
       setState(c, "reconnecting");
       // المتّصل يعيد التفاوض (ICE restart) — يفيد عند تبدّل الشبكة (واي فاي ↔ بيانات)
+      if (c.role === "callee" && !c.timers.rq) c.timers.rq = setTimeout(function () { delete c.timers.rq; if (!c.done && c.state === "reconnecting" && c.ref) c.ref.update({ rq: TS() }).catch(function () {}); }, 4000);   // C291: المستقبِل يطلب إعادة الربط (قد لا يرى المتّصل الانقطاع)
       if (c.role === "caller" && (s === "failed" || !c.timers.restart)) { clearTimeout(c.timers.restart); c.timers.restart = setTimeout(function () { iceRestart(c); }, s === "failed" ? 0 : 3000); }   // C229: «انقطع» ثمّ «فشل» كانا يطلقان إعادتين متتاليتين ⇒ عرضان يتسابقان عند الطرف الآخر فلا يُعاد الاتّصال
       if (!c.timers.lost) c.timers.lost = setTimeout(function () { finish(c, "lost"); }, LOST_MS);
     }
   }
-  function iceRestart(c) {
+  // C291: بعد كلّ محاولة: وصل الردّ ولم يعد الاتّصال ⇒ محاولةٌ جديدة؛ لم يصل الردّ بعد ⇒ ننتظره حتّى 12 ث (إشاراتٌ بطيئة) قبل أن نستبدله
+  function reRetry(c) {
+    c.timers.restart = setTimeout(function () {
+      if (c.done || c.state === "connected") { delete c.timers.restart; return; }
+      if (c.reSeen !== c.reN && Date.now() - c.reAt < 12000) { reRetry(c); return; }
+      iceRestart(c);
+    }, 4000);
+  }
+  function iceRestart(c, force) {
     delete c.timers.restart;
-    if (c.done || !c.pc || c.role !== "caller" || c.state === "connected") return;
+    if (c.done || !c.pc || c.role !== "caller" || (c.state === "connected" && !force)) return;
     var n = ++c.reN;
+    c.reAt = Date.now(); clearTimeout(c.timers.restart); reRetry(c);   // C291: محاولاتٌ متكرّرة حتّى «انقطع الاتّصال» (كانت محاولةً واحدة)
+    LOG.info("restart", { n: n });
     c.pc.createOffer({ iceRestart: true }).then(function (o) { return c.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); })
       .then(function (o) { return c.ref.update({ reoffer: { type: o.type, sdp: o.sdp, n: n } }); })
       .catch(function (e) { LOG.warn("restart", { err: e && e.message }); });
@@ -1222,7 +1425,7 @@
   function vInPlace(c) {
     if (c.vin || c.done || !c.pc) return;
     c.vin = true; c.vreqOut = 0; clearTimeout(c.timers.vreq);
-    c.type = "video"; c.camOff = false;
+    c.type = "video"; c.camOff = false; if (c.vt == null) c.vt = 1;   // C291
     c.vcamP = navigator.mediaDevices.getUserMedia({ video: VCAM, audio: false }).then(function (st) {
       var vt = st.getVideoTracks()[0];
       if (c.done) { try { vt.stop(); } catch (e) {} return null; }
@@ -1240,7 +1443,7 @@
         .then(function (o) { return c.ref.update({ reoffer: { type: o.type, sdp: o.sdp, n: n, v: 1 } }); });
     }).then(function () { capVideo(c); }).catch(function (e) { LOG.warn("vin.offer", { err: e && e.message }); });
     if (RB()) nativeRoute(c, "spk", true); else if (c.routes) setRoute(c, "spk", true);   // C230: تلقائيّ
-    wakeOn(); earOff(); paint(c);
+    wakeOn(); earOff(); paint(c); camFgs(c);   // C291
     toast(L("صارت مكالمة فيديو 📹", "Switched to video 📹"));
   }
   function askVideo(c) {
@@ -1260,7 +1463,7 @@
     if (ui.min) minimize(false);
     var box = el("div", "position:absolute;left:16px;right:16px;top:38%;z-index:6;background:rgba(8,30,21,.96);border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:18px 16px;text-align:center;box-shadow:0 10px 34px rgba(0,0,0,.55)");
     box.setAttribute("role", "dialog");
-    box.appendChild(el("div", "font:800 26px var(--sawa-font,system-ui);margin-bottom:6px", "📹"));
+    box.appendChild(el("div", "font:800 26px var(--sawa-font,system-ui);margin-bottom:6px", ico("video", 32)));
     box.appendChild(el("div", "font:700 15px var(--sawa-font,system-ui);margin-bottom:14px;line-height:1.6", L((c.name || "") + " يريد تحويل المكالمة إلى فيديو", (c.name || "") + " wants to switch to video")));
     var row = el("div", "display:flex;gap:10px;justify-content:center");
     var yes = el("button", "flex:1;max-width:150px;border:0;border-radius:14px;padding:11px;font:800 14px var(--sawa-font,system-ui);color:#fff;background:#21a366;cursor:pointer", L("قبول", "Accept"));
@@ -1360,7 +1563,9 @@
       c.answeringSeen = true; clearTimeout(c.timers.ring); stopTone(); setState(c, "connecting");
       c.timers.ring = setTimeout(function () { if (!c.accepted) finish(c, "noanswer"); }, ANSWERING_MS);
     }
-    holdBits(c, v);
+    holdBits(c, v); camBits(c, v);   // C291
+    if (c.rqSeen === undefined) c.rqSeen = v.rq || 0;
+    if (v.rq && v.rq !== c.rqSeen) { c.rqSeen = v.rq; if (c.connectedAt && !c.timers.restart) { LOG.info("restart.asked", {}); iceRestart(c, true); } }   // C291: المستقبِل لا يصله شيء
     if (v.acc && !c.accepted) {
       c.accepted = true; c.accAt = c.accAt || Date.now(); clearTimeout(c.timers.ring); stopTone();
       setState(c, "connecting");
@@ -1368,7 +1573,7 @@
       c.timers.conn = setTimeout(function () { if (!c.connectedAt) finish(c, "failed"); }, CONNECT_MS + 15000);
     }
     if (v.answer && !c.answerSet && c.pc) {
-      c.answerSet = true;   // الحدث يتكرّر (مرشّحو ICE يغيّرون السجلّ) — طبّق الردّ مرّةً واحدة
+      c.answerSet = true; if (c.accAt) c.aw = Date.now() - c.accAt;   // C324: من «ردّ» حتّى وصول ردّه · الحدث يتكرّر (مرشّحو ICE يغيّرون السجلّ) — طبّق الردّ مرّةً واحدة
       c.pc.setRemoteDescription(v.answer).then(function () { flushIceIn(c); }).catch(function (e) { LOG.warn("answer", { err: e && e.message }); finish(c, "failed"); });
     }
     if (v.reanswer && v.reanswer.n === c.reN && c.reSeen !== c.reN && c.pc) {
@@ -1424,7 +1629,7 @@
         if (ckOn()) setTimeout(function () { if (cur === c && c.state === "incoming" && !ckRing[id] && !wantAnswer[id]) playTone("ring"); }, 1500);   // C151: النظام يرنّ (CallKit)
         else playTone("ring");
       }
-      if (wantAnswer[id]) { delete wantAnswer[id]; c.fromSys = true; setTimeout(function () { if (cur === c && c.state === "incoming") accept(false); }, 250); }
+      if (wantAnswer[id]) { delete wantAnswer[id]; c.fromSys = true; setTimeout(function () { if (cur === c && c.state === "incoming") accept(false); }, 0); }   // C272: كان ٢٥٠ مث
       listen(c, ref, "value", function (s) { onCalleeValue(c, s.val()); }, function () { finish(c, "remote", { remote: true }); });
       c.timers.ring = setTimeout(function () { if (c.state === "incoming") finish(c, "missed", { remote: true }); }, RING_MS + 5000);
       getIce();   // تجهيزٌ مسبق
@@ -1435,7 +1640,7 @@
     if (c.done) return;
     if (!v) { finish(c, c.connectedAt ? "remote" : "missed", { remote: true }); return; }
     if (videoBits(c, v) || c.done) return;
-    holdBits(c, v);   // C229
+    holdBits(c, v); camBits(c, v);   // C229 · C291
     if (v.acc && v.acc !== devId) { c.silent = true; finish(c, "elsewhere", { remote: true }); return; }   // ردّ جهازٌ آخر لي
     if (v.up && !c.upSeen && c.connectedAt) { c.upSeen = true; c.silent = true; finish(c, "upgraded", { remote: true }); groupJoinDirect(v.up, c.type, null, c.upgrading ? "starter" : "joiner"); return; }
     if (v.reoffer && v.reoffer.n > c.reSeen && c.pc && c.remoteSet) {
@@ -1471,6 +1676,7 @@
       if (!nativePreOk()) return;
       getIceFor(c, 2500).then(function (ice) {   // C228: وسيط المتّصل المختار
         if (c.done || c.pre || c.pc || c.state !== "incoming") return;
+        ice = ensureTurnTls(ice);   // C300
         var nid = "p" + Date.now().toString(36) + rid(5);
         try { RTCB().rtcPre(nid, JSON.stringify(ice || [])); } catch (e) { return; }
         c.pre = { nid: nid, native: true, ice: ice, at: Date.now(), ok: true };
@@ -1480,7 +1686,8 @@
     }
     getIceFor(c, 2500).then(function (ice) {   // C228
       if (c.done || c.pre || c.pc || c.state !== "incoming") return;
-      var pc; try { pc = new global.RTCPeerConnection({ iceServers: ice, iceCandidatePoolSize: 1 }); } catch (e) { return; }
+      ice = ensureTurnTls(ice);   // C300
+      var pc; try { pc = new global.RTCPeerConnection({ iceServers: ice, iceCandidatePoolSize: 2 }); } catch (e) { return; }   // C300: حجز عنوانين (UDP + TLS) بالتوازي
       c.preTracks = [];
       pc.ontrack = function (e) { if (c.preTracks) c.preTracks.push(e); };
       var pre = c.pre = { pc: pc, ice: ice, at: Date.now() };
@@ -1498,6 +1705,8 @@
   function accept(audioOnly) {
     var c = cur; if (!c || c.role !== "callee" || c.state !== "incoming") return;
     c.accAt = Date.now();   // C179
+    if (c.fromSys) try { var pn = Math.round(global.performance.now()); if (pn < 120000) c.bt = pn; } catch (e) {}   // C324: من فتح التطبيق (أو الصفحة) حتّى الردّ — «ردّ» من شاشة الهاتف
+    c.icS = iceSrc || (iceCache ? "m" : "");   // C324: مصدر بيانات الوسيط: ذاكرة · محفوظ · الخادم
     nativeCallDone(c.id);   // C72: أوقف رنين الهاتف
     ckEnd(c.id, "answered");   // C151
     stopTone(); clearTimeout(c.timers.ring);
@@ -1589,8 +1798,12 @@
       paint(c);
     }
     var g = gc || rm;   // الجماعيّة والغرف: الميكروفون فقط
+    // C275: تطبيق أندرويد القديم (قبل c272) يعلّق عند أيّ فقدٍ لـ«تركيز الصوت» — ومشغّل صوت المشاركين في سوا نفسها يأخذه
+    //       حين ينضمّ أحد ⇒ كان ميكروفوني في الغرفة يُكتم بلا إشارة. الجديد (فيه audioResume) يتحقّق من مكالمةٍ أخرى فعلاً.
+    var nb = NB(); if (on && nb && !nb.audioResume) g = null;
     if (g && g.local && !g.done && (g.live || g.joinedAt || !on) && !!g.held !== on) {
       g.held = on;
+      LOG.info("room.hold", { on: on });   // C277
       var micOn = g === rm ? !!g.mic : !g.muted;   // الغرف: mic = مفتوح · الجماعيّة: muted = مكتوم
       try { g.local.getAudioTracks().forEach(function (t) { t.enabled = !on && micOn; }); } catch (e) {}
     }
@@ -1614,12 +1827,12 @@
     }).catch(function (e) { LOG.warn("resume.media", { err: e && (e.name || e.message) }); });
   }
   // C234: «استئناف» يدويّ — المستخدم أنهى المكالمة الأخرى (والنظام لم يبلغ بانتهاء المقاطعة)
-  function resumeHold() { try { if (IOSB()) IOSB().call("audioResume", {}).catch(function () {}); } catch (e) {} setHold(false); }
+  function resumeHold() { try { if (IOSB()) IOSB().call("audioResume", {}).catch(function () {}); var n = NB(); if (n && n.audioResume) n.audioResume(); } catch (e) {} setHold(false); }   // C272: أندرويد أيضاً
   global.__sawaAudioHold = function (on) { try { setHold(on); } catch (e) { LOG.warn("hold", { err: e && e.message }); } };
   function toggleCam() {
     var c = cur; if (!c || !c.local) return;
     c.camOff = !c.camOff; c.local.getVideoTracks().forEach(function (t) { t.enabled = !c.camOff; });
-    attachLocal(c); paint(c);
+    attachLocal(c); paint(c); camMark(c);   // C291
   }
   function switchCam() {
     var c = cur; if (!c || !c.local || !c.pc || c.switching) return;
@@ -1671,7 +1884,10 @@
       rtt: qaStat(S0.rtt), loss: qaStat(S0.loss), jb: qaStat(S0.jb), jit: qaStat(T0.jit), fps: qaStat(T0.fps), h: qaStat(T0.h),   // C179
       lct: c.lct || "", rct: c.rct || "", fam: c.fam || "", nat: natTel().nat, nsx: natTel().nsx, v6: natTel().v6,   // C215
       v6l: c.v6l || 0, v6r: c.v6r || 0, pw: c.pw || 0,   // C217 · C218
-      rsel: c.rsel || "", psel: c.psel || "", rms: c.rms == null ? null : c.rms, pms: c.pms == null ? null : c.pms });   // C228
+      vb: c.darkS || 0, ch: c.camHeals || 0, pco: c.peerCamOff ? 1 : 0,   // C291: ثوانٍ بصورةٍ سوداء · مرّات إعادة فتح كاميرتي · كاميرا الطرف الآخر متوقّفة عند الانتهاء
+      rsel: c.rsel || "", psel: c.psel || "", rms: c.rms == null ? null : c.rms, pms: c.pms == null ? null : c.pms,   // C228
+      cs: c.cs || "", r0: c.r0 || "", rup: c.relayUpTried ? 1 : 0,
+      bt: c.bt || null, aw: c.aw || null, ics: c.icS || "" });   // C324: زمن فتح التطبيق للردّ · زمن وصول الردّ للمتّصل · مصدر بيانات الوسيط   // C292: المرشّحات (طرفي|طرفٍ آخر) · المسار الأوّل · C300: هل حاول ترقية الوسيط→مباشر
   }
   // C216: سجلّ المكالمة لا يضيع. كان يُرسل مرّةً واحدة ويُهمل الخطأ — فإن فشل الطلب (شبكةٌ مزدحمة، التطبيق في الخلفيّة، انتهاء المهلة)
   //        ضاع السجلّ بصمت (مكالمة 01:02: سجلّ المستقبِل ⚡ لم يصل). الآن: يُحفظ في الهاتف قبل الإرسال ويُحذف عند نجاحه،
@@ -1878,7 +2094,7 @@
           row.firstChild.appendChild(el("span", "color:" + MUTED + ";direction:ltr", new Date(c.ts).toLocaleString(isAr() ? "ar-u-nu-latn" : "en", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" })));
           c.sides.forEach(function (y) {
             row.appendChild(el("div", "color:" + MUTED + ";direction:ltr;text-align:start;margin-top:2px;word-break:break-word",
-              [y.role, y.plat, y.eng, y.ck ? "📲sys" : "", y.vis === 0 ? "bg" : "", y.ok ? ms(y.setup) : (TEL_REASON[y.reason] ? L(TEL_REASON[y.reason][0], TEL_REASON[y.reason][1]) : y.reason), y.err ? "err " + y.err : "", y.up ? "📹+" : "", y.route ? y.route + "/" + (y.proto || "?") + (y.relay ? " " + y.relay : "") : "", y.lct ? y.lct + "↔" + (y.rct || "?") + (y.fam === "6" ? " IPv6" : "") : "", y.nat ? "NAT " + (NAT_TX[y.nat] ? L(NAT_TX[y.nat][0], NAT_TX[y.nat][1]) : y.nat) + (y.v6 ? " +v6" : "") : "", y.v6l || y.v6r ? "IPv6 " + (y.v6l ? "✓" : "✗") + "/" + (y.v6r ? "✓" : "✗") : "", y.rtt ? "RTT " + y.rtt.med : "", y.loss ? "loss " + y.loss.med + "%" : "", y.secs ? y.secs + "s" : "", y.qd ? "⏳" + (y.qd >= 60 ? Math.round(y.qd / 60) + "h" : y.qd + "m") : ""].filter(Boolean).join(" · ")));
+              [y.role, y.plat, y.eng, y.ck ? "📲sys" : "", y.vis === 0 ? "bg" : "", y.bt ? "⏱" + L("فتح ", "boot ") + ms(y.bt) : "", y.aw ? L("الردّ ", "ans ") + ms(y.aw) : "", y.ok ? ms(y.setup) : (TEL_REASON[y.reason] ? L(TEL_REASON[y.reason][0], TEL_REASON[y.reason][1]) : y.reason), y.err ? "err " + y.err : "", y.up ? "📹+" : "", y.route ? y.route + "/" + (y.proto || "?") + (y.relay ? " " + y.relay : "") : "", y.lct ? y.lct + "↔" + (y.rct || "?") + (y.fam === "6" ? " IPv6" : "") : "", y.nat ? "NAT " + (NAT_TX[y.nat] ? L(NAT_TX[y.nat][0], NAT_TX[y.nat][1]) : y.nat) + (y.v6 ? " +v6" : "") : "", y.v6l || y.v6r ? "IPv6 " + (y.v6l ? "✓" : "✗") + "/" + (y.v6r ? "✓" : "✗") : "", y.rtt ? "RTT " + y.rtt.med : "", y.loss ? "loss " + y.loss.med + "%" : "", y.secs ? y.secs + "s" : "", y.qd ? "⏳" + (y.qd >= 60 ? Math.round(y.qd / 60) + "h" : y.qd + "m") : ""].filter(Boolean).join(" · ")));
           });
           if (c.srv) row.appendChild(el("div", "color:" + MUTED + ";font-size:11px", L("الخادم: رنين ", "Server: ring ") + (c.srv.sent || 0)));
           row.appendChild(el("div", "color:#64748b;font-size:10.5px;direction:ltr;text-align:start", "call_id " + c.cid));
@@ -2019,7 +2235,7 @@
   };
   function finish(c, reason, opts) {
     if (!c || c.done) return;
-    var up = reason === "upgraded";   // C235: ترقيةٌ إلى جماعيّة ⇒ الصوت يُسلَّم لا يُهدم
+    var up = reason === "upgraded";   // C326: ترقيةٌ إلى جماعيّة ⇒ الصوت يُسلَّم لا يُهدم
     if (up) {
       handSet({ ck: c.role === "callee" && ckOn() ? c.id : null, stream: c.native ? null : c.local, wait: c.native ? 900 : 0 });   // المحرّك الأصليّ يُطفئ وحدة صوته بعد الإغلاق ⇒ ننتظره قبل فتح ميكروفون WebKit
       if (IOSB()) iosRoute.setInCall(true, true);
@@ -2190,7 +2406,8 @@
   function gJoin(g) {
     var me = myUid(), d = db();
     g.ref = d.ref("gcalls/" + g.gid);
-    Promise.all([takeMedia(g.type), getIce(), g.ref.once("value")]).then(function (r) {   // C235: الميكروفون المسلَّم من المكالمة الثنائيّة
+    preCallAudio();   // C274
+    Promise.all([takeMedia(g.type), getIce(), g.ref.once("value")]).then(function (r) {   // C326: الميكروفون المسلَّم من المكالمة الثنائيّة
       if (g.done) { stopStream(r[0]); return; }
       g.local = r[0]; g.ice = r[1];
       var n = r[2].val();
@@ -2302,9 +2519,9 @@
   function gMoveTo(g, code) {
     if (g.done || g.movedTo) return;
     g.movedTo = code;
-    var title = g.title, mic = !g.muted;
+    var title = g.title, mic = !g.muted, cam = g.type === "video" && !g.camOff;   // C319: كانت الكاميرا تنطفئ عند الانتقال إلى خادم الوسائط
     gFinish(g, "moved");
-    setTimeout(function () { roomJoin(code, { title: title, mic: mic }); toast(L("انتقلت المكالمة إلى خادم الوسائط — جودةٌ أفضل للمجموعة", "The call moved to the media server for better group quality")); }, 150);
+    setTimeout(function () { roomJoin(code, { title: title, mic: mic, cam: cam }); toast(L("انتقلت المكالمة إلى خادم الوسائط — جودةٌ أفضل للمجموعة", "The call moved to the media server for better group quality")); }, 150);
   }
   function gSend(g, to, toSess, payload) {
     var o = { from: myUid(), fs: g.sess, tsn: toSess, ts: TS() };
@@ -2313,8 +2530,8 @@
   }
   function gPeer(g, uid, sess, offerer) {
     var me = myUid();
-    var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: null, pid: rid(6) };   // C235: pid يميّز اتّصالاً جديداً عن إعادة تفاوض (كالغرف C63)
-    var pc = p.pc = new global.RTCPeerConnection({ iceServers: g.ice || STUN });
+    var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: null, pid: rid(6) };   // C326: pid يميّز اتّصالاً جديداً عن إعادة تفاوض (كالغرف C63)
+    var pc = p.pc = new global.RTCPeerConnection({ iceServers: ensureTurnTls(g.ice || STUN) });   // C300
     g.local.getTracks().forEach(function (t) { var st = ownStream(t); if (st) pc.addTrack(t, st); else pc.addTrack(t, g.local); });   // C112
     pc.onicecandidate = function (e) { if (e.candidate && e.candidate.candidate) gSend(g, uid, sess, { t: "ice", cand: iceJson(e.candidate) }); };
     pc.ontrack = function (e) {
@@ -2345,7 +2562,7 @@
     gRenegotiate(g, p, false);
     return p;
   }
-  // C235: وصلةٌ بين عضوين لم تعد خلال LOST_MS رغم إعادة ICE ⇒ كانت تبقى «انقطع» فلا يسمع أحدهما الآخر حتّى يغادر أحدهما.
+  // C326: وصلةٌ بين عضوين لم تعد خلال LOST_MS رغم إعادة ICE ⇒ كانت تبقى «انقطع» فلا يسمع أحدهما الآخر حتّى يغادر أحدهما.
   //       صاحب العرض يبني اتّصالاً جديداً كاملاً (pid جديد ⇒ الطرف الآخر يُسقط القديم أيضاً) حتّى 3 مرّات، ولكلّ اتّصالٍ جديد مهلته.
   function gLost(g, p) {
     var u = p.uid;
@@ -2373,7 +2590,7 @@
     var u = msg.from, p = g.peers[u];
     if (msg.t === "offer") {
       if (p && p.sess !== msg.fs) { gDrop(g, u); p = null; }
-      if (p && msg.pid && p.rpid && p.rpid !== msg.pid) { gDrop(g, u); p = null; }   // C235: اتّصالٌ جديد عند الطرف الآخر ⇒ جديدٌ هنا أيضاً
+      if (p && msg.pid && p.rpid && p.rpid !== msg.pid) { gDrop(g, u); p = null; }   // C326: اتّصالٌ جديد عند الطرف الآخر ⇒ جديدٌ هنا أيضاً
       // تصادم عرضين: الأصغر معرّفاً «مهذّب» يتراجع ويقبل عرض الآخر، والأكبر يتجاهله
       if (p && p.pc.signalingState === "have-local-offer") { if (myUid() < u) { gDrop(g, u); p = null; } else return; }
       if (!p) p = gPeer(g, u, msg.fs, false);
@@ -2475,7 +2692,7 @@
     if (!g || g.done) return;
     if (g.role === "incoming" || g.joinedAt) ckEnd(g.gid, g.joinedAt ? "ended" : reason === "declined" ? "declined" : "remote");   // C151
     opts = opts || {}; g.done = true; clearCallNotifications();
-    var mv = reason === "moved";   // C235: انتقلت إلى غرفة ⇒ الصوت والميكروفون يُسلَّمان للغرفة
+    var mv = reason === "moved";   // C326: انتقلت إلى غرفة ⇒ الصوت والميكروفون يُسلَّمان للغرفة
     if (mv) handSet({ stream: g.local }); else { bgAudio(false); handEnd(); }
     var me = myUid();
     for (var k in g.timers) clearTimeout(g.timers[k]); g.timers = {};
@@ -2602,12 +2819,12 @@
     var bar = gui.bar; bar.innerHTML = "";
     if (g.state === "ended") return;
     if (g.state === "incoming") {
-      bar.appendChild(btn(g.type === "video" ? "📹" : "📞", L("انضمام", "Join"), "#21a366", groupAccept));
+      bar.appendChild(btn(g.type === "video" ? ico("video") : ico("phone"), L("انضمام", "Join"), "#21a366", groupAccept));
       bar.appendChild(btn("✕", L("رفض", "Decline"), "#d64545", groupDecline));
       return;
     }
     if (g.local) {
-      var mute = btn(g.muted ? "🔇" : "🎤", g.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), g.muted ? "#e6f5ec" : "rgba(255,255,255,.16)", gToggleMute);
+      var mute = btn(g.muted ? ico("mic-off") : ico("mic"), g.muted ? L("إلغاء الكتم", "Unmute") : L("كتم", "Mute"), g.muted ? "#e6f5ec" : "rgba(255,255,255,.16)", gToggleMute);
       if (g.muted) mute._b.style.color = "#123";
       bar.appendChild(mute);
       if (g.type === "video" && g.local.getVideoTracks().length) {
@@ -2616,7 +2833,7 @@
       }
     }
     if (g.state === "live") bar.appendChild(btn("➕", L("إضافة", "Add"), "rgba(255,255,255,.16)", function () { pickPerson(g); }));
-    bar.appendChild(btn("📞", g.state === "waiting" ? L("إلغاء", "Cancel") : L("مغادرة", "Leave"), "#d64545", groupLeave));
+    bar.appendChild(btn(ico("hangup"), g.state === "waiting" ? L("إلغاء", "Cancel") : L("مغادرة", "Leave"), "#d64545", groupLeave));
     bar.lastChild._b.style.transform = "rotate(135deg)";
   }
   function gPaintReqs(g) {
@@ -2848,6 +3065,7 @@
     var r = rm = rNew({ code: code, title: opts.title || "", state: "starting" });
     if (rejoinEl) { try { rejoinEl.remove(); } catch (e) {} rejoinEl = null; }   // C119
     if (opts.mic === false) r.startMuted = true;
+    if (opts.cam) r.startCam = true;   // C319
     r.ref = db().ref("rooms/" + code);
     rShow(r);
     var me = myUid();
@@ -2961,8 +3179,12 @@
       var check = setInterval(function () { if (closed || r.done) { clearInterval(check); return; } if (ov && !ov.isConnected) { clearInterval(check); reject(Object.assign(new Error("nopin"), { ui: L("لم تدخل رمز الغرفة", "No PIN entered") })); } }, 300);
     });
   }
+  // C274: «وضع المكالمة» والمكبّر قبل فتح الميكروفون — كانا يُضبطان بعد الدخول (الميكروفون مفتوحٌ أصلاً)، وبعض هواتف أندرويد
+  //       تُسكت الالتقاط المفتوح حين يتغيّر الوضع/المسار بعده: الآخرون يُسمَعون وصوتي لا يصل (مضيفاً كنتُ أو مشاركاً). المكالمة الفرديّة تضبطه عند الرنين أصلاً.
+  function preCallAudio() { try { if (NB()) nativeSpk(true, true); } catch (e) {} }
   function rMedia(r) {
-    return takeMedia("audio", true).then(function (st) {   // C235: الميكروفون المسلَّم (من الجماعيّة أو الدخول السابق)
+    preCallAudio();
+    return takeMedia("audio", true, micPlain()).then(function (st) {   // C326: الميكروفون المسلَّم (من الجماعيّة أو الدخول السابق) · C278: النمط البديل
       if (r.done) { stopStream(st); return; }
       r.local = st;
       if (r.startMuted) { r.mic = false; st.getAudioTracks().forEach(function (t) { t.enabled = false; }); }
@@ -2991,7 +3213,9 @@
       if (r.done) return;
       r.live = true; r.joinedAt = Date.now();
       try { rRef(r, "members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
-      r.state = "live"; wakeOn(); rPaint(r); bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }, true); nativeSpk(true, true);   // C234: أندرويد أيضاً — كان صوت الغرف والجماعيّة يُفرض على سمّاعة الأذن (خافتاً جدّاً)   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
+      r.state = "live"; wakeOn(); rPaint(r);
+      if (r.startCam) { r.startCam = false; setTimeout(function () { if (!r.done && r.live && !r.camOn && !(r.meta && r.meta.audioOnly)) rToggleCam(r); }, 300); }   // C319: مكالمة فيديو جماعيّة انتقلت إلى الغرفة ⇒ الكاميرا تبقى
+      bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }, true); nativeSpk(true, true);   // C234: أندرويد أيضاً — كان صوت الغرف والجماعيّة يُفرض على سمّاعة الأذن (خافتاً جدّاً)   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
       LOG.info("room.live", { ms: Date.now() - (r.t0 || Date.now()) });
       // C66: المضيف ينشر جلسته في meta (مقروءة قبل العضويّة) ⇒ الوافد يعرض عليه فور دخوله بلا انتظار أوّل لقطةٍ من قائمة الأعضاء (رحلةٌ كاملة أقلّ حتى يُسمع الصوت)
       if (amHost(r)) rRef(r, "meta/hsess").set(r.sess).catch(function () {});
@@ -3163,7 +3387,7 @@
   function sfuStart(r) {
     if (r.sfu || r.done || !r.live) return;
     var s = r.sfu = { pulled: {}, byMid: {}, fails: {}, state: "new", gen: (r.sfuGen = (r.sfuGen || 0) + 1) };
-    var pc = s.pc = new global.RTCPeerConnection({ iceServers: (r.ice && r.ice.length ? r.ice : []).concat(SFU_STUN), bundlePolicy: "max-bundle" });
+    var pc = s.pc = new global.RTCPeerConnection({ iceServers: ensureTurnTls((r.ice && r.ice.length ? r.ice : []).concat(SFU_STUN)), bundlePolicy: "max-bundle" });   // C300
     pc.ontrack = function (e) {
       var x = s.byMid[e.transceiver && e.transceiver.mid]; if (!x || r.sfu !== s) return;
       x.track = e.track;
@@ -3403,7 +3627,7 @@
   }
   function rPeer(r, uid, sess, offerer) {
     var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: new global.MediaStream(), pid: rid(6), t0: Date.now() };   // C63: pid يميّز اتّصالاً جديداً عن إعادة تفاوض
-    var pc = p.pc = new global.RTCPeerConnection({ iceServers: r.ice || STUN });
+    var pc = p.pc = new global.RTCPeerConnection({ iceServers: ensureTurnTls(r.ice || STUN) });   // C300
     if (offerer) { p.at = pc.addTransceiver("audio", { direction: "sendrecv" }); p.vt = pc.addTransceiver("video", { direction: "sendrecv" }); p.sct = pc.addTransceiver("video", { direction: "sendrecv" }); rSenders(r, p); }   // C120: sct = الشاشة
     // C66: المرشّحات تُجمَّع وتُرسل دفعةً كلّ 120 ms (كانت كتابةً لكلّ مرشّح — 10 إلى 20 كتابةً لكلّ طرف على شبكةٍ بطيئة)
     p.iceOut = [];
@@ -3429,7 +3653,7 @@
     return p;
   }
   function rOffer(r, uid, sess) { var p = rPeer(r, uid, sess, true); rNegotiate(r, p, false); return p; }
-  // C235: كـgLost — وصلةٌ ميتة بين عضوين ⇒ صاحب العرض يبني اتّصالاً جديداً (pid جديد) حتّى 3 مرّات بدل البقاء «انقطع»
+  // C326: كـgLost — وصلةٌ ميتة بين عضوين ⇒ صاحب العرض يبني اتّصالاً جديداً (pid جديد) حتّى 3 مرّات بدل البقاء «انقطع»
   function rLost(r, p) {
     var u = p.uid;
     if (r.done || r.peers[u] !== p || p.state === "connected") return;
@@ -3551,7 +3775,7 @@
   var QBARS = ["▁", "▃", "▅", "▇"], QCOL = ["#ef4444", "#f59e0b", "#a3e635", "#16a34a"];
   function qTag(q) { if (q == null) return null; var t = el("span", "font:800 11px var(--sawa-font,system-ui);letter-spacing:-1px;color:" + QCOL[q] + ";background:#00000055;border-radius:8px;padding:1px 5px", QBARS.slice(0, q + 1).join("") + "  "); t.title = [L("سيّئة", "bad"), L("ضعيفة", "weak"), L("جيّدة", "good"), L("ممتازة", "excellent")][q]; return t; }
   // ---------- المتحدّث النشط: مستوى الصوت الحقيقيّ ----------
-  // C235: في الآيفون (WebKit) لا نربط AudioContext بالميكروفون وبأصوات الآخرين — تشغيله أثناء الالتقاط قد يعيد تهيئة وحدة الصوت
+  // C326: في الآيفون (WebKit) لا نربط AudioContext بالميكروفون وبأصوات الآخرين — تشغيله أثناء الالتقاط قد يعيد تهيئة وحدة الصوت
   //       فيضعف الصوت أو يتقطّع عند دخول كلّ عضو. المستوى يُقرأ بدلاً منه من إحصاءات WebRTC (audioLevel) كلّ ثانية.
   function lvByStats() {
     try { var n = global.navigator || {}; return !!IOSB() || /iPhone|iPad|iPod/.test(n.userAgent || "") || (/Macintosh/.test(n.userAgent || "") && n.maxTouchPoints > 1); } catch (e) { return false; }
@@ -3567,7 +3791,7 @@
         var u = map(x); if (u && r.peers[u]) r.peers[u].lv = x.audioLevel;
       });
     };
-    // C236: WebKit لا يعطي مستوى الميكروفون (media-source) في كلّ النسخ ⇒ بعد 5 قراءاتٍ بلا مستوى نعود إلى المحلّل للميكروفون وحده
+    // C327: WebKit لا يعطي مستوى الميكروفون (media-source) في كلّ النسخ ⇒ بعد 5 قراءاتٍ بلا مستوى نعود إلى المحلّل للميكروفون وحده
     //       (مرّةً واحدة عند الدخول — لا مع كلّ عضو، فلا يتكرّر ما تجنّبناه)
     var any = !!(r.sfu && r.sfu.pc) || Object.keys(r.peers).some(function (u) { return r.peers[u].pc && !r.peers[u].sfu; });
     if (any && !r.lvSeen && !r.an && r.local && (r.lvMiss = (r.lvMiss || 0) + 1) >= 5) { LOG.info("level.local.fallback"); rLevelWatch(r, "__me", r.local, true); }
@@ -3584,7 +3808,7 @@
     }).catch(function () {});
   }
   function rLevelWatch(r, uid, stream, force) {
-    if (lvByStats() && !force) return;   // C235
+    if (lvByStats() && !force) return;   // C326
     var p = uid === "__me" ? r : r.peers[uid];
     var ctx = audioCtx(); if (!ctx || !p || p.an) return;
     var tr = stream.getAudioTracks()[0]; if (!tr) return;
@@ -3597,7 +3821,7 @@
   function rLevelsStart(r) {
     if (r.local) rLevelWatch(r, "__me", r.local);
     r.timers.st = setInterval(function () { rStatsTick(r); }, 3000);   // C38
-    if (lvByStats()) r.timers.lvs = setInterval(function () { rLevelStats(r); }, 1000);   // C235
+    if (lvByStats()) r.timers.lvs = setInterval(function () { rLevelStats(r); }, 1000);   // C326
     r.timers.lv = setInterval(function () {
       if (r.done) return;
       var best = null, bestV = 0.035, me = myUid();
@@ -3663,7 +3887,7 @@
     sheet(L("مشاركة الشاشة؟", "Share your screen?"), function (body, close) {
       body.appendChild(el("div", "padding:4px 18px 12px;font:500 13px/1.8 var(--sawa-font,system-ui);color:#cbd5e1;text-align:center", L("سيرى كلُّ من في الغرفة ما على شاشتك — ومنه الإشعارات والرسائل التي تظهر أثناءها. أغلق ما لا تريد عرضه قبل البدء.", "Everyone in the room will see your screen — including notifications. Close anything private first.")));
       if (scrNative()) body.appendChild(el("div", "padding:0 18px 12px;font:500 12.5px/1.8 var(--sawa-font,system-ui);color:#94a3b8;text-align:center", L("سيطلب الهاتف إذن «البدء» — بعدها انتقل إلى أيّ تطبيقٍ تريد عرضه، والغرفة والصوت يستمرّان. للإيقاف: إشعار «تعرض شاشتك» ← «إيقاف»، أو الشريط الأحمر هنا.", "Your phone will ask to start — then switch to any app; the room keeps going. To stop: the notification’s Stop button, or the red bar here.")));
-      item(body, "🖥", L("ابدأ مشاركة الشاشة", "Start sharing"), function () { close(); rScreenStart(r); });
+      item(body, ico("screen"), L("ابدأ مشاركة الشاشة", "Start sharing"), function () { close(); rScreenStart(r); });
       item(body, "✕", L("إلغاء", "Cancel"), function () { close(); });
     });
   }
@@ -3842,7 +4066,7 @@
     r = r || rm; if (!r) return;
     if (r.done) { if (rm === r) rm = null; return; }
     opts = opts || {}; r.done = true;
-    var keepA = reason === "retry";   // C235: إعادة الدخول الصامتة ⇒ لا نُطفئ وضع المكالمة ولا الميكروفون
+    var keepA = reason === "retry";   // C326: إعادة الدخول الصامتة ⇒ لا نُطفئ وضع المكالمة ولا الميكروفون
     if (keepA) handSet({ stream: r.local }); else { bgAudio(false); handEnd(); }
     if (reason !== "retry") telSend({ id: r.code + "-" + r.sess, k: "room", mode: rBig(r) ? "sfu" : "mesh", osr: r.osRoute || null, role: amHost(r) ? "host" : "member", ok: !!r.joinedAt, n: Object.keys(r.met || {}).length + 1,
       setup: r.joinedAt && r.t0 ? r.joinedAt - r.t0 : null, secs: r.joinedAt ? Math.round((Date.now() - r.joinedAt) / 1000) : 0, reason: reason });   // C179
@@ -3895,6 +4119,40 @@
     if (rui.root) { if (rui.min) rMinimize(false); rPaint(r); }
     setTimeout(function () { if (!rm) rHide(); }, 2600);
   }
+  // C272: صوت المضيف كان يختفي بعد ثوانٍ من بدء الغرفة — النظام يوقف التقاط الميكروفون حين يتغيّر «وضع الاتّصال»/المسار بعد فتحه
+  //       (الغرفة تفتح الميكروفون أوّلاً ثمّ توجّه الصوت إلى المكبّر)، والمسار يبقى «حيّاً» في الواجهة بلا صوت.
+  //       ميكروفونٌ منتهٍ أو مكتومٌ من النظام ٣ ثوانٍ (ونحن غير معلّقين بمكالمةٍ أخرى) ⇒ نلتقطه من جديد ونستبدله عند كلّ طرف بلا إعادة تفاوض
+  function rMicHeal(r) {
+    if (!r.live || r.done || !r.local || r.held || r.healing) { r.micBad = 0; return; }
+    var a = r.local.getAudioTracks()[0];
+    var bad = !a || a.readyState === "ended" || a.muted;
+    // C274: التقاطٌ «مُسكَت» من النظام يبقى حيّاً غير مكتوم لكنّه أصفارٌ تامّة — الميكروفون الحقيقيّ لا يعطي صمتاً رقميّاً تامّاً أبداً
+    var zero = false, measured = false;
+    try { var ctx = tone.ctx; if (!bad && r.mic && a && a.enabled && r.an && ctx && ctx.state === "running") { r.an.an.getByteTimeDomainData(r.an.buf); measured = true; zero = true; for (var i = 0; i < r.an.buf.length; i++) if (r.an.buf[i] !== 128) { zero = false; break; } } } catch (e) {}
+    r.micZero = zero ? (r.micZero || 0) + 1 : 0;
+    if (r.plainCheck && measured && !zero) { r.plainCheck = false; if (!micPlain()) { micPlainMem = true; LOG.warn("mic.plain.ok"); if (isAdm()) toast(L("🎙 ميكروفونٌ بديل لهذا الهاتف — صار يعمل", "🎙 Fallback mic mode for this phone — working")); } }   // C278
+    if (r.micZero >= 4) { bad = true; r.micBad = 2; r.micZero = 0; r.zeroN = (r.zeroN || 0) + 1; }
+    r.micBad = bad ? (r.micBad || 0) + 1 : 0;
+    if (r.micBad < 3 || (r.healN || 0) >= 5) return;
+    r.healing = true; r.micBad = 0; r.healN = (r.healN || 0) + 1;
+    LOG.warn("room.mic.heal", { n: r.healN, st: a ? a.readyState : "none", muted: !!(a && a.muted), zero: !!zero });
+    var plain = !!zero && (r.zeroN || 0) >= 2 && !micPlain();   // C278: الإعادة العاديّة لم تكفِ ⇒ نمط الميكروفون العاديّ
+    if (plain) { r.plainCheck = true; LOG.warn("mic.plain.try"); }
+    getMedia("audio", null, plain || micPlain()).then(function (st) {
+      r.healing = false;
+      var nt = st.getAudioTracks()[0];
+      if (r.done || !r.local || !nt) { stopStream(st); return; }
+      nt.enabled = !!r.mic && !r.held;
+      try { if (a) { r.local.removeTrack(a); a.stop(); } r.local.addTrack(nt); } catch (e) {}
+      Object.keys(r.peers).forEach(function (u) { rSenders(r, r.peers[u]); });
+      try { if (r.sfu && r.sfu.atx) r.sfu.atx.sender.replaceTrack(nt).catch(function () {}); } catch (e) {}
+      try { if (r.an && r.an.src) r.an.src.disconnect(); r.an = null; rLevelWatch(r, "__me", r.local); } catch (e) {}
+    }).catch(function (e) { r.healing = false; LOG.warn("room.mic.heal.fail", { err: e && (e.name || e.message) }); });
+  }
+  // C275: صوت المشاركين يتوقّف حين ينضمّ ثالث — النظام/WebView يوقف مشغّلات الصوت عند تنازع «تركيز الصوت» ولا يعيدها
+  function rResumeAudio() {
+    try { if (!rui.audios) return; [].forEach.call(rui.audios.querySelectorAll("audio"), function (a) { if (a.srcObject && a.paused) { LOG.info("room.audio.resume"); a.play().catch(function () {}); } }); } catch (e) {}
+  }
   function rTick(r) {
     if (r.done) return;
     // C64: حارس — لا تبقى الغرفة عالقةً في «جارٍ العودة»: الصوت يتدفّق ⇒ حيّة · عودةٌ معلّقة أكثر من 20 ث (طلبٌ لم يرجع أثناء الانقطاع) ⇒ محاولةٌ جديدة
@@ -3924,6 +4182,8 @@
     }
     // C65: عضوٌ حاضر ولا اتّصال معه (عرضٌ ضاع: كُتب حين غاب أحدنا لحظةً فرفضته القواعد، أو حُذف مع sig) ⇒ نعيد المحاولة — كان لا يُعاد أبداً فيبقى كلٌّ وحده
     r.tickN = (r.tickN || 0) + 1;
+    rMicHeal(r);   // C272
+    if (r.live && !r.held) rResumeAudio();   // C275
     if (r.live && !r.rejoining && !rBig(r) && r.state === "live" && r.tickN % 4 === 0) {
       var me = myUid(), nowT = Date.now(); r.noPeer = r.noPeer || {};
       Object.keys(r.members || {}).forEach(function (u) {
@@ -3989,7 +4249,7 @@
     var banners = el("div", "display:flex;flex-direction:column;gap:6px;margin:6px 12px 0");
     var grid = el("div", "flex:1;min-height:0;display:grid;gap:10px;padding:10px 12px;align-content:center");
     var center = el("div", "flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:0 24px");
-    var cIcon = el("div", "width:92px;height:92px;border-radius:30px;background:" + GRAD + ";box-shadow:0 10px 30px rgba(47,128,200,.35);display:flex;align-items:center;justify-content:center;font-size:40px", "🎥");
+    var cIcon = el("div", "width:92px;height:92px;border-radius:30px;background:" + GRAD + ";box-shadow:0 10px 30px rgba(47,128,200,.35);display:flex;align-items:center;justify-content:center;font-size:40px", ico("video", 40));
     var cT = el("div", "font:800 18px var(--sawa-font,system-ui)"), cS = el("div", "font:600 13px var(--sawa-font,system-ui);color:" + MUTED);
     center.appendChild(cIcon); center.appendChild(cT); center.appendChild(cS);
     var panel = el("div", "display:none;flex-direction:column;margin:0 12px 6px;border-radius:20px;background:" + CARD + ";box-shadow:0 6px 18px rgba(0,0,0,.25);max-height:45%;min-height:0;overflow:hidden");
@@ -4123,7 +4383,7 @@
       mini.av.style.display = "flex"; setAv(mini.av, src.name || "", src.uid || null);
     }
     mini.nm.textContent = src.name || ""; mini.sb.textContent = src.sub || "";
-    mini.mic.textContent = src.mic ? "🎤" : "🔇"; mini.mic.style.background = src.mic ? "rgba(0,0,0,.55)" : "#f59e0b";
+    mini.mic.innerHTML = src.mic ? ico("mic", 14) : ico("mic-off", 14); mini.mic.style.background = src.mic ? "rgba(0,0,0,.55)" : "#f59e0b";
     var w = mini.el;
     if (mini.pip) {   // إطار «صورة داخل صورة»: الصورة وحدها تملؤه
       w.style.transition = "none"; w.style.left = w.style.top = "0"; w.style.right = w.style.bottom = "0";
@@ -4172,20 +4432,20 @@
     var hb = rui.hostBtns; hb.innerHTML = "";
     if (r.state === "live" && amHost(r)) {
       var mk = function (txt, on, fn, lab) { var b = el("button", "background:" + (on ? "rgba(239,68,68,.35)" : "rgba(255,255,255,.18)") + ";border:0;color:#fff;border-radius:12px;width:34px;height:32px;font-size:15px", txt); b.setAttribute("aria-label", lab); b.onclick = fn; hb.appendChild(b); };
-      mk("🔒", r.meta.locked, function () { if (!r.meta.locked) { rLockConfirm(); return; } rSetMeta("locked", !r.meta.locked); toast(r.meta.locked ? L("فُتحت الغرفة", "Room unlocked") : L("قُفلت الغرفة — لا دخول جديد", "Room locked")); }, L("قفل", "Lock"));
+      mk(ico("lock"), r.meta.locked, function () { if (!r.meta.locked) { rLockConfirm(); return; } rSetMeta("locked", !r.meta.locked); toast(r.meta.locked ? L("فُتحت الغرفة", "Room unlocked") : L("قُفلت الغرفة — لا دخول جديد", "Room locked")); }, L("قفل", "Lock"));
       mk("⚙️", !!(r.meta.lobby || r.meta.pinOn || r.meta.audioOnly || r.meta.max || r.meta.endsAt), function () { rSettings(); }, L("إعدادات الغرفة", "Room settings"));
     }
     rPaintBanners(r);
     var bar = rui.bar; bar.innerHTML = "";
     if (r.state === "ended") return;
     if (r.state !== "live") { var lv = rb("✕", L("إلغاء", "Cancel"), function () { rLeave(r, "left"); }, { bg: "#ef4444" }); bar.appendChild(lv); return; }
-    var mic = rb(r.mic ? "🎤" : "🔇", r.mic ? L("كتم", "Mute") : L("الميكروفون", "Unmute"), function () { rToggleMic(r); }, { bg: r.mic ? LINE : "#ef4444" });
+    var mic = rb(r.mic ? ico("mic") : ico("mic-off"), r.mic ? L("كتم", "Mute") : L("الميكروفون", "Unmute"), function () { rToggleMic(r); }, { bg: r.mic ? LINE : "#ef4444" });
     bar.appendChild(mic);
     bar.appendChild(rb(r.camOn ? "📷" : "🚫", r.camOn ? L("الكاميرا", "Camera") : L("الكاميرا", "Camera"), function () { rToggleCam(r); }, { bg: r.camOn ? GRAD : LINE }));
     // خمسة أزرار فقط تتّسع لأصغر شاشة — «ارفع يدك» و«تفاعل» في «المزيد» (الزرّ يتلوّن حين تكون يدك مرفوعة)
     bar.appendChild(rb("💬", L("دردشة", "Chat"), function () { rOpenPanel(r.panel === "chat" ? null : "chat"); }, { bg: r.panel === "chat" ? GRAD : LINE, badge: r.unread }));
     bar.appendChild(rb(r.hand ? "✋" : "⋯", r.hand ? L("يدك مرفوعة", "Hand up") : L("المزيد", "More"), function () { rMore(); }, { bg: r.hand ? "#f59e0b" : LINE }));
-    bar.appendChild(rb("📞", L("مغادرة", "Leave"), function () { rLeaveConfirm(); }, { bg: "linear-gradient(135deg,#f87171,#ef4444)" }));
+    bar.appendChild(rb(ico("hangup"), L("مغادرة", "Leave"), function () { rLeaveConfirm(); }, { bg: "linear-gradient(135deg,#f87171,#ef4444)" }));
     bar.lastChild._b.style.transform = "rotate(135deg)";
   }
   function rPaintBanners(r) {
@@ -4269,7 +4529,7 @@
     t.tags.appendChild(el("span", "", (hostU ? "👑 " : "") + ((isMe ? r.hand : m.hand) ? "✋" : "")));
     var right = el("span", "display:flex;gap:4px;align-items:center");
     if (!isMe && p && p.state === "connected") { var qt = qTag(p.q); if (qt) right.appendChild(qt); }
-    right.appendChild(el("span", "background:" + (mic ? "#16a34a33" : "#ef444455") + ";border-radius:10px;padding:1px 5px", mic ? "🎤" : "🔇"));
+    right.appendChild(el("span", "background:" + (mic ? "#16a34a33" : "#ef444455") + ";border-radius:10px;padding:1px 5px;display:inline-flex", mic ? ico("mic", 13) : ico("mic-off", 13)));
     t.tags.appendChild(right);
     var speaking = r.speaker === uid && mic;
     t.box.style.borderColor = speaking ? "#16a34a" : isMe ? PRI + "99" : "transparent";
@@ -4338,7 +4598,7 @@
       item(body, r.view === "speaker" ? "▦" : "🗣", r.view === "speaker" ? L("عرض الشبكة", "Grid view") : L("المتحدّث يظهر كبيراً تلقائيّاً", "Active speaker view"), function () { r.pin = null; r.view = r.view === "speaker" ? "grid" : "speaker"; r.focusU = null; rLayout(r); close(); });
       if (!isMe && amHost(r)) {
         if (m.cam) item(body, "📷", L("إيقاف كاميرته (يُفسح لغيره)", "Turn off their camera"), function () { rCtl(uid, "camoff"); toast(L("طُلب إيقاف كاميرا ", "Camera off: ") + rName(r, uid)); close(); });
-        item(body, "🔇", m.mic !== false ? L("كتم المشارك", "Mute") : L("اطلب فتح الميكروفون", "Ask to unmute"), function () { rCtl(uid, m.mic !== false ? "mute" : "ask"); close(); });
+        item(body, ico("mic-off"), m.mic !== false ? L("كتم المشارك", "Mute") : L("اطلب فتح الميكروفون", "Ask to unmute"), function () { rCtl(uid, m.mic !== false ? "mute" : "ask"); close(); });
         if (m.hand) item(body, "✋", L("إنزال يده", "Lower hand"), function () { rCtl(uid, "lower"); close(); });
         item(body, "👑", L("اجعله المضيف", "Make host"), function () { rMakeHost(uid); close(); });
         item(body, "✕", L("إخراج من الغرفة", "Remove from room"), function () { rRemove(uid); close(); }, true);
@@ -4372,8 +4632,8 @@
     var r = rm; if (!r) return;
     var m = r.members[uid] || {};
     sheet(rName(r, uid), function (body, close) {
-      item(body, "🔇", m.mic !== false ? L("كتم المشارك", "Mute") : L("اطلب فتح الميكروفون", "Ask to unmute"), function () { rCtl(uid, m.mic !== false ? "mute" : "ask"); close(); });
-      item(body, "🔇", L("كتم الجميع", "Mute everyone"), function () { rMuteAll(); close(); });
+      item(body, ico("mic-off"), m.mic !== false ? L("كتم المشارك", "Mute") : L("اطلب فتح الميكروفون", "Ask to unmute"), function () { rCtl(uid, m.mic !== false ? "mute" : "ask"); close(); });
+      item(body, ico("mic-off"), L("كتم الجميع", "Mute everyone"), function () { rMuteAll(); close(); });
       if (m.hand) item(body, "✋", L("إنزال يده", "Lower hand"), function () { rCtl(uid, "lower"); close(); });
       item(body, "👑", L("اجعله المضيف", "Make host"), function () { rMakeHost(uid); close(); });
       item(body, "✕", L("إخراج من الغرفة", "Remove from room"), function () { rRemove(uid); close(); }, true);
@@ -4384,7 +4644,7 @@
     var r = rm; if (!r) return;
     var me = myUid(), sh = function (x) { return String(x || "—").slice(-4); };
     var nm = function (u) { return u === me ? L("أنا", "me") : rName(r, u); };
-    var lines = [], body0 = null;
+    var lines = [], body0 = null, aud = { cap: null, capE: null, out: {}, inn: {} };   // C277
     var paint = function (srv, routes) {
       if (!body0) return; body0.innerHTML = "";
       var row = function (k, v, bad) { var d = el("div", "display:flex;justify-content:space-between;gap:10px;padding:7px 16px;border-top:1px solid " + LINE + ";font:600 12px var(--sawa-font,system-ui)"); d.appendChild(el("span", "color:" + MUTED, k)); d.appendChild(el("span", "color:" + (bad ? "#f87171" : "#e2e8f0") + ";text-align:left;direction:ltr", v)); body0.appendChild(d); lines.push(k + ": " + v); };
@@ -4413,6 +4673,22 @@
         row(L("يصلني من ", "From ") + nm(u), "📷 " + (vi.cam || "—") + (p && p.sct ? " · 🖥 " + (vi.scr || "—") : ""), m.scr && !(vi.scr && !/^0×/.test(vi.scr)) && !(m.scrCam || !p || !p.sct));
         row(L("أرسل إلى ", "To ") + nm(u), "📷 " + (vo.cam || "—") + (p && p.sct ? " · 🖥 " + (vo.scr || "—") : ""));
       });
+      // C277: الصوت — هل يلتقط ميكروفوني صوتاً؟ هل يُرسَل؟ ماذا يفعل أندرويد بالصوت؟ (لتشخيص «صوتي لا يصل» على هاتفٍ بعينه)
+      var a0 = r.local && r.local.getAudioTracks()[0];
+      row(L("ميكروفوني", "My mic"), a0 ? a0.readyState + (a0.muted ? " · muted(sys)" : "") + (a0.enabled ? "" : " · off") : L("لا يوجد", "none"), !a0 || a0.readyState !== "live" || a0.muted || (r.mic && !a0.enabled));
+      row(L("حالة الصوت", "Audio state"), "mic=" + (r.mic ? 1 : 0) + " held=" + (r.held ? 1 : 0) + " heal=" + (r.healN || 0) + "/" + (r.zeroN || 0) + (micPlain() ? " mic=plain" : "") + " aec=" + (lastAec && lastAec.aec) + " lvl=" + (r.levels && r.levels[me] != null ? r.levels[me].toFixed(3) : "—") + " ctx=" + (tone.ctx ? tone.ctx.state : "—"), !!r.held);
+      if (aud.cap != null) row(L("مستوى الالتقاط", "Capture level"), aud.cap.toFixed(3) + (aud.capE != null ? " · E=" + aud.capE.toFixed(2) : ""), aud.cap === 0);
+      Object.keys(aud.out).forEach(function (u) { var o = aud.out[u]; row(L("صوتي إلى ", "My audio to ") + nm(u), o.kb + "KB · " + o.pk + "pk" + (o.d != null ? " · +" + o.d + "pk/2s" : ""), o.d === 0); });
+      Object.keys(aud.inn).forEach(function (u) { var o = aud.inn[u]; row(L("صوتٌ من ", "Audio from ") + nm(u), o.kb + "KB · lvl " + o.lv + (o.paused ? " · ⏸" : ""), !!o.paused); });
+      var nb = NB(), nat = "";
+      try { if (nb) { nat = (nb.platform ? nb.platform() : "android") + (nb.audioResume ? "" : " (old native)") + " · " + (nb.audioRoute ? nb.audioRoute() : ""); } else if (IOSB()) nat = "iOS"; } catch (e) {}
+      if (nat) row(L("التطبيق/المسار", "App/route"), nat);
+      var nlog = ""; try { if (nb && nb.audioLog) nlog = String(nb.audioLog() || ""); } catch (e) {}
+      var jlog = ""; try { jlog = SawaLog.recent(300).filter(function (x) { return /hold|heal|audio|room\.|mic|route|focus/.test(x.ev); }).slice(-25).map(function (x) { var o = []; for (var k in x) if (k !== "ts" && k !== "lvl" && k !== "mod" && k !== "ev") o.push(k + "=" + x[k]); return Math.round((x.ts - (r.t0 || x.ts)) / 1000) + "s " + x.ev + (o.length ? " " + o.join(" ") : ""); }).join("\n"); } catch (e) {}
+      lines.push("--- js log ---", jlog || "—");
+      if (nb) lines.push("--- android audio ---", nlog || "(no audioLog: old native)");
+      var pre = el("pre", "margin:8px 16px;padding:8px;max-height:180px;overflow:auto;background:#0006;border-radius:10px;color:#cbd5e1;font:500 10px/1.4 ui-monospace,monospace;white-space:pre-wrap;direction:ltr;text-align:left", (jlog || "—") + (nb ? "\n--- android ---\n" + (nlog || "(old native)") : ""));
+      body0.appendChild(pre);
       row(L("محاولات الحارس", "Watchdog retries"), String(r.retries || 0) + " · " + L("عودات", "rejoins") + " " + (r.rejoins || 0) + "/" + (r.softRejoins || 0));
       var bt = el("div", "display:flex;gap:8px;padding:12px 16px");
       var cp = el("button", "flex:1;padding:10px;border:0;border-radius:12px;background:" + LINE + ";color:#fff;font:800 12px var(--sawa-font,system-ui)", L("نسخ التقرير", "Copy report"));
@@ -4420,6 +4696,8 @@
       var rj = el("button", "flex:1;padding:10px;border:0;border-radius:12px;background:" + PRI + ";color:#fff;font:800 12px var(--sawa-font,system-ui)", L("إعادة الاتّصال", "Reconnect"));
       rj.onclick = function () { r.rejoining = false; Object.keys(r.peers).forEach(function (u) { rDrop(r, u); }); rRejoin(r); toast(L("جارٍ إعادة الاتّصال…", "Reconnecting…")); };
       bt.appendChild(cp); bt.appendChild(rj); body0.appendChild(bt);
+      if (micPlain()) { var rs = el("button", "margin:0 16px 12px;width:calc(100% - 32px);padding:9px;border:0;border-radius:12px;background:" + LINE + ";color:#fff;font:800 12px var(--sawa-font,system-ui)", L("إعادة الميكروفون إلى النمط الافتراضيّ (إلغاء الصدى)", "Reset mic to default (echo cancellation)"));   // C278
+        rs.onclick = function () { micPlainMem = false; toast(L("سيُستعمل النمط الافتراضيّ من الغرفة القادمة", "Default mode from the next room")); rs.remove(); }; body0.appendChild(rs); }
     };
     sheet(L("تشخيص الاتّصال", "Connection diagnostics"), function (body) { body0 = el("div", ""); body.appendChild(body0); paint(null, null); });
     var routes = {}, vin = {}, vout = {};
@@ -4429,11 +4707,23 @@
       return p.pc.getStats().then(function (rep) { var pair = null; rep.forEach(function (x) { if (x.type === "candidate-pair" && x.state === "succeeded" && (x.nominated || x.selected)) pair = pair || x;
           // C122: ما يصل من صورٍ فعلاً (الكاميرا/الشاشة) — لتشخيص «يبدأ العرض ولا أرى شيئاً»
           if (x.type === "inbound-rtp" && x.kind === "video") { var k = p.sct && x.mid === p.sct.mid ? "scr" : "cam"; vin[u] = vin[u] || {}; vin[u][k] = (x.frameWidth || 0) + "×" + (x.frameHeight || 0) + " · " + Math.round(x.framesPerSecond || 0) + "fps · " + (x.framesDecoded || 0) + "f"; }
+          if (x.type === "media-source" && x.kind === "audio" && typeof x.audioLevel === "number") { aud.cap = x.audioLevel; aud.capE = x.totalAudioEnergy; }   // C277: ما يلتقطه ميكروفوني فعلاً
+          if (x.type === "outbound-rtp" && x.kind === "audio") { aud.out[u] = { kb: Math.round((x.bytesSent || 0) / 1024), pk: x.packetsSent || 0, d: null }; }
+          if (x.type === "inbound-rtp" && x.kind === "audio") { var at = rui.tiles && rui.tiles[u] && rui.tiles[u].a; aud.inn[u] = { kb: Math.round((x.bytesReceived || 0) / 1024), lv: typeof x.audioLevel === "number" ? x.audioLevel.toFixed(3) : "—", paused: !!(at && at.paused) }; }
           if (x.type === "outbound-rtp" && x.kind === "video") { var k2 = p.sct && x.mid === p.sct.mid ? "scr" : "cam"; vout[u] = vout[u] || {}; vout[u][k2] = (x.frameWidth || 0) + "×" + (x.frameHeight || 0) + " · " + Math.round((x.targetBitrate || 0) / 1000) + "k"; }
         });
         if (pair) { var lc = rep.get(pair.localCandidateId), rc = rep.get(pair.remoteCandidateId); routes[u] = (lc && lc.candidateType === "relay") || (rc && rc.candidateType === "relay") ? L("عبر وسيط", "relay") : L("مباشر", "direct"); } }).catch(function () {});
     }));
-    Promise.all([srvP, rtP]).then(function (x) { paint(x[0], routes); });
+    Promise.all([srvP, rtP]).then(function (x) {
+      paint(x[0], routes);
+      // C277: بعد ثانيتين — هل ما زال صوتي يُرسَل؟ (عدد الحزم يزيد)
+      setTimeout(function () {
+        if (r.done || !body0 || !body0.isConnected) return;
+        Promise.all(Object.keys(aud.out).map(function (u) { var p = r.peers[u]; if (!p || !p.pc) return null;
+          return p.pc.getStats().then(function (rep) { rep.forEach(function (y) { if (y.type === "outbound-rtp" && y.kind === "audio" && aud.out[u]) aud.out[u].d = (y.packetsSent || 0) - aud.out[u].pk; }); }).catch(function () {}); }))
+          .then(function () { paint(x[0], routes); });
+      }, 2000);
+    });
   }
   function rMore() {
     var r = rm; if (!r) return;
@@ -4442,12 +4732,12 @@
       item(body, "😊", L("تفاعل", "React"), function () { close(); rReactBar(); });
       item(body, "➕", L("دعوة من جهات الاتّصال", "Invite contacts"), function () { close(); rInvite(); });
       item(body, "📝", L("المحضر: قرارات · مهامّ · نقاط", "Minutes: decisions · tasks · points"), function () { close(); rOpenPanel("notes"); });
-      item(body, r.low ? "🎥" : "📶", r.low ? L("إعادة الفيديو", "Video back on") : L("بيانات قليلة (صوتٌ فقط)", "Low data (audio only)"), function () { close(); rToggleLow(r); });
+      item(body, r.low ? ico("video") : ico("signal"), r.low ? L("إعادة الفيديو", "Video back on") : L("بيانات قليلة (صوتٌ فقط)", "Low data (audio only)"), function () { close(); rToggleLow(r); });
       if (r.camOn && !(r.scr && r.scrViaCam)) item(body, "🔄", L("تبديل الكاميرا", "Flip camera"), function () { close(); rFlip(r); });
-      item(body, "🖥", r.scr ? L("إيقاف مشاركة الشاشة", "Stop screen sharing") : L("مشاركة الشاشة", "Share screen"), function () { close(); rScreenAsk(r); }, !!r.scr);   // C115
+      item(body, ico("screen"), r.scr ? L("إيقاف مشاركة الشاشة", "Stop screen sharing") : L("مشاركة الشاشة", "Share screen"), function () { close(); rScreenAsk(r); }, !!r.scr);   // C115
       if (isAdm()) item(body, "🔧", L("تشخيص الاتّصال", "Connection diagnostics"), function () { close(); rDiag(); });   // C115: للمدير فقط
       if (amHost(r)) {
-        item(body, "🔇", L("كتم الجميع", "Mute everyone"), function () { close(); rMuteAll(); });
+        item(body, ico("mic-off"), L("كتم الجميع", "Mute everyone"), function () { close(); rMuteAll(); });
         item(body, "⏹", L("إنهاء الغرفة للجميع", "End room for everyone"), function () { close(); rEndAll(); }, true);
       }
     });
@@ -4457,14 +4747,14 @@
     var r = rm; if (!r || !amHost(r)) return;
     sheet(L("قفل الغرفة؟", "Lock the room?"), function (body, close) {
       body.appendChild(el("div", "padding:0 16px 8px;color:" + MUTED + ";font:600 12px var(--sawa-font,system-ui);text-align:center", L("لا يدخل أحدٌ جديد تلقائيّاً. من يفتح الرابط «يطرق الباب» وتراه هنا وتسمح له بضغطة.", "No one joins automatically. Anyone opening the link knocks, and you can admit them with a tap.")));
-      item(body, "🔒", L("قفل", "Lock"), function () { close(); rSetMeta("locked", true); toast(L("قُفلت الغرفة — القادمون يطرقون وأنت تسمح", "Room locked — newcomers knock, you admit")); }, true);
+      item(body, ico("lock"), L("قفل", "Lock"), function () { close(); rSetMeta("locked", true); toast(L("قُفلت الغرفة — القادمون يطرقون وأنت تسمح", "Room locked — newcomers knock, you admit")); }, true);
       item(body, "↩", L("إلغاء", "Cancel"), close);
     });
   }
   function rLeaveConfirm() {
     var r = rm; if (!r) return;
     sheet(L("مغادرة الغرفة؟", "Leave the room?"), function (body, close) {
-      item(body, "🚪", L("مغادرة (يمكنك الرجوع إليها)", "Leave (you can come back)"), function () { close(); rLeave(r, "left"); }, true);   // C119
+      item(body, ico("door"), L("مغادرة (يمكنك الرجوع إليها)", "Leave (you can come back)"), function () { close(); rLeave(r, "left"); }, true);   // C119
       if (amHost(r)) item(body, "⏹", L("إنهاء للجميع", "End for everyone"), function () { close(); rEndAll(); }, true);
       item(body, "↩", L("البقاء", "Stay"), close);
     });
@@ -4479,9 +4769,9 @@
         b.appendChild(el("span", "font:800 11px var(--sawa-font,system-ui);padding:3px 9px;border-radius:9px;background:" + (on ? "#16a34a33" : LINE) + ";color:" + (on ? "#4ade80" : "#cbd5e1"), on ? L("مفعّل", "On") : L("متوقّف", "Off")));
         if (sub) b.appendChild(el("div", "position:absolute", ""));
       };
-      tog("🔒", L("قفل الغرفة", "Lock room"), null, !!r.meta.locked, function () { rSetMeta("locked", !r.meta.locked); });
-      tog("🚪", L("غرفة الانتظار", "Waiting room"), null, !!r.meta.lobby, function () { rSetMeta("lobby", !r.meta.lobby); });
-      tog("🎧", L("صوتٌ فقط (بلا كاميرات)", "Audio only (no cameras)"), null, !!r.meta.audioOnly, function () { rSetMeta("audioOnly", !r.meta.audioOnly); });
+      tog(ico("lock"), L("قفل الغرفة", "Lock room"), null, !!r.meta.locked, function () { rSetMeta("locked", !r.meta.locked); });
+      tog(ico("door"), L("غرفة الانتظار", "Waiting room"), null, !!r.meta.lobby, function () { rSetMeta("lobby", !r.meta.lobby); });
+      tog(ico("headphones"), L("صوتٌ فقط (بلا كاميرات)", "Audio only (no cameras)"), null, !!r.meta.audioOnly, function () { rSetMeta("audioOnly", !r.meta.audioOnly); });
       // C45: غرفة كبيرة (حتى 30) عبر خادم الوسائط
       var bg = item(body, "🏟", L("غرفة كبيرة (حتى " + SFU_MAX + ")", "Large room (up to " + SFU_MAX + ")"), function () { close(); rBigToggle(); });
       bg.appendChild(el("span", "font:800 11px var(--sawa-font,system-ui);padding:3px 9px;border-radius:9px;background:" + (rBig(r) ? "#16a34a33" : LINE) + ";color:" + (rBig(r) ? "#4ade80" : "#cbd5e1"), rBig(r) ? L("مفعّل", "On") : L("متوقّف", "Off")));
@@ -4975,7 +5265,7 @@
     if (!id) return;
     try { if (new URLSearchParams(global.location.search).get("answer") === "1") wantAnswer[id] = 1; } catch (e) {}   // C72: «ردّ» من شاشة الهاتف
     try { var u = new URL(global.location.href); u.searchParams.delete("call"); u.searchParams.delete("answer"); global.history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + u.hash); } catch (e) {}
-    whenUid(function () { setTimeout(function () { if (/^[gs]/.test(id)) groupIncoming(id); else incoming(id); }, 300); });
+    whenUid(function () { setTimeout(function () { if (/^[gs]/.test(id)) groupIncoming(id); else incoming(id); }, wantAnswer[id] ? 0 : 300); });   // C272: «ردّ» ⇒ بلا انتظار
   }
   try {
     if (global.navigator && navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", function (ev) {
