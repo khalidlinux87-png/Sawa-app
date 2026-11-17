@@ -5557,7 +5557,10 @@
     s.box.appendChild(ul);
     s.box.appendChild(mk("div", "font:700 13px var(--sawa-font,system-ui);color:#5b6b7c;margin:6px 2px", L("للتأكيد اكتب: حذف", "To confirm, type: DELETE")));
     var inp = mk("input", "width:100%;box-sizing:border-box;border:1.5px solid #dfe5ec;color:#1A1A2E;background:#fff;border-radius:12px;padding:12px;font:700 16px var(--sawa-font,system-ui);text-align:center;outline:none");
-    inp.autocomplete = "off"; s.box.appendChild(inp);
+    inp.autocomplete = "off";
+    // C331: الآيفون يصحّح الكلمة تلقائيّاً عند لمس الزرّ أو «تمّ» (حذف ⇒ حذفت/حذفه) فلا تطابق — نوقف التصحيح والأحرف الكبيرة والتدقيق
+    inp.setAttribute("autocorrect", "off"); inp.setAttribute("autocapitalize", "off"); inp.setAttribute("spellcheck", "false"); inp.spellcheck = false;
+    s.box.appendChild(inp);
     // C329: أمانٌ من اللمس بالخطأ — «إلغاء» هو الزرّ البارز أوّلاً، وزرّ الحذف معطّلٌ حتّى تُكتب الكلمة ويمضي عدٌّ تنازليّ (5 ث) من فتح النافذة
     var cancel = mkBtn(L("إلغاء — أبقِ حسابي", "Cancel — keep my account"), "primary"); cancel.style.marginTop = "10px";
     var GO_TXT = L("حذف حسابي نهائيّاً", "Delete my account"), wait = 5, done = false;
@@ -5580,7 +5583,9 @@
       if (done) return;
       var on = ok(); go.disabled = !on; go.style.opacity = on ? "1" : ".5";
       go.textContent = wait > 0 ? GO_TXT + " (" + wait + ")" : GO_TXT;
-      hint.textContent = on ? "" : !typed() ? (word() ? L("اكتب كلمة «حذف» فقط", "Type only the word DELETE") : "") : L("انتظر قليلاً…", "Wait a moment…");
+      // C331: نُظهر ما قرأه التطبيق فعلاً — إن غيّرته لوحة المفاتيح يراه المستخدم (ونعرف السبب)
+      var seen = String(inp.value || "").trim().slice(0, 24);
+      hint.textContent = on ? "" : !typed() ? (word() ? L("اكتب كلمة «حذف» فقط — المكتوب: «", "Type only the word DELETE — you typed: «") + seen + "»" : "") : L("انتظر قليلاً…", "Wait a moment…");
     };
     // الأحداث وحدها لا تكفي في بعض لوحات المفاتيح (كتابةٌ مركّبة لم تُعتمد بعد) ⇒ فحصٌ دوريّ خفيف ما دامت النافذة مفتوحة
     var tick = setInterval(function () { if (!document.body.contains(go)) { clearInterval(tick); return; } paint(); }, 400);
