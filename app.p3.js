@@ -109,7 +109,10 @@ const RELIGIOUS_OCCASIONS = [
 const SHOW_SOON_SERVICES = false;
 // C320/C321: مفتاح المحفظة كلّها. true = تظهر للمشرف والمدير فقط (useAdminAtLeast("moderator")) ولا تظهر للمستخدمين أبداً،
 //   ولا في نسخة Google Play. false = مخفيّةٌ عن الجميع.
-const SHOW_WALLET = true;
+// C337: تطبيق الآيفون لا يعرض المحفظة لأحدٍ أبداً (ولا للمشرفين) — Apple تمنع الميزات المخفيّة (Guideline 2.3.1).
+//   يُعرف التطبيق من window.SawaIOS (يُحقَن قبل تحميل الصفحة) أو من «SawaIOS» في الـUser-Agent.
+const IN_IOS_APP = (() => { try { return !!window.SawaIOS || /SawaIOS/.test(navigator.userAgent || ""); } catch (e) { return false; } })();
+const SHOW_WALLET = !IN_IOS_APP;
 function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOpenMoments, onOpenErsal, onOpenTaxi, onOpenWallet }) {
     const { colors } = useTheme();
     const intlAdm = useAdminAtLeast("moderator");   // C220: المحفظة (والتحويل الدوليّ التجريبيّ) للمشرف والمدير فقط

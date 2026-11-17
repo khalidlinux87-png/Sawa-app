@@ -3191,3 +3191,10 @@ Khalid's notes on C314:
 - **«قصّتي»:** `stories().me.cover` = آخر قصّةٍ حيّة (الصورة المصغّرة للصورة/الفيديو مع ▶، أو النصّ بلونه) ⇒ دائرة «قصّتي» في `StoriesRow` تعرضها بدل صورة الحساب.
 - **الفحص:** `node --check` فقط — التجربة على الهاتف. الردود القديمة تبقى نصّاً كما كانت.
 - **الرفع:** `sawa-chat.js` + `app.p4.js` + `app.p5.js` + `BUILD.md` ← `sw.js` (v516) أخيراً. لا تغيير في الـWorker.
+
+## 🍎 C337 — Wallet never shown in the iPhone app · app.p3 · sw v517
+- **Why:** Apple rejects hidden or dormant features (Guideline 2.3.1). Since C321 the wallet showed to moderators and admins inside every app, the iPhone app included.
+- **Change:** `IN_IOS_APP` in app.p3.js = `window.SawaIOS` (injected at document start by NativeBridge.swift) or "SawaIOS" in the user agent (WebViewController.swift). `SHOW_WALLET = !IN_IOS_APP`. In the iPhone app nobody sees the wallet card, the wallet route (C321 gate in app.p8) or «pay from Sawa Wallet» in Ersal. Android app and browsers: unchanged (moderators and admins only).
+- **No iOS build needed:** the app loads the live site.
+- **Checks:** `node --check` on app.p3, sw.js and on all nine parts joined. **Not tried on an iPhone.**
+- **Upload:** app.p3.js (438172 bytes) then sw.js (v517, 19330 bytes) last. Check with an admin account: iPhone app ⇒ no wallet in Explore; Android app ⇒ wallet shown.
