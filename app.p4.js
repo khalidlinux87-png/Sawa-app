@@ -1838,7 +1838,7 @@ const StoriesRow = React.memo(function StoriesRow({ momentsPosts, onOpenMoments,
     const S = SC && SC.stories ? SC.stories() : null;
     if (!S || !S.enabled) return null;
     const ring = (on, seen) => on ? (seen ? colors.border : `conic-gradient(${colors.accent}, ${colors.primary}, ${colors.accent})`) : "transparent";
-    const cv = S.me.items.length ? S.me.cover : null;   // C328: «قصّتي» تُظهر آخر قصّة نشرتها (إطار الفيديو · الصورة · النصّ بلونه) بدل صورتي
+    const cv = S.me.items.length ? S.me.cover : null;   // C336: «قصّتي» تُظهر آخر قصّة نشرتها (إطار الفيديو · الصورة · النصّ بلونه) بدل صورتي
     const circle = (key, name, photo, hasItems, allSeen, onPress, isMe) => React.createElement("button", { key, onClick: onPress, className: "flex flex-col items-center gap-1.5 shrink-0", style: { width: 70 } },
         React.createElement("div", { className: "relative rounded-full flex items-center justify-center", style: { width: 62, height: 62, background: ring(hasItems, allSeen), padding: hasItems ? 3 : 0 } },
             React.createElement("div", { className: "w-full h-full rounded-full flex items-center justify-center", style: { backgroundColor: colors.card, padding: hasItems ? 2 : 0 } },
@@ -1880,7 +1880,7 @@ function ArchivedChatsScreen({ conversations, archivedIds, mutedIds, onOpenChat,
                     mutedIds.includes(c.id) && React.createElement(BellOff, { size: 13, color: colors.textMuted, className: `shrink-0 ${ms("1.5")}` })),
                 React.createElement("button", { onClick: () => onUnarchive(c.id), className: `px-2.5 py-1.5 rounded-xl text-[10px] font-bold shrink-0 ${me("2")}`, style: { backgroundColor: colors.primaryLight, color: colors.primaryInk } }, t("astaada"))))))));
 }
-// C328: بطاقة القصّة داخل الردّ عليها — صورة مصغّرة (فيديو بـ▶︎ · صورة · نصّ بلون خلفيّته) + «ردًّا على قصّتك/قصّته»؛ اللمس يفتحها إن لم تنتهِ
+// C336: بطاقة القصّة داخل الردّ عليها — صورة مصغّرة (فيديو بـ▶︎ · صورة · نصّ بلون خلفيّته) + «ردًّا على قصّتك/قصّته»؛ اللمس يفتحها إن لم تنتهِ
 function StoryRefCard({ r, mine }) {
     const { colors } = useTheme();
     const SC = window.SawaChat;

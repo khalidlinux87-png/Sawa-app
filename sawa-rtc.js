@@ -548,7 +548,16 @@
   // C230: auto = اختيار التطبيق (بداية مكالمة فيديو/جماعيّة) ⇒ لا يغلب سمّاعة رأس موصولة. زرّ المستخدم وحده يحوّل إلى المكبّر.
   function nativeSpk(on, auto) { try { var b = RB(), n = NB(); if (b) { if (auto && n && n.setSpeakerAuto) n.setSpeakerAuto(!!on); else if (b === iosRoute) iosRoute.setSpeaker(!!on, !!auto); else b.setSpeaker(!!on); } if (n && n.audioRoute) setTimeout(function () { try { routeDiag(n.audioRoute()); } catch (e) {} }, 700); } catch (e) {} }
   // C177: المدير يرى المسار الفعليّ بعد كلّ تحويل (Receiver/Speaker · earpiece/speaker) — لتشخيص «الصوت من المكبّر رغم السمّاعة»
-  function routeDiag(r) { try { if (r && isAdm()) { toast("🔈 " + r); if (cur) cur.osRoute = String(r).slice(0, 40); } } catch (e) {} }
+  function routeDiag(r) {
+    try {
+      if (!r) return;
+      var v = String(r).slice(0, 40);
+      if (cur) cur.osRoute = v;
+      if (gc && !gc.done) gc.osRoute = v;   // C327: مسار/وضع صوت الجماعيّة والغرفة في سجلّ المكالمة — لنعرف ما يختاره WebKit فعلاً
+      if (rm && !rm.done) rm.osRoute = v;
+      if (isAdm()) toast("🔈 " + r);
+    } catch (e) {}
+  }
   function nativeRoute(c, which, auto) {
     c.out = which; nativeSpk(which === "spk", auto);
     if (which === "ear") { wakeOff(); earArm(); } else { wakeOn(); earOff(); }
@@ -569,6 +578,35 @@
   function earlyRoute(c) { if (!c || c.done || !RB() || c.out) return; nativeRoute(c, c.type === "video" ? "spk" : "ear", true); }
   function toggleRoute() { var c = cur; if (!c) return; var w = c.out === "ear" ? "spk" : "ear"; c.userRoute = true; if (c.routes) setRoute(c, w); else if (RB()) nativeRoute(c, w); }
   function stopStream(s) { try { s && s.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} }
+  // C326: تسليم الصوت بين مكالمةٍ وأخرى (ثنائيّة ⇒ جماعيّة ⇒ غرفة · إعادة دخول الغرفة) بلا هدم جلسة الصوت:
+  //       كان الانتقال يُطفئ وضع المكالمة (bgAudio(false)) ويُنهي CallKit ويغلق الميكروفون ثمّ يفتحه فوراً — فيتسابق الإطفاء
+  //       مع فتح الميكروفون الجديد فيصمت الآيفون أو يضعف عند الآخرين، ويتأرجح وضع الصوت في أندرويد.
+  //       hand = { stream, at, wait, ck }: الميكروفون المفتوح (يُعاد استخدامه) · مهلةٌ بعد المحرّك الأصليّ · مكالمة CallKit تُنهى في آخر السلسلة
+  var hand = null;
+  function handSet(o) {
+    var h = hand || {}; for (var k in o) if (o[k] != null) h[k] = o[k]; h.at = Date.now(); hand = h;
+    var st = h.stream;   // ميكروفونٌ سُلِّم ولم يأخذه أحد (فشل الدخول قبل طلبه) ⇒ لا يبقى مفتوحاً
+    if (st) setTimeout(function () { if (hand && hand.stream === st) { hand.stream = null; stopStream(st); } }, 35000);
+  }
+  function streamLive(st) { try { var a = st && st.getAudioTracks && st.getAudioTracks()[0]; return !!(a && a.readyState === "live" && !st.native); } catch (e) { return false; } }
+  // الميكروفون للمكالمة الجديدة: المسلَّم إن كان حيّاً ومناسباً، وإلّا جديد (بعد مهلةٍ إن كان المحرّك الأصليّ يُغلق جلسته الآن)
+  function takeMedia(type, audioOnly, plain) {
+    var h = hand, st = h && h.stream, wait = h && h.wait && Date.now() - h.at < h.wait ? h.wait - (Date.now() - h.at) : 0;
+    if (h) { h.stream = null; h.wait = 0; }
+    if (st && !plain && Date.now() - h.at < 30000 && streamLive(st)) {   // C278: النمط البديل (بلا إلغاء صدى) يحتاج ميكروفوناً جديداً
+      st.getAudioTracks().forEach(function (t) { t.enabled = true; });   // كتم المكالمة السابقة لا ينتقل صامتاً — المكالمة الجديدة تطبّق كتمها هي
+      if (audioOnly) { st.getVideoTracks().forEach(function (t) { try { t.stop(); } catch (e) {} }); return Promise.resolve(new global.MediaStream(st.getAudioTracks())); }
+      if (type !== "video" || st.getVideoTracks().some(function (t) { return t.readyState === "live"; })) return Promise.resolve(st);
+    }
+    stopStream(st);
+    return (wait > 0 ? new Promise(function (ok) { setTimeout(ok, wait); }) : Promise.resolve()).then(function () { return getMedia(audioOnly ? "audio" : type, null, plain); });
+  }
+  // نهاية السلسلة: تُنهى مكالمة CallKit التي بقيت من المكالمة الثنائيّة (بقاؤها يُبقي جلسة الصوت حيّة أثناء الانتقال)
+  function handEnd() {
+    var h = hand; hand = null; if (!h) return;
+    stopStream(h.stream);
+    if (h.ck) ckEnd(h.ck, "ended");
+  }
   function mediaError(e) {
     var n = e && e.name;
     if (n === "NotAllowedError" || n === "SecurityError") return L("اسمح لسوا باستخدام الميكروفون/الكاميرا من إعدادات المتصفّح", "Allow microphone/camera access in browser settings");
@@ -651,9 +689,10 @@
   // C127: تطبيق iOS — توجيه الصوت (السمّاعة/المكبّر) وحسّاس القرب ومنع القفل عبر جسر SawaIOS
   function IOSB() { try { return global.SawaIOS || null; } catch (e) { return null; } }
   var iosRoute = {
-    setSpeaker: function (on, auto) { try { IOSB().call("setSpeaker", { on: !!on, auto: !!auto }).then(function (r) { routeDiag(r && r.route); if (r && r.kind) audioOut(r.kind, r.hs); }); } catch (e) {} },   // C230: kind/hs من بناء iOS الجديد
+    // C327: التشخيص يعرض وضع الجلسة أيضاً (VideoChat/VoiceChat/Default)
+    setSpeaker: function (on, auto) { try { IOSB().call("setSpeaker", { on: !!on, auto: !!auto }).then(function (r) { routeDiag(r && r.route && (r.route + (r.mode ? " · " + String(r.mode).replace(/^AVAudioSessionMode/, "") : ""))); if (r && r.kind) audioOut(r.kind, r.hs); }); } catch (e) {} },   // C230: kind/hs من بناء iOS الجديد
     setProximity: function (on) { try { IOSB().call("setProximity", { on: !!on }); } catch (e) {} return true; },
-    setInCall: function (on) { try { IOSB().call("setInCall", { on: !!on }); } catch (e) {} }
+    setInCall: function (on, multi) { try { IOSB().call("setInCall", { on: !!on, multi: !!multi }); } catch (e) {} }   // C326: multi = جماعيّة/غرفة (WebKit يملك جلسة الصوت)
   };
   // جسر التوجيه: أندرويد (SawaNativeBridge) أو iOS (SawaIOS) — null في المتصفّح
   function RB() { var n = NB(); if (n && n.setSpeaker) return n; return IOSB() ? iosRoute : null; }
@@ -666,10 +705,15 @@
   function ckOn() { try { return !!(IOSB() && IOSB().callkit && IOSB().voip); } catch (e) { return false; } }
   function ckEnd(id, reason) { try { if (IOSB() && IOSB().callkit && id) IOSB().call("callkitEnd", { call: String(id), reason: reason }); } catch (e) {} }
   global.__sawaCallKitRinging = function (id) { ckRing[id] = 1; if (cur && cur.id === id && cur.state === "incoming") stopTone(); };
-  global.__sawaNativeMute = function (m) { if (cur && cur.local && !!cur.muted !== !!m) toggleMute(); };
-  function bgAudio(on, title, onEnd) {
+  global.__sawaNativeMute = function (m) {
+    if (cur && cur.local) { if (!!cur.muted !== !!m) toggleMute(); return; }
+    // C326: مكالمة CallKit تبقى بعد الترقية إلى جماعيّة/غرفة ⇒ زرّ الكتم في شاشة النظام يكتمها هي
+    if (gc && gc.local && !gc.done) { if (!!gc.muted !== !!m) gToggleMute(); return; }
+    if (rm && rm.local && !rm.done && !!rm.mic === !!m) rToggleMic(rm);
+  };
+  function bgAudio(on, title, onEnd, multi) {
     ongoingEnd = on ? onEnd : null;
-    if (IOSB()) iosRoute.setInCall(!!on);   // C127: منع قفل الشاشة + وضع المكالمة في iOS
+    if (IOSB()) iosRoute.setInCall(!!on, !!(on && multi));   // C127: منع قفل الشاشة + وضع المكالمة في iOS
     if (NB()) { try { NB().setInCall(!!on, String(title || "")); } catch (e) {} }
     else { keepAlive(!!on); ongoingNote(!!on, title); }
     try {
@@ -2191,9 +2235,16 @@
   };
   function finish(c, reason, opts) {
     if (!c || c.done) return;
-    if (c.role === "callee") nativeCallDone(c.id);   // C72
-    if (c.role === "callee") ckEnd(c.id, c.connectedAt ? "ended" : reason === "declinedByMe" ? "declined" : "remote");   // C151
-    opts = opts || {}; c.done = true; c.held = false; clearCallNotifications(); earOff(); bgAudio(false); vPromptClose(c);
+    var up = reason === "upgraded";   // C326: ترقيةٌ إلى جماعيّة ⇒ الصوت يُسلَّم لا يُهدم
+    if (up) {
+      handSet({ ck: c.role === "callee" && ckOn() ? c.id : null, stream: c.native ? null : c.local, wait: c.native ? 900 : 0 });   // المحرّك الأصليّ يُطفئ وحدة صوته بعد الإغلاق ⇒ ننتظره قبل فتح ميكروفون WebKit
+      if (IOSB()) iosRoute.setInCall(true, true);
+    }
+    if (c.role === "callee") nativeCallDone(c.id);   // C72 (إيقاف الرنين الأصليّ فقط)
+    if (!up) {
+      if (c.role === "callee") ckEnd(c.id, c.connectedAt ? "ended" : reason === "declinedByMe" ? "declined" : "remote");   // C151
+    }
+    opts = opts || {}; c.done = true; c.held = false; clearCallNotifications(); earOff(); if (!up) bgAudio(false); vPromptClose(c);
     dropPre(c);   // C218
     clearTimers(c); stopTone(); wakeOff();
     c.offs.forEach(function (f) { f(); }); c.offs = [];
@@ -2212,7 +2263,7 @@
     if (c.role === "caller" && !c.accepted && c.live && (reason === "noanswer" || reason === "cancel")) {
       wcall("call.missed", { to: c.peer, callId: c.id, type: c.type }).catch(function () {});
     }
-    stopStream(c.local);
+    if (!up || c.native) stopStream(c.local);
     try { if (c.pc) c.pc.close(); } catch (e) {}
     logCall(c);
     telLive(null);   // C216: انتهت كما يجب — لا لقطة «unfinished»
@@ -2356,7 +2407,7 @@
     var me = myUid(), d = db();
     g.ref = d.ref("gcalls/" + g.gid);
     preCallAudio();   // C274
-    Promise.all([getMedia(g.type), getIce(), g.ref.once("value")]).then(function (r) {
+    Promise.all([takeMedia(g.type), getIce(), g.ref.once("value")]).then(function (r) {   // C326: الميكروفون المسلَّم من المكالمة الثنائيّة
       if (g.done) { stopStream(r[0]); return; }
       g.local = r[0]; g.ice = r[1];
       var n = r[2].val();
@@ -2401,7 +2452,7 @@
       if (g.done) return;
       g.live = true;
       try { g.ref.child("members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
-      g.joinedAt = Date.now(); g.state = "live"; wakeOn(); gPaint(g); bgAudio(true, g.title || L("مكالمة جماعيّة", "Group call"), function () { groupLeave(); }); nativeSpk(true, true);   // C234: أندرويد أيضاً — كان صوت الغرف والجماعيّة يُفرض على سمّاعة الأذن (خافتاً جدّاً)   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
+      g.joinedAt = Date.now(); g.state = "live"; wakeOn(); gPaint(g); bgAudio(true, g.title || L("مكالمة جماعيّة", "Group call"), function () { groupLeave(); }, true); nativeSpk(true, true);   // C234: أندرويد أيضاً — كان صوت الغرف والجماعيّة يُفرض على سمّاعة الأذن (خافتاً جدّاً)   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
       if (!g.tick) g.tick = setInterval(function () { gPaintHead(g); }, 1000);
       if (g.role === "starter" && !g.vc) playTone("back");   // نغمة «يرنّ» حتّى ينضمّ أوّل شخص (لا رنين في الدردشة الصوتيّة)
       var first = true;
@@ -2479,7 +2530,7 @@
   }
   function gPeer(g, uid, sess, offerer) {
     var me = myUid();
-    var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: null };
+    var p = { uid: uid, sess: sess, offerer: offerer, iceIn: [], remoteSet: false, state: "connecting", stream: null, pid: rid(6) };   // C326: pid يميّز اتّصالاً جديداً عن إعادة تفاوض (كالغرف C63)
     var pc = p.pc = new global.RTCPeerConnection({ iceServers: ensureTurnTls(g.ice || STUN) });   // C300
     g.local.getTracks().forEach(function (t) { var st = ownStream(t); if (st) pc.addTrack(t, st); else pc.addTrack(t, g.local); });   // C112
     pc.onicecandidate = function (e) { if (e.candidate && e.candidate.candidate) gSend(g, uid, sess, { t: "ice", cand: iceJson(e.candidate) }); };
@@ -2494,11 +2545,12 @@
       if (g.done || g.peers[uid] !== p) return;
       if (s === "connected") {
         p.state = "connected"; p.everConnected = true; clearTimeout(p.lost); p.lost = null; clearTimeout(p.rt); p.rt = null;
+        if (g.rb) delete g.rb[uid];
         gCap(g); stopTone(); gTile(g, uid); gPaintHead(g);
       } else if (s === "disconnected" || s === "failed") {
         p.state = "reconnecting"; gTile(g, uid);
         if (p.offerer && (s === "failed" || !p.rt)) { clearTimeout(p.rt); p.rt = setTimeout(function () { p.rt = null; if (g.peers[uid] === p && p.state !== "connected") gRenegotiate(g, p, true); }, s === "failed" ? 0 : 3000); }   // C229
-        if (!p.lost) p.lost = setTimeout(function () { if (g.peers[uid] === p && p.state !== "connected") { p.state = "lost"; gTile(g, uid); } }, LOST_MS);
+        if (!p.lost) p.lost = setTimeout(function () { gLost(g, p); }, LOST_MS);
       }
     };
     g.peers[uid] = p;
@@ -2508,12 +2560,28 @@
   function gOffer(g, uid, sess) {
     var p = gPeer(g, uid, sess, true);
     gRenegotiate(g, p, false);
+    return p;
+  }
+  // C326: وصلةٌ بين عضوين لم تعد خلال LOST_MS رغم إعادة ICE ⇒ كانت تبقى «انقطع» فلا يسمع أحدهما الآخر حتّى يغادر أحدهما.
+  //       صاحب العرض يبني اتّصالاً جديداً كاملاً (pid جديد ⇒ الطرف الآخر يُسقط القديم أيضاً) حتّى 3 مرّات، ولكلّ اتّصالٍ جديد مهلته.
+  function gLost(g, p) {
+    var u = p.uid;
+    if (g.done || g.peers[u] !== p || p.state === "connected") return;
+    p.state = "lost"; gTile(g, u);
+    var m = g.members && g.members[u];
+    if (!p.offerer || !m || m.sess !== p.sess) return;
+    g.rb = g.rb || {}; var n = g.rb[u] = (g.rb[u] || 0) + 1;
+    if (n > 3) return;
+    LOG.warn("gpeer.rebuild", { n: n });
+    gDrop(g, u);
+    var np = gOffer(g, u, m.sess);
+    np.lost = setTimeout(function () { gLost(g, np); }, LOST_MS);
   }
   function gRenegotiate(g, p, restart) {
     if (g.done || !p.pc) return;
     p.pc.createOffer(restart ? { iceRestart: true } : undefined)
       .then(function (o) { return p.pc.setLocalDescription(tuneSdp(o)).then(function () { return o; }); })
-      .then(function (o) { gSend(g, p.uid, p.sess, { t: "offer", sdp: o.sdp }); })
+      .then(function (o) { gSend(g, p.uid, p.sess, { t: "offer", sdp: o.sdp, pid: p.pid }); })
       .catch(function (e) { LOG.warn("goffer", { err: e && e.message }); });
   }
   function gFlush(p) { p.remoteSet = true; var q = p.iceIn; p.iceIn = []; q.forEach(function (c) { p.pc.addIceCandidate(c).catch(function () {}); }); }
@@ -2522,9 +2590,11 @@
     var u = msg.from, p = g.peers[u];
     if (msg.t === "offer") {
       if (p && p.sess !== msg.fs) { gDrop(g, u); p = null; }
+      if (p && msg.pid && p.rpid && p.rpid !== msg.pid) { gDrop(g, u); p = null; }   // C326: اتّصالٌ جديد عند الطرف الآخر ⇒ جديدٌ هنا أيضاً
       // تصادم عرضين: الأصغر معرّفاً «مهذّب» يتراجع ويقبل عرض الآخر، والأكبر يتجاهله
       if (p && p.pc.signalingState === "have-local-offer") { if (myUid() < u) { gDrop(g, u); p = null; } else return; }
       if (!p) p = gPeer(g, u, msg.fs, false);
+      if (msg.pid) p.rpid = msg.pid;
       var gp = p, gn = gp.inN = (gp.inN || 0) + 1;   // C229: عرضٌ واحدٌ في كلّ مرّة، والأحدث وحده
       gp.q = (gp.q || Promise.resolve()).then(function () {
         if (g.done || g.peers[u] !== gp || gn !== gp.inN) return;
@@ -2621,7 +2691,9 @@
   function gFinish(g, reason, opts) {
     if (!g || g.done) return;
     if (g.role === "incoming" || g.joinedAt) ckEnd(g.gid, g.joinedAt ? "ended" : reason === "declined" ? "declined" : "remote");   // C151
-    opts = opts || {}; g.done = true; clearCallNotifications(); bgAudio(false);
+    opts = opts || {}; g.done = true; clearCallNotifications();
+    var mv = reason === "moved";   // C326: انتقلت إلى غرفة ⇒ الصوت والميكروفون يُسلَّمان للغرفة
+    if (mv) handSet({ stream: g.local }); else { bgAudio(false); handEnd(); }
     var me = myUid();
     for (var k in g.timers) clearTimeout(g.timers[k]); g.timers = {};
     if (g.tick) clearInterval(g.tick); g.tick = null;
@@ -2629,7 +2701,7 @@
     g.offs.forEach(function (f) { f(); }); g.offs = [];
     if (g.inbox && (g.state === "incoming" || reason === "missed")) g.inbox.remove().catch(function () {});
     Object.keys(g.peers).forEach(function (u) { try { g.peers[u].pc.close(); } catch (e) {} });
-    stopStream(g.local);
+    if (!mv) stopStream(g.local);
     if (g.ref && me) {
       try { g.ref.child("members/" + me).onDisconnect().cancel(); g.ref.child("sig/" + me).onDisconnect().cancel(); g.ref.child("req/" + me).onDisconnect().cancel(); } catch (e) {}
       if (g.state === "waiting") g.ref.child("req/" + me).remove().catch(function () {});
@@ -2659,7 +2731,7 @@
                  type: type, label: glabel, time: L("الآن", "Now"), duration: secs ? fmt(secs) : null, timestamp: Date.now(), participants: names.length ? names : null, cloud: true, cid: g.cid || null, gid: g.gid });
     }
     if (gc === g) gc = null;
-    if (g.gid && (g.live || g.role !== "incoming")) telSend({ id: g.gid, k: "group-" + g.type, mode: "mesh", role: g.role, ok: !!g.joinedAt, n: Object.keys(g.met || {}).length + 1,
+    if (g.gid && (g.live || g.role !== "incoming")) telSend({ id: g.gid, k: "group-" + g.type, mode: "mesh", osr: g.osRoute || null, role: g.role, ok: !!g.joinedAt, n: Object.keys(g.met || {}).length + 1,
       setup: g.joinedAt && g.t0 ? g.joinedAt - g.t0 : null, secs: g.joinedAt ? Math.round((Date.now() - g.joinedAt) / 1000) : 0, reason: reason });   // C179
     LOG.info("gend", { gid: g.gid, reason: reason });
     if (g.live && g.joinedAt && reason !== "moved") qaAfter(Math.round((Date.now() - g.joinedAt) / 1000), { kind: g.type === "video" ? "group-video" : "group-audio", engine: "web",
@@ -3112,7 +3184,7 @@
   function preCallAudio() { try { if (NB()) nativeSpk(true, true); } catch (e) {} }
   function rMedia(r) {
     preCallAudio();
-    return getMedia("audio", null, micPlain()).then(function (st) {
+    return takeMedia("audio", true, micPlain()).then(function (st) {   // C326: الميكروفون المسلَّم (من الجماعيّة أو الدخول السابق) · C278: النمط البديل
       if (r.done) { stopStream(st); return; }
       r.local = st;
       if (r.startMuted) { r.mic = false; st.getAudioTracks().forEach(function (t) { t.enabled = false; }); }
@@ -3143,7 +3215,7 @@
       try { rRef(r, "members/" + me).onDisconnect().remove(); mine.onDisconnect().remove(); } catch (e) {}
       r.state = "live"; wakeOn(); rPaint(r);
       if (r.startCam) { r.startCam = false; setTimeout(function () { if (!r.done && r.live && !r.camOn && !(r.meta && r.meta.audioOnly)) rToggleCam(r); }, 300); }   // C319: مكالمة فيديو جماعيّة انتقلت إلى الغرفة ⇒ الكاميرا تبقى
-      bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }); nativeSpk(true, true);   // C234: أندرويد أيضاً — كان صوت الغرف والجماعيّة يُفرض على سمّاعة الأذن (خافتاً جدّاً)   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
+      bgAudio(true, r.title || L("غرفة", "Room"), function () { if (rm) rLeave(rm, "left"); }, true); nativeSpk(true, true);   // C234: أندرويد أيضاً — كان صوت الغرف والجماعيّة يُفرض على سمّاعة الأذن (خافتاً جدّاً)   // C150: الجماعيّة والغرف على المكبّر في الآيفون (سمّاعة الأذن للخاصّة الصوتيّة فقط)
       LOG.info("room.live", { ms: Date.now() - (r.t0 || Date.now()) });
       // C66: المضيف ينشر جلسته في meta (مقروءة قبل العضويّة) ⇒ الوافد يعرض عليه فور دخوله بلا انتظار أوّل لقطةٍ من قائمة الأعضاء (رحلةٌ كاملة أقلّ حتى يُسمع الصوت)
       if (amHost(r)) rRef(r, "meta/hsess").set(r.sess).catch(function () {});
@@ -3569,18 +3641,32 @@
     pc.onconnectionstatechange = function () {
       var s = pc.connectionState;
       if (r.done || r.peers[uid] !== p) return;
-      if (s === "connected") { p.state = "connected"; clearTimeout(p.lost); p.lost = null; clearTimeout(p.rt); p.rt = null; rCap(r); rTile(r, uid); }
+      if (s === "connected") { p.state = "connected"; clearTimeout(p.lost); p.lost = null; clearTimeout(p.rt); p.rt = null; if (r.rb) delete r.rb[uid]; rCap(r); rTile(r, uid); }
       else if (s === "disconnected" || s === "failed") {
         if (p.ghost) { clearTimeout(r.timers["gh" + uid]); delete r.timers["gh" + uid]; var mm = Object.assign({}, r.members); delete mm[uid]; p.ghost = 0; rDrop(r, uid); onRMembers(r, mm); return; }   // C63
         p.state = "reconnecting"; rTile(r, uid);
         if (p.offerer && (s === "failed" || !p.rt)) { clearTimeout(p.rt); p.rt = setTimeout(function () { p.rt = null; if (r.peers[uid] === p && p.state !== "connected") rNegotiate(r, p, true); }, s === "failed" ? 0 : 3000); }   // C229
-        if (!p.lost) p.lost = setTimeout(function () { if (r.peers[uid] === p && p.state !== "connected") { p.state = "lost"; rTile(r, uid); } }, LOST_MS);
+        if (!p.lost) p.lost = setTimeout(function () { rLost(r, p); }, LOST_MS);
       }
     };
     r.peers[uid] = p; rTile(r, uid);
     return p;
   }
-  function rOffer(r, uid, sess) { rNegotiate(r, rPeer(r, uid, sess, true), false); }
+  function rOffer(r, uid, sess) { var p = rPeer(r, uid, sess, true); rNegotiate(r, p, false); return p; }
+  // C326: كـgLost — وصلةٌ ميتة بين عضوين ⇒ صاحب العرض يبني اتّصالاً جديداً (pid جديد) حتّى 3 مرّات بدل البقاء «انقطع»
+  function rLost(r, p) {
+    var u = p.uid;
+    if (r.done || r.peers[u] !== p || p.state === "connected") return;
+    p.state = "lost"; rTile(r, u);
+    var m = r.members && r.members[u];
+    if (!p.offerer || p.sfu || rBig(r) || !m || m.ghost || m.sess !== p.sess) return;
+    r.rb = r.rb || {}; var n = r.rb[u] = (r.rb[u] || 0) + 1;
+    if (n > 3) return;
+    LOG.warn("rpeer.rebuild", { n: n });
+    rDrop(r, u);
+    var np = rOffer(r, u, m.sess);
+    np.lost = setTimeout(function () { rLost(r, np); }, LOST_MS);
+  }
   function rNegotiate(r, p, restart) {
     if (r.done || !p.pc) return;
     p.pc.createOffer(restart ? { iceRestart: true } : undefined)
@@ -3689,7 +3775,40 @@
   var QBARS = ["▁", "▃", "▅", "▇"], QCOL = ["#ef4444", "#f59e0b", "#a3e635", "#16a34a"];
   function qTag(q) { if (q == null) return null; var t = el("span", "font:800 11px var(--sawa-font,system-ui);letter-spacing:-1px;color:" + QCOL[q] + ";background:#00000055;border-radius:8px;padding:1px 5px", QBARS.slice(0, q + 1).join("") + "  "); t.title = [L("سيّئة", "bad"), L("ضعيفة", "weak"), L("جيّدة", "good"), L("ممتازة", "excellent")][q]; return t; }
   // ---------- المتحدّث النشط: مستوى الصوت الحقيقيّ ----------
-  function rLevelWatch(r, uid, stream) {
+  // C326: في الآيفون (WebKit) لا نربط AudioContext بالميكروفون وبأصوات الآخرين — تشغيله أثناء الالتقاط قد يعيد تهيئة وحدة الصوت
+  //       فيضعف الصوت أو يتقطّع عند دخول كلّ عضو. المستوى يُقرأ بدلاً منه من إحصاءات WebRTC (audioLevel) كلّ ثانية.
+  function lvByStats() {
+    try { var n = global.navigator || {}; return !!IOSB() || /iPhone|iPad|iPod/.test(n.userAgent || "") || (/Macintosh/.test(n.userAgent || "") && n.maxTouchPoints > 1); } catch (e) { return false; }
+  }
+  function rLevelStats(r) {
+    if (r.done) return;
+    var mine = null;
+    var take = function (rep, map) {
+      rep.forEach(function (x) {
+        if (x.kind !== "audio" || typeof x.audioLevel !== "number") return;
+        if (x.type === "media-source") { mine = Math.max(mine || 0, x.audioLevel); r.lvSeen = true; return; }
+        if (x.type !== "inbound-rtp") return;
+        var u = map(x); if (u && r.peers[u]) r.peers[u].lv = x.audioLevel;
+      });
+    };
+    // C327: WebKit لا يعطي مستوى الميكروفون (media-source) في كلّ النسخ ⇒ بعد 5 قراءاتٍ بلا مستوى نعود إلى المحلّل للميكروفون وحده
+    //       (مرّةً واحدة عند الدخول — لا مع كلّ عضو، فلا يتكرّر ما تجنّبناه)
+    var any = !!(r.sfu && r.sfu.pc) || Object.keys(r.peers).some(function (u) { return r.peers[u].pc && !r.peers[u].sfu; });
+    if (any && !r.lvSeen && !r.an && r.local && (r.lvMiss = (r.lvMiss || 0) + 1) >= 5) { LOG.info("level.local.fallback"); rLevelWatch(r, "__me", r.local, true); }
+    Object.keys(r.peers).forEach(function (u) {
+      var p = r.peers[u]; if (!p.pc || p.sfu) return;
+      p.pc.getStats().then(function (rep) { if (!r.done) take(rep, function () { return u; }); r.lv = mine; }).catch(function () {});
+    });
+    var s = r.sfu;
+    if (s && s.pc) s.pc.getStats().then(function (rep) {
+      if (r.done || r.sfu !== s) return;
+      var byTrack = {}; Object.keys(s.byMid).forEach(function (k) { var x = s.byMid[k]; if (x && x.track) byTrack[x.track.id] = x.uid; });
+      take(rep, function (x) { return (x.mid != null && s.byMid[x.mid] && s.byMid[x.mid].uid) || byTrack[x.trackIdentifier] || null; });
+      r.lv = mine;
+    }).catch(function () {});
+  }
+  function rLevelWatch(r, uid, stream, force) {
+    if (lvByStats() && !force) return;   // C326
     var p = uid === "__me" ? r : r.peers[uid];
     var ctx = audioCtx(); if (!ctx || !p || p.an) return;
     var tr = stream.getAudioTracks()[0]; if (!tr) return;
@@ -3702,10 +3821,11 @@
   function rLevelsStart(r) {
     if (r.local) rLevelWatch(r, "__me", r.local);
     r.timers.st = setInterval(function () { rStatsTick(r); }, 3000);   // C38
+    if (lvByStats()) r.timers.lvs = setInterval(function () { rLevelStats(r); }, 1000);   // C326
     r.timers.lv = setInterval(function () {
       if (r.done) return;
       var best = null, bestV = 0.035, me = myUid();
-      var read = function (o) { if (!o || !o.an) return 0; o.an.an.getByteTimeDomainData(o.an.buf); var s = 0; for (var i = 0; i < o.an.buf.length; i++) { var d = (o.an.buf[i] - 128) / 128; s += d * d; } return Math.sqrt(s / o.an.buf.length); };
+      var read = function (o) { if (o && !o.an && typeof o.lv === "number") return o.lv; if (!o || !o.an) return 0; o.an.an.getByteTimeDomainData(o.an.buf); var s = 0; for (var i = 0; i < o.an.buf.length; i++) { var d = (o.an.buf[i] - 128) / 128; s += d * d; } return Math.sqrt(s / o.an.buf.length); };
       Object.keys(r.peers).forEach(function (u) { var v = read(r.peers[u]); r.levels[u] = v; if (r.members[u] && r.members[u].mic !== false && v > bestV) { bestV = v; best = u; } });
       var mv = r.mic ? read(r) : 0; r.levels[me] = mv; if (mv > bestV) { best = "__me"; }
       if (best !== r.speaker) { var old = r.speaker; r.speaker = best; if (old) rTile(r, old === me ? "__me" : old); if (best) rTile(r, best); }
@@ -3945,8 +4065,10 @@
   function rLeave(r, reason, opts) {
     r = r || rm; if (!r) return;
     if (r.done) { if (rm === r) rm = null; return; }
-    opts = opts || {}; r.done = true; bgAudio(false);
-    if (reason !== "retry") telSend({ id: r.code + "-" + r.sess, k: "room", mode: rBig(r) ? "sfu" : "mesh", role: amHost(r) ? "host" : "member", ok: !!r.joinedAt, n: Object.keys(r.met || {}).length + 1,
+    opts = opts || {}; r.done = true;
+    var keepA = reason === "retry";   // C326: إعادة الدخول الصامتة ⇒ لا نُطفئ وضع المكالمة ولا الميكروفون
+    if (keepA) handSet({ stream: r.local }); else { bgAudio(false); handEnd(); }
+    if (reason !== "retry") telSend({ id: r.code + "-" + r.sess, k: "room", mode: rBig(r) ? "sfu" : "mesh", osr: r.osRoute || null, role: amHost(r) ? "host" : "member", ok: !!r.joinedAt, n: Object.keys(r.met || {}).length + 1,
       setup: r.joinedAt && r.t0 ? r.joinedAt - r.t0 : null, secs: r.joinedAt ? Math.round((Date.now() - r.joinedAt) / 1000) : 0, reason: reason });   // C179
     if (r.scr) { r.scr = false; var wasN = !!(r.scrTrack && r.scrTrack.__native); try { if (r.scrTrack) r.scrTrack.stop(); } catch (e) {} if (wasN) { nscrEnd(); try { NB().screenStop(); } catch (e) {} } } rScrBar(null);   // C115/C120 · C141: وإيقاف الالتقاط الأصليّ عند مغادرة الغرفة
     if (reason === "retry") r.silentRetry = true;
@@ -3958,7 +4080,7 @@
     if (r.live && reason !== "kicked" && reason !== "ended" && reason !== "full" && reason !== "retry" && r.members && r.members[me] && !r.members[me].ghost) Object.keys(r.peers).forEach(function (u) { var pp = r.peers[u]; if (pp && pp.sess && r.members[u] && !r.members[u].ghost) rSend(r, u, pp.sess, { t: "bye" }); });
     Object.keys(r.peers).forEach(function (u) { try { r.peers[u].pc.close(); } catch (e) {} });
     sfuStop(r);
-    stopStream(r.local); try { if (r.camTrack) r.camTrack.stop(); } catch (e) {}
+    if (!keepA) stopStream(r.local); try { if (r.camTrack) r.camTrack.stop(); } catch (e) {}
     stopTone(); wakeOff();
     if (ref && me && reason !== "retry") {   // C70: إعادة المحاولة الصامتة لا تحذف شيئاً من الخادم
       try { ref.child("members/" + me).onDisconnect().cancel(); ref.child("sig/" + me).onDisconnect().cancel(); ref.child("req/" + me).onDisconnect().cancel(); } catch (e) {}

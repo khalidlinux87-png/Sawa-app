@@ -1431,7 +1431,7 @@
   // C315: الرسائل المؤقّتة تبقى ثلاثة أشهر على الأقلّ من إرسالها (كما في الخادم)
   var DIS_MIN_MS = 7776000000;
   function disExpOf(m) { return m && m.exp ? Math.max(Number(m.exp) || 0, (Number(m.ts) || 0) + DIS_MIN_MS) : 0; }
-  // C328: بطاقة القصّة في ردٍّ عليها — للعرض فقط (الصورة المصغّرة data:image، والنصّ بلون خلفيّته)
+  // C336: بطاقة القصّة في ردٍّ عليها — للعرض فقط (الصورة المصغّرة data:image، والنصّ بلون خلفيّته)
   function storyRefOf(ex, by) {
     var r = ex.story || {}, t = r.t === "video" || r.t === "image" ? r.t : "text";
     var th = typeof ex.thumb === "string" && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(ex.thumb) ? ex.thumb : null;
@@ -1464,7 +1464,7 @@
       if (group) { o.senderId = appId(m.by); o.senderName = personName(m.by, c); if (o.type === undefined) o.type = "text"; if (!m.del) toolShape(m, o, c); }
       else { o.senderUserId = appId(m.by); if (m.type === "system") { o.type = "system"; o.text = sysText(m, c); } }   // C23: إشعارات المحادثة السرّيّة في المحادثة الفرديّة
       if (m.e2eErr) o.e2eErr = true;
-      if (!m.del && m.extra && m.extra.story && typeof m.extra.story === "object") o.storyRef = storyRefOf(m.extra, m.by);   // C328
+      if (!m.del && m.extra && m.extra.story && typeof m.extra.story === "object") o.storyRef = storyRefOf(m.extra, m.by);   // C336
       if (!m.del && MEDIA_TYPES.indexOf(m.type) >= 0) mediaShape(m, o, cid, mine);
       if (!m.del && m.type === "contact") { var kk = cleanCard(m.extra && m.extra.card) || (m.contact ? cleanCard({ n: m.contact.name, uid: m.contact.uid }) : null); if (kk) o.card = kk; }   // C184
       if (!m.del && m.type === "location" && m.extra) { o.type = "location"; o.lat = Number(m.extra.lat); o.lng = Number(m.extra.lng); o.acc = m.extra.acc || null; o.text = m.extra.label || ""; }
@@ -2087,7 +2087,7 @@
       if (/unknown op/.test(m)) return null;   // خادمٌ أقدم
       throw e;
     }).then(function (r) {
-      // C326: الخادم أعطى رابط R2 ⇒ الملفّ يُرفع كما هو (بلا base64 ولا قطع) والخادم يكتب وصفه
+      // C334: الخادم أعطى رابط R2 ⇒ الملفّ يُرفع كما هو (بلا base64 ولا قطع) والخادم يكتب وصفه
       if (r && r.up) return r2Put(R2_BASE + r.up, blob, onProgress).then(function () { return "r2"; });
       return blobToB64(blob);
     }).then(function (b64) {
@@ -2131,7 +2131,42 @@
   }
   function idbGet(k) { return idb().then(function (db_) { if (!db_) return null; return new Promise(function (res) { try { var q = db_.transaction("m").objectStore("m").get(k); q.onsuccess = function () { res(q.result || null); }; q.onerror = function () { res(null); }; } catch (e) { res(null); } }); }); }
   function idbPut(k, v) { return idb().then(function (db_) { if (!db_) return; try { db_.transaction("m", "readwrite").objectStore("m").put(v, k); } catch (e) {} }); }
-  // ---------- C326: R2 — رفعٌ ثنائيّ بنسبة تقدّم، وتنزيلٌ برابطٍ موقَّع (رمزٌ لكلّ محادثة يُحفظ حتّى قبيل انتهائه) ----------
+  // C332: القطع تُنزَّل واحدةً واحدة (4 في وقتٍ واحد) ولكلّ قطعةٍ مهلتها — كانت كلّها في استعلامٍ واحد تحت مهلة 90 ث ثابتة،
+  //       فالصورة (حتّى 6 ميغابايت ⇒ ~12 قطعة) على شبكةٍ ضعيفة تنتهي مهلتها «اضغط لإعادة التنزيل» وكلّ إعادةٍ تبدأ من الصفر.
+  //       الآن: ما نُزِّل من القطع يبقى (الإعادة تكمل لا تبدأ من جديد)، ونسبة التنزيل تظهر على الصورة.
+  var mediaPct = {};
+  // C333: تنزيلٌ مشترك (المحادثات · القصص · اللحظات): قطعةً قطعة، 4 في وقتٍ واحد، مهلةٌ لكلّ قطعة، ويُكمل ما بدأه عند الإعادة.
+  //       كلّ قطعة تُفكّ إلى بايتات فور وصولها (طولها مضاعفٌ لـ4) — كان الفيديو الكبير (حتّى 70 ميغابايت) يُجمع نصّاً واحداً (~98 مليون حرف)
+  //       ثمّ يُفكّ ثمّ يُنسخ: ~300 ميغابايت ذاكرةً في لحظةٍ واحدة ⇒ يتجمّد WebView أو يُغلقه النظام.
+  var chunkCache = {};
+  function b64Bytes(s) { var bin = atob(s), n = bin.length, u = new Uint8Array(n); for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i); return u; }
+  function bytesB64(u) { var s = ""; for (var i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); }
+  function fetchChunked(meta, n, key, mime, onPct) {
+    var have = chunkCache[key] && chunkCache[key].n === n ? chunkCache[key] : (chunkCache[key] = { n: n, b: [] });
+    var todo = []; for (var k = 0; k < n; k++) if (have.b[k] == null) todo.push(k);
+    var got = n - todo.length, pct = function () { if (onPct) try { onPct(Math.round(got * 100 / n)); } catch (e) {} };
+    pct();
+    var worker = function () {
+      if (!todo.length) return Promise.resolve();
+      var k = todo.shift();
+      return withTimeout(meta.collection("c").doc(String(k)).get(), 45000, null, "timeout").then(function (c) {
+        if (!c.exists) throw new Error("incomplete");
+        var d = (c.data() || {}).d || "";
+        have.b[k] = d.length % 4 === 0 ? b64Bytes(d) : d;   // قطعةٌ بطولٍ غير معتاد تبقى نصّاً (نادر — انظر أدناه)
+        got++; pct();
+        return worker();
+      }, function (e) { todo.unshift(k); throw e; });
+    };
+    return Promise.all([worker(), worker(), worker(), worker()]).then(function () {
+      var parts = have.b;
+      if (parts.some(function (x) { return typeof x === "string"; }))   // احتياط: قطعٌ لا تُفكّ منفردة ⇒ نصٌّ واحد كالسابق
+        parts = [b64ToBlob(parts.map(function (x) { return typeof x === "string" ? x : bytesB64(x); }).join(""), mime)];
+      var blob = new Blob(parts, { type: mime || "application/octet-stream" });
+      delete chunkCache[key];
+      return blob;
+    });
+  }
+  // ---------- C334: R2 — رفعٌ ثنائيّ بنسبة تقدّم، وتنزيلٌ برابطٍ موقَّع (رمزٌ لكلّ محادثة يُحفظ حتّى قبيل انتهائه) ----------
   var R2_BASE = "https://sawa-deploy-test.khalidlinux87.workers.dev", r2Tok = {}, r2Kind = {};
   function r2Put(url, blob, onProgress) {
     return new Promise(function (res, rej) {
@@ -2157,30 +2192,49 @@
     });
     return p.then(function (tk) { return R2_BASE + "/m/" + encodeURIComponent(cid) + "/" + encodeURIComponent(mid) + tk.q; });
   }
-  function r2Fetch(cid, mid, mime) {
+  // ملفٌّ ثنائيّ من R2 مع نسبة التنزيل (يُقرأ مجرىً ويُجمع قطعاً — بلا base64)
+  function r2Fetch(cid, mid, mime, onPct) {
     return r2Url(cid, mid).then(function (u) { return fetch(u); }).then(function (r) {
       if (r.status === 404) throw new Error("gone");
       if (!r.ok) { if (r.status === 403) delete r2Tok[cid]; throw new Error("http " + r.status); }
-      return r.blob();
-    }).then(function (b) { return mime && b.type !== mime ? new Blob([b], { type: mime }) : b; });
-  }
-  function fetchMedia(cid, mid) {
-    var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
-    if (r2Kind[mid]) return r2Fetch(cid, mid, r2Kind[mid].mime);
-    var meta = d.collection("chats").doc(cid).collection("media").doc(mid);
-    return meta.get().then(function (doc) {
-      if (!doc.exists) throw new Error("gone");
-      var m0 = doc.data() || {};
-      if (m0.r2) return r2Fetch(cid, mid, m0.mime);
-      return meta.collection("c").get().then(function (cs) { return [doc, cs]; });
-    }).then(function (r) {
-      if (r instanceof Blob) return r;
-      var m = r[0].data() || {}, parts = [];
-      r[1].forEach(function (doc) { parts.push({ i: Number(doc.id), d: (doc.data() || {}).d || "" }); });
-      parts.sort(function (a, b) { return a.i - b.i; });
-      if (m.n && parts.length < m.n) throw new Error("incomplete");
-      return b64ToBlob(parts.map(function (p) { return p.d; }).join(""), m.mime);
+      var total = Number(r.headers.get("Content-Length")) || 0, type = mime || r.headers.get("Content-Type") || "application/octet-stream";
+      if (!r.body || !r.body.getReader || !total) return r.blob().then(function (b) { return b.type !== type ? new Blob([b], { type: type }) : b; });
+      var rd = r.body.getReader(), parts = [], got = 0, last = -1;
+      var pump = function () {
+        return rd.read().then(function (x) {
+          if (x.done) return new Blob(parts, { type: type });
+          parts.push(x.value); got += x.value.length;
+          var p = Math.min(99, Math.round(got * 100 / total)); if (onPct && p !== last) { last = p; try { onPct(p); } catch (e) {} }
+          return pump();
+        });
+      };
+      return pump();
     });
+  }
+  // C333: وثيقة الوسيط أوّلاً (عدد القطع ونوع الملفّ) ثمّ القطع — للمحادثات والقصص واللحظات
+  function fetchByMeta(meta, key, mime, onPct, onR2) {
+    // قواعد Firestore أقدم قد لا تسمح بقراءة وثيقة الوسيط للقصص/اللحظات ⇒ نعود إلى قراءة القطع مباشرةً كما كان
+    var denied = function (e) { return /permission|insufficient/i.test(String((e && (e.code || e.message)) || "")); };
+    return withTimeout(meta.get(), 30000, null, "timeout").catch(function (e) { if (denied(e)) return { exists: true, data: function () { return {}; } }; throw e; }).then(function (snap) {
+      if (!snap.exists) throw new Error("gone");
+      var m = snap.data() || {};
+      if (m.r2 && onR2) return onR2(m);   // C334: الملفّ في R2 لا في القطع
+      if (!m.n) {   // وثيقةٌ قديمة بلا عدد القطع (أو لا تُقرأ) ⇒ الطريقة القديمة (استعلامٌ واحد)
+        return withTimeout(meta.collection("c").get(), 90000, null, "timeout").then(function (q) {
+          var parts = []; q.forEach(function (doc) { parts.push({ i: Number(doc.id), d: (doc.data() || {}).d || "" }); });
+          if (!parts.length) throw new Error("incomplete");
+          parts.sort(function (a, b) { return a.i - b.i; });
+          return b64ToBlob(parts.map(function (p) { return p.d; }).join(""), m.mime || mime);
+        });
+      }
+      return fetchChunked(meta, m.n, key, m.mime || mime, onPct);
+    });
+  }
+  function fetchMedia(cid, mid, onPct) {
+    var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
+    if (r2Kind[mid]) return r2Fetch(cid, mid, r2Kind[mid].mime, onPct);   // C334
+    return fetchByMeta(d.collection("chats").doc(cid).collection("media").doc(mid), "c:" + mid, null, onPct,
+      function (m) { return r2Fetch(cid, mid, m.mime, onPct); });
   }
   // C140: طابور تنزيل — 3 في وقتٍ واحد، المحادثة المفتوحة أوّلاً، والأحدث طلباً أوّلاً (آخر الرسائل قبل أقدمها).
   //       كان كلّ وسيطٍ في المحادثة يبدأ تنزيله معاً فتتزاحم وتتأخّر الصورة التي وصلت للتوّ.
@@ -2202,7 +2256,7 @@
     var mk2 = mediaKeys[cid + "|" + mid], sec = e2eOn(chats[cid]) || /^sdm_/.test(String(cid));
     if (sec && !mk2) return Promise.resolve(null);   // C23: مفتاح الوسيط داخل رسالته المشفّرة — بعد فكّها
     mediaLoading[mid] = true;
-    // C326: فيديو في R2 (غير مشفّر) ⇒ يُشغَّل من الرابط مباشرةً وهو يُنزَّل — بلا انتظار الملفّ كلّه
+    // C334: فيديو في R2 (غير مشفّر) ⇒ يُشغَّل من الرابط مباشرةً وهو يُنزَّل — بلا انتظار الملفّ كلّه
     var rk = r2Kind[mid];
     if (rk && rk.type === "video" && !sec) {
       return r2Url(cid, mid).then(function (u) { mediaUrls[mid] = u; delete mediaLoading[mid]; publishMessages(cid); return u; }, function (e) {
@@ -2215,13 +2269,15 @@
     return withTimeout(idbGet(mid), 4000, null).then(function (b) {
       var tmp = !!((chats[cid] || {}).disappear);   // C14: لا نحفظ وسائط المحادثات المؤقّتة على الجهاز
       return b || dlSlot(cid).then(function (done) {
-        return withTimeout(fetchMedia(cid, mid), 90000, null, "timeout").then(function (x) { done(); return x; }, function (e) { done(); throw e; });
+        var last = -1;
+        return fetchMedia(cid, mid, function (p) { mediaPct[mid] = p; if (p - last >= 8 || p === 100) { last = p; publishMessages(cid); } })
+          .then(function (x) { done(); return x; }, function (e) { done(); throw e; });
       }).then(function (blob) { return sec ? e2e.decFile(blob, mk2.fk, mk2.fiv, mk2.mime) : blob; })
         .then(function (blob) { if (!noCache && !tmp) idbPut(mid, blob); return blob; });
     }).then(function (blob) {
-      mediaUrls[mid] = URL.createObjectURL(blob); delete mediaLoading[mid]; publishMessages(cid); return mediaUrls[mid];
+      mediaUrls[mid] = URL.createObjectURL(blob); delete mediaLoading[mid]; delete mediaPct[mid]; publishMessages(cid); return mediaUrls[mid];
     }).catch(function (e) {
-      delete mediaLoading[mid]; mediaFailed[mid] = (e && e.message) || "x"; publishMessages(cid);
+      delete mediaLoading[mid]; delete mediaPct[mid]; mediaFailed[mid] = (e && e.message) || "x"; publishMessages(cid);
       // C18: تعثّر التنزيل (شبكة ضعيفة) ⇒ إعادة تلقائيّة بعد 5 ثم 20 ثم 60 ثانية — كان يبقى «لم يصل» حتّى إعادة فتح التطبيق
       var n = (mediaTries[mid] = (mediaTries[mid] || 0) + 1);
       if (!/gone/.test(mediaFailed[mid]) && n <= 5) setTimeout(function () { if (mediaFailed[mid] && !mediaUrls[mid]) { delete mediaFailed[mid]; ensureMedia(cid, mid, noCache); } }, [5000, 15000, 45000, 120000, 300000][n - 1]);
@@ -2398,7 +2454,7 @@
       var unseen = items.filter(function (x) { return !stSeen[x.id]; }).length;
       return { owner: k, name: stName(k, s.name), photo: photoOf(k), items: items, unseen: unseen, last: items[items.length - 1].ts };
     }).filter(Boolean).sort(function (a, b) { return (b.unseen > 0) - (a.unseen > 0) || b.last - a.last; });
-    var last = mineItems[mineItems.length - 1] || null;   // C328: غلاف «قصّتي» = آخر قصّة (إطارٌ من الفيديو · الصورة · النصّ بلونه)
+    var last = mineItems[mineItems.length - 1] || null;   // C336: غلاف «قصّتي» = آخر قصّة (إطارٌ من الفيديو · الصورة · النصّ بلونه)
     var cover = last ? { thumb: last.thumb || null, t: last.t, text: last.t === "text" ? String(last.text || "").slice(0, 40) : "", bg: stGrad(last.bg) } : null;
     return { enabled: !!state.uid, me: { cover: cover, uid: state.uid, name: (state.me && state.me.name) || L("أنا", "Me"), photo: state.uid ? photoOf(state.uid) : null, items: mineItems, aud: stState.mine ? (stState.mine.aud || []).length : null, hide: (stState.mine && stState.mine.hide) || [] }, list: list };
   }
@@ -2419,18 +2475,12 @@
       }).then(function () { return meta.update({ done: true }); }).then(function () { stUrls[mid] = URL.createObjectURL(blob); return mid; });
     });
   }
-  function stMedia(owner, it) {
+  function stMedia(owner, it, onPct) {
     if (stUrls[it.mid]) return Promise.resolve(stUrls[it.mid]);
-    return idbGet("st:" + it.mid).then(function (b) {
+    return withTimeout(idbGet("st:" + it.mid), 4000, null).then(function (b) {
       if (b) return b;
       var d = fsdb(), meta = d.collection("stories").doc(owner).collection("media").doc(it.mid);
-      return meta.collection("c").get().then(function (snap) {
-        var parts = []; snap.forEach(function (doc) { parts.push({ i: Number(doc.id), d: (doc.data() || {}).d || "" }); });
-        parts.sort(function (a, b) { return a.i - b.i; });
-        if (!parts.length || (it.n && parts.length < it.n)) throw new Error("incomplete");
-        var blob = b64ToBlob(parts.map(function (p) { return p.d; }).join(""), it.mime);
-        idbPut("st:" + it.mid, blob); return blob;
-      });
+      return fetchByMeta(meta, "st:" + it.mid, it.mime || null, onPct).then(function (blob) { idbPut("st:" + it.mid, blob); return blob; });   // C333
     }).then(function (blob) { return (stUrls[it.mid] = URL.createObjectURL(blob)); });
   }
   function stAgo(ts) { var m = Math.round((Date.now() - ts) / 60000); return m < 1 ? L("الآن", "now") : m < 60 ? L("قبل ", "") + m + L(" د", "m") : L("قبل ", "") + Math.round(m / 60) + L(" س", "h"); }
@@ -2508,18 +2558,12 @@
       }).then(function () { return meta.update({ done: true }); }).then(function () { mo.urls[mid] = URL.createObjectURL(blob); return mid; });
     });
   }
-  function moMedia(pid, it) {
+  function moMedia(pid, it, onPct) {
     if (mo.urls[it.mid]) return Promise.resolve(mo.urls[it.mid]);
-    return idbGet("mm:" + it.mid).then(function (b) {
+    return withTimeout(idbGet("mm:" + it.mid), 4000, null).then(function (b) {
       if (b) return b;
       var meta = fsdb().collection("moments").doc(pid).collection("media").doc(it.mid);
-      return meta.collection("c").get().then(function (snap) {
-        var parts = []; snap.forEach(function (doc) { parts.push({ i: Number(doc.id), d: (doc.data() || {}).d || "" }); });
-        parts.sort(function (a, b) { return a.i - b.i; });
-        if (!parts.length || (it.n && parts.length < it.n)) throw new Error("incomplete");
-        var blob = b64ToBlob(parts.map(function (p) { return p.d; }).join(""), it.mime);
-        idbPut("mm:" + it.mid, blob); return blob;
-      });
+      return fetchByMeta(meta, "mm:" + it.mid, it.mime || null, onPct).then(function (blob) { idbPut("mm:" + it.mid, blob); return blob; });   // C333
     }).then(function (blob) { return (mo.urls[it.mid] = URL.createObjectURL(blob)); });
   }
   function moPrefs() { if (mo.prefs) return Promise.resolve(mo.prefs); return call("moment.prefs", {}).then(function (r) { mo.prefs = { close: r.close || [], hide: r.hide || [], mute: r.mute || [], seen: r.seen || 0 }; moEmit(); return mo.prefs; }); }
@@ -2867,7 +2911,7 @@
     function show() {
       stage.innerHTML = ""; cnt.textContent = m.length > 1 ? (i + 1) + " / " + m.length : "";
       var it = m[i], sp = mk("div", "color:#fff;font:600 13px var(--sawa-font,system-ui)", L("جارٍ التحميل…", "Loading…")); stage.appendChild(sp);
-      moMedia(p.id, it).then(function (u) {
+      moMedia(p.id, it, function (pc) { if (pc > 0 && pc < 100 && sp.isConnected) sp.textContent = L("جارٍ التحميل… ", "Loading… ") + pc + "%"; }).then(function (u) {
         stage.innerHTML = "";
         var el = it.t === "video" ? mk("video", "max-width:100%;max-height:100%") : mk("img", "max-width:100%;max-height:100%;object-fit:contain");
         el.src = u; if (it.t === "video") { el.controls = true; el.playsInline = true; el.autoplay = true; if (it.poster) el.poster = it.poster; }
@@ -3661,7 +3705,7 @@
         var spin = mk("div", "position:relative;font:700 13px var(--sawa-font,system-ui);opacity:.85", L("جارٍ التحميل…", "Loading…")); holder.appendChild(spin);
         stage.appendChild(holder);
         var myIdx = idx, myOwner = cur;
-        stMedia(cur, it).then(function (u) {
+        stMedia(cur, it, function (pc) { if (pc > 0 && pc < 100 && spin.parentNode) spin.textContent = L("جارٍ التحميل… ", "Loading… ") + pc + "%"; }).then(function (u) {
           if (myIdx !== idx || myOwner !== cur || !ov.isConnected) return;
           holder.removeChild(spin);
           if (it.t === "video") {
@@ -3697,7 +3741,7 @@
           var v = inp.value.trim(); if (!v) return;
           var snip = it.t === "text" ? it.text.slice(0, 60) : it.t === "video" ? L("🎬 فيديو", "🎬 video") : L("📷 صورة", "📷 photo");
           var who = cur;
-          // C328: الردّ يحمل بطاقة القصّة (صورة مصغّرة من الصورة/الفيديو، أو نصّها بلونها) ⇒ يُعرف في المحادثة على ماذا كان الردّ
+          // C336: الردّ يحمل بطاقة القصّة (صورة مصغّرة من الصورة/الفيديو، أو نصّها بلونها) ⇒ يُعرف في المحادثة على ماذا كان الردّ
           var sref = { owner: who, sid: it.id, t: it.t, text: String(it.text || "").slice(0, 120), bg: Number(it.bg) || 0 };
           var ex = { story: sref }; if (it.thumb && it.thumb.length <= 6000) ex.thumb = it.thumb;
           openDm(who).then(function (cid) { if (cid) send(cid, v, { extra: ex }); });
@@ -3716,7 +3760,7 @@
       var r = stage.getBoundingClientRect(), xr = (e.clientX - r.left) / (r.width || 1);
       var back = isAr() ? xr > 0.7 : xr < 0.3;
       if (back) prev(); else next();
-      // C327: آخر قصّة ⇒ أُغلق العارض عند رفع الإصبع، فكانت «النقرة» التي تليه تقع على ما تحته (محادثة) فتفتحها
+      // C335: آخر قصّة ⇒ أُغلق العارض عند رفع الإصبع، فكانت «النقرة» التي تليه تقع على ما تحته (محادثة) فتفتحها
       if (!ov.isConnected) swallowNextClick();
     });
     load(queue[qi]);
@@ -3892,23 +3936,24 @@
     var ex = m.extra || {}, mid = ex.mid, url = localUrls[mid] || mediaUrls[mid] || null;
     var viewedByMe = !!(m.viewed && m.viewed[state.uid]);
     o.cloudMid = mid; o.cloudCid = cid; o.fileSize = ex.size || 0; o.mime = ex.mime || null;
-    if (ex.r2 && mid) r2Kind[mid] = { type: m.type, mime: ex.mime || null };   // C326
+    if (ex.r2 && mid) r2Kind[mid] = { type: m.type, mime: ex.mime || null };   // C334
     if (m.type === "image" || m.type === "video") {
       o.viewOnce = !!ex.viewOnce; o.viewedOnce = !!ex.viewOnce && (mine || viewedByMe || !!m.gone);
       if (o.viewOnce && mine) o.peerViewed = !!m.gone || Object.keys(m.viewed || {}).some(function (u) { return u !== state.uid; });   // C100: المرسل يعرف هل فُتحت
       // الفيديو لا يُعرض بصورةٍ مصغّرة داخل <video> — يبقى «غير متاح» حتّى يكتمل تنزيله
       o.fileUrl = o.viewedOnce ? null : (url || (m.type === "image" ? ex.thumb || null : null)); o.thumb = ex.thumb || null; o.mediaLoading = !url && !mediaFailed[mid];
+      o.dlPct = !url && mediaPct[mid] != null ? mediaPct[mid] : null;   // C332
       o.mediaFailed = !url && !!mediaFailed[mid];   // C99: الصورة/الفيديو أيضاً «اضغط لإعادة التنزيل» (كانت تبقى ضبابيّة)
       o.text = ex.name || ""; o.w = ex.w || null; o.h = ex.h || null; o.durationSec = ex.duration || null;
     } else if (m.type === "voice") {
       o.audioUrl = url; o.duration = typeof ex.duration === "number" ? (Math.floor(ex.duration / 60) + ":" + String(ex.duration % 60).padStart(2, "0")) : (ex.duration || "0:00");
       o.transcript = ex.transcript || null;
-      o.mediaLoading = !url && !mediaFailed[mid]; o.mediaFailed = !url && !!mediaFailed[mid];   // C18: الفقاعة تعرض «يُنزَّل…» أو «اضغط لإعادة التنزيل»
+      o.mediaLoading = !url && !mediaFailed[mid]; o.mediaFailed = !url && !!mediaFailed[mid]; o.dlPct = !url && mediaPct[mid] != null ? mediaPct[mid] : null;   // C332   // C18: الفقاعة تعرض «يُنزَّل…» أو «اضغط لإعادة التنزيل»
     } else { o.text = ex.name || L("ملفّ", "File"); o.fileUrl = url; }
     // C140: التنزيل المسبق — ما وصلني في آخر يومين يُنزَّل ولو لم تُفتح المحادثة بعد (فيكون جاهزاً عند فتحها)،
     //       والفيديو حتّى 16 ميغابايت على شبكةٍ جيّدة (كان 5 فيبقى «اضغط للتنزيل»)
     var fresh = !mine && (Date.now() - (m.ts || 0)) < 2 * 86400000;
-    var r2v = !!ex.r2 && m.type === "video" && !ex.fk;   // C326: فيديو R2 يُشغَّل من الرابط ⇒ «تنزيله» طلب رابطٍ فقط
+    var r2v = !!ex.r2 && m.type === "video" && !ex.fk;   // C334: فيديو R2 يُشغَّل من الرابط ⇒ «تنزيله» طلب رابطٍ فقط
     var auto = (cid === openCid || (fresh && (m.type !== "video" || r2v || (ex.size || 0) <= AUTO_DL))) && !url && !mediaFailed[mid] && !(ex.viewOnce && (mine || viewedByMe || m.gone))
       && (m.type !== "file") && (m.type !== "video" || r2v || (ex.size || 0) <= autoVideoMax());
     if (auto) setTimeout(function () { ensureMedia(cid, mid, !!ex.viewOnce); }, 0);
@@ -5566,7 +5611,7 @@
 
   // ---------- حذف الحساب (شرط Google Play) ----------
   function wipeLocal() {
-    // C327: لا يعيد التطبيق حفظ ما في الذاكرة (سجلّ المكالمات وغيره) عند pagehide بعد المسح — كان يُكتب من جديد فيبقى بعد حذف الحساب
+    // C335: لا يعيد التطبيق حفظ ما في الذاكرة (سجلّ المكالمات وغيره) عند pagehide بعد المسح — كان يُكتب من جديد فيبقى بعد حذف الحساب
     try { global.__sawaWiping = true; } catch (e) {}
     try { localStorage.clear(); } catch (e) {}
     var done = function () {
@@ -5642,15 +5687,46 @@
     s.box.appendChild(ul);
     s.box.appendChild(mk("div", "font:700 13px var(--sawa-font,system-ui);color:#5b6b7c;margin:6px 2px", L("للتأكيد اكتب: حذف", "To confirm, type: DELETE")));
     var inp = mk("input", "width:100%;box-sizing:border-box;border:1.5px solid #dfe5ec;color:#1A1A2E;background:#fff;border-radius:12px;padding:12px;font:700 16px var(--sawa-font,system-ui);text-align:center;outline:none");
-    inp.autocomplete = "off"; s.box.appendChild(inp);
-    var go = mkBtn(L("حذف حسابي نهائيّاً", "Delete my account"), "danger"); go.style.marginTop = "10px"; go.disabled = true; go.style.opacity = ".5";
-    var cancel = mkBtn(L("إلغاء", "Cancel")); cancel.style.marginTop = "8px";
-    s.box.appendChild(go); s.box.appendChild(cancel);
-    var ok = function () { var v = inp.value.trim(); return v === "حذف" || v.toUpperCase() === "DELETE"; };
-    inp.oninput = function () { go.disabled = !ok(); go.style.opacity = ok() ? "1" : ".5"; };
-    cancel.onclick = s.close;
+    inp.autocomplete = "off";
+    // C331: الآيفون يصحّح الكلمة تلقائيّاً عند لمس الزرّ أو «تمّ» (حذف ⇒ حذفت/حذفه) فلا تطابق — نوقف التصحيح والأحرف الكبيرة والتدقيق
+    inp.setAttribute("autocorrect", "off"); inp.setAttribute("autocapitalize", "off"); inp.setAttribute("spellcheck", "false"); inp.spellcheck = false;
+    s.box.appendChild(inp);
+    // C329: أمانٌ من اللمس بالخطأ — «إلغاء» هو الزرّ البارز أوّلاً، وزرّ الحذف معطّلٌ حتّى تُكتب الكلمة ويمضي عدٌّ تنازليّ (5 ث) من فتح النافذة
+    var cancel = mkBtn(L("إلغاء — أبقِ حسابي", "Cancel — keep my account"), "primary"); cancel.style.marginTop = "10px";
+    var GO_TXT = L("حذف حسابي نهائيّاً", "Delete my account"), wait = 5, done = false;
+    var go = mkBtn(GO_TXT, "danger"); go.style.marginTop = "18px"; go.disabled = true; go.style.opacity = ".5";
+    s.box.appendChild(cancel); s.box.appendChild(go);
+    // C330: لوحات مفاتيح الهواتف تضيف أحرفاً خفيّة (علامة اتّجاه RLM عند التبديل إلى العربيّة، وصلٌ صفريّ، تطويل، تشكيل، نقطةٌ من التصحيح التلقائيّ)
+    //       فكانت «حذف» المكتوبة لا تطابق أبداً ويبقى زرّ الحذف معطّلاً. نطابق الحروف وحدها — الكلمة نفسها ما زالت مطلوبة بالضبط.
+    var word = function () {
+      var v = String(inp.value || "");
+      try { v = v.normalize("NFKC"); } catch (e) {}
+      return v.replace(/[\u064B-\u065F\u0670\u0640]/g, "")                                   // تشكيل وتطويل
+              .replace(/[\u00AD\u061C\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, "")   // أحرف اتّجاهٍ ووصلٍ خفيّة
+              .replace(/[\s.,،؛;:!?؟…"'«»()\-_*]/g, "").toLowerCase();
+    };
+    var typed = function () { var w = word(); return w === "حذف" || w === "delete"; };
+    var ok = function () { return wait <= 0 && typed(); };
+    var hint = mk("div", "font:600 12px var(--sawa-font,system-ui);color:#5b6b7c;text-align:center;min-height:16px;margin-top:6px", "");
+    s.box.insertBefore(hint, cancel);
+    var paint = function () {
+      if (done) return;
+      var on = ok(); go.disabled = !on; go.style.opacity = on ? "1" : ".5";
+      go.textContent = wait > 0 ? GO_TXT + " (" + wait + ")" : GO_TXT;
+      // C331: نُظهر ما قرأه التطبيق فعلاً — إن غيّرته لوحة المفاتيح يراه المستخدم (ونعرف السبب)
+      var seen = String(inp.value || "").trim().slice(0, 24);
+      hint.textContent = on ? "" : !typed() ? (word() ? L("اكتب كلمة «حذف» فقط — المكتوب: «", "Type only the word DELETE — you typed: «") + seen + "»" : "") : L("انتظر قليلاً…", "Wait a moment…");
+    };
+    // الأحداث وحدها لا تكفي في بعض لوحات المفاتيح (كتابةٌ مركّبة لم تُعتمد بعد) ⇒ فحصٌ دوريّ خفيف ما دامت النافذة مفتوحة
+    var tick = setInterval(function () { if (!document.body.contains(go)) { clearInterval(tick); return; } paint(); }, 400);
+    var t0 = Date.now(); wait = 5;
+    var secs = setInterval(function () { if (!document.body.contains(go)) { clearInterval(secs); return; } wait = Math.max(0, 5 - Math.floor((Date.now() - t0) / 1000)); paint(); if (!wait) clearInterval(secs); }, 250);
+    paint();
+    ["input", "keyup", "change", "compositionend", "paste"].forEach(function (ev) { inp.addEventListener(ev, function () { setTimeout(paint, 0); }); });
+    cancel.onclick = function () { clearInterval(tick); clearInterval(secs); s.close(); };
     go.onclick = function () {
       if (!ok()) return;
+      done = true;
       go.disabled = true; cancel.disabled = true; go.textContent = L("جارٍ الحذف…", "Deleting…");
       call("account.delete", { confirm: "DELETE" }).then(function () {
         s.box.innerHTML = "";
@@ -5658,7 +5734,7 @@
         s.box.appendChild(note(L("شكراً لاستعمالك سوا. يُعاد تشغيل التطبيق الآن.", "Thanks for using Sawa. Restarting…")));
         wipeLocal();
       }).catch(function (e) {
-        go.disabled = false; cancel.disabled = false; go.textContent = L("حذف حسابي نهائيّاً", "Delete my account");
+        done = false; go.disabled = false; cancel.disabled = false; go.textContent = GO_TXT;
         toast(L("تعذّر الحذف: ", "Couldn't delete: ") + codeErr(e));
       });
     };
@@ -6607,7 +6683,7 @@
       o.extra = { title: typeof tx.title === "string" ? tx.title.slice(0, 200) : "", tasks: tl0 };
     }
     if (m.type === "contact") { var kc = cleanCard(p.extra && p.extra.card); if (kc) o.extra = { card: kc }; else delete o.extra; }   // C184
-    if (m.type === "text" && p.extra && p.extra.story && typeof p.extra.story === "object") o.extra = { story: p.extra.story, thumb: p.extra.thumb };   // C328
+    if (m.type === "text" && p.extra && p.extra.story && typeof p.extra.story === "object") o.extra = { story: p.extra.story, thumb: p.extra.thumb };   // C336
     if (m.type === "location") {
       var lx = p.extra || {}, la = Number(lx.lat), ln = Number(lx.lng);
       if (!(la >= -90 && la <= 90 && ln >= -180 && ln <= 180)) { o.type = "text"; o.e2eErr = true; o.text = L("🔒 تعذّر فكّ تشفير هذه الرسالة", "🔒 Couldn't decrypt this message"); delete o.extra; return o; }
