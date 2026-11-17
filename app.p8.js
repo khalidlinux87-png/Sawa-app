@@ -4064,8 +4064,8 @@ function AppInner() {
     else if (discoverTop.type === "moments") {
         discoverContent = React.createElement(MomentsHost, { broadcastLists: broadcastLists, conversations: conversations, legacy: { posts: momentsPosts, myUserId: myUserId, onAddPost: addMomentPost, onToggleLike: toggleMomentLike, onAddComment: addMomentComment, onDeletePost: deleteMomentPost, onViewPost: viewMomentPost, onReplyPrivately: replyToMomentPrivately, onVotePoll: voteMomentPoll }, onBack: () => { setDiscoverStack([]); if (momentsReturnTab) { const back = momentsReturnTab; setMomentsReturnTab(null); setTab(back); } } });
     }
-    else if (discoverTop.type === "ersal") {   // C225: للمشرف والمدير فقط — غير المخوَّل يعود إلى «استكشف»
-        if (!canIntl) { setTimeout(() => setDiscoverStack([]), 0); }
+    else if (discoverTop.type === "ersal") {   // C225: للمشرف والمدير فقط — غير المخوَّل يعود إلى «استكشف» · C338: ولا يُفتح في تطبيق الآيفون
+        if (!canIntl || IN_IOS_APP) { setTimeout(() => setDiscoverStack([]), 0); }
         else discoverContent = (React.createElement(ErsalScreen, { walletBalance: walletBalance, walletPin: walletPin, canWallet: SHOW_WALLET && canIntl, shipments: shipments, onCreateShipment: createShipment, onMarkFailed: markShipmentFailed, onBulkCreateShipments: bulkCreateShipments, onChangeAddress: changeShipmentAddress, onConfirmPickup: confirmShipmentPickup, onSimulateDays: simulateShipmentDays, onCancelShipment: cancelShipment, onRateCourier: rateCourier, onReorderShipment: reorderShipment, onBack: () => setDiscoverStack([]) }));
     }
     else if (discoverTop.type === "taxi") {
