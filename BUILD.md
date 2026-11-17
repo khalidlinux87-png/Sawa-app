@@ -3198,3 +3198,9 @@ Khalid's notes on C314:
 - **No iOS build needed:** the app loads the live site.
 - **Checks:** `node --check` on app.p3, sw.js and on all nine parts joined. **Not tried on an iPhone.**
 - **Upload:** app.p3.js (438172 bytes) then sw.js (v517, 19330 bytes) last. Check with an admin account: iPhone app ⇒ no wallet in Explore; Android app ⇒ wallet shown.
+
+## 🍎 C338 — Ersal Express never shown in the iPhone app · app.p3 · app.p8 · sw v518
+- **Why:** same as C337 (Apple Guideline 2.3.1): Ersal Express is a moderator/admin-only demo, so inside the iPhone app it counts as a hidden feature.
+- **Change:** the Discover card needs `!IN_IOS_APP`; the `ersal` route in app.p8 sends back to Discover when `!canIntl || IN_IOS_APP`. Android app and browsers unchanged (moderators and admins only).
+- **No iOS build needed.** **Checks:** `node --check` on app.p3, app.p8, sw.js and all nine parts joined. **Not tried on an iPhone.**
+- **Upload:** app.p3.js (438187) · app.p8.js (390559) · sw.js (v518, 19330) last.

@@ -205,7 +205,7 @@ function DiscoverHomeScreen({ onOpenFamily, personCount, groupPersons = {}, onOp
             // C226: «محفظة سوا» و«إرسال إكسبريس» بنمط بطاقات «استكشف» نفسه (تدرّج · أيقونةٌ بيضاء في مربّعٍ شفّاف · عنوانٌ كبير)
             //        مع شارة «تجريبيّ · للمشرف والمدير» بدل الإطار المتقطّع
             SHOW_WALLET && intlAdm && onOpenWallet && discoverSvcCard({ onPress: onOpenWallet, Icon: Wallet, color: SERVICE_COLORS.wallet, demo: true, title: tl("محفظة سوا", "Sawa Wallet"), sub: tl("الرصيد والتحويل والعملات والبطاقات", "Balance, transfers, currencies and cards") }),
-            intlAdm && onOpenErsal && discoverSvcCard({ onPress: onOpenErsal, Icon: Truck, color: SERVICE_COLORS.ersal, demo: true, title: tl("إرسال إكسبريس", "Ersal Express"), sub: tl("شحنٌ وتوصيلٌ بين المدن", "Intercity shipping and delivery") }),
+            !IN_IOS_APP && intlAdm && onOpenErsal && discoverSvcCard({ onPress: onOpenErsal, Icon: Truck, color: SERVICE_COLORS.ersal, demo: true, title: tl("إرسال إكسبريس", "Ersal Express"), sub: tl("شحنٌ وتوصيلٌ بين المدن", "Intercity shipping and delivery") }),
             SHOW_SOON_SERVICES && React.createElement("div", { className: "text-xs font-bold mb-2", style: { color: colors.text } }, t("alkhdmat")),
             SHOW_SOON_SERVICES && React.createElement("div", { className: "grid grid-cols-2 gap-3" },
                 React.createElement("button", { onClick: soon, "aria-disabled": true, className: "flex flex-col items-center gap-2 rounded-2xl p-4 border text-center", style: { position: "relative", opacity: 0.55, backgroundColor: colors.card, borderColor: colors.border, minHeight: 138, justifyContent: "center" } },
