@@ -1275,12 +1275,15 @@ function MeScreen({ onOpenSettings, onOpenNotifications, statusOption, profilePh
                 React.createElement(item.icon, { size: 18, color: meIconColor(item), "aria-hidden": true }),
                 React.createElement("span", { className: `flex-1 text-sm font-bold ${textStart()} ${ms("2")}`, style: { color: colors.text } }, item.label),
                 React.createElement(ChevronLeft, { size: 16, color: colors.textMuted, "aria-hidden": true, style: { transform: isRTL() ? "none" : "scaleX(-1)" } }))))))),
-        React.createElement("div", { className: "mt-4 mx-4 rounded-2xl overflow-hidden border", style: { backgroundColor: colors.card, borderColor: colors.border } },
+        // C328: shrink-0 — بطاقةٌ بـ overflow-hidden داخل عمودٍ مرن قابلٍ للتمرير كانت تنضغط إلى 2px فيختفي «تسجيل الخروج» و«حذف الحساب»
+        React.createElement("div", { className: "mt-4 mx-4 rounded-2xl overflow-hidden border shrink-0", style: { backgroundColor: colors.card, borderColor: colors.border } },
             React.createElement("button", { onClick: onLogout, className: `w-full flex ${rowStart()} items-center gap-2 px-4 py-3.5` },
                 React.createElement(LogOut, { size: 18, color: colors.danger }),
-                React.createElement("span", { className: "text-sm font-bold", style: { color: colors.danger } }, t("tsjyl_alkhrwj"))),
-            // C11: حذف الحساب نهائيّاً (شرط Google Play) — نافذة تأكيد في SawaChat
-            cloudMe && SCm.deleteAccountSheet && React.createElement("button", { onClick: () => SCm.deleteAccountSheet(), className: `w-full flex ${rowStart()} items-center gap-2 px-4 py-3`, style: { borderTop: `1px solid ${colors.border}` } },
+                React.createElement("span", { className: "text-sm font-bold", style: { color: colors.danger } }, t("tsjyl_alkhrwj")))),
+        // C11: حذف الحساب نهائيّاً (شرط Google Play) — نافذة تأكيد في SawaChat
+        // C329: بطاقةٌ مستقلّة تحت «تسجيل الخروج» بفاصلٍ واضح — كانت ملاصقةً له فيُخشى لمسها بالخطأ
+        cloudMe && SCm.deleteAccountSheet && React.createElement("div", { className: "mt-8 mx-4 rounded-2xl overflow-hidden border shrink-0", style: { backgroundColor: colors.card, borderColor: colors.border } },
+            React.createElement("button", { onClick: () => SCm.deleteAccountSheet(), className: `w-full flex ${rowStart()} items-center gap-2 px-4 py-3` },
                 React.createElement(Trash2, { size: 16, color: colors.textMuted }),
                 React.createElement("span", { className: "text-xs font-bold", style: { color: colors.textMuted } }, tl("حذف حسابي", "Delete my account")))),
         // رقم النسخة — يُحقن آلياً من sw.js عند كل بناء (انظر build.sh)
