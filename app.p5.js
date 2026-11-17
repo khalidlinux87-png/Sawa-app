@@ -783,7 +783,7 @@ function MediaBubble({ m, onView }) {
             failed ? pill("⟳ " + tl("اضغط لإعادة التنزيل", "Tap to retry"))
                 : loading ? React.createElement(React.Fragment, null,
                     React.createElement("span", { className: "sawa-spin", style: { width: 26, height: 26, borderRadius: "50%", border: "3px solid rgba(255,255,255,0.35)", borderTopColor: "#fff", display: "inline-block", animation: "sawaSpin 0.9s linear infinite" } }),
-                    pill(m.uploadPct != null ? tl("يُرفع…", "Uploading…") + " " + m.uploadPct + "%" : tl("جارٍ التنزيل…", "Downloading…")))
+                    pill(m.uploadPct != null ? tl("يُرفع…", "Uploading…") + " " + m.uploadPct + "%" : tl("جارٍ التنزيل…", "Downloading…") + (m.dlPct != null && m.dlPct > 0 ? " " + m.dlPct + "%" : "")))
                 : pill(isVid ? tl("فيديو", "Video") : tl("صورة", "Photo"))));
 }
 if (typeof document !== "undefined" && !document.getElementById("sawa-spin-css")) { try { const c = document.createElement("style"); c.id = "sawa-spin-css"; c.textContent = "@keyframes sawaSpin{to{transform:rotate(360deg)}}"; document.head.appendChild(c); } catch (e) { } }

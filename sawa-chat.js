@@ -2118,16 +2118,41 @@
   }
   function idbGet(k) { return idb().then(function (db_) { if (!db_) return null; return new Promise(function (res) { try { var q = db_.transaction("m").objectStore("m").get(k); q.onsuccess = function () { res(q.result || null); }; q.onerror = function () { res(null); }; } catch (e) { res(null); } }); }); }
   function idbPut(k, v) { return idb().then(function (db_) { if (!db_) return; try { db_.transaction("m", "readwrite").objectStore("m").put(v, k); } catch (e) {} }); }
-  function fetchMedia(cid, mid) {
+  // C332: القطع تُنزَّل واحدةً واحدة (4 في وقتٍ واحد) ولكلّ قطعةٍ مهلتها — كانت كلّها في استعلامٍ واحد تحت مهلة 90 ث ثابتة،
+  //       فالصورة (حتّى 6 ميغابايت ⇒ ~12 قطعة) على شبكةٍ ضعيفة تنتهي مهلتها «اضغط لإعادة التنزيل» وكلّ إعادةٍ تبدأ من الصفر.
+  //       الآن: ما نُزِّل من القطع يبقى (الإعادة تكمل لا تبدأ من جديد)، ونسبة التنزيل تظهر على الصورة.
+  var mediaParts = {}, mediaPct = {};
+  function fetchMedia(cid, mid, onPct) {
     var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
     var meta = d.collection("chats").doc(cid).collection("media").doc(mid);
-    return Promise.all([meta.get(), meta.collection("c").get()]).then(function (r) {
-      if (!r[0].exists) throw new Error("gone");
-      var m = r[0].data() || {}, parts = [];
-      r[1].forEach(function (doc) { parts.push({ i: Number(doc.id), d: (doc.data() || {}).d || "" }); });
-      parts.sort(function (a, b) { return a.i - b.i; });
-      if (m.n && parts.length < m.n) throw new Error("incomplete");
-      return b64ToBlob(parts.map(function (p) { return p.d; }).join(""), m.mime);
+    return withTimeout(meta.get(), 30000, null, "timeout").then(function (snap) {
+      if (!snap.exists) throw new Error("gone");
+      var m = snap.data() || {};
+      if (!m.n) {   // وثيقةٌ قديمة بلا عدد القطع ⇒ الطريقة القديمة (استعلامٌ واحد)
+        return withTimeout(meta.collection("c").get(), 90000, null, "timeout").then(function (q) {
+          var parts = []; q.forEach(function (doc) { parts.push({ i: Number(doc.id), d: (doc.data() || {}).d || "" }); });
+          parts.sort(function (a, b) { return a.i - b.i; });
+          return b64ToBlob(parts.map(function (p) { return p.d; }).join(""), m.mime);
+        });
+      }
+      var n = m.n, have = mediaParts[mid] && mediaParts[mid].n === n ? mediaParts[mid] : (mediaParts[mid] = { n: n, d: [] });
+      var todo = []; for (var k = 0; k < n; k++) if (typeof have.d[k] !== "string") todo.push(k);
+      var got = n - todo.length, pct = function () { if (onPct) onPct(Math.round(got * 100 / n)); };
+      pct();
+      var worker = function () {
+        if (!todo.length) return Promise.resolve();
+        var k = todo.shift();
+        return withTimeout(meta.collection("c").doc(String(k)).get(), 45000, null, "timeout").then(function (c) {
+          if (!c.exists) throw new Error("incomplete");
+          have.d[k] = (c.data() || {}).d || ""; got++; pct();
+          return worker();
+        });
+      };
+      return Promise.all([worker(), worker(), worker(), worker()]).then(function () {
+        var b = b64ToBlob(have.d.join(""), m.mime);
+        delete mediaParts[mid];
+        return b;
+      });
     });
   }
   // C140: طابور تنزيل — 3 في وقتٍ واحد، المحادثة المفتوحة أوّلاً، والأحدث طلباً أوّلاً (آخر الرسائل قبل أقدمها).
@@ -2153,13 +2178,15 @@
     return withTimeout(idbGet(mid), 4000, null).then(function (b) {
       var tmp = !!((chats[cid] || {}).disappear);   // C14: لا نحفظ وسائط المحادثات المؤقّتة على الجهاز
       return b || dlSlot(cid).then(function (done) {
-        return withTimeout(fetchMedia(cid, mid), 90000, null, "timeout").then(function (x) { done(); return x; }, function (e) { done(); throw e; });
+        var last = -1;
+        return fetchMedia(cid, mid, function (p) { mediaPct[mid] = p; if (p - last >= 8 || p === 100) { last = p; publishMessages(cid); } })
+          .then(function (x) { done(); return x; }, function (e) { done(); throw e; });
       }).then(function (blob) { return sec ? e2e.decFile(blob, mk2.fk, mk2.fiv, mk2.mime) : blob; })
         .then(function (blob) { if (!noCache && !tmp) idbPut(mid, blob); return blob; });
     }).then(function (blob) {
-      mediaUrls[mid] = URL.createObjectURL(blob); delete mediaLoading[mid]; publishMessages(cid); return mediaUrls[mid];
+      mediaUrls[mid] = URL.createObjectURL(blob); delete mediaLoading[mid]; delete mediaPct[mid]; publishMessages(cid); return mediaUrls[mid];
     }).catch(function (e) {
-      delete mediaLoading[mid]; mediaFailed[mid] = (e && e.message) || "x"; publishMessages(cid);
+      delete mediaLoading[mid]; delete mediaPct[mid]; mediaFailed[mid] = (e && e.message) || "x"; publishMessages(cid);
       // C18: تعثّر التنزيل (شبكة ضعيفة) ⇒ إعادة تلقائيّة بعد 5 ثم 20 ثم 60 ثانية — كان يبقى «لم يصل» حتّى إعادة فتح التطبيق
       var n = (mediaTries[mid] = (mediaTries[mid] || 0) + 1);
       if (!/gone/.test(mediaFailed[mid]) && n <= 5) setTimeout(function () { if (mediaFailed[mid] && !mediaUrls[mid]) { delete mediaFailed[mid]; ensureMedia(cid, mid, noCache); } }, [5000, 15000, 45000, 120000, 300000][n - 1]);
@@ -3817,12 +3844,13 @@
       if (o.viewOnce && mine) o.peerViewed = !!m.gone || Object.keys(m.viewed || {}).some(function (u) { return u !== state.uid; });   // C100: المرسل يعرف هل فُتحت
       // الفيديو لا يُعرض بصورةٍ مصغّرة داخل <video> — يبقى «غير متاح» حتّى يكتمل تنزيله
       o.fileUrl = o.viewedOnce ? null : (url || (m.type === "image" ? ex.thumb || null : null)); o.thumb = ex.thumb || null; o.mediaLoading = !url && !mediaFailed[mid];
+      o.dlPct = !url && mediaPct[mid] != null ? mediaPct[mid] : null;   // C332
       o.mediaFailed = !url && !!mediaFailed[mid];   // C99: الصورة/الفيديو أيضاً «اضغط لإعادة التنزيل» (كانت تبقى ضبابيّة)
       o.text = ex.name || ""; o.w = ex.w || null; o.h = ex.h || null; o.durationSec = ex.duration || null;
     } else if (m.type === "voice") {
       o.audioUrl = url; o.duration = typeof ex.duration === "number" ? (Math.floor(ex.duration / 60) + ":" + String(ex.duration % 60).padStart(2, "0")) : (ex.duration || "0:00");
       o.transcript = ex.transcript || null;
-      o.mediaLoading = !url && !mediaFailed[mid]; o.mediaFailed = !url && !!mediaFailed[mid];   // C18: الفقاعة تعرض «يُنزَّل…» أو «اضغط لإعادة التنزيل»
+      o.mediaLoading = !url && !mediaFailed[mid]; o.mediaFailed = !url && !!mediaFailed[mid]; o.dlPct = !url && mediaPct[mid] != null ? mediaPct[mid] : null;   // C332   // C18: الفقاعة تعرض «يُنزَّل…» أو «اضغط لإعادة التنزيل»
     } else { o.text = ex.name || L("ملفّ", "File"); o.fileUrl = url; }
     // C140: التنزيل المسبق — ما وصلني في آخر يومين يُنزَّل ولو لم تُفتح المحادثة بعد (فيكون جاهزاً عند فتحها)،
     //       والفيديو حتّى 16 ميغابايت على شبكةٍ جيّدة (كان 5 فيبقى «اضغط للتنزيل»)
