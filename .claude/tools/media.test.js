@@ -1,41 +1,50 @@
-const fs = require("fs");
-// C332: تنزيل الوسائط قطعةً قطعة — يُستخرج fetchMedia الحقيقيّ من sawa-chat.js ويُشغَّل على Firestore وهميّ
+// C332/C333: تنزيل الوسائط قطعةً قطعة — يُستخرج الكود الحقيقيّ من sawa-chat.js ويُشغَّل على Firestore وهميّ ببياناتٍ ثنائيّة حقيقيّة
 // الاستعمال: node .claude/tools/media.test.js
-const path = require("path");
+const fs = require("fs"), path = require("path"), crypto = require("crypto");
 const src = fs.readFileSync(process.argv[2] || path.join(__dirname, "../../sawa-chat.js"), "utf8");
-const grab = (start, endMarker) => { const i = src.indexOf(start); const j = src.indexOf(endMarker, i); if (i < 0 || j < 0) throw new Error("not found " + start); return src.slice(i, j); };
-const wt = grab("  function withTimeout(", "  function idb()");
-const fm = grab("  var mediaParts = {}, mediaPct = {};", "  // C140:");
-let chunkMs = 5, hang = new Set(), missing = new Set(), calls = [], inflight = 0, maxIn = 0, meta = { n: 12, mime: "image/jpeg" }, oldFmt = false;
-const mkDoc = (k) => ({ get: () => { calls.push(k); inflight++; maxIn = Math.max(maxIn, inflight);
-  return new Promise((res) => { if (hang.has(k)) return; setTimeout(() => { inflight--; res({ exists: !missing.has(k), data: () => ({ d: "<" + k + ">" }) }); }, chunkMs); }); } });
-const fsdbMock = () => ({ collection: () => ({ doc: () => ({ collection: () => ({ doc: (mid) => ({
-  get: () => Promise.resolve({ exists: true, data: () => (oldFmt ? { mime: meta.mime } : meta) }),
-  collection: () => ({ doc: (k) => mkDoc(Number(k)), get: () => Promise.resolve({ forEach: (f) => { for (let k = 0; k < 3; k++) f({ id: String(k), data: () => ({ d: "<" + k + ">" }) }); } }) }) }) }) }) }) });
-const fn = new Function("fsdb", "b64ToBlob", wt + fm + "; return { fetchMedia, mediaParts, withTimeout };");
-const api = fn(fsdbMock, (s, mime) => ({ s, mime }));
-// speed up the 45 s per-chunk timeout for the stall test
-const realST = setTimeout; global.setTimeout = (f, ms, ...a) => realST(f, ms >= 30000 ? 60 : ms, ...a);
-let fail = 0; const ok = (c, m) => { console.log((c ? "✓ " : "✗ ") + m); if (!c) fail++; };
+const grab = (start, end) => { const i = src.indexOf(start), j = src.indexOf(end, i); if (i < 0 || j < 0) throw new Error("not found: " + start); return src.slice(i, j); };
+const code = grab("  function withTimeout(", "  function idb()") + grab("  function b64ToBlob(", "  function dataUrlToBlob(") +
+  grab("  var mediaPct = {};", "  // C140:");
+let chunkMs = 3, hang = new Set(), missing = new Set(), calls = [], inflight = 0, maxIn = 0, deny = false, metaDoc = null, chunks = [];
+const setData = (bytes, size) => { const b64 = Buffer.from(bytes).toString("base64"); chunks = []; for (let i = 0; i < b64.length; i += size) chunks.push(b64.slice(i, i + size)); metaDoc = { n: chunks.length, mime: "video/mp4" }; };
+const chunkDoc = (k) => ({ get: () => { calls.push(k); inflight++; maxIn = Math.max(maxIn, inflight);
+  return new Promise((res) => { if (hang.has(k)) return; setTimeout(() => { inflight--; res({ exists: !missing.has(k) && k < chunks.length, data: () => ({ d: chunks[k] }) }); }, chunkMs); }); } });
+const metaRef = { get: () => deny ? Promise.reject(Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" })) : Promise.resolve({ exists: !!metaDoc, data: () => metaDoc }),
+  collection: () => ({ doc: (k) => chunkDoc(Number(k)), get: () => Promise.resolve({ forEach: (f) => chunks.forEach((d, k) => f({ id: String(k), data: () => ({ d }) })) }) }) };
+const fsdbMock = () => ({ collection: () => ({ doc: () => ({ collection: () => ({ doc: () => metaRef }) }) }) });
+const api = new Function("fsdb", code + "; return { fetchMedia, fetchByMeta, chunkCache };")(fsdbMock);
+const realST = setTimeout; global.setTimeout = (f, ms, ...a) => realST(f, ms >= 30000 ? 60 : ms, ...a);   // مهلات 30/45 ث ⇒ 60 مللي ث للاختبار
+let fail = 0, pass = 0; const ok = (c, m) => { if (c) pass++; else { fail++; console.log("✗ " + m); } };
+const same = async (blob, bytes) => Buffer.compare(Buffer.from(await blob.arrayBuffer()), Buffer.from(bytes)) === 0;
 (async () => {
-  let pcts = []; const b = await api.fetchMedia("c", "m1", (p) => pcts.push(p));
-  ok(b.s === Array.from({ length: 12 }, (_, k) => "<" + k + ">").join(""), "12 chunks joined in order");
-  ok(maxIn <= 4 && maxIn >= 2, "parallel, at most 4 at once (max " + maxIn + ")");
+  const vid = crypto.randomBytes(3 * 1024 * 1024 + 17);   // ~3 ميغابايت ⇒ 6 قطع، والأخيرة ناقصة بحشو =
+  setData(vid, 700000);
+  let pcts = []; const b = await api.fetchMedia("c", "v1", (p) => pcts.push(p));
+  ok(await same(b, vid), "bytes identical after per-chunk decode");
+  ok(b.type === "video/mp4", "mime from meta (" + b.type + ")");
+  ok(maxIn <= 4 && maxIn >= 2, "parallel, at most 4 (max " + maxIn + ")");
   ok(pcts[0] === 0 && pcts[pcts.length - 1] === 100, "progress 0 → 100 (" + pcts.join(",") + ")");
-  ok(!api.mediaParts.m1, "parts cleared after success");
-  calls = []; hang = new Set([7]);
-  let err = null; try { await api.fetchMedia("c", "m2", () => {}); } catch (e) { err = e.message; }
-  ok(err === "timeout", "stalled chunk → timeout error (" + err + ")");
-  const kept = api.mediaParts.m2 ? api.mediaParts.m2.d.filter((x) => typeof x === "string").length : 0;
-  ok(kept >= 8, "downloaded chunks kept for retry (" + kept + "/12)");
+  ok(!api.chunkCache["c:v1"], "cache cleared after success");
+  hang = new Set([4]); calls = [];
+  let err = null; try { await api.fetchMedia("c", "v2", () => {}); } catch (e) { err = e.message; }
+  ok(err === "timeout", "stalled chunk → timeout (" + err + ")");
+  const kept = (api.chunkCache["c:v2"] || { b: [] }).b.filter((x) => x != null).length;
+  ok(kept >= metaDoc.n - 1, "downloaded chunks kept (" + kept + "/" + metaDoc.n + ")");
   hang = new Set(); calls = []; pcts = [];
-  const b2 = await api.fetchMedia("c", "m2", (p) => pcts.push(p));
-  ok(calls.length === 12 - kept, "retry fetched only the " + (12 - kept) + " missing chunks (fetched " + calls.length + ")");
-  ok(b2.s.startsWith("<0><1>") && b2.s.endsWith("<11>"), "retry result complete");
-  ok(pcts[0] === Math.round(kept * 100 / 12), "retry progress starts where it left off (" + pcts[0] + "%)");
-  missing = new Set([3]); err = null; try { await api.fetchMedia("c", "m3"); } catch (e) { err = e.message; }
-  ok(err === "incomplete", "missing chunk → incomplete (" + err + ")"); missing = new Set();
-  oldFmt = true; const b3 = await api.fetchMedia("c", "m4"); oldFmt = false;
-  ok(b3.s === "<0><1><2>", "old format without n uses the single query");
-  console.log(fail ? "✗ media C332: " + fail + " failed" : "✓ media C332: 11 passed, 0 failed"); process.exit(fail ? 1 : 0);
+  const b2 = await api.fetchMedia("c", "v2", (p) => pcts.push(p));
+  ok(calls.length === metaDoc.n - kept, "retry fetched only missing (" + calls.length + ")");
+  ok(await same(b2, vid), "retry result identical");
+  missing = new Set([2]); err = null; try { await api.fetchMedia("c", "v3"); } catch (e) { err = e.message; } missing = new Set();
+  ok(err === "incomplete", "missing chunk → incomplete (" + err + ")");
+  const odd = crypto.randomBytes(5000); setData(odd, 1001);   // قطعٌ بطولٍ ليس مضاعفاً لـ4 ⇒ مسار الاحتياط
+  ok(await same(await api.fetchMedia("c", "v4"), odd), "chunks not multiple of 4 → fallback still exact");
+  const old = crypto.randomBytes(4000); setData(old, 700000); metaDoc = { mime: "image/jpeg" };   // وثيقةٌ قديمة بلا n
+  ok(await same(await api.fetchMedia("c", "v5"), old), "old meta without n → single query, exact");
+  setData(vid, 700000); deny = true;
+  const b6 = await api.fetchByMeta(metaRef, "st:v6", "video/mp4", () => {}); deny = false;
+  ok(await same(b6, vid) && b6.type === "video/mp4", "meta read denied (old rules) → falls back, exact, mime kept");
+  metaDoc = null; err = null; try { await api.fetchMedia("c", "v7"); } catch (e) { err = e.message; }
+  ok(err === "gone", "deleted media → gone (" + err + ")");
+  console.log(fail ? "✗ media C333: " + fail + " failed, " + pass + " passed" : "✓ media C333: " + pass + " passed, 0 failed");
+  process.exit(fail ? 1 : 0);
 })();
