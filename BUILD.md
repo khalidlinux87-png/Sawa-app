@@ -3259,3 +3259,18 @@ Khalid's notes on C314:
 - **Change:** `FamilyMembersScreen` now receives the group's `relations` (app.p8). `MemberPersonPicker` labels each person with `displayFullName(p, distinctLabel)` → «رقية بنت أحمد بن أبوالقاسم» (people with no parent fall back to «زوجة/والد/أخ فلان»). Long names wrap instead of being cut off, search matches the full lineage, and the "Are you …?" confirmation uses the full name too. The linked «🌳 …» line under each member shows the full lineage too.
 - **Checks:** `node --check` on app.p4, app.p8, sw.js and all nine parts joined; label logic run against a sample tree. **Not tried on a phone.**
 - **Upload:** app.p4.js (326456) · app.p8.js (390929) · sw.js (v523, 19330) last.
+## ⏱ C344 — تأخّر ربط المكالمة («جارٍ الربط») عند الردّ من شاشة الهاتف · sawa-rtc (c344) · sw v524
+- **البلاغ (خالد):** راجع تأخّر ربط المكالمة.
+- **من سجلّ المكالمات:** الربط بعد الردّ 1.6–2.1 ث (الوسيط 97٪، RTT 150–270 مث إلى وسطاء SA/GB/TR) — قريبٌ من الحدّ لمسارٍ عبر وسيط بعيد. الأطول هو الردّ من شاشة الهاتف والتطبيق مغلق: «⏱فتح» 3.8–4.0 ث قبل أن يُكتب الردّ، ثمّ الربط ⇒ ~6–7 ث «جارٍ الربط» عند المتّصل.
+- **ما وُجد في مسار الإقلاع:**
+  1. الهويّة تُفحص كلّ 700 مث (`boot`) ⇒ حتّى 700 مث انتظاراً بعد جاهزيّتها قبل قراءة المكالمة.
+  2. اتّصال RTDB يبدأ بعد الهويّة (watchDb بعد 1.5 ث) لا عند الفتح.
+  3. التجهيز أثناء الرنين (C218) لا يعمل في هذا المسار (الردّ فوري) ⇒ الوسيط يُحجز بعد كتابة الردّ (جولتان إلى خادمه).
+- **الإصلاح (sawa-rtc):**
+  - فحص الهويّة كلّ 100 مث أوّل 20 ث (ثمّ 700 كما كان).
+  - `?call=…&answer=1` ⇒ `watchDb()` فوراً (ويُعاد مع كلّ فحصٍ حتّى تجهز Firebase).
+  - `earlyWarm`/`adoptEarly`: اتّصالٌ بلا صوت ولا وصف من الوسيط المحفوظ (`sawa-ice1`) مع iceCandidatePoolSize = 2 فور تحميل الملفّ ⇒ الوسيط يُحجز أثناء الإقلاع، ويتبنّاه الردّ كالتجهيز (وسيط المتّصل المختار بـ setConfiguration). يُغلق بعد 60 ث إن لم يُستعمل. المحرّك الأصليّ لا يستعمله.
+- **لم يُعمل:** الإقرار «يُردّ عليها» من تطبيق أندرويد الأصليّ (الآيفون يرسله منذ C229) — يحتاج بناء أندرويد.
+- **قياس الأثر:** «⏱فتح» و«الردّ» و«مجهّز مسبقاً» في سجلّ المكالمات وتقرير المكالمات الفرديّة.
+- **الفحص:** `node --check` فقط.
+- **الرفع:** sawa-rtc.js + BUILD.md ← sw.js (v524) أخيراً.

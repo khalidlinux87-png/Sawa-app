@@ -148,7 +148,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c342";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
+  var RTC_BUILD = "c344";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -1664,6 +1664,7 @@
         if (ckOn()) setTimeout(function () { if (cur === c && c.state === "incoming" && !ckRing[id] && !wantAnswer[id]) playTone("ring"); }, 1500);   // C151: النظام يرنّ (CallKit)
         else playTone("ring");
       }
+      if (wantAnswer[id]) adoptEarly(c);   // C344: الوسيط المحجوز أثناء فتح التطبيق
       if (wantAnswer[id]) { delete wantAnswer[id]; c.fromSys = true; setTimeout(function () { if (cur === c && c.state === "incoming") accept(false); }, 0); }   // C272: كان ٢٥٠ مث
       listen(c, ref, "value", function (s) { onCalleeValue(c, s.val()); }, function () { finish(c, "remote", { remote: true }); });
       // C339: الآيفون يوقف صفحة سوا في الخلفيّة — مؤقّتٌ تأخّر (عُلِّقت الصفحة) أو الصفحة مخفيّة ⇒ لا «فائتة» من هنا؛
@@ -1740,6 +1741,34 @@
       if (!c.icOn && c.ref) { c.icOn = true; listen(c, c.ref.child("ic_caller"), "child_added", function (sn) { var j = sn.val(); if (c.pc) addRemoteIce(c, j); else if (j) c.iceIn.push(j); }); }
       LOG.info("prewarm", { id: c.id });
     }).catch(function () {});
+  }
+  // C344: «ردّ» من شاشة الهاتف والتطبيق مغلق — كان الاتّصال يُنشأ بعد الإقلاع كلّه (الهويّة ⇒ القاعدة ⇒ سجلّ المكالمة ⇒ الردّ)،
+  //       ثمّ يُحجز الوسيط (TURN، جولتان إلى خادمه) بعد كتابة الردّ. الآن يُنشأ اتّصالٌ بلا صوت ولا وصف من بيانات الوسيط المحفوظة
+  //       (sawa-ice1) فور تحميل الملفّ، فيُحجز الوسيط بالتوازي مع الإقلاع، ويتبنّاه الردّ كالتجهيز أثناء الرنين (C218).
+  //       الخصوصيّة كما في C218: لا وصفٌ محلّيّ قبل الردّ ⇒ لا عناوين تُرسل ولا فحوص. المحرّك الأصليّ (الآيفون/⚡) لا يستعمله.
+  var earlyPre = null;
+  function earlyWarm() {
+    try {
+      if (earlyPre || !global.RTCPeerConnection || !iceCache || nativeAudioOk("audio")) return;   // المحرّك الأصليّ (الآيفون · ⚡) يحجز وسيطه بنفسه
+      var ice = ensureTurnTls(iceCache);
+      var pc = new global.RTCPeerConnection({ iceServers: ice, iceCandidatePoolSize: 2 });
+      earlyPre = { pc: pc, ice: ice, at: Date.now(), tracks: [] };
+      pc.ontrack = function (e) { if (earlyPre && earlyPre.pc === pc) earlyPre.tracks.push(e); };
+      setTimeout(function () { if (earlyPre && earlyPre.pc === pc) { try { pc.close(); } catch (e) {} earlyPre = null; } }, 60000);   // لم تُستعمل
+      LOG.info("early.warm", {});
+    } catch (e) { earlyPre = null; }
+  }
+  function adoptEarly(c) {
+    var e = earlyPre; if (!e || c.pre || c.pc || !c.offer) return;
+    earlyPre = null;
+    if (c.type === "audio" && nativeAudioOk("audio")) { try { e.pc.close(); } catch (x) {} return; }
+    try { var h = hintIce(c); if (h) { h = ensureTurnTls(h); e.pc.setConfiguration({ iceServers: h, iceCandidatePoolSize: 2 }); e.ice = h; } } catch (x) {}   // C228: وسيط المتّصل المختار
+    c.preTracks = e.tracks;
+    e.pc.ontrack = function (ev) { if (c.preTracks) c.preTracks.push(ev); };
+    var pre = c.pre = { pc: e.pc, ice: e.ice, at: e.at, early: true };
+    pre.remP = e.pc.setRemoteDescription(c.offer).then(function () { pre.ok = true; }, function (er) { pre.bad = true; LOG.warn("early", { err: er && er.message }); });
+    if (!c.icOn && c.ref) { c.icOn = true; listen(c, c.ref.child("ic_caller"), "child_added", function (sn) { var j = sn.val(); if (c.pc) addRemoteIce(c, j); else if (j) c.iceIn.push(j); }); }
+    LOG.info("early.adopt", { id: c.id, ms: Date.now() - e.at });
   }
   function dropPre(c) {
     var p = c && c.pre; if (!p) return; c.pre = null; c.preTracks = null;
@@ -5315,6 +5344,7 @@
     try { id = new URLSearchParams(global.location.search).get("call"); } catch (e) {}
     if (!id) return;
     try { if (new URLSearchParams(global.location.search).get("answer") === "1") wantAnswer[id] = 1; } catch (e) {}   // C72: «ردّ» من شاشة الهاتف
+    if (wantAnswer[id]) { earlyWarm(); try { watchDb(); } catch (e) {} }   // C344: الوسيط والقاعدة يبدآن الآن لا بعد الإقلاع
     try { var u = new URL(global.location.href); u.searchParams.delete("call"); u.searchParams.delete("answer"); global.history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + u.hash); } catch (e) {}
     whenUid(function () { setTimeout(function () { if (/^[gs]/.test(id)) groupIncoming(id); else incoming(id); }, wantAnswer[id] ? 0 : 300); });   // C272: «ردّ» ⇒ بلا انتظار
   }
@@ -5377,13 +5407,17 @@
   function boot() {
     handleCallParam(); handleRoomParam();
     setTimeout(watchDb, 1500); setInterval(watchDb, 5000);
-    setInterval(function () {
+    var uidTick = function () {
+      if (!watchDb.on && (wantAnswer && Object.keys(wantAnswer).length)) watchDb();   // C344: «ردّ» من شاشة الهاتف ⇒ القاعدة تتّصل فور تهيئة Firebase
       var u = myUid();
       if (u && u !== lastUid && db()) {
         lastUid = u; watchInbox(u); schedRefresh(true); setTimeout(rejoinPill, 1500);   // C119
         var w = uidWaiters; uidWaiters = []; w.forEach(function (f) { try { f(); } catch (e) {} });
       }
-    }, 700);
+    };
+    // C344: أوّل ٢٠ ث كلّ ١٠٠ مث — كان الفحص كلّ ٧٠٠ مث يؤخّر «ردّ» من شاشة الهاتف (والمكالمة الواردة) حتّى ٧٠٠ مث بعد جاهزيّة الهويّة
+    var fastT = setInterval(uidTick, 100); setTimeout(function () { clearInterval(fastT); }, 20000);
+    setInterval(uidTick, 700);
   }
 
   global.SawaRTC = {
