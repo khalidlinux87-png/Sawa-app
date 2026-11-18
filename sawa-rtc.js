@@ -142,7 +142,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c339";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
+  var RTC_BUILD = "c340";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -1392,8 +1392,26 @@
       // المتّصل يعيد التفاوض (ICE restart) — يفيد عند تبدّل الشبكة (واي فاي ↔ بيانات)
       if (c.role === "callee" && !c.timers.rq) c.timers.rq = setTimeout(function () { delete c.timers.rq; if (!c.done && c.state === "reconnecting" && c.ref) c.ref.update({ rq: TS() }).catch(function () {}); }, 4000);   // C291: المستقبِل يطلب إعادة الربط (قد لا يرى المتّصل الانقطاع)
       if (c.role === "caller" && (s === "failed" || !c.timers.restart)) { clearTimeout(c.timers.restart); c.timers.restart = setTimeout(function () { iceRestart(c); }, s === "failed" ? 0 : 3000); }   // C229: «انقطع» ثمّ «فشل» كانا يطلقان إعادتين متتاليتين ⇒ عرضان يتسابقان عند الطرف الآخر فلا يُعاد الاتّصال
-      if (!c.timers.lost) c.timers.lost = setTimeout(function () { finish(c, "lost"); }, LOST_MS);
+      armLost(c);
     }
+  }
+  // C340: مكالمة واتساب/هاتف أثناء مكالمة سوا — الآيفون يوقف سوا في الخلفيّة طوال المكالمة الأخرى، فينقطع الصوت عند الطرفين.
+  //       كان «انقطع الاتّصال» (LOST_MS = 20 ث) يُنهيها، فتبدو المكالمة الأخرى وكأنّها ألغت مكالمة سوا.
+  //       الآن: معلَّقة (عندي أو عنده) ⇒ ننتظر حتّى 10 دقائق · الطرف الآخر غاب عن القاعدة (off_) ⇒ 90 ث (تطبيقٌ أوقفه النظام) ·
+  //       وإلّا 20 ث كما كان. ومؤقّتٌ تأخّر (الصفحة كانت موقوفة) لا يُنهي فوراً عند العودة: مهلةٌ جديدة لإعادة الربط.
+  var HOLD_LOST_MS = 10 * 60000, OFF_LOST_MS = 90000;
+  function lostMs(c) { return c.held || c.peerHeld ? HOLD_LOST_MS : c.peerOff ? OFF_LOST_MS : LOST_MS; }
+  function armLost(c, re) {
+    if (c.done || !c.connectedAt) return;
+    if (c.timers.lost) { if (!re) return; clearTimeout(c.timers.lost); }
+    var ms = lostMs(c), due = Date.now() + ms;
+    var fire = function () {
+      if (c.done || c.state === "connected") { delete c.timers.lost; return; }
+      var late = Date.now() - due > 5000, want = lostMs(c);
+      if (late || want > ms) { ms = late ? Math.max(LOST_MS, want) : want; due = Date.now() + ms; c.timers.lost = setTimeout(fire, ms); LOG.info("lost.wait", { late: late, held: !!(c.held || c.peerHeld), off: !!c.peerOff }); return; }
+      finish(c, "lost");
+    };
+    c.timers.lost = setTimeout(fire, ms);
   }
   // C291: بعد كلّ محاولة: وصل الردّ ولم يعد الاتّصال ⇒ محاولةٌ جديدة؛ لم يصل الردّ بعد ⇒ ننتظره حتّى 12 ث (إشاراتٌ بطيئة) قبل أن نستبدله
   function reRetry(c) {
@@ -1401,7 +1419,7 @@
       if (c.done || c.state === "connected") { delete c.timers.restart; return; }
       if (c.reSeen !== c.reN && Date.now() - c.reAt < 12000) { reRetry(c); return; }
       iceRestart(c);
-    }, 4000);
+    }, c.held || c.peerHeld ? 15000 : 4000);   // C340: الطرف معلَّق ⇒ محاولاتٌ أبطأ (المهلة قد تطول 10 دقائق)
   }
   function iceRestart(c, force) {
     delete c.timers.restart;
@@ -1420,7 +1438,7 @@
   // (المكالمة الصوتيّة قد تكون على المحرّك الأصليّ ⚡ — والفيديو على WebView — فمكالمةٌ جديدة أضمن من إعادة التفاوض.)
   // C183: كلّ طرفٍ يكتب محرّكه عند الاتّصال (eng_a المتّصل · eng_b المستقبِل) — ليُعرف إن كان الفيديو يُضاف بلا مكالمةٍ جديدة
   function engKey(c, peer) { var mine = c.role === "caller" ? "a" : "b"; return "eng_" + (peer ? (mine === "a" ? "b" : "a") : mine); }
-  function engMark(c) { try { if (c.ref) { var o = {}; o[engKey(c, false)] = c.native ? "nat" : "web"; c.ref.update(o).catch(function () {}); } } catch (e) {} }
+  function engMark(c) { try { if (c.ref) { var o = {}; o[engKey(c, false)] = c.native ? "nat" : "web"; if (IOSB()) o["ios_" + c.role] = 1; c.ref.update(o).catch(function () {}); } } catch (e) {} }
   var VCAM = { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } };
   function vInPlace(c) {
     if (c.vin || c.done || !c.pc) return;
@@ -1790,8 +1808,14 @@
   // التطبيق الأصليّ يبلغ: أندرويد بفقد «تركيز الصوت»، والآيفون بمقاطعة جلسة الصوت. كانت مكالمة سوا تتنازع الصوت مع الأخرى
   // (أندرويد يعيد «وضع الاتّصال» كلّ ١٫٥ ث) أو تبقى صامتةً بعد انتهائها (الآيفون لا يعيد تشغيل الصوت).
   function holdBits(c, v) {
-    var ph = !!v["hold_" + (c.role === "caller" ? "callee" : "caller")];
-    if (ph !== !!c.peerHeld) { c.peerHeld = ph; paintStatus(c); }
+    var pr = c.role === "caller" ? "callee" : "caller";
+    var ph = !!v["hold_" + pr];
+    c.peerOff = !!v["off_" + pr] || !!v["ios_" + pr];   // C340: الطرف غاب عن القاعدة، أو هو آيفون (يوقفه النظام في الخلفيّة دون أن يبلغ)   // C340: الطرف الآخر غاب عن القاعدة (onDisconnect بعد الاتّصال)
+    if (ph !== !!c.peerHeld) {
+      c.peerHeld = ph; paintStatus(c);
+      if (c.timers.lost) armLost(c, true);   // C340: مهلة الانقطاع تتبع التعليق
+      if (!ph && c.state === "reconnecting" && c.role === "caller") { clearTimeout(c.timers.restart); c.timers.restart = setTimeout(function () { iceRestart(c); }, 500); }   // عاد من المكالمة الأخرى ⇒ إعادة الربط الآن
+    }
   }
   function setHold(on) {
     on = !!on;
@@ -1803,6 +1827,7 @@
       try { if (ui.ra) ui.ra.muted = on; } catch (e) {}
       if (c.ref && c.live) { var u = {}; u["hold_" + c.role] = on ? TS() : null; c.ref.update(u).catch(function () {}); }
       LOG.info("hold", { id: c.id, on: on });
+      if (c.timers.lost) armLost(c, true);   // C340
       if (!on) setTimeout(function () { if (cur === c && !c.held) resumeMedia(c); }, 1200);   // مهلةٌ ليعيد المتصفّح الالتقاط بنفسه إن استطاع
       paint(c);
     }
