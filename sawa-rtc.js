@@ -97,7 +97,13 @@
   }
   function addLog(entry) {
     if (!app || !app.setCallLog) { logQueue.push(entry); return; }
-    try { app.setCallLog(function (prev) { prev = prev || []; return prev.some(function (x) { return x.id === entry.id; }) ? prev : [entry].concat(prev); }); } catch (e) {}
+    if (!entry.addedAt) entry.addedAt = Date.now();   // C341: «جديدة» منذ وصولها إلى السجلّ (الفائتة من الخادم قد يكون وقتها أقدم)
+    try { app.setCallLog(function (prev) {
+      prev = prev || []; if (prev.some(function (x) { return x.id === entry.id; })) return prev;
+      var next = [entry].concat(prev);
+      if (prev[0] && (prev[0].timestamp || 0) > (entry.timestamp || 0)) next.sort(function (a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });   // C341: في مكانها بالوقت
+      return next;
+    }); } catch (e) {}
   }
   function logCall(c) {
     if (!c || c.logged || c.silent) return; c.logged = true;
@@ -142,7 +148,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c340";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
+  var RTC_BUILD = "c341";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -1616,9 +1622,20 @@
     } catch (e) {}
     inboxRef.on("child_added", function (s) {
       var v = s.val() || {}, id = s.key;
+      if (v.missed) { missedFromInbox(s, v); return; }   // C341: فائتةٌ سجّلها الخادم (والتطبيق مغلق أو لم يرَ المكالمة)
       if (!v.ts || now() - v.ts > STALE_MS) { s.ref.remove().catch(function () {}); return; }
       if (v.gid) groupIncoming(id, v); else incoming(id);
     }, function (e) { LOG.warn("inbox.listen", { err: e && e.code }); });
+  }
+  // C341: الفائتة كانت تُسجَّل من التطبيق المفتوح وحده — إن كان مغلقاً (أو الآيفون أوقفه) لم تظهر في السجلّ أبداً.
+  //       الآن يحفظها الخادم في inbox/{أنا}/m_{id} (من call.missed أو من التنظيف بعد ٤ دقائق) فتُضاف هنا بوقتها الحقيقيّ ثمّ تُحذف.
+  function missedFromInbox(s, v) {
+    var id = String(s.key).replace(/^m_/, "");
+    try { s.ref.remove().catch(function () {}); } catch (e) {}
+    if (!id || !v.from || (cur && cur.id === id && !cur.done)) return;
+    try { if (C().isBlocked && C().isBlocked(v.from)) return; } catch (e) {}
+    addLog({ id: "call-" + id, name: nameOf(v.from) || v.fromName || L("جهة اتّصال", "Contact"), peerUid: v.from, callType: v.type === "video" ? "video" : "audio",
+             type: "missed", label: L("فائتة", "Missed"), time: L("الآن", "Now"), duration: null, timestamp: Number(v.ts) || Date.now(), participants: null, cloud: true });
   }
   function incoming(id) {
     var me = myUid(), d = db();

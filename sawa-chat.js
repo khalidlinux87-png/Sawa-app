@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c315";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c341";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -4465,9 +4465,11 @@
     whenReady(function () { setTimeout(function () { openFromPush(cid); }, 600); });
   }
   // عدد غير المقروء على أيقونة التطبيق (حيث يدعمه الجهاز)
-  var badgeN = -1;
+  var badgeN = -1, badgeExtra = 0;
+  // C341: المكالمات الفائتة الجديدة (من تبويب المكالمات) تُضاف إلى عدد الأيقونة — كان العدد للرسائل وحدها، فتختفي الفائتة منه عند فتح التطبيق
+  global.__sawaBadgeExtra = function (x) { x = Math.max(0, x | 0); if (x === badgeExtra) return; badgeExtra = x; try { appBadge(); } catch (e) {} };
   function appBadge() {
-    var n = 0, cl = (prefs && prefs.cleared) || {};
+    var n = badgeExtra, cl = (prefs && prefs.cleared) || {};
     Object.keys(chats).forEach(function (k) { var c1 = chats[k]; if (cl[k] && !(c1.last && c1.last.ts > cl[k])) return; n += unreadOf(c1); });
     if (n === badgeN) return; badgeN = n;
     try { if (navigator.setAppBadge) { n ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } } catch (e) {}
