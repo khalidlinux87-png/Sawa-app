@@ -148,7 +148,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c341";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
+  var RTC_BUILD = "c342";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -5354,7 +5354,15 @@
     return true;
   }
   // العودة من الخلفيّة وقاعدة البيانات منقطعة ⇒ هزّة بعد ثانيتين إن لم تعد وحدها
-  try { document.addEventListener("visibilitychange", function () { if (document.visibilityState !== "visible") return; setTimeout(function () { if (dbUp === false) dbNudge("resume"); }, 2000); }); } catch (e) {}
+  // C342: «متّصلة» بعد غيابٍ طويل قد تكون اتّصالاً ميّتاً لم يعلم بانقطاعه (المكالمة الواردة تظهر في الإشعار وتتأخّر في التطبيق) ⇒
+  //       بعد ١٠ ث في الخلفيّة نهزّها فوراً — إلّا أثناء مكالمة (الهزّة تكتب علامات الغياب) فتبقى القاعدة القديمة
+  var hidAt = 0;
+  try { document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState !== "visible") { hidAt = Date.now(); return; }
+    var away = hidAt ? Date.now() - hidAt : 0; hidAt = 0;
+    if (away > 10000 && !busy()) { dbNudge("resume"); return; }
+    setTimeout(function () { if (dbUp === false) dbNudge("resume"); }, 2000);
+  }); } catch (e) {}
   // C119: «أوّل مكالمة أبطأ من الثانية» — قبل المكالمة نجهّز ما يبرد حين يبقى التطبيق في الخلفيّة:
   //       رمز الدخول (ينتهي كلّ ساعة ⇒ تجديده رحلةٌ إضافيّة)، اتّصال قاعدة البيانات (يُقطع في الخلفيّة)، وبيانات الوسيط.
   //       يُستدعى عند العودة إلى التطبيق وعند فتح محادثة (نيّة اتّصال) وعند بدء المكالمة نفسها.
