@@ -3253,3 +3253,9 @@ Khalid's notes on C314:
 - **لم يُغيَّر:** صيغة التسجيل (أندرويد webm · الآيفون mp4). إن كانت المشكلة «تصل ولا تُشغَّل على الآيفون» فهذه مسألةٌ أخرى.
 - **الفحص:** `node --check` فقط.
 - **الرفع:** sawa-chat.js + sawa-rtc.js + BUILD.md ← sw.js (v522) أخيراً.
+
+## 🌳 C343 — "Who is … in the tree?" picker shows lineage, not first name only · app.p4 · app.p8 · sw v523
+- **Why:** the picker listed bare first names (two «أحمد» looked identical), so an editor could link a member to the wrong person.
+- **Change:** `FamilyMembersScreen` now receives the group's `relations` (app.p8). `MemberPersonPicker` labels each person with `displayFullName(p, distinctLabel)` → «رقية بنت أحمد بن أبوالقاسم» (people with no parent fall back to «زوجة/والد/أخ فلان»). Long names wrap instead of being cut off, search matches the full lineage, and the "Are you …?" confirmation uses the full name too. The linked «🌳 …» line under each member shows the full lineage too.
+- **Checks:** `node --check` on app.p4, app.p8, sw.js and all nine parts joined; label logic run against a sample tree. **Not tried on a phone.**
+- **Upload:** app.p4.js (326456) · app.p8.js (390929) · sw.js (v523, 19330) last.
