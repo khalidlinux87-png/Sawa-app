@@ -15,7 +15,7 @@
 (function (global) {
   "use strict";
   var VERSION = "c131";
-  var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000, ANSWERING_MS = 40000;
+  var RING_MS = global.__sawaRtcRingMs || 45000, STALE_MS = 50000, CONNECT_MS = 30000, LOST_MS = 20000, ANSWERING_MS = 60000;   // C339: 40 ⇒ 60 ث — الآيفون المقفل يحتاج فتح القفل ثمّ فتح سوا من الإشعار
   var app = null, logQueue = [], cur = null, inboxRef = null, inboxUid = null, offsetRef = null, srvOffset = 0;
   var iceCache = null, iceAt = 0, seen = {}, devId = rid(10);
 
@@ -142,7 +142,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c324";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
+  var RTC_BUILD = "c339";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -1631,7 +1631,16 @@
       }
       if (wantAnswer[id]) { delete wantAnswer[id]; c.fromSys = true; setTimeout(function () { if (cur === c && c.state === "incoming") accept(false); }, 0); }   // C272: كان ٢٥٠ مث
       listen(c, ref, "value", function (s) { onCalleeValue(c, s.val()); }, function () { finish(c, "remote", { remote: true }); });
-      c.timers.ring = setTimeout(function () { if (c.state === "incoming") finish(c, "missed", { remote: true }); }, RING_MS + 5000);
+      // C339: الآيفون يوقف صفحة سوا في الخلفيّة — مؤقّتٌ تأخّر (عُلِّقت الصفحة) أو الصفحة مخفيّة ⇒ لا «فائتة» من هنا؛
+      //       ننتظر أمر «ردّ» المؤجَّل حين تعود الصفحة، والمتّصل (أو الخادم) هو من ينهيها إن لم يُردّ عليها
+      var ringDue = Date.now() + RING_MS + 5000;
+      var ringChk = function () {
+        if (c.done || c.state !== "incoming") return;
+        var late = Date.now() - ringDue > 3000, hid = document.visibilityState === "hidden";
+        if (IOSB() && (late || hid || wantAnswer[id])) { ringDue = Date.now() + 4000; c.timers.ring = setTimeout(ringChk, 4000); return; }
+        finish(c, "missed", { remote: true });
+      };
+      c.timers.ring = setTimeout(ringChk, RING_MS + 5000);
       getIce();   // تجهيزٌ مسبق
       setTimeout(function () { prewarm(c); }, 300);   // C218: بعد ظهور شاشة الرنين
     }).catch(function (e) { LOG.warn("incoming", { err: e && e.message }); inbox.remove().catch(function () {}); });

@@ -3204,3 +3204,14 @@ Khalid's notes on C314:
 - **Change:** the Discover card needs `!IN_IOS_APP`; the `ersal` route in app.p8 sends back to Discover when `!canIntl || IN_IOS_APP`. Android app and browsers unchanged (moderators and admins only).
 - **No iOS build needed.** **Checks:** `node --check` on app.p3, app.p8, sw.js and all nine parts joined. **Not tried on an iPhone.**
 - **Upload:** app.p3.js (438187) · app.p8.js (390559) · sw.js (v518, 19330) last.
+
+## 📞 C339 — أندرويد ⇐ آيفون: «ردّ» من شاشة الآيفون لا يصل والتطبيق في الخلفيّة · sawa-rtc (c339) · sw v519 · iOS SawaCallKit/AppDelegate
+- **البلاغ (خالد):** المكالمات من أندرويد إلى الآيفون يفشل أغلبها (ترنّ ثمّ «جارٍ الربط» وتنتهي)، والعكس ينجح. ليسا على Wi-Fi واحدة.
+- **السجلّ:** كلّ الفاشلة `callee · ios · web · bg · فائتة` و`caller · android · أُلغيت` · «الخادم: رنين 4». أي أنّ الآيفون رنّ (VoIP) وأُرسل «يُردّ عليها» (ack a)، لكنّ الصفحة لم تنفّذ accept أبداً (المحرّك بقي web، والنتيجة «فائتة» في الخلفيّة). كلّ مكالمةٍ رُدّ عليها فعلاً اتّصلت (30/30) ⇒ لا مشكلة شبكة/وسيط.
+- **السبب:** «ردّ» في CallKit يُمرَّر إلى صفحة سوا (WKWebView)، وiOS يعلّق الصفحة والتطبيق في الخلفيّة/الهاتف مقفل ⇒ لا يُكتب الردّ، والمتّصل ينتظر ثمّ ينهي.
+- **هذا الإصلاح (مؤقّت):**
+  - iOS: بعد «ردّ» بـ1.5 ث والتطبيق ليس أمامك ⇒ إشعارٌ محلّيّ «افتح سوا لإكمال المكالمة» (معرّف `sawa-open-call`، بيانات `ans=1` ⇒ `?call=…&answer=1`). يُزال عند فتح التطبيق أو انتهاء المكالمة.
+  - sawa-rtc: المتّصل ينتظر بعد «يُردّ عليها» 60 ث بدل 40 · مؤقّت «فائتة» عند المستقبِل في الآيفون لا ينهي المكالمة والصفحة مخفيّة أو عائدة من تعليق (المؤقّت تأخّر > 3 ث) أو «ردّ» معلَّق — يعيد الفحص كلّ 4 ث، والإنهاء من المتّصل.
+- **الحلّ الجذريّ (التالي):** الردّ من الجزء الأصليّ نفسه (Swift يكتب answer في RTDB ويشغّل SawaRtc) دون انتظار الصفحة.
+- **الفحص:** `node --check` · Swift لم يُترجم هنا ⇒ سير iOS build/TestFlight.
+- **الرفع:** Sawa-app: sawa-rtc.js + BUILD.md ← sw.js (v519) أخيراً · Sawa-iOS: Sawa/SawaCallKit.swift + Sawa/AppDelegate.swift ⇒ iOS TestFlight.
