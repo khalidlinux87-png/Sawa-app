@@ -148,7 +148,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c343";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
+  var RTC_BUILD = "c344";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -1664,7 +1664,7 @@
         if (ckOn()) setTimeout(function () { if (cur === c && c.state === "incoming" && !ckRing[id] && !wantAnswer[id]) playTone("ring"); }, 1500);   // C151: النظام يرنّ (CallKit)
         else playTone("ring");
       }
-      if (wantAnswer[id]) adoptEarly(c);   // C343: الوسيط المحجوز أثناء فتح التطبيق
+      if (wantAnswer[id]) adoptEarly(c);   // C344: الوسيط المحجوز أثناء فتح التطبيق
       if (wantAnswer[id]) { delete wantAnswer[id]; c.fromSys = true; setTimeout(function () { if (cur === c && c.state === "incoming") accept(false); }, 0); }   // C272: كان ٢٥٠ مث
       listen(c, ref, "value", function (s) { onCalleeValue(c, s.val()); }, function () { finish(c, "remote", { remote: true }); });
       // C339: الآيفون يوقف صفحة سوا في الخلفيّة — مؤقّتٌ تأخّر (عُلِّقت الصفحة) أو الصفحة مخفيّة ⇒ لا «فائتة» من هنا؛
@@ -1742,7 +1742,7 @@
       LOG.info("prewarm", { id: c.id });
     }).catch(function () {});
   }
-  // C343: «ردّ» من شاشة الهاتف والتطبيق مغلق — كان الاتّصال يُنشأ بعد الإقلاع كلّه (الهويّة ⇒ القاعدة ⇒ سجلّ المكالمة ⇒ الردّ)،
+  // C344: «ردّ» من شاشة الهاتف والتطبيق مغلق — كان الاتّصال يُنشأ بعد الإقلاع كلّه (الهويّة ⇒ القاعدة ⇒ سجلّ المكالمة ⇒ الردّ)،
   //       ثمّ يُحجز الوسيط (TURN، جولتان إلى خادمه) بعد كتابة الردّ. الآن يُنشأ اتّصالٌ بلا صوت ولا وصف من بيانات الوسيط المحفوظة
   //       (sawa-ice1) فور تحميل الملفّ، فيُحجز الوسيط بالتوازي مع الإقلاع، ويتبنّاه الردّ كالتجهيز أثناء الرنين (C218).
   //       الخصوصيّة كما في C218: لا وصفٌ محلّيّ قبل الردّ ⇒ لا عناوين تُرسل ولا فحوص. المحرّك الأصليّ (الآيفون/⚡) لا يستعمله.
@@ -5344,7 +5344,7 @@
     try { id = new URLSearchParams(global.location.search).get("call"); } catch (e) {}
     if (!id) return;
     try { if (new URLSearchParams(global.location.search).get("answer") === "1") wantAnswer[id] = 1; } catch (e) {}   // C72: «ردّ» من شاشة الهاتف
-    if (wantAnswer[id]) { earlyWarm(); try { watchDb(); } catch (e) {} }   // C343: الوسيط والقاعدة يبدآن الآن لا بعد الإقلاع
+    if (wantAnswer[id]) { earlyWarm(); try { watchDb(); } catch (e) {} }   // C344: الوسيط والقاعدة يبدآن الآن لا بعد الإقلاع
     try { var u = new URL(global.location.href); u.searchParams.delete("call"); u.searchParams.delete("answer"); global.history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + u.hash); } catch (e) {}
     whenUid(function () { setTimeout(function () { if (/^[gs]/.test(id)) groupIncoming(id); else incoming(id); }, wantAnswer[id] ? 0 : 300); });   // C272: «ردّ» ⇒ بلا انتظار
   }
@@ -5408,14 +5408,14 @@
     handleCallParam(); handleRoomParam();
     setTimeout(watchDb, 1500); setInterval(watchDb, 5000);
     var uidTick = function () {
-      if (!watchDb.on && (wantAnswer && Object.keys(wantAnswer).length)) watchDb();   // C343: «ردّ» من شاشة الهاتف ⇒ القاعدة تتّصل فور تهيئة Firebase
+      if (!watchDb.on && (wantAnswer && Object.keys(wantAnswer).length)) watchDb();   // C344: «ردّ» من شاشة الهاتف ⇒ القاعدة تتّصل فور تهيئة Firebase
       var u = myUid();
       if (u && u !== lastUid && db()) {
         lastUid = u; watchInbox(u); schedRefresh(true); setTimeout(rejoinPill, 1500);   // C119
         var w = uidWaiters; uidWaiters = []; w.forEach(function (f) { try { f(); } catch (e) {} });
       }
     };
-    // C343: أوّل ٢٠ ث كلّ ١٠٠ مث — كان الفحص كلّ ٧٠٠ مث يؤخّر «ردّ» من شاشة الهاتف (والمكالمة الواردة) حتّى ٧٠٠ مث بعد جاهزيّة الهويّة
+    // C344: أوّل ٢٠ ث كلّ ١٠٠ مث — كان الفحص كلّ ٧٠٠ مث يؤخّر «ردّ» من شاشة الهاتف (والمكالمة الواردة) حتّى ٧٠٠ مث بعد جاهزيّة الهويّة
     var fastT = setInterval(uidTick, 100); setTimeout(function () { clearInterval(fastT); }, 20000);
     setInterval(uidTick, 700);
   }
