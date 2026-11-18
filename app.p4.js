@@ -477,7 +477,7 @@ function MemberPersonPicker({ groupId, member, persons, relations, onClose }) {
     const [err, setErr] = useState("");
     const qq = normalizeArabicName(q.trim()).toLowerCase();
     const free = (persons || []).filter((p) => p && !p.acctUid && p.alive !== false && p.id !== "__vself__");
-    // C339: الاسم الأوّل وحده يتكرّر في الشجرة («أحمد» و«أحمد») — نعرض النسب «فلان بن فلان بن فلان» ونبحث فيه
+    // C343: الاسم الأوّل وحده يتكرّر في الشجرة («أحمد» و«أحمد») — نعرض النسب «فلان بن فلان بن فلان» ونبحث فيه
     const { distinctLabel } = useMemo(() => buildLineageHelpers(persons || [], relations || []), [persons, relations]);
     const labelOf = (p) => displayFullName(p, distinctLabel);
     const shown = (qq ? free.filter((p) => arMatch(labelOf(p), q)) : free).slice(0, 200);   // C271
@@ -510,7 +510,7 @@ function MemberPersonPicker({ groupId, member, persons, relations, onClose }) {
 function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, settings, onCycleRole, onToggleSetting, onRemove, onTransfer, onShare, onOpenActivityLog, onBack, persons, relations, canEdit, onOpenPerson }) {
     var _a, _b;
     const { colors } = useTheme();
-    const memberLineage = useMemo(() => buildLineageHelpers(persons || [], relations || []).distinctLabel, [persons, relations]);   // C339
+    const memberLineage = useMemo(() => buildLineageHelpers(persons || [], relations || []).distinctLabel, [persons, relations]);   // C343
     // ⛔ لا سيرفر، فلا عضوية حقيقية: كانت «دعوة عضو» تُلحق الاسم بالقائمة فوراً
     // وتُعلن «انضمّ للمجموعة» ولم يُرسَل شيء. والرمز SAWA-GRP لم يكن يقرؤه
     // شيء. أُزيلا (v190)، وتُخفى الأسماء التي ألحقتها تلك الدعوة الشكلية —

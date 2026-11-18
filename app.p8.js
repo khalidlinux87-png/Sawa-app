@@ -2285,7 +2285,8 @@ function AppInner() {
     }, [callLog]);
     // C27: شارة «فائتة» على تبويب المكالمات تُحسب منذ آخر فتحٍ للتبويب (كانت تبقى ما دام في السجلّ مكالمةٌ فائتة)
     const [missedSeenAt, setMissedSeenAt] = usePersistedState("missedSeenAt", 0, 50);
-    const missedNew = callLog.filter((c) => c.type === "missed" && (c.timestamp || 0) > (missedSeenAt || 0)).length;
+    const missedNew = callLog.filter((c) => c.type === "missed" && (c.addedAt || c.timestamp || 0) > (missedSeenAt || 0)).length;   // C341: addedAt — الفائتة التي سجّلها الخادم لاحقاً
+    useEffect(() => { try { window.__sawaBadgeExtra && window.__sawaBadgeExtra(missedNew); } catch (e) {} }, [missedNew]);   // C341: الفائتة الجديدة في عدد أيقونة التطبيق
     useEffect(() => { if (tab === "calls") setMissedSeenAt(Date.now()); }, [tab, callLog.length]);
     const [favoriteContacts, setFavoriteContacts] = useState([]);
     const [callSettings, setCallSettings] = useState({ requireApproval: false, defaultScheduleType: "audio" });
