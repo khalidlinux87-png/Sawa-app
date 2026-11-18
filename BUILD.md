@@ -3204,3 +3204,9 @@ Khalid's notes on C314:
 - **Change:** the Discover card needs `!IN_IOS_APP`; the `ersal` route in app.p8 sends back to Discover when `!canIntl || IN_IOS_APP`. Android app and browsers unchanged (moderators and admins only).
 - **No iOS build needed.** **Checks:** `node --check` on app.p3, app.p8, sw.js and all nine parts joined. **Not tried on an iPhone.**
 - **Upload:** app.p3.js (438187) · app.p8.js (390559) · sw.js (v518, 19330) last.
+
+## 🌳 C339 — "Who is … in the tree?" picker shows lineage, not first name only · app.p4 · app.p8 · sw v519
+- **Why:** the picker listed bare first names (two «أحمد» looked identical), so an editor could link a member to the wrong person.
+- **Change:** `FamilyMembersScreen` now receives the group's `relations` (app.p8). `MemberPersonPicker` labels each person with `displayFullName(p, distinctLabel)` → «رقية بنت أحمد بن أبوالقاسم» (people with no parent fall back to «زوجة/والد/أخ فلان»). Long names wrap instead of being cut off, search matches the full lineage, and the "Are you …?" confirmation uses the full name too. The linked «🌳 …» line under each member shows the full lineage too.
+- **Checks:** `node --check` on app.p4, app.p8, sw.js and all nine parts joined; label logic run against a sample tree. **Not tried on a phone.**
+- **Upload:** app.p4.js (326456) · app.p8.js (390626) · sw.js (v519, 19330) last.

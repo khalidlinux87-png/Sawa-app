@@ -469,7 +469,7 @@ function FamPhoneSuggestCard({ groupId, persons, onOpenPerson }) {
                     st === "busy" ? "…" : done ? tl("✓ أُرسل · إعادة", "✓ Sent · resend") : tl("ربط", "Link")));
         }));
 }
-function MemberPersonPicker({ groupId, member, persons, onClose }) {
+function MemberPersonPicker({ groupId, member, persons, relations, onClose }) {
     const { colors } = useTheme();
     const [q, setQ] = useState("");
     const [busy, setBusy] = useState(null);
@@ -477,12 +477,15 @@ function MemberPersonPicker({ groupId, member, persons, onClose }) {
     const [err, setErr] = useState("");
     const qq = normalizeArabicName(q.trim()).toLowerCase();
     const free = (persons || []).filter((p) => p && !p.acctUid && p.alive !== false && p.id !== "__vself__");
-    const shown = (qq ? free.filter((p) => arMatch(String(p.local_name || ""), q)) : free).slice(0, 200);   // C271
+    // C339: الاسم الأوّل وحده يتكرّر في الشجرة («أحمد» و«أحمد») — نعرض النسب «فلان بن فلان بن فلان» ونبحث فيه
+    const { distinctLabel } = useMemo(() => buildLineageHelpers(persons || [], relations || []), [persons, relations]);
+    const labelOf = (p) => displayFullName(p, distinctLabel);
+    const shown = (qq ? free.filter((p) => arMatch(labelOf(p), q)) : free).slice(0, 200);   // C271
     const pick = (p) => {
         if (busy) return;
         setErr(""); setBusy(p.id);
         famLinkCall(groupId, { personId: p.id, uid: member.userId })
-            .then(() => setSent(p.local_name))
+            .then(() => setSent(labelOf(p)))
             .catch((e) => { const m = (e && e.message) || String(e); try { window.SawaLog.make("app").warn("famlink.fail", { err: m }); } catch (x) { } setErr(famLinkErr(m)); })
             .then(() => setBusy(null));
     };
@@ -501,12 +504,13 @@ function MemberPersonPicker({ groupId, member, persons, onClose }) {
                 shown.length === 0 && React.createElement("p", { className: "text-[12px] text-center py-4", style: { color: colors.textMuted } }, tl("لا أحد غير مربوط", "No unlinked people")),
                 shown.map((p, i) => React.createElement("button", { key: p.id, type: "button", disabled: !!busy, onClick: () => pick(p), className: `w-full flex ${rowStart()} items-center gap-3 px-3 py-2.5`, style: { borderTop: i ? `1px solid ${colors.border}` : "none", backgroundColor: busy === p.id ? colors.primary + "14" : colors.card } },
                     React.createElement(FamAvatar, { name: p.local_name, photo: p.photo, size: 32 }),
-                    React.createElement("span", { className: `flex-1 min-w-0 truncate text-[13.5px] font-bold ${textStart()}`, style: { color: colors.text } }, p.local_name),
+                    React.createElement("span", { className: `flex-1 min-w-0 text-[13.5px] font-bold leading-snug ${textStart()}`, style: { color: colors.text, overflowWrap: "anywhere" } }, labelOf(p)),
                     React.createElement("span", { className: "text-[11px] font-extrabold shrink-0", style: { color: colors.primary } }, busy === p.id ? tl("…جارٍ الإرسال", "…sending") : tl("هو هذا", "That's them")))))));
 }
-function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, settings, onCycleRole, onToggleSetting, onRemove, onTransfer, onShare, onOpenActivityLog, onBack, persons, canEdit, onOpenPerson }) {
+function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, settings, onCycleRole, onToggleSetting, onRemove, onTransfer, onShare, onOpenActivityLog, onBack, persons, relations, canEdit, onOpenPerson }) {
     var _a, _b;
     const { colors } = useTheme();
+    const memberLineage = useMemo(() => buildLineageHelpers(persons || [], relations || []).distinctLabel, [persons, relations]);   // C339
     // ⛔ لا سيرفر، فلا عضوية حقيقية: كانت «دعوة عضو» تُلحق الاسم بالقائمة فوراً
     // وتُعلن «انضمّ للمجموعة» ولم يُرسَل شيء. والرمز SAWA-GRP لم يكن يقرؤه
     // شيء. أُزيلا (v190)، وتُخفى الأسماء التي ألحقتها تلك الدعوة الشكلية —
@@ -559,7 +563,7 @@ function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, se
                         React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [((_b = settings[groupId]) === null || _b === void 0 ? void 0 : _b.allowMemberEvents) ? "right" : "left"]: 2 } }))),
                 React.createElement(FamRow, { icon: FileClock, title: t("sjl_nshat_almjmwaa"), onPress: onOpenActivityLog, last: true }))),
             cloud && canEdit && React.createElement(FamPhoneSuggestCard, { groupId, persons, onOpenPerson }),
-            pickFor && React.createElement(MemberPersonPicker, { groupId, member: pickFor, persons, onClose: () => setPickFor(null) }),
+            pickFor && React.createElement(MemberPersonPicker, { groupId, member: pickFor, persons, relations, onClose: () => setPickFor(null) }),
             cloud && canManage && React.createElement(FamBannedCard, { groupId }),
             React.createElement("div", null,
                 cloud && React.createElement("div", { className: `text-[13px] font-extrabold mb-2 px-0.5 ${textStart()}`, style: { color: colors.text } }, t("mb_alaada", { n: list.length })),
@@ -571,7 +575,7 @@ function FamilyMembersScreen({ groupId, members, canManage, canInvite, cloud, se
                     // C109: العضو بجوار شخصه في الشجرة
                     cloud && (() => {
                         const lp = m.personId && (persons || []).find((x) => x.id === m.personId);
-                        if (lp) return React.createElement("button", { onClick: () => onOpenPerson && onOpenPerson(lp), className: `block max-w-full truncate text-[11.5px] font-bold mt-0.5 ${textStart()}`, style: { color: "#187854", background: "none", border: 0, padding: 0 } }, "🌳 " + lp.local_name);
+                        if (lp) return React.createElement("button", { onClick: () => onOpenPerson && onOpenPerson(lp), className: `block max-w-full truncate text-[11.5px] font-bold mt-0.5 ${textStart()}`, style: { color: "#187854", background: "none", border: 0, padding: 0 } }, "🌳 " + displayFullName(lp, memberLineage));
                         if (canEdit && !m.me && m.userId !== "u-1") return React.createElement("button", { onClick: () => setPickFor(m), className: `block text-[11.5px] font-bold mt-0.5 ${textStart()}`, style: { color: colors.primary, background: "none", border: 0, padding: 0 } }, "＋ " + tl("من هو في الشجرة؟", "Who is this in the tree?"));
                         return m.me ? React.createElement("span", { className: "block text-[11px] mt-0.5", style: { color: colors.textMuted } }, tl("حدّد نفسك من صفحتك في الشجرة («هذا أنا»)", "Mark yourself from your page in the tree")) : null;
                     })()),
