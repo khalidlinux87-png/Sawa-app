@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c341";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c342";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -694,9 +694,8 @@
       if (myStatusRef) setMine("online");
       if (!state.uid) return;
       // عودةٌ بعد غيابٍ في الخلفية: اتّصال Firestore قد يكون «ميّتاً» دون أن يعلم — نعيد فتحه فوراً بدل انتظار مهلته الطويلة
-      if (hiddenAt && Date.now() - hiddenAt > 15000) {
-        try { var fs = firebase.firestore(); fs.disableNetwork().then(function () { return fs.enableNetwork(); }).catch(function () {}); } catch (e) {}
-      }
+      // C342: ٥ ث بدل ١٥ — الهاتف يقطع الاتّصال في الخلفيّة بسرعة، فكانت الرسائل تظهر في الإشعار ثمّ تتأخّر داخل التطبيق
+      if (hiddenAt && Date.now() - hiddenAt > 5000) fsKick("resume");
       hiddenAt = 0;
       if (Date.now() - lastRefresh > 60000) { lastRefresh = Date.now(); refresh(); loadRequests(); }   // قائمة جهات الاتّصال: مرّة في الدقيقة على الأكثر
       if (openCid) markRead(openCid);
@@ -1029,6 +1028,25 @@
     return n > 0 ? n : 0;
   }
 
+  // C342: اتّصال Firestore «ميّت» (بعد الخلفيّة) لا يعلم بانقطاعه، فتنتظر المستمعات مهلته الطويلة (دقيقةً أحياناً) ⇒ نعيد فتحه.
+  //       مرّةً كلّ ٨ ث على الأكثر. وإشعارٌ برسالةٍ لم تصل القائمةَ خلال ثانيتين ⇒ الاتّصال ميّت ⇒ هزّة.
+  var fsKickAt = 0;
+  function fsKick(why) {
+    if (Date.now() - fsKickAt < 8000) return false;
+    fsKickAt = Date.now();
+    try { LOG.info("fs.kick", { why: why }); } catch (e) {}
+    try { var fs = firebase.firestore(); fs.disableNetwork().then(function () { return fs.enableNetwork(); }).catch(function () {}); } catch (e) {}
+    return true;
+  }
+  function pushArrived(d) {
+    if (!d || !d.cid || !state.uid) return;
+    var t0 = Date.now(), cid = d.cid, ts = Number(d.ts) || 0;
+    setTimeout(function () {
+      var c = chats[cid], l = c && c.last;
+      if (l && (l.ts || 0) >= (ts || t0 - 60000)) return;   // وصلت القائمةَ — الاتّصال سليم
+      fsKick("push");
+    }, 2000);
+  }
   // ---------- القائمة ----------
   function startChats(uid) {
     stopChats();
@@ -2047,13 +2065,6 @@
     (pend[cid] = pend[cid] || []).push(p);
     publishMessages(cid); publishChats();
     var prep = kind === "image" ? prepareImage(src) : kind === "video" ? prepareVideo(src) : Promise.resolve({ blob: src });
-    // C23: في السرّيّة يُرفع الملفّ مشفّراً (مفتاحه داخل الرسالة المشفّرة) وبلا اسم
-    var encP = null;
-    var doUpload = function (blob, prog) {
-      if (!secret) return uploadMedia(cid, mid, blob, extra, prog);
-      if (!encP) encP = e2e.encFile(blob).then(function (ef) { extra.fk = ef.fk; extra.fiv = ef.fiv; return ef.blob; });
-      return encP.then(function (eb) { return uploadMedia(cid, mid, eb, { name: "" }, prog); });
-    };
     prep.then(function (r) {
       var blob = r.blob || src;
       if (r.thumb) extra.thumb = r.thumb;
@@ -2063,19 +2074,75 @@
       if (blob !== src) { try { URL.revokeObjectURL(localUrls[mid]); } catch (e) {} localUrls[mid] = URL.createObjectURL(blob); }
       if (secret && extra.viewOnce) delete extra.thumb;
       publishMessages(cid);
-      return doUpload(blob, function (pct) { p.progress = pct; publishMessages(cid); });
-    }).then(function () {
-      p.uploading = false;
-      var ob = lsGet(OUTBOX, []); ob.push({ uid: state.uid, cid: cid, msg: msg }); lsSet(OUTBOX, ob);
-      drainOutbox();
+      upqSave(cid, msg, blob, secret);   // C342: يبقى في الهاتف حتّى يكتمل الرفع (إغلاق التطبيق أو انقطاع الشبكة لا يُضيعه)
+      return uploadJob(cid, p, msg, blob, secret);
     }).catch(function (e) {
-      p.uploading = false; p.reupload = function () { p.reupload = null; p.status = "pending"; p.uploading = true; publishMessages(cid); return prep.then(function (r) { return doUpload(r.blob || src, function (pct) { p.progress = pct; publishMessages(cid); }); })
-        .then(function () { p.uploading = false; var ob = lsGet(OUTBOX, []); ob.push({ uid: state.uid, cid: cid, msg: msg }); lsSet(OUTBOX, ob); drainOutbox(); })
-        .catch(function (e2) { setPend(cid, id, "failed"); toast(L("تعذّر رفع الملفّ: ", "Upload failed: ") + ((e2 && e2.message) || e2)); }); };
       setPend(cid, id, "failed");
-      toast(L("تعذّر رفع الملفّ: ", "Upload failed: ") + ((e && e.message) || e) + L(" — اضغط ⚠ لإعادة المحاولة", " — tap ⚠ to retry"));
+      toast(L("تعذّر تجهيز الملفّ: ", "Couldn't prepare the file: ") + ((e && e.message) || e));
     });
     return id;
+  }
+  // C342: الرسائل الصوتيّة (وكلّ وسيطٍ حتّى ١٢ ميغابايت) كانت تُرفع من الذاكرة وحدها، ولا تُحفظ إلّا بعد اكتمال الرفع —
+  //       فإن أُغلق التطبيق أو انقطعت الشبكة أثناء الرفع ضاعت بلا أثر («لا تصل»)، والفشل يحتاج ضغط ⚠ يدويّاً.
+  //       الآن: الملفّ في IndexedDB (upq:<id>) وقائمته في sawa_upq، ويُكمل رفعه عند الفتح التالي، ويُعاد تلقائيّاً (٦ مرّات بمهلةٍ متزايدة).
+  var UPQ = "sawa_upq", UPQ_MAX = 12 * 1024 * 1024;
+  function idbDel(k) { return idb().then(function (db_) { if (!db_) return; try { db_.transaction("m", "readwrite").objectStore("m").delete(k); } catch (e) {} }); }
+  function upqSave(cid, msg, blob, secret) {
+    if (!blob || blob.size > UPQ_MAX || !state.uid) return;
+    var l = lsGet(UPQ, []).filter(function (x) { return x.id !== msg.id; });
+    l.push({ uid: state.uid, cid: cid, id: msg.id, msg: msg, secret: !!secret, ts: Date.now() }); lsSet(UPQ, l.slice(-30));
+    idbPut("upq:" + msg.id, blob);
+  }
+  function upqDrop(id) { lsSet(UPQ, lsGet(UPQ, []).filter(function (x) { return x.id !== id; })); idbDel("upq:" + id); }
+  function uploadJob(cid, p, msg, blob, secret) {
+    var extra = msg.extra, mid = extra.mid, encP = null, tries = 0;
+    // C23: في السرّيّة يُرفع الملفّ مشفّراً (مفتاحه داخل الرسالة المشفّرة) وبلا اسم
+    var doUpload = function () {
+      var prog = function (pct) { p.progress = pct; publishMessages(cid); };
+      if (!secret) return uploadMedia(cid, mid, blob, extra, prog);
+      if (!encP) encP = e2e.encFile(blob).then(function (ef) { extra.fk = ef.fk; extra.fiv = ef.fiv; return ef.blob; });
+      return encP.then(function (eb) { return uploadMedia(cid, mid, eb, { name: "" }, prog); });
+    };
+    var go = function () {
+      clearTimeout(p.retryT); p.reupload = null; p.status = "pending"; p.uploading = true; publishMessages(cid);
+      return doUpload().then(function () {
+        p.uploading = false;
+        var ob = lsGet(OUTBOX, []); if (!ob.some(function (x) { return x.msg.id === msg.id; })) { ob.push({ uid: state.uid, cid: cid, msg: msg, ts: Date.now() }); lsSet(OUTBOX, ob); }
+        upqDrop(msg.id);
+        drainOutbox();
+      }, function (e) {
+        p.uploading = false; tries++;
+        var m = (e && e.message) || String(e);
+        p.reupload = function () { tries = 0; return go(); };
+        setPend(cid, msg.id, "failed");
+        if (!/300|quota|too large|too big/i.test(m) && tries < 6) {   // حدّ الرفع اليوميّ لا يُعاد تلقائيّاً
+          var wait = Math.min(60000, 5000 * Math.pow(2, tries - 1));
+          p.retryT = setTimeout(function () { if (p.reupload && state.uid) go(); }, wait);
+          if (tries === 1) toast(L("تعذّر رفع الملفّ — ستُعاد المحاولة تلقائيّاً", "Upload failed — retrying automatically"));
+        } else toast(L("تعذّر رفع الملفّ: ", "Upload failed: ") + m + L(" — اضغط ⚠ لإعادة المحاولة", " — tap ⚠ to retry"));
+      });
+    };
+    return go();
+  }
+  // بعد الفتح: ما لم يكتمل رفعه يظهر «قيد الإرسال» ويُكمل رفعه
+  function resumeUploads() {
+    var l = lsGet(UPQ, []), keep = [], ob = lsGet(OUTBOX, []);
+    l.forEach(function (j) {
+      if (j.uid !== state.uid) { keep.push(j); return; }
+      if (Date.now() - (j.ts || 0) > 3 * 86400000 || ob.some(function (x) { return x.msg.id === j.id; })) { idbDel("upq:" + j.id); return; }
+      keep.push(j);
+      if ((pend[j.cid] || []).some(function (p) { return p.msg.id === j.id; })) return;   // يُرفع الآن في هذه الصفحة
+      idbGet("upq:" + j.id).then(function (blob) {
+        if (!blob || !j.msg || !j.msg.extra || (pend[j.cid] || []).some(function (p) { return p.msg.id === j.id; })) { if (!blob) upqDrop(j.id); return; }
+        var p = { msg: j.msg, ts: j.ts || Date.now(), status: "pending", uploading: true };
+        (pend[j.cid] = pend[j.cid] || []).push(p);
+        localUrls[j.msg.extra.mid] = URL.createObjectURL(blob);
+        publishMessages(j.cid); publishChats();
+        LOG.info("upload.resume", { id: j.id, kind: j.msg.type });
+        uploadJob(j.cid, p, j.msg, blob, !!j.secret);
+      });
+    });
+    lsSet(UPQ, keep);
   }
   function uploadMedia(cid, mid, blob, extra, onProgress) {
     var d = fsdb(); if (!d) return Promise.reject(new Error("offline"));
@@ -4446,13 +4513,14 @@
     if (global.navigator && navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", function (ev) {
       var m = ev.data || {};
       if (m.type === "sawa-push" && m.data) {
+        if (m.data.t === "msg" || (m.data.cid && !m.data.t)) pushArrived(m.data);   // C342
         if (m.data.t !== "call" && m.data.cid !== openCid) toast((m.data.title ? m.data.title + ": " : "") + (m.data.body || ""));
         if (m.data.t === "req") loadRequests();
         if (m.data.t === "famreq") loadFamReqs(true);   // C107
         if (m.data.t === "vouchok") { state.me = Object.assign({}, state.me || {}, { phoneVerified: true, verifiedBy: "contacts" }); publish(); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} toast(L("تأكّد رقمك ✓", "Your number is confirmed ✓")); }
         if (m.data.t === "reqok") { refresh(); loadRequests(); }
       }
-      if (m.type === "sawa-open" && m.data) { if (m.data.t === "req") whenReady(function () { requestsSheet(); }); else if (m.data.t === "famreq") whenReady(function () { loadFamReqs(true); }); else if (m.data.t === "moment") whenReady(function () { moOpen(m.data.pid, m.data.cm || "", m.data.k || (m.data.cm ? "comment" : "")); }); else openFromPush(m.data.cid); }
+      if (m.type === "sawa-open" && m.data) { if (m.data.t === "req") whenReady(function () { requestsSheet(); }); else if (m.data.t === "famreq") whenReady(function () { loadFamReqs(true); }); else if (m.data.t === "moment") whenReady(function () { moOpen(m.data.pid, m.data.cm || "", m.data.k || (m.data.cm ? "comment" : "")); }); else { if (m.data.cid) pushArrived(m.data); openFromPush(m.data.cid); } }   // C342
       // C60: عامل الخدمة يبلّغ أنّ اشتراك الإشعارات تغيّر ⇒ رمزٌ جديد فوراً
       if (m.type === "sawa-push-resub") { lsSet("sawa_push_resub", Date.now()); if (pushState() === "granted" && state.uid) rotateToken("sw resub"); }
     });
@@ -6350,7 +6418,7 @@
     adminP = null; avWant = {}; avFetching = {};
     plain = {}; decQ = {}; mediaKeys = {}; chatsLoaded = false; missingSince = {}; keyFp = {}; knownSec = null; e2e.reset();   // C23
     e2e.load().then(function () { publishChats(); Object.keys(days).forEach(publishMessages); }, function () { publishChats(); });
-    restorePending(); startChats(uid); drainOutbox();
+    restorePending(); startChats(uid); drainOutbox(); setTimeout(resumeUploads, 1500);   // C342
     startStories(uid);   // C90
     startMoments(uid);   // C133
     startNotes(uid);   // C135
