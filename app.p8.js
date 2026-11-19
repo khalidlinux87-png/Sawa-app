@@ -1503,8 +1503,8 @@ function AppInner() {
         if (SCg && SCg.enabled && SCg.enabled()) {
             // C3: مجموعة حقيقيّة من جهات الاتّصال (الأسماء ← المعرّفات)
             const uids = memberNames.map((n) => { const p = people.find((x) => x.name === n); return p && p.uid; }).filter(Boolean);
-            SCg.createGroup(name, uids).then((cid) => { if (cid) setChatsStack([{ type: "group", data: { id: cid, name, members: [] } }]); else setChatsStack([]); });
-            return;
+            // C346: تُعاد الوعد ⇒ زرّ «إنشاء المجموعة» معطَّلٌ حتّى الردّ (كانت كلّ ضغطةٍ مجموعةً جديدة)
+            return SCg.createGroup(name, uids).then((cid) => { if (cid) setChatsStack([{ type: "group", data: { id: cid, name, members: [] } }]); else setChatsStack([]); });
         }
         const id = `grp-${Date.now()}`;
         const members = [
@@ -4476,6 +4476,11 @@ function AppInner() {
                 tab === "calls" && (React.createElement(CallsScreen, { onOpenScheduledRooms: () => setRoomsListOpen(true), groups: groups.filter((g) => /^(fam_|grp_)/.test(g.id || "")), callLog: callLog, favoriteContacts: favoriteContacts, onToggleFavorite: toggleFavoriteContact, onLogCall: logCall, callSettings: callSettings, onUpdateCallSettings: setCallSettings, speedDialContacts: speedDialContacts, onUpdateSpeedDial: setSpeedDialContacts, onClearCallLog: clearCallLog, onDeleteCallEntry: (id) => {
                         setCallLog((prev) => prev.filter((x) => x.id !== id));
                         showToast(t("hdhft_mn_alsjl"), "success");
+                    }, onMessageEntry: (c) => {
+                        if (c.peerUid) { messageContact({ uid: c.peerUid, name: c.name }); return; }
+                        const g = c.cid && groups.find((x) => x.id === c.cid);
+                        if (g) { setChatsStack([{ type: "group", data: g }]); setTab("chats"); return; }
+                        showToast(tl("المحادثة غير متاحة", "This chat isn't available"), "info");
                     }, scheduledCalls: scheduledCalls, onAddScheduledCall: addScheduledCall, onDeleteScheduledCall: deleteScheduledCall })),
                 tab === "contacts" && React.createElement(ContactsScreen, { onMessageContact: messageContact, onLogCall: logCall, onlineContacts: onlineContacts, people: people }),
                 tab === "discover" && discoverContent,

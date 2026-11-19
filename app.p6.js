@@ -293,7 +293,7 @@ function callMatch(c, q) {
     if (!String(q || "").trim()) return true;
     return arMatchAny([c.name].concat((c.participants || []).map((x) => (x && (x.name || x)) || "")), q);
 }
-function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteContacts, onToggleFavorite, onLogCall, callSettings, onUpdateCallSettings, speedDialContacts, onUpdateSpeedDial, onClearCallLog, scheduledCalls, onAddScheduledCall, onDeleteScheduledCall, onDeleteCallEntry, }) {
+function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteContacts, onToggleFavorite, onLogCall, callSettings, onUpdateCallSettings, speedDialContacts, onUpdateSpeedDial, onClearCallLog, scheduledCalls, onAddScheduledCall, onDeleteScheduledCall, onDeleteCallEntry, onMessageEntry, }) {
     const { colors } = useTheme();
     const { showToast } = useToast();   // كان showToast غير معرَّف هنا ⇒ ReferenceError عند فشل المكالمة/لوحة الأرقام
     const [activeCall, setActiveCallRaw] = useState(null); // null | { name, callType }
@@ -431,10 +431,12 @@ function CallsScreen({ onOpenScheduledRooms, groups = [], callLog, favoriteConta
                 React.createElement("div", { className: "w-10 h-1 rounded-full mx-auto my-3", style: { backgroundColor: colors.border } }),
                 React.createElement("p", { className: "text-sm font-extrabold text-center mb-2", style: { color: colors.text } }, callMenu.name),
                 [
+                    // مراسلة من سجلّ المكالمات (مثل واتساب): شخص ⇒ محادثته · مكالمة جماعيّة ⇒ المجموعة · الغرف بلا محادثة
+                    onMessageEntry && !callMenu.room && (callMenu.peerUid || callMenu.cid) && { icon: MessageCircle, label: tl("مراسلة", "Message"), act: () => onMessageEntry(callMenu) },
                     { icon: Phone, label: tl("مكالمة صوتية", "Voice call"), act: () => setActiveCall({ name: callMenu.name, peerUid: callMenu.peerUid, cid: callMenu.cid, callType: "audio" }) },
                     { icon: Video, label: tl("مكالمة فيديو", "Video call"), act: () => setActiveCall({ name: callMenu.name, peerUid: callMenu.peerUid, cid: callMenu.cid, callType: "video" }) },
                     { icon: Trash2, label: tl("حذف من السجل", "Remove from history"), act: () => onDeleteCallEntry === null || onDeleteCallEntry === void 0 ? void 0 : onDeleteCallEntry(callMenu.id), danger: true },
-                ].map((it) => (React.createElement("button", { key: it.label, onClick: () => { it.act(); setCallMenu(null); }, className: "w-full flex flex-row items-center gap-3 px-5 py-3.5 border-t", style: { borderColor: colors.border } },
+                ].filter(Boolean).map((it) => (React.createElement("button", { key: it.label, onClick: () => { it.act(); setCallMenu(null); }, className: "w-full flex flex-row items-center gap-3 px-5 py-3.5 border-t", style: { borderColor: colors.border } },
                     React.createElement(it.icon, { size: 17, color: it.danger ? colors.danger : colors.textMuted }),
                     React.createElement("span", { className: `flex-1 ${textStart()} text-sm font-bold`, style: { color: it.danger ? colors.danger : colors.text } }, it.label)))))))),
         React.createElement("button", { onClick: () => setSubScreen("newCall"), className: "flex items-center justify-center", "aria-label": t("mkalma_jdyda"), style: { position: "absolute", bottom: "1rem", [isRTL() ? "left" : "right"]: "1rem", width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primaryFill, boxShadow: "0 4px 12px rgba(0,0,0,0.25)" }   /* C198: كان أخضر واتساب #25D366 (الأيقونة البيضاء 2:1) */ },
