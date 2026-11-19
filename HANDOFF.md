@@ -57,10 +57,10 @@
 
 | المكوّن | النسخة |
 |---|---|
-| sw.js | **sawa-v524** |
-| sawa-chat (`CHAT_BUILD`) | **c342** |
+| sw.js | **sawa-v525** |
+| sawa-chat (`CHAT_BUILD`) | **c346** |
 | sawa-rtc (`RTC_BUILD`) | **c344** |
-| Worker | **v142-missed** |
+| Worker | **v143-gdedup** |
 | أندرويد الأصليّ (`native/SAWA_BUILD`) | **c283** (C345) · c282 (C318، يُبنى عند الدمج) · c281 (C316) · c280 = البناء ‎#95 (2.0.95) (versionCode = 1000 + رقم التشغيل، والاسم 2.0.N) |
 | iOS | 1.0.0 · رقم البناء = 100 + رقم تشغيل TestFlight (آخر ما رُفع **106**) |
 

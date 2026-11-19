@@ -3341,6 +3341,13 @@ function NewGroupScreen({ onCreate, onClose, contacts = [] }) {
     const [selected, setSelected] = useState([]);
     const [query, setQuery] = useState("");
     const [manualName, setManualName] = useState("");
+    const [busy, setBusy] = useState(false);   // C346: لا ضغطة ثانية أثناء الإنشاء
+    function create() {
+        if (busy || !name.trim()) return;
+        let r = null;
+        try { r = onCreate(name.trim(), selected); } catch (e) { r = null; }
+        if (r && typeof r.then === "function") { setBusy(true); r.then(() => setBusy(false), () => setBusy(false)); }
+    }
     const filtered = useMemo(function () {
         const q = query.trim();
         if (!q) return contacts;
@@ -3381,7 +3388,7 @@ function NewGroupScreen({ onCreate, onClose, contacts = [] }) {
                                 c.source && c.source !== t("ai_mhadthaty") && React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } }, c.source)));   // C201: المصدر حين يفيد فقط (كانت «محادثاتي» تحت كلّ اسم)
                     })),
             // C201: حُذفت «أو اكتب اسماً يدوياً» — عضو المجموعة جهة اتّصالٍ على سوا
-            React.createElement(Button, { label: t("insha_almjmwaa"), onPress: () => name.trim() && onCreate(name.trim(), selected), disabled: !name.trim() || selected.length === 0 }))));
+            React.createElement(Button, { label: busy ? "…" : t("insha_almjmwaa"), onPress: create, disabled: busy || !name.trim() || selected.length === 0 }))));
 }
 
 function StatsScreen({ transactions, onBack }) {
