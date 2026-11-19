@@ -1787,7 +1787,9 @@ const FamilyReminderCard = React.memo(function FamilyReminderCard({ onOpenPerson
         //      الآن تفتح بطاقة القريب: اتّصال · واتساب · رسالة · «تواصلتُ معه» — كلّها حقيقيّة.
         if (onOpenPerson) { onOpenPerson(person); return; }
         // ابحث عن محادثة موجودة بنفس الاسم أو أنشئ جديدة
-        const existing = conversations === null || conversations === void 0 ? void 0 : conversations.find(c => c.name && person.local_name && c.name.includes(person.local_name.split(" ")[0]));
+        // C347: محادثته المؤكَّدة فقط (حسابه المربوط أو ربطي أنا) — لا أوّل «أحمد» في القائمة
+        const kl = kinLinksRead();
+        const existing = conversations === null || conversations === void 0 ? void 0 : conversations.find(c => (person.acctUid && c.peerUid === person.acctUid) || (kl[kinLinkKey(c)] && kl[kinLinkKey(c)].p === person.id));
         if (existing && onStartChat) {
             onStartChat(existing);
         }
@@ -2065,10 +2067,9 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
     const archivedUnreadCount = useMemo(() => conversations.filter((c) => archivedConversations.includes(c.id) && c.unread > 0).length, [conversations, archivedConversations]);
     const lockedCount = conversations.filter((c) => lockedConversationIds.includes(c.id)).length;
     // فلترة حسب التبويب النشط
-    // أسماء أفراد العائلة من صلة الرحم للفلترة
-    const familyNames = useMemo(() => Object.values(groupPersons).flat()
-        .filter(p => p.alive)
-        .map(p => p.local_name.split(" ")[0].toLowerCase()), [groupPersons]);
+    // C347: «عائلة» = محادثةٌ مربوطةٌ بقريبٍ مؤكَّد (حسابه مربوطٌ في الشجرة، أو أكّدتُه أنا) — لا تشابه الاسم الأوّل
+    const kinLinks = useKinLinks();
+    const kinOf = (c) => kinPersonOfConv(c, groupPersons, kinLinks);
     const tabConversations = useMemo(() => {
         const q = searchQuery.trim().toLowerCase();
         const searched = q
@@ -2092,11 +2093,10 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
         if (activeTab === "groups")
             return [];
         if (activeTab === "family") {
-            return base.filter(c => !c.isSavedMessages &&
-                familyNames.some(fn => { var _a; return (_a = c.name) === null || _a === void 0 ? void 0 : _a.toLowerCase().includes(fn); }));
+            return base.filter(c => !c.isSavedMessages && !!kinOf(c));
         }
         return base;
-    }, [visibleConversations, activeTab, pinnedConversations, familyNames, searchQuery]);
+    }, [visibleConversations, activeTab, pinnedConversations, groupPersons, kinLinks, searchQuery]);
     const tabGroups = useMemo(() => {
         // C74: مجموعات العائلات (محادثة «آل علي») تظهر في «عائلة» — كانت تقول «ما في محادثات مع أفراد العائلة» ومجموعتها موجودة
         if (activeTab === "family")
@@ -2118,10 +2118,10 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
     // بادج عدد المتأخرين في صلة الرحم
     const overdueCount = useMemo(() => getOverduePersons(groupPersons).length, [groupPersons]);
     const familyUnread = useMemo(() => {
-        const convU = visibleConversations.filter((c) => !c.isSavedMessages && familyNames.some((fn) => (c.name || "").toLowerCase().includes(fn))).reduce((n, c) => n + (c.unread || 0), 0);
+        const convU = visibleConversations.filter((c) => !c.isSavedMessages && !!kinOf(c)).reduce((n, c) => n + (c.unread || 0), 0);
         const grpU = groups.filter((g) => g.kind === "family").reduce((n, g) => n + (g.unread || 0), 0);
         return convU + grpU;
-    }, [visibleConversations, groups, familyNames]);
+    }, [visibleConversations, groups, groupPersons, kinLinks]);
     const unreadCount = useMemo(() => visibleConversations.filter(c => c.unread > 0).length, [visibleConversations]);
     const TABS = [
         { key: "all", label: t("tab_alkl") },
@@ -2370,12 +2370,7 @@ function ConversationsListScreen({ onOpenFamilyPerson, onOpenScheduledRooms, cha
                             selectionMode && !c.isSavedMessages && (React.createElement("span", { className: `w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${ms("2")} border-2`, style: { borderColor: selectedIds.includes(c.id) ? colors.primaryFill : colors.border, backgroundColor: selectedIds.includes(c.id) ? colors.primaryFill : "transparent" } }, selectedIds.includes(c.id) && React.createElement(Check, { size: 11, color: "#fff" }))),
                             (() => {
                                 // فحص إذا الشخص من صلة الرحم ومتأخر التواصل
-                                const allFamilyPersons = Object.values(groupPersons).flat();
-                                const matchedPerson = !c.isSavedMessages && allFamilyPersons.find(p => {
-                                    var _a;
-                                    return p.alive && c.name && ((_a = p.local_name) === null || _a === void 0 ? void 0 : _a.split(" ")[0]) &&
-                                        c.name.toLowerCase().includes(p.local_name.split(" ")[0].toLowerCase());
-                                });
+                                const matchedPerson = (() => { const p = kinOf(c); return p && p.alive !== false ? p : null; })();   // C347
                                 const overdue = matchedPerson && isContactOverdue(matchedPerson);
                                 return (React.createElement("div", { className: "w-12 h-12 rounded-full flex items-center justify-center relative shrink-0", onClick: (e) => { if (c.photo && !c.isSavedMessages) { e.stopPropagation(); e.preventDefault(); setPreviewPhoto(c.photo); } }, style: { cursor: c.photo && !c.isSavedMessages ? "pointer" : undefined,   // C186: النقر على الصورة يفتحها لا المحادثة
                                         backgroundColor: c.isSavedMessages ? colors.accent : colors.primaryLight,
@@ -2723,7 +2718,7 @@ const MUTE_OPTIONS = [
     { key: 28800, labelKey: "mut_8_saaat" },
     { key: -1, labelKey: "mut_daym" },
 ];
-function ChatInfoScreen({ conversation, messages, background, setBackground, disappearing, setDisappearing, isBlocked, onBlock, onUnblock, onReport, isLocked, onToggleLock, chatFolders, folderId, onSetFolder, notificationTone, setNotificationTone, onBack, muteDuration: muteDurationProp = 0, onSetMute, groupPersons = {}, onOpenFamilyProfile, }) {
+function ChatInfoScreen({ conversation, messages, background, setBackground, disappearing, setDisappearing, isBlocked, onBlock, onUnblock, onReport, isLocked, onToggleLock, chatFolders, folderId, onSetFolder, notificationTone, setNotificationTone, onBack, muteDuration: muteDurationProp = 0, onSetMute, groupPersons = {}, kinshipRelations = [], onOpenFamilyProfile, }) {
     var _a;
     const { colors } = useTheme();
     const [viewPhoto, setViewPhoto] = useState(null);   // C155
@@ -2790,16 +2785,12 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                 (() => {
                     if (conversation.isSavedMessages)
                         return null;
-                    const allFP = Object.values(groupPersons || {}).flat();
-                    const fp = allFP.find(p => {
-                        var _a;
-                        return p.alive && conversation.name &&
-                            ((_a = p.local_name) === null || _a === void 0 ? void 0 : _a.split(" ")[0]) &&
-                            conversation.name.toLowerCase().includes(p.local_name.split(" ")[0].toLowerCase());
-                    });
+                    // C347: القريب المؤكَّد فقط · وإلّا «من هو في عائلتك؟» (بحثٌ في كلّ الشجرة) — لا تخمين بالاسم
+                    const fp = kinPersonOfConv(conversation, groupPersons);
                     if (!fp)
-                        return null;
-                    return (React.createElement("button", { onClick: () => onOpenFamilyProfile === null || onOpenFamilyProfile === void 0 ? void 0 : onOpenFamilyProfile(fp), className: "w-full mb-4" },
+                        return React.createElement(KinAsk, { conversation, groupPersons, relations: kinshipRelations });
+                    const localOnly = !(conversation.peerUid && fp.acctUid === conversation.peerUid);
+                    return React.createElement(React.Fragment, null, (React.createElement("button", { onClick: () => onOpenFamilyProfile === null || onOpenFamilyProfile === void 0 ? void 0 : onOpenFamilyProfile(fp), className: "w-full mb-4" },
                         React.createElement(Card, { className: `flex ${rowStart()} items-center gap-3`, style: { borderColor: colors.accent + "50", backgroundColor: colors.accent + "08" } },
                             React.createElement("span", { style: { fontSize: 20 } }, "\uD83E\uDD0D"),
                             React.createElement("div", { className: `flex-1 ${textStart()}` },
@@ -2807,7 +2798,8 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                                 React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } },
                                     personKinLabel(fp),
                                     tl(" \u00B7 \u0627\u0636\u063A\u0637 \u0644\u0639\u0631\u0636 \u0645\u0644\u0641\u0647 \u0641\u064A \u0635\u0644\u0629 \u0627\u0644\u0631\u062D\u0645", " · Tap to view their profile in Silat Rehim"))),
-                            React.createElement(ChevronLeft, { size: 15, color: colors.accent, style: { transform: isRTL() ? "none" : "scaleX(-1)" } }))));
+                            React.createElement(ChevronLeft, { size: 15, color: colors.accent, style: { transform: isRTL() ? "none" : "scaleX(-1)" } })))),
+                        localOnly && React.createElement("button", { onClick: () => kinLinkSet(conversation, null), className: "w-full -mt-2 mb-4 py-2 text-[12px] font-bold", style: { color: colors.textMuted } }, tl("فكّ الربط — ليس هذا الشخص", "Unlink — not this person")));
                 })(),
                 window.SawaChat && window.SawaChat.e2eStartDm && conversation.peerUid && !conversation.isSavedMessages && React.createElement("button", { onClick: () => conversation.secret ? window.SawaChat.e2eSafety(conversation.id) : window.SawaChat.e2eStartDm(conversation.peerUid), className: "w-full mb-4" },
                     React.createElement(Card, { className: `flex ${rowStart()} items-center gap-3` },

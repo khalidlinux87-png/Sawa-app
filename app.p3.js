@@ -3279,6 +3279,52 @@ function arabicFoldBase(s) {
 function normalizeArabicName(name) {
     return arabicFoldBase(name);
 }
+// C347: قريبٌ في الشجرة لمحادثةٍ — بالتأكيد فقط، لا بتشابه الاسم.
+//   كان «أحمد» في المحادثات يُعامَل كـ«أحمد» في الشجرة (تبويب «عائلة»، إطار الصورة، «آخر تواصل»، بطاقة صلة الرحم).
+//   الآن: (١) حسابه مربوطٌ بشخصٍ في الشجرة على الخادم (acctUid، بعد «هل هذا أنت؟»)، أو (٢) أكّدتُ أنا «نعم، هو فلان».
+//   تشابه الاسم يُستعمل للسؤال فقط («هل أحمد هو أحمد بن محمد؟») ولا يربط شيئاً.
+const KINLINK_KEY = "sawa-kinlink";
+function kinLinkKey(conv) { return conv ? String(conv.peerUid || conv.id || "") : ""; }
+function kinLinksRead() { try { const v = JSON.parse(localStorage.getItem(KINLINK_KEY) || "{}"); return v && typeof v === "object" ? v : {}; } catch (e) { return {}; } }
+// val: { g, p } = مربوطٌ بشخص · "no" = ليس من العائلة (لا يُسأل ثانيةً) · null = يُمسح
+function kinLinkSet(conv, val) {
+    const k = kinLinkKey(conv); if (!k) return;
+    const all = kinLinksRead();
+    if (val == null) delete all[k]; else all[k] = val;
+    try { localStorage.setItem(KINLINK_KEY, JSON.stringify(all)); } catch (e) { }
+    try { window.dispatchEvent(new Event("sawa-kinlink")); } catch (e) { }
+}
+function useKinLinks() {
+    const [v, setV] = useState(kinLinksRead);
+    useEffect(() => { const f = () => setV(kinLinksRead()); window.addEventListener("sawa-kinlink", f); window.addEventListener("storage", f); return () => { window.removeEventListener("sawa-kinlink", f); window.removeEventListener("storage", f); }; }, []);
+    return v;
+}
+// الشخص المؤكَّد لهذه المحادثة (أو null). groupPersons: { gid: [persons] }
+function kinPersonOfConv(conv, groupPersons, links) {
+    if (!conv || conv.isSavedMessages) return null;
+    const gp = groupPersons || {};
+    if (conv.peerUid) {
+        for (const g of Object.keys(gp)) { const hit = (gp[g] || []).find((p) => p && p.acctUid === conv.peerUid && !p.acctMe); if (hit) return hit; }
+    }
+    const l = (links || kinLinksRead())[kinLinkKey(conv)];
+    if (l && typeof l === "object") { const hit = (gp[l.g] || []).find((p) => p && p.id === l.p); if (hit) return hit; }
+    return null;
+}
+// أسماء محتملة للسؤال فقط: الاسم الأوّل (بتمامه، C271) يطابق الاسم الأوّل لقريبٍ حيٍّ غير مربوطٍ بحسابٍ آخر
+function kinCandidatesOfConv(conv, groupPersons, links) {
+    if (!conv || conv.isSavedMessages || conv.isGroup) return [];
+    const l = (links || kinLinksRead())[kinLinkKey(conv)];
+    if (l === "no" || kinPersonOfConv(conv, groupPersons, links)) return [];
+    const first = normalizeArabicName(givenName(conv.realName || conv.name || ""));
+    if (!first) return [];
+    const out = [];
+    Object.keys(groupPersons || {}).forEach((g) => (groupPersons[g] || []).forEach((p) => {
+        if (!p || p.alive === false || p.id === "__vself__" || p.kinship === SELF_KINSHIP || p.acctMe) return;
+        if (p.acctUid && p.acctUid !== conv.peerUid) return;
+        if (normalizeArabicName(givenName(p.local_name || "")) === first) out.push({ g, p });
+    }));
+    return out.slice(0, 6);
+}
 // مفتاح البحث الواسع. foldTeh = false يُبقي التاء الأخيرة (للكتابة الجزئيّة: «بت» بداية «بتول»).
 const AR_KEY_CACHE = new Map();
 function arabicSearchKey(s, foldTeh) {

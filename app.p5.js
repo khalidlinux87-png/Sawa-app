@@ -1671,7 +1671,52 @@ function DisappearSoonBar({ messages, colors }) {
         React.createElement(Clock, { size: 14, color: colors.warning || "#B45309", "aria-hidden": true }),
         React.createElement("span", { className: `flex-1 ${textStart()}` }, tl(`ستُحذف ${soon.length} رسالة مؤقّتة خلال ${d} ${d === 1 ? "يوم" : "أيّام"} — اضغط مطوّلاً ثمّ «حفظ الرسالة» لتبقى`, `${soon.length} disappearing message(s) will be deleted within ${d} day(s) — long-press and Star to keep`)));
 }
-function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSendSticker, onSendFile, onSendVoice, onEditMessage, onMarkViewedOnce, onTogglePin, onToggleStar, onOpenInfo, disappearing, setDisappearing, background, onBack, myUserId, isBlocked, allConversations, allGroups, isTyping, onLogCall, isOnline, callSettings, groupPersons = {}, onDeleteMessage, onOpenFamilyProfile, draft = "", onSaveDraft, unreadCount = 0, onTyping, contactsForForward, }) {
+// C347: «هل فلان من عائلتك؟» — السؤال بدل الربط بتشابه الاسم. لا شيء يُربط إلّا بضغطة «نعم، هو …».
+//   candidatesOnly: يظهر في المحادثة فقط حين يطابق الاسم الأوّل قريباً (وإلّا لا يزعج) · وفي «معلومات المحادثة» يظهر دائماً بالبحث في كلّ الشجرة.
+function KinAsk({ conversation, groupPersons = {}, relations = [], candidatesOnly = false, onLinked }) {
+    const { colors } = useTheme();
+    const { showToast } = useToast();
+    const links = useKinLinks();
+    const [open, setOpen] = useState(!candidatesOnly);
+    const [q, setQ] = useState("");
+    if (!conversation || conversation.isSavedMessages || kinPersonOfConv(conversation, groupPersons, links)) return null;
+    const dismissed = links[kinLinkKey(conversation)] === "no";
+    const cands = kinCandidatesOfConv(conversation, groupPersons, links);
+    if (candidatesOnly && (dismissed || !cands.length)) return null;
+    const name = conversation.name || tl("هذا الشخص", "this person");
+    const label = (g, p) => {
+        try { const rel = (relations || []).filter((r) => r && r.groupId === g); const { distinctLabel } = buildLineageHelpers(groupPersons[g] || [], rel); return displayFullName(p, distinctLabel); } catch (e) { return p.local_name; }
+    };
+    const confirm = (g, p) => {
+        kinLinkSet(conversation, { g, p: p.id });
+        const full = label(g, p);
+        showToast(tl("رُبط «" + name + "» بـ«" + full + "» في عائلتك ✓", "Linked «" + name + "» to «" + full + "» in your family ✓"), "success");
+        // ربطه في الشجرة نفسها يحتاج موافقته (C156): يصله «هل هذا أنت؟» — إن لم تكن الشجرة على الخادم أو لا أملك ذلك يبقى الربط عندي فقط
+        if (conversation.peerUid && !p.acctUid) famLinkCall(g, { personId: p.id, uid: conversation.peerUid }).catch(() => { });
+        if (onLinked) onLinked(p);
+    };
+    const all = [];
+    if (open) Object.keys(groupPersons || {}).forEach((g) => (groupPersons[g] || []).forEach((p) => { if (p && p.alive !== false && p.id !== "__vself__" && p.kinship !== SELF_KINSHIP && !p.acctMe && (!p.acctUid || p.acctUid === conversation.peerUid)) all.push({ g, p }); }));
+    const shown = open ? (q.trim() ? all.filter((x) => arMatch(label(x.g, x.p), q)) : all).slice(0, 60) : [];
+    const btn = { backgroundColor: colors.card, border: `1px solid ${colors.border}`, color: colors.text };
+    const row = (x) => React.createElement("button", { key: x.g + ":" + x.p.id, onClick: () => confirm(x.g, x.p), className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-2 rounded-xl mb-1.5 text-[13px] font-bold ${textStart()}`, style: btn },
+        React.createElement("span", { style: { fontSize: 14 } }, "🤍"),
+        React.createElement("span", { className: "flex-1 min-w-0 truncate" }, tl("نعم، هو ", "Yes, they're ") + label(x.g, x.p)));
+    return React.createElement("div", { className: "mx-3 my-2 rounded-2xl p-3", style: { backgroundColor: colors.accent + "12", border: `1px solid ${colors.accent}33` } },
+        React.createElement("p", { className: `text-[13px] font-extrabold mb-1 ${textStart()}`, style: { color: colors.text } },
+            cands.length ? tl("هل «" + name + "» من عائلتك؟", "Is «" + name + "» from your family?") : tl("من هو «" + name + "» في عائلتك؟", "Who is «" + name + "» in your family?")),
+        React.createElement("p", { className: `text-[11px] mb-2 leading-relaxed ${textStart()}`, style: { color: colors.textMuted } },
+            tl("لا يُربط بالشجرة ولا يظهر في «عائلة» إلّا إن أكّدتَ أنت.", "Nothing is linked to your tree or shown under «Family» unless you confirm.")),
+        cands.map(row),
+        open && React.createElement(React.Fragment, null,
+            all.length > 6 && React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: q, onChange: (e) => setQ(e.target.value), placeholder: tl("ابحث في الشجرة بالاسم أو النسب", "Search the tree by name or lineage"), className: "w-full rounded-xl px-3 py-2 text-sm mb-2 outline-none", style: btn }),
+            React.createElement("div", { style: { maxHeight: 240, overflowY: "auto" } }, shown.filter((x) => !cands.some((c) => c.p.id === x.p.id && c.g === x.g)).map(row)),
+            !all.length && React.createElement("p", { className: "text-[12px] py-2", style: { color: colors.textMuted } }, tl("لا أشخاص في شجرتك بعد.", "No one in your tree yet."))),
+        React.createElement("div", { className: `flex ${rowStart()} gap-2 mt-1` },
+            !open && React.createElement("button", { onClick: () => setOpen(true), className: "flex-1 py-2 rounded-xl text-[12px] font-bold", style: { ...btn, color: colors.primary } }, tl("شخصٌ آخر من الشجرة…", "Someone else in the tree…")),
+            !dismissed && React.createElement("button", { onClick: () => { kinLinkSet(conversation, "no"); showToast(tl("لن نسألك عنه ثانيةً — يمكنك ربطه من «معلومات المحادثة»", "We won't ask again — you can link from chat info"), "success"); }, className: "flex-1 py-2 rounded-xl text-[12px] font-bold", style: { ...btn, color: colors.textMuted } }, tl("ليس من عائلتي", "Not my family"))));
+}
+function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSendSticker, onSendFile, onSendVoice, onEditMessage, onMarkViewedOnce, onTogglePin, onToggleStar, onOpenInfo, disappearing, setDisappearing, background, onBack, myUserId, isBlocked, allConversations, allGroups, isTyping, onLogCall, isOnline, callSettings, groupPersons = {}, kinshipRelations = [], onDeleteMessage, onOpenFamilyProfile, draft = "", onSaveDraft, unreadCount = 0, onTyping, contactsForForward, }) {
     var _a, _b;
     const { colors } = useTheme();
     const { showToast } = useToast();
@@ -1822,17 +1867,10 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
         (() => {
             if (conversation.isSavedMessages)
                 return null;
-            const allFP = typeof groupPersons !== "undefined"
-                ? Object.values(groupPersons || {}).flat()
-                : [];
-            const fp = allFP.find(p => {
-                var _a;
-                return p.alive && conversation.name &&
-                    ((_a = p.local_name) === null || _a === void 0 ? void 0 : _a.split(" ")[0]) &&
-                    conversation.name.toLowerCase().includes(p.local_name.split(" ")[0].toLowerCase());
-            });
-            if (!fp)
-                return null;
+            // C347: القريب المؤكَّد فقط — وإلّا سؤال «هل هو من عائلتك؟» حين يشبه اسمُه اسماً في الشجرة
+            const fp = kinPersonOfConv(conversation, groupPersons);
+            if (!fp || fp.alive === false)
+                return React.createElement(KinAsk, { conversation, groupPersons, relations: kinshipRelations, candidatesOnly: true });
             const days = daysSinceRef(fp);
             const overdue = isContactOverdue(fp);
             return (React.createElement("button", { onClick: () => onOpenFamilyProfile === null || onOpenFamilyProfile === void 0 ? void 0 : onOpenFamilyProfile(fp), className: `w-full flex ${rowStart()} items-center gap-2 px-3 py-1.5 border-b`, style: {
@@ -2044,14 +2082,8 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                     React.createElement("span", { className: `flex-1 ${textStart()} text-sm font-bold`, style: { color: colors.danger } }, t("hdhf_and_aljmya")))),
                 React.createElement("button", { onClick: () => setDeletingMsg(null), className: "w-full px-5 py-3.5 border-t text-sm font-bold", style: { borderColor: colors.border, color: colors.textMuted } }, t("ilgha"))))),
         !conversation.isSavedMessages && (() => {
-            const allFP = Object.values(groupPersons || {}).flat();
-            const fp = allFP.find(p => {
-                var _a;
-                return p.alive && conversation.name &&
-                    ((_a = p.local_name) === null || _a === void 0 ? void 0 : _a.split(" ")[0]) &&
-                    conversation.name.toLowerCase().includes(p.local_name.split(" ")[0].toLowerCase());
-            });
-            if (!fp)
+            const fp = kinPersonOfConv(conversation, groupPersons);   // C347: المؤكَّد فقط
+            if (!fp || fp.alive === false)
                 return null;
             const lastMsg = messages[messages.length - 1];
             const daysSinceLast = lastMsg ? Math.floor((Date.now() - lastMsg.createdAt) / 86400000) : 999;
