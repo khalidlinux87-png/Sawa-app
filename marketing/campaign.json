@@ -1,0 +1,316 @@
+{
+  "_note": "مصدر الحملة: يقرؤه render.mjs. hook: كلمات تظهر واحدةً واحدة (النجمة * = لون ذهبيّ). hl: مستطيل التمييز بإحداثيّات لقطة الهاتف المقصوصة (744×1464). كلّ ادّعاء هنا يجب أن يطابق ميزةً منشورة فعلاً.",
+  "common": {
+    "ar": {
+      "dir": "rtl",
+      "lang": "ar",
+      "brand": "سوا",
+      "tagline": "أهلك وأحبابك في مكانٍ واحد",
+      "chips": [
+        "محادثات",
+        "مكالمات",
+        "غرف",
+        "صلة الرحم"
+      ],
+      "cta": "حمّل سوا مجّاناً",
+      "free": "مجّاناً",
+      "avail": "أندرويد الآن · وقريباً على App Store"
+    },
+    "en": {
+      "dir": "ltr",
+      "lang": "en",
+      "brand": "Sawa",
+      "tagline": "Your family and friends, in one place",
+      "chips": [
+        "Chats",
+        "Calls",
+        "Rooms",
+        "Family ties"
+      ],
+      "cta": "Get Sawa — it's free",
+      "free": "Free",
+      "avail": "Android now · App Store coming soon"
+    }
+  },
+  "reels": [
+    {
+      "id": "01-silat-rahim",
+      "ar": {
+        "hook": [
+          "متى",
+          "آخر",
+          "مرّة",
+          "اتّصلت",
+          "*بعمّك؟"
+        ],
+        "title": "صِل رحمك",
+        "sub": "تذكيرٌ لطيف بمن طال غيابك عنه",
+        "shot": "ar-4",
+        "caps": [
+          "عمر · آخر تواصل منذ <b>٢٠ يوماً</b>",
+          "اتّصل بضغطةٍ واحدة 📞"
+        ]
+      },
+      "en": {
+        "hook": [
+          "When",
+          "did",
+          "you",
+          "last",
+          "call",
+          "your",
+          "*uncle?"
+        ],
+        "title": "Stay in touch",
+        "sub": "A gentle nudge about relatives you miss",
+        "shot": "en-4",
+        "caps": [
+          "Omar · last contact <b>20 days ago</b>",
+          "Call in one tap 📞"
+        ]
+      },
+      "hl": {
+        "x": 40,
+        "y": 1105,
+        "w": 665,
+        "h": 155
+      }
+    },
+    {
+      "id": "02-family-tree",
+      "ar": {
+        "hook": [
+          "ابن",
+          "خالة",
+          "أبيك…",
+          "*ماذا",
+          "*يكون",
+          "*لك؟"
+        ],
+        "title": "شجرة عائلتك",
+        "sub": "أجيال العائلة في مكانٍ واحد",
+        "shot": "ar-5",
+        "caps": [
+          "سوا يحسب <b>القرابة</b> تلقائيّاً",
+          "شاركها مع أهلك واتّصل بهم منها"
+        ]
+      },
+      "en": {
+        "hook": [
+          "Your",
+          "dad's",
+          "cousin's",
+          "son…",
+          "*how",
+          "*are",
+          "*you",
+          "*related?"
+        ],
+        "title": "Your family tree",
+        "sub": "Generations of your family, in one place",
+        "shot": "en-5",
+        "caps": [
+          "Sawa works out <b>the relation</b> for you",
+          "Share it, and call relatives from it"
+        ]
+      },
+      "hl": {
+        "x": 45,
+        "y": 1095,
+        "w": 470,
+        "h": 330
+      },
+      "hl_en": {
+        "x": 30,
+        "y": 1120,
+        "w": 490,
+        "h": 330
+      }
+    },
+    {
+      "id": "03-nearby",
+      "ar": {
+        "hook": [
+          "مررت",
+          "بجانب",
+          "بيت",
+          "خالتك",
+          "*ولم",
+          "*تدخل؟"
+        ],
+        "title": "تنبيهات القرب",
+        "sub": "حين تمرّ قرب منزل قريبٍ لك",
+        "shot": "ar-4",
+        "caps": [
+          "على بُعد <b>١ كم</b> من منزل قريب",
+          "يذكّرك سوا: زيارةٌ أو اتّصال 🏡"
+        ]
+      },
+      "en": {
+        "hook": [
+          "Passed",
+          "your",
+          "aunt's",
+          "house",
+          "*without",
+          "*stopping",
+          "*by?"
+        ],
+        "title": "Nearby alerts",
+        "sub": "When you pass close to a relative's home",
+        "shot": "en-4",
+        "caps": [
+          "Within <b>1 km</b> of a relative's home",
+          "Sawa reminds you: visit or call 🏡"
+        ]
+      },
+      "hl": {
+        "x": 40,
+        "y": 405,
+        "w": 665,
+        "h": 250
+      }
+    },
+    {
+      "id": "04-weak-network",
+      "ar": {
+        "hook": [
+          "الشبكة",
+          "ضعيفة؟",
+          "*صوت",
+          "*أهلك",
+          "*يصل"
+        ],
+        "title": "مكالمات صوت وفيديو",
+        "sub": "بجودةٍ واضحة حتّى على شبكات الجوّال",
+        "shot": "ar-3",
+        "caps": [
+          "تحويل الصوت إلى فيديو <b>بضغطة</b>",
+          "<b>رمز سوا</b>: تواصل دون مشاركة رقمك"
+        ]
+      },
+      "en": {
+        "hook": [
+          "Weak",
+          "signal?",
+          "*Your",
+          "*family",
+          "*still",
+          "*sounds",
+          "*clear"
+        ],
+        "title": "Voice & video calls",
+        "sub": "Clear quality, even on mobile networks",
+        "shot": "en-3",
+        "caps": [
+          "Switch voice to video <b>in one tap</b>",
+          "<b>Sawa code</b>: connect without your number"
+        ]
+      },
+      "hl": {
+        "x": 230,
+        "y": 440,
+        "w": 290,
+        "h": 430
+      }
+    },
+    {
+      "id": "05-daily-reminder",
+      "ar": {
+        "hook": [
+          "كلمةٌ",
+          "كلّ",
+          "يوم",
+          "*تقرّبك",
+          "*من",
+          "*أهلك"
+        ],
+        "title": "تذكير اليوم",
+        "sub": "آيةٌ وحديثٌ وحكمة عن صلة الرحم",
+        "shot": "ar-6",
+        "caps": [
+          "شاركها مع أهلك بضغطة 🤍",
+          "بالتاريخ الهجريّ والميلاديّ"
+        ]
+      },
+      "en": {
+        "hook": [
+          "One",
+          "line",
+          "a",
+          "day",
+          "*to",
+          "*bring",
+          "*you",
+          "*closer"
+        ],
+        "title": "Today's reminder",
+        "sub": "A verse, hadith or saying about family ties",
+        "shot": "en-6",
+        "caps": [
+          "Share it with family in one tap 🤍",
+          "Hijri and Gregorian dates"
+        ]
+      },
+      "hl": {
+        "x": 70,
+        "y": 640,
+        "w": 600,
+        "h": 345
+      }
+    },
+    {
+      "id": "06-one-app",
+      "ar": {
+        "hook": [
+          "أهلك",
+          "في",
+          "مجموعة،",
+          "وأصدقاؤك",
+          "في",
+          "أخرى…",
+          "*والكلّ",
+          "*في",
+          "*سوا"
+        ],
+        "title": "كلّ محادثاتك في مكانٍ واحد",
+        "sub": "رسائل وصور وصوت — مع أهلك وأصدقائك",
+        "shot": "ar-1",
+        "caps": [
+          "<b>لا إعلانات</b> ولا بيع لبياناتك",
+          "محادثات سرّيّة مشفّرة 🔒"
+        ]
+      },
+      "en": {
+        "hook": [
+          "Family",
+          "here,",
+          "friends",
+          "there…",
+          "*all",
+          "*in",
+          "*Sawa"
+        ],
+        "title": "All chats, one place",
+        "sub": "Messages, photos and voice notes",
+        "shot": "en-1",
+        "caps": [
+          "<b>No ads</b>, no selling your data",
+          "End-to-end encrypted secret chats 🔒"
+        ]
+      },
+      "hl": {
+        "x": 37,
+        "y": 232,
+        "w": 672,
+        "h": 145
+      },
+      "hl_en": {
+        "x": 37,
+        "y": 268,
+        "w": 672,
+        "h": 145
+      }
+    }
+  ]
+}

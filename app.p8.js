@@ -1843,15 +1843,13 @@ function AppInner() {
     function cloudChat(id) { const SC = window.SawaChat; return SC && SC.isCloud && SC.isCloud(id) ? SC : null; }
     // C107: «آخر تواصل» في صلة الرحم يتحدّث وحده عند رسالةٍ أو مكالمةٍ مع قريبٍ مربوطٍ بحسابه.
     //       (كانت المطابقة بالاسم الأوّل وحده: رسالةٌ لـ«أحمد» تحدّث كلّ «أحمد» في كلّ الشجر) — الآن بالحساب المربوط،
-    //       وبلا ربط: اسمٌ مطابقٌ تماماً لشخصٍ واحد فقط.
-    function touchFamilyByUid(uid, fallbackName) {
+    //       C347: وبلا ربطٍ على الخادم: ربطي المؤكَّد فقط («نعم، هو فلان») — لا مطابقة بالاسم إطلاقاً.
+    function touchFamilyByUid(uid, conv) {
         const hits = [];
         Object.keys(famPersons || {}).forEach((gId) => (famPersons[gId] || []).forEach((p) => { if (uid && p.acctUid === uid && !p.acctMe) hits.push([gId, p.id]); }));
-        if (!hits.length && fallbackName) {
-            const nm = normalizeArabicName(fallbackName);
-            const byName = [];
-            Object.keys(groupPersons || {}).forEach((gId) => (groupPersons[gId] || []).forEach((p) => { if (nm && normalizeArabicName(p.local_name || "") === nm && !isSelfPerson(p)) byName.push([gId, p.id]); }));
-            if (byName.length === 1) hits.push(byName[0]);
+        if (!hits.length && conv && !conv.isSavedMessages) {
+            const l = kinLinksRead()[kinLinkKey(conv)];
+            if (l && typeof l === "object" && (groupPersons[l.g] || []).some((p) => p.id === l.p)) hits.push([l.g, l.p]);
         }
         if (!hits.length) return;
         const now = Date.now(), today = new Date().toDateString();
@@ -1861,10 +1859,12 @@ function AppInner() {
             return changed ? out : prev;
         });
     }
+    // ملفّ القريب في صلة الرحم (من قائمة المحادثات، ومن المحادثة ومعلوماتها — C347)
+    function openFamProfile(p) { const gid = Object.keys(groupPersons).find((k) => (groupPersons[k] || []).some((x) => x.id === p.id)); const g = familyGroups.find((x) => x.id === gid); if (!g) return; setTab("discover"); setDiscoverStack([{ type: "groups" }, { type: "groupDetail", data: g }, { type: "personDetail", data: p, groupId: gid }]); }
     function touchFamilyContact(conversationId) {
         const conv = conversations.find(c => c.id === conversationId);
         if (!conv) return;
-        touchFamilyByUid(conv.peerUid || null, conv.isSavedMessages ? null : conv.name);
+        touchFamilyByUid(conv.peerUid || null, conv);
     }
     function sendChatMessage(conversationId, text, replyTo) {
         const SC = cloudChat(conversationId);
@@ -2281,7 +2281,7 @@ function AppInner() {
         if (callSeenRef.current === null) { callSeenRef.current = top.id; return; }
         if (top.id === callSeenRef.current) return;
         callSeenRef.current = top.id;
-        if (top.duration && top.peerUid) touchFamilyByUid(top.peerUid, null);
+        if (top.duration && top.peerUid) touchFamilyByUid(top.peerUid, conversations.find((c) => c.peerUid === top.peerUid) || null);
     }, [callLog]);
     // C27: شارة «فائتة» على تبويب المكالمات تُحسب منذ آخر فتحٍ للتبويب (كانت تبقى ما دام في السجلّ مكالمةٌ فائتة)
     const [missedSeenAt, setMissedSeenAt] = usePersistedState("missedSeenAt", 0, 50);
@@ -4329,11 +4329,8 @@ function AppInner() {
                     const now = Date.now();
                     // أرسل الرابط لكل فرد لديه محادثة، وسجّل التواصل في صلة الرحم
                     setConversations((prev) => prev.map((cv) => {
-                        const hit = members.find((m) => {
-                            var _a;
-                            return cv.name && ((_a = m.local_name) === null || _a === void 0 ? void 0 : _a.split(" ")[0]) &&
-                                cv.name.toLowerCase().includes(m.local_name.split(" ")[0].toLowerCase());
-                        });
+                        const kp = kinPersonOfConv(cv, famPersons);   // C347: المحادثة المؤكَّدة للقريب لا أوّل اسمٍ مشابه
+                        const hit = kp && members.find((m) => m.id === kp.id);
                         return hit ? { ...cv, lastMessage: tl("🎥 دعوة لغرفة سوا: ", "🎥 Invite to a Sawa room: ") + link, updatedAt: now } : cv;
                     }));
                     const ids = members.map((m) => m.id);
@@ -4361,7 +4358,7 @@ function AppInner() {
                         return React.createElement(PlaceholderTab, { icon: CloudOff, title: t("almhadthat"), note: tl("\u0627\u0631\u0628\u0637 \u062D\u0633\u0627\u0628\u0643 \u0628\u0627\u0644\u0633\u064A\u0631\u0641\u0631 \u0645\u0646 \u0634\u0627\u0634\u0629 \u062D\u0633\u0627\u0628\u064A \u0644\u062A\u062A\u0645\u0643\u0651\u0646 \u0645\u0646 \u0627\u0633\u062A\u062E\u062F\u0627\u0645 \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0627\u062A", "Link your account to the server from the Account screen to use chats") });
                     }
                     if (!chatsTop) {
-                        return (React.createElement(ConversationsListScreen, { onOpenFamilyPerson: (p) => { const gid = Object.keys(groupPersons).find((k) => (groupPersons[k] || []).some((x) => x.id === p.id)); const g = familyGroups.find((x) => x.id === gid); if (!g) return; setTab("discover"); setDiscoverStack([{ type: "groups" }, { type: "groupDetail", data: g }, { type: "personDetail", data: p, groupId: gid }]); }, chatDrafts: chatDrafts, conversations: conversations, groups: groups, broadcastLists: broadcastLists, lockedConversationIds: lockedConversationIds, connectionState: "connected", onOpenChat: (c) => { setChatsStack([{ type: "chat", data: Object.assign({}, c, { unreadOnOpen: c.unread || 0 }) }]); markConversationRead(c.id); }, onOpenGroup: (g) => { setChatsStack([{ type: "group", data: Object.assign({}, g, { unreadOnOpen: g.unread || 0 }) }]); markGroupRead(g.id); }, onOpenBroadcastList: (b) => setChatsStack([{ type: "broadcast", data: b }]), onNewConversation: () => setChatsStack([{ type: "new" }]), onNewGroup: () => setChatsStack([{ type: "newGroup" }]), onNewBroadcastList: () => setChatsStack([{ type: "newBroadcast" }]), onOpenLockedChats: () => setChatsStack([{ type: "lockedChats" }]), onOpenStarredMessages: () => setChatsStack([{ type: "starredMessages" }]), onlineContacts: onlineContacts, onScanQr: scanQrContact, onOpenSearch: () => setChatsStack([{ type: "search" }]), chatFolders: chatFolders, folderAssignments: folderAssignments, onOpenChatSettings: () => setChatsStack([{ type: "chatSettings" }]), typingConversations: typingConversations, momentsPosts: momentsPosts, familyPersons: Object.values(famPersons).flat(), onOpenMoments: () => { setMomentsReturnTab("chats"); setTab("discover"); setDiscoverStack([{ type: "moments" }]); }, onOpenRoom: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomCreate())) setActiveRoom(generateRoomCode()); }, onJoinRoomCode: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoinPrompt())) showToast(tl("سجّل الدخول أوّلاً للانضمام إلى غرفة", "Sign in first to join a room"), "info"); }, onScheduleRoom: () => setSchedulingRoom(true), onOpenScheduledRooms: () => setRoomsListOpen(true), scheduledRooms: scheduledRooms, onJoinScheduled: (code) => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoin(code))) setActiveRoom(code); }, onCancelScheduled: (id) => { const sr = scheduledRooms.find((r) => r.id === id); if (sr && sr.cloud && window.SawaRTC) window.SawaRTC.schedRemove(id); else setScheduledRooms((p) => p.filter((r) => r.id !== id)); showToast(t("alghy_almwad"), "info"); }, myName: t("ai_ana"), groupPersons: famPersons, groupSchedules: groupSchedules, showStoriesRow: showStoriesRow, showFamilyReminders: showFamilyReminders, onOpenArchived: () => setChatsStack([{ type: "archived" }]), pinnedConversations: pinnedConversations, onPinConv: (id) => {
+                        return (React.createElement(ConversationsListScreen, { onOpenFamilyPerson: openFamProfile, chatDrafts: chatDrafts, conversations: conversations, groups: groups, broadcastLists: broadcastLists, lockedConversationIds: lockedConversationIds, connectionState: "connected", onOpenChat: (c) => { setChatsStack([{ type: "chat", data: Object.assign({}, c, { unreadOnOpen: c.unread || 0 }) }]); markConversationRead(c.id); }, onOpenGroup: (g) => { setChatsStack([{ type: "group", data: Object.assign({}, g, { unreadOnOpen: g.unread || 0 }) }]); markGroupRead(g.id); }, onOpenBroadcastList: (b) => setChatsStack([{ type: "broadcast", data: b }]), onNewConversation: () => setChatsStack([{ type: "new" }]), onNewGroup: () => setChatsStack([{ type: "newGroup" }]), onNewBroadcastList: () => setChatsStack([{ type: "newBroadcast" }]), onOpenLockedChats: () => setChatsStack([{ type: "lockedChats" }]), onOpenStarredMessages: () => setChatsStack([{ type: "starredMessages" }]), onlineContacts: onlineContacts, onScanQr: scanQrContact, onOpenSearch: () => setChatsStack([{ type: "search" }]), chatFolders: chatFolders, folderAssignments: folderAssignments, onOpenChatSettings: () => setChatsStack([{ type: "chatSettings" }]), typingConversations: typingConversations, momentsPosts: momentsPosts, familyPersons: Object.values(famPersons).flat(), onOpenMoments: () => { setMomentsReturnTab("chats"); setTab("discover"); setDiscoverStack([{ type: "moments" }]); }, onOpenRoom: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomCreate())) setActiveRoom(generateRoomCode()); }, onJoinRoomCode: () => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoinPrompt())) showToast(tl("سجّل الدخول أوّلاً للانضمام إلى غرفة", "Sign in first to join a room"), "info"); }, onScheduleRoom: () => setSchedulingRoom(true), onOpenScheduledRooms: () => setRoomsListOpen(true), scheduledRooms: scheduledRooms, onJoinScheduled: (code) => { if (!((window.SawaRTC && window.SawaRTC.enabled && window.SawaRTC.enabled()) && window.SawaRTC.roomJoin(code))) setActiveRoom(code); }, onCancelScheduled: (id) => { const sr = scheduledRooms.find((r) => r.id === id); if (sr && sr.cloud && window.SawaRTC) window.SawaRTC.schedRemove(id); else setScheduledRooms((p) => p.filter((r) => r.id !== id)); showToast(t("alghy_almwad"), "info"); }, myName: t("ai_ana"), groupPersons: famPersons, groupSchedules: groupSchedules, showStoriesRow: showStoriesRow, showFamilyReminders: showFamilyReminders, onOpenArchived: () => setChatsStack([{ type: "archived" }]), pinnedConversations: pinnedConversations, onPinConv: (id) => {
                                 setPinnedConversations((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
                                 showToast(pinnedConversations.includes(id) ? t("ai_ilgha_altthbyt") : t("ai_tm_altthbyt"), "success");
                             }, onToggleReadConv: (id) => {
@@ -4456,13 +4453,13 @@ function AppInner() {
                                     return { ...c, lastMessage: preview, lastFromMe: last.senderUserId === myUserId, lastStatus: last.status || null };
                                 }));
                                 showToast(scope === "all" ? t("ai_hdhft_lljmya") : t("ai_hdhft_andk"), "success");
-                            }, onOpenInfo: () => setChatsStack([...chatsStack, { type: "info", data: chatsTop.data }]), disappearing: SCc ? (liveConv.disappear || 0) : chatDisappearing, setDisappearing: SCc ? (v) => SCc.setDisappear(chatsTop.data.id, v) : setChatDisappearing, background: chatThemes[chatsTop.data.id] || "default", onBack: () => setChatsStack([]), myUserId: myUserId, isBlocked: blockedConversations.includes(chatsTop.data.id), groupPersons: groupPersons }));
+                            }, onOpenInfo: () => setChatsStack([...chatsStack, { type: "info", data: chatsTop.data }]), disappearing: SCc ? (liveConv.disappear || 0) : chatDisappearing, setDisappearing: SCc ? (v) => SCc.setDisappear(chatsTop.data.id, v) : setChatDisappearing, background: chatThemes[chatsTop.data.id] || "default", onBack: () => setChatsStack([]), myUserId: myUserId, isBlocked: blockedConversations.includes(chatsTop.data.id), groupPersons: famPersons, kinshipRelations: kinshipRelations, onOpenFamilyProfile: openFamProfile }));
                     }
                     if (chatsTop.type === "info") {
                         const convMessages = messagesByConversation[chatsTop.data.id] || [];
                         const liveConvI = conversations.find((c) => c.id === chatsTop.data.id) || chatsTop.data;
                         const SCi = cloudChat(chatsTop.data.id);
-                        return (React.createElement(ChatInfoScreen, { conversation: liveConvI, messages: convMessages, background: chatThemes[chatsTop.data.id] || "default", setBackground: (themeKey) => setChatThemes((prev) => ({ ...prev, [chatsTop.data.id]: themeKey })), disappearing: SCi ? (liveConvI.disappear || 0) : chatDisappearing, setDisappearing: SCi ? (v) => SCi.setDisappear(chatsTop.data.id, v) : setChatDisappearing, isBlocked: blockedConversations.includes(chatsTop.data.id), onBlock: () => blockContact(chatsTop.data.id), onUnblock: () => unblockContact(chatsTop.data.id), onReport: (done) => { const SCr = window.SawaChat; if (SCr && SCr.reportSheet && SCi) SCr.reportSheet({ cid: chatsTop.data.id, name: liveConvI.name, kind: "dm", onBlock: () => blockContact(chatsTop.data.id), onDone: done }); else { showToast(t("tm_irsal_blaghk"), "success"); done && done(); } }, isLocked: lockedConversationIds.includes(chatsTop.data.id), onToggleLock: () => toggleChatLock(chatsTop.data.id), chatFolders: chatFolders, folderId: folderAssignments[chatsTop.data.id], onSetFolder: (folderId) => assignConversationFolder(chatsTop.data.id, folderId), notificationTone: conversationTones[chatsTop.data.id] || defaultNotificationTone, setNotificationTone: (tone) => setConversationTones((prev) => ({ ...prev, [chatsTop.data.id]: tone })), onBack: () => setChatsStack(chatsStack.slice(0, -1)), muteDuration: muteKeyOf(chatsTop.data.id), onSetMute: (k) => setConvMute(chatsTop.data.id, k) }));
+                        return (React.createElement(ChatInfoScreen, { conversation: liveConvI, messages: convMessages, background: chatThemes[chatsTop.data.id] || "default", setBackground: (themeKey) => setChatThemes((prev) => ({ ...prev, [chatsTop.data.id]: themeKey })), disappearing: SCi ? (liveConvI.disappear || 0) : chatDisappearing, setDisappearing: SCi ? (v) => SCi.setDisappear(chatsTop.data.id, v) : setChatDisappearing, isBlocked: blockedConversations.includes(chatsTop.data.id), onBlock: () => blockContact(chatsTop.data.id), onUnblock: () => unblockContact(chatsTop.data.id), onReport: (done) => { const SCr = window.SawaChat; if (SCr && SCr.reportSheet && SCi) SCr.reportSheet({ cid: chatsTop.data.id, name: liveConvI.name, kind: "dm", onBlock: () => blockContact(chatsTop.data.id), onDone: done }); else { showToast(t("tm_irsal_blaghk"), "success"); done && done(); } }, isLocked: lockedConversationIds.includes(chatsTop.data.id), onToggleLock: () => toggleChatLock(chatsTop.data.id), chatFolders: chatFolders, folderId: folderAssignments[chatsTop.data.id], onSetFolder: (folderId) => assignConversationFolder(chatsTop.data.id, folderId), notificationTone: conversationTones[chatsTop.data.id] || defaultNotificationTone, setNotificationTone: (tone) => setConversationTones((prev) => ({ ...prev, [chatsTop.data.id]: tone })), onBack: () => setChatsStack(chatsStack.slice(0, -1)), muteDuration: muteKeyOf(chatsTop.data.id), onSetMute: (k) => setConvMute(chatsTop.data.id, k), groupPersons: famPersons, kinshipRelations: kinshipRelations, onOpenFamilyProfile: openFamProfile }));
                     }
                     if (chatsTop.type === "search") {
                         return (React.createElement(UnifiedSearchScreen, { conversations: conversations, groups: groups, shipments: shipments, taxiTripsHistory: taxiTripsHistory, messagesByConversation: messagesByConversation, groupMessages: groupMessages, onOpenChat: (c) => setChatsStack([{ type: "chat", data: c }]), onOpenGroup: (g) => setChatsStack([{ type: "group", data: g }]), onClose: () => setChatsStack([]) }));
