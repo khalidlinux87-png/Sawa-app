@@ -1503,8 +1503,8 @@ function AppInner() {
         if (SCg && SCg.enabled && SCg.enabled()) {
             // C3: مجموعة حقيقيّة من جهات الاتّصال (الأسماء ← المعرّفات)
             const uids = memberNames.map((n) => { const p = people.find((x) => x.name === n); return p && p.uid; }).filter(Boolean);
-            SCg.createGroup(name, uids).then((cid) => { if (cid) setChatsStack([{ type: "group", data: { id: cid, name, members: [] } }]); else setChatsStack([]); });
-            return;
+            // C346: تُعاد الوعد ⇒ زرّ «إنشاء المجموعة» معطَّلٌ حتّى الردّ (كانت كلّ ضغطةٍ مجموعةً جديدة)
+            return SCg.createGroup(name, uids).then((cid) => { if (cid) setChatsStack([{ type: "group", data: { id: cid, name, members: [] } }]); else setChatsStack([]); });
         }
         const id = `grp-${Date.now()}`;
         const members = [

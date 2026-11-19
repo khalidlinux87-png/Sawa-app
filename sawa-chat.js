@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c342";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c346";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -1048,10 +1048,17 @@
     }, 2000);
   }
   // ---------- القائمة ----------
+  // C346: مستمع القائمة كان يموت عند أيّ خطأ (يُسجَّل فقط) فتتجمّد القائمة حتّى إعادة فتح التطبيق ⇒ يُعاد بمهلةٍ متزايدة
+  var chatsRetry = 0, chatsRetryT = null;
   function startChats(uid) {
     stopChats();
+    listenChats(uid);
+  }
+  function listenChats(uid) {
     var d = fsdb(); if (!d) return;
+    clearTimeout(chatsRetryT); chatsRetryT = null;
     chatsUnsub = d.collection("chats").where("members", "array-contains", uid).onSnapshot(function (snap) {
+      chatsRetry = 0;
       var next = {};
       snap.forEach(function (doc) { var x = doc.data() || {}; x.cid = doc.id; next[doc.id] = x; });
       // C111: علامات الوصول والقراءة داخل المحادثة تُبنى من reads/delivered في وثيقة المحادثة — كانت لا تُعاد إلّا مع رسالةٍ جديدة،
@@ -1078,11 +1085,19 @@
       if (!savedAsked && !Object.keys(chats).some(function (k) { return chats[k].type === "saved"; })) { savedAsked = true; openSaved(); }
       syncTyping();
       publishChats();
-    }, function (e) { LOG.warn("chats", { err: e && e.code }); });
+    }, function (e) {
+      LOG.warn("chats", { err: e && e.code });
+      try { if (chatsUnsub) chatsUnsub(); } catch (x) {}
+      chatsUnsub = null;
+      chatsRetry = Math.min(60000, (chatsRetry || 1500) * 2);
+      clearTimeout(chatsRetryT);
+      chatsRetryT = setTimeout(function () { chatsRetryT = null; if (state.uid === uid && !chatsUnsub) listenChats(uid); }, chatsRetry);
+    });
   }
+  try { document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && state.uid && !chatsUnsub && chatsRetryT) { chatsRetry = 0; listenChats(state.uid); } }); } catch (e) {}
   function stopChats() {
     try { if (chatsUnsub) chatsUnsub(); } catch (e) {}
-    chatsUnsub = null;
+    chatsUnsub = null; clearTimeout(chatsRetryT); chatsRetryT = null; chatsRetry = 0;
     Object.keys(dayUnsubs).forEach(function (cid) { try { dayUnsubs[cid](); } catch (e) {} });
     dayUnsubs = {}; dayOrder = []; days = {}; chats = {};
     Object.keys(typingRefs).forEach(function (cid) { try { typingRefs[cid].off(); } catch (e) {} });
@@ -1558,11 +1573,25 @@
   // ==================================================================
   // C3: المجموعات وأدواتها (استطلاع · فاتورة · تبرّعات · مهامّ) · رسائل النظام · الإشارات @ · روابط دعوة المجموعات
   // ==================================================================
+  // C346: ثلاث مجموعات «نحن» (خالد) — الجديدة لم تظهر في القائمة حتّى يصل صداها من Firestore (والاتّصال متأخّر)، فبدت «اختفت»
+  //       وأُعيد إنشاؤها، وكلّ ضغطةٍ مجموعةٌ جديدة. الآن: طلبٌ واحد في الطيران · تظهر فوراً من ردّ الخادم (كالثنائيّة) · هزّة إن تأخّر صداها.
+  var groupCreating = null;
   function createGroup(name, uids) {
-    return call("group.new", { name: name, members: (uids || []).map(realId) }).then(function (b) {
+    if (groupCreating) return groupCreating;
+    var rid = newMsgId();   // مفتاح منع التكرار عند الخادم (إعادة الطلب نفسه ⇒ المجموعة نفسها)
+    groupCreating = call("group.new", { name: name, members: (uids || []).map(realId), rid: rid }).then(function (b) {
       if (b.skipped && b.skipped.length) toast(L("لم يُضف " + b.skipped.length + " (ليسوا من جهات اتّصالك)", b.skipped.length + " not added (not your contacts)"));
-      return b.cid;
-    }).catch(function (e) { fail(e); return null; });
+      var cid = b.cid;
+      if (cid && !chats[cid]) {
+        var now = Date.now(), mem = b.members && b.members.length ? b.members : [state.uid];
+        virtualChats[cid] = { cid: cid, type: "group", name: b.name || name, desc: "", members: mem, admins: [state.uid], names: b.names || {}, createdBy: state.uid,
+          createdTs: now, updatedTs: now, cnt: 0, adminsOnly: false, virtual: true };
+        publishChats();
+        setTimeout(function () { if (state.uid && !chats[cid]) fsKick("group.new"); }, 3000);
+      }
+      return cid;
+    }).catch(function (e) { fail(e); return null; }).then(function (cid) { groupCreating = null; return cid; });
+    return groupCreating;
   }
   function updateGroup(cid, patch) {
     var c = chats[cid]; if (c) { Object.assign(c, patch); publishChats(); }
