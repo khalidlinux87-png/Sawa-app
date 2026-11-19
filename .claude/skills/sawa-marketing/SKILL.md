@@ -77,3 +77,9 @@ ffprobe -v error -show_entries format=duration:stream=codec_name,width,height ma
 - العبارات السفليّة تغطّي العنصر المميَّز إن بقي في أسفل الشاشة ⇒ نفس الحلّ.
 - تخطيط الإنجليزيّة قد يختلف بضع بكسلات ⇒ `hl_en`.
 - عنوان إنجليزيّ طويل يلتفّ على سطرين فيغطّي الوصف ⇒ ≤ ٢٢ حرفاً.
+
+## دليل تثبيت سوا على آيفون (صورة + فيديو)
+```bash
+node .claude/skills/sawa-marketing/scripts/render-guide.mjs            # ⇒ marketing/guide/ios-install-{ar,en}.{jpg,mp4}
+```
+القالب `scripts/ios-guide.html` يرسم شاشات iOS مبسّطة (Safari ← المشاركة ← «إضافة إلى الشاشة الرئيسية» ← «إضافة» ← الشاشة الرئيسيّة)، والنصوص في `CFG` داخل `render-guide.mjs` وتطابق خطوات التطبيق نفسه (`installSteps` في sawa-chat.js). الفيديو ٢٠ ث. عند نشر سوا على App Store يصير هذا الدليل لمن يفضّل نسخة الويب فقط.
