@@ -4476,6 +4476,11 @@ function AppInner() {
                 tab === "calls" && (React.createElement(CallsScreen, { onOpenScheduledRooms: () => setRoomsListOpen(true), groups: groups.filter((g) => /^(fam_|grp_)/.test(g.id || "")), callLog: callLog, favoriteContacts: favoriteContacts, onToggleFavorite: toggleFavoriteContact, onLogCall: logCall, callSettings: callSettings, onUpdateCallSettings: setCallSettings, speedDialContacts: speedDialContacts, onUpdateSpeedDial: setSpeedDialContacts, onClearCallLog: clearCallLog, onDeleteCallEntry: (id) => {
                         setCallLog((prev) => prev.filter((x) => x.id !== id));
                         showToast(t("hdhft_mn_alsjl"), "success");
+                    }, onMessageEntry: (c) => {
+                        if (c.peerUid) { messageContact({ uid: c.peerUid, name: c.name }); return; }
+                        const g = c.cid && groups.find((x) => x.id === c.cid);
+                        if (g) { setChatsStack([{ type: "group", data: g }]); setTab("chats"); return; }
+                        showToast(tl("المحادثة غير متاحة", "This chat isn't available"), "info");
                     }, scheduledCalls: scheduledCalls, onAddScheduledCall: addScheduledCall, onDeleteScheduledCall: deleteScheduledCall })),
                 tab === "contacts" && React.createElement(ContactsScreen, { onMessageContact: messageContact, onLogCall: logCall, onlineContacts: onlineContacts, people: people }),
                 tab === "discover" && discoverContent,
