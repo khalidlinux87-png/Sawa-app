@@ -34,6 +34,7 @@ body.post{height:1350px}
 #chips{display:flex;flex-wrap:wrap;justify-content:center;gap:18px;margin-top:46px}
 .chip{border:2px solid rgba(255,255,255,.55);background:rgba(255,255,255,.14);border-radius:999px;padding:12px 32px;font-size:38px}
 #cta{margin-top:60px;background:#fff;color:var(--blue);font-weight:700;font-size:52px;border-radius:999px;padding:26px 64px}
+#avail{margin-top:34px;font-size:38px;opacity:.95}
 #cta small{display:block;font-size:34px;color:#4a6585;font-weight:400;margin-top:4px}
 /* feed post layout */
 body.post #head{top:84px}
@@ -56,7 +57,7 @@ body.post #topfade{display:block}
   <div id="head"><h1></h1><p></p></div>
   <div id="phone"><img id="shot"><div id="ring"></div></div>
   <div id="cap"></div>
-  <div id="end"><img id="logo"><h2></h2><p></p><div id="chips"></div><div id="cta"></div></div>
+  <div id="end"><img id="logo"><h2></h2><p></p><div id="chips"></div><div id="cta"></div><div id="avail"></div></div>
   <div id="brand"><img id="blogo"><div></div></div>
 </div>
 <script>
@@ -73,11 +74,11 @@ function setup(cfg,mode){
   $('#hook').innerHTML=cfg.hook.map(w=>`<span class="${w.startsWith('*')?'em':''}">${w.replace(/^\*/,'')}</span>`).join('');
   $('#head h1').textContent=cfg.title; $('#head p').textContent=cfg.sub;
   $('#shot').src=cfg.shot; $('#logo').src=cfg.logo; $('#blogo').src=cfg.logo;
-  $('#brand div').innerHTML=`${cfg.brand} <span>· sawaaap.com</span>`;
+  $('#brand div').innerHTML=`${cfg.brand} <span>· ${cfg.free} · sawaaap.com</span>`;
   $('#cap').innerHTML=cfg.caps.map(c=>`<div class="pill">${c}</div>`).join('');
   $('#end h2').textContent=cfg.brand; $('#end p').textContent=cfg.tagline;
   $('#chips').innerHTML=cfg.chips.map(c=>`<span class="chip">${c}</span>`).join('');
-  $('#cta').innerHTML=`${cfg.cta}<small>sawaaap.com</small>`;
+  $('#cta').innerHTML=`${cfg.cta}<small>sawaaap.com</small>`; $('#avail').textContent=cfg.avail||'';
   const k=$('#phone').offsetWidth/744, h=cfg.hl, r=$('#ring');
   r.style.left=h.x*k+'px'; r.style.top=h.y*k+'px'; r.style.width=h.w*k+'px'; r.style.height=h.h*k+'px';
   $('#phone').style.transformOrigin=`${(h.x+h.w/2)*k}px ${(h.y+h.h/2)*k}px`;
@@ -110,7 +111,7 @@ function render(t){
   const e2=ease(prog(t,11.3,12.0)); $('#end h2').style.opacity=e2; $('#end p').style.opacity=e2;
   $('#end h2').style.transform=`translateY(${(1-e2)*40}px)`;
   [...$('#chips').children].forEach((c,i)=>{const p=back(prog(t,11.8+i*0.15,12.3+i*0.15));c.style.opacity=clamp(p);c.style.transform=`scale(${p})`;});
-  const c=back(prog(t,12.6,13.2)); $('#cta').style.opacity=clamp(c); $('#cta').style.transform=`scale(${c*(1+0.03*Math.sin(t*5)*prog(t,13.2,13.4))})`;
+  const c=back(prog(t,12.6,13.2)); $('#cta').style.opacity=clamp(c); $('#avail').style.opacity=ease(prog(t,13.2,13.8)); $('#cta').style.transform=`scale(${c*(1+0.03*Math.sin(t*5)*prog(t,13.2,13.4))})`;
 }
 // static feed post: headline + phone + ring, no hook/captions/end
 function renderPost(){

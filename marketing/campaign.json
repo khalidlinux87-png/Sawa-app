@@ -12,7 +12,9 @@
         "غرف",
         "صلة الرحم"
       ],
-      "cta": "حمّل سوا الآن"
+      "cta": "حمّل سوا مجّاناً",
+      "free": "مجّاناً",
+      "avail": "أندرويد الآن · وقريباً على App Store"
     },
     "en": {
       "dir": "ltr",
@@ -25,7 +27,9 @@
         "Rooms",
         "Family ties"
       ],
-      "cta": "Get Sawa now"
+      "cta": "Get Sawa — it's free",
+      "free": "Free",
+      "avail": "Android now · App Store coming soon"
     }
   },
   "reels": [
