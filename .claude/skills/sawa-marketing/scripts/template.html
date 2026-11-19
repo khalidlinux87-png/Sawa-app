@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@font-face{font-family:Plex;font-weight:400;src:url(FONTS/plex-arabic-400.woff2) format("woff2")}
+@font-face{font-family:Plex;font-weight:700;src:url(FONTS/plex-arabic-700.woff2) format("woff2")}
+@font-face{font-family:PlexL;font-weight:400;src:url(FONTS/plex-latin-400.woff2) format("woff2")}
+@font-face{font-family:PlexL;font-weight:700;src:url(FONTS/plex-latin-700.woff2) format("woff2")}
+:root{--blue:#2F6FC4;--blue2:#2F80C8;--teal:#2BA59A;--ink:#0E2A47;--gold:#F4C35A}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1080px;height:1920px;overflow:hidden;background:#1d5fae}
+body{font-family:PlexL,Plex,sans-serif;color:#fff}
+body.post{height:1350px}
+#stage{position:absolute;inset:0;overflow:hidden}
+#bg{position:absolute;inset:-200px;background:linear-gradient(160deg,#2559ad 0%,#2F80C8 45%,#2BA59A 100%)}
+.orb{position:absolute;border-radius:50%;background:rgba(255,255,255,.08)}
+#hook{position:absolute;left:80px;right:80px;top:0;bottom:0;display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:0 26px;text-align:center}
+#hook span{font-weight:700;font-size:112px;line-height:1.35;display:inline-block}
+#hook span.em{color:var(--gold)}
+#head{position:absolute;z-index:3;left:70px;right:70px;top:120px;text-align:center}
+#head h1{font-size:96px;font-weight:700;line-height:1.2}
+#head p{font-size:44px;opacity:.92;margin-top:18px;line-height:1.45}
+#phone{position:absolute;left:190px;top:560px;width:700px;height:1377px;border-radius:78px;overflow:hidden;box-shadow:0 40px 120px rgba(5,20,50,.45)}
+#phone img{width:100%;height:100%;display:block}
+#ring{position:absolute;border:7px solid var(--gold);border-radius:34px;box-shadow:0 0 0 9999px rgba(8,25,55,.0)}
+#cap{position:absolute;left:60px;right:60px;bottom:150px;display:flex;flex-direction:column;align-items:center;gap:22px}
+.pill{background:rgba(10,30,62,.82);backdrop-filter:blur(6px);border-radius:999px;padding:24px 46px;font-size:46px;font-weight:700;line-height:1.35;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.25)}
+.pill b{color:var(--gold)}
+#end{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 80px}
+#end img{width:330px;height:330px;border-radius:78px;background:#fff;box-shadow:0 30px 90px rgba(0,0,0,.3)}
+#end h2{font-size:150px;font-weight:700;margin-top:40px;line-height:1.1}
+#end p{font-size:54px;margin-top:22px;opacity:.95;line-height:1.4}
+#chips{display:flex;flex-wrap:wrap;justify-content:center;gap:18px;margin-top:46px}
+.chip{border:2px solid rgba(255,255,255,.55);background:rgba(255,255,255,.14);border-radius:999px;padding:12px 32px;font-size:38px}
+#cta{margin-top:60px;background:#fff;color:var(--blue);font-weight:700;font-size:52px;border-radius:999px;padding:26px 64px}
+#cta small{display:block;font-size:34px;color:#4a6585;font-weight:400;margin-top:4px}
+/* feed post layout */
+body.post #head{top:84px}
+body.post #head h1{font-size:84px}
+body.post #head p{font-size:40px}
+body.post #phone{top:430px;left:215px;width:650px;height:1279px}
+body.post #brand{display:flex}
+#topfade{display:none;position:absolute;left:0;right:0;top:0;height:400px;z-index:2;background:linear-gradient(180deg,#2559ad 68%,rgba(37,89,173,0))}
+body.post #topfade{display:block}
+#brand{display:none;position:absolute;left:0;right:0;bottom:0;height:150px;background:linear-gradient(0deg,rgba(9,28,58,.92),rgba(9,28,58,0));align-items:flex-end;justify-content:center;gap:22px;padding-bottom:36px;font-size:42px;font-weight:700}
+#brand img{width:76px;height:76px;border-radius:20px;background:#fff}
+#brand span{opacity:.85;font-weight:400;font-size:36px}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="bg"><div class="orb" id="o1" style="width:900px;height:900px;left:-300px;top:-250px"></div><div class="orb" id="o2" style="width:700px;height:700px;right:-250px;bottom:-200px"></div></div>
+  <div id="hook"></div>
+  <div id="topfade"></div>
+  <div id="head"><h1></h1><p></p></div>
+  <div id="phone"><img id="shot"><div id="ring"></div></div>
+  <div id="cap"></div>
+  <div id="end"><img id="logo"><h2></h2><p></p><div id="chips"></div><div id="cta"></div></div>
+  <div id="brand"><img id="blogo"><div></div></div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const ease=x=>{x=clamp(x);return 1-Math.pow(1-x,3)};
+const back=x=>{x=clamp(x);const c=1.6;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2)};
+const prog=(t,a,b)=>clamp((t-a)/(b-a));
+let C;
+// PHONE_W: rendered phone width; source crop is 744px wide.
+function setup(cfg,mode){
+  C=cfg; document.body.className=mode||'';
+  document.documentElement.dir=cfg.dir; document.documentElement.lang=cfg.lang;
+  $('#hook').innerHTML=cfg.hook.map(w=>`<span class="${w.startsWith('*')?'em':''}">${w.replace(/^\*/,'')}</span>`).join('');
+  $('#head h1').textContent=cfg.title; $('#head p').textContent=cfg.sub;
+  $('#shot').src=cfg.shot; $('#logo').src=cfg.logo; $('#blogo').src=cfg.logo;
+  $('#brand div').innerHTML=`${cfg.brand} <span>· sawaaap.com</span>`;
+  $('#cap').innerHTML=cfg.caps.map(c=>`<div class="pill">${c}</div>`).join('');
+  $('#end h2').textContent=cfg.brand; $('#end p').textContent=cfg.tagline;
+  $('#chips').innerHTML=cfg.chips.map(c=>`<span class="chip">${c}</span>`).join('');
+  $('#cta').innerHTML=`${cfg.cta}<small>sawaaap.com</small>`;
+  const k=$('#phone').offsetWidth/744, h=cfg.hl, r=$('#ring');
+  r.style.left=h.x*k+'px'; r.style.top=h.y*k+'px'; r.style.width=h.w*k+'px'; r.style.height=h.h*k+'px';
+  $('#phone').style.transformOrigin=`${(h.x+h.w/2)*k}px ${(h.y+h.h/2)*k}px`;
+  const cy=(h.y+h.h/2)*k, ph=$('#phone');
+  C.pan=1040-(ph.offsetTop+cy);                       // reel: bring highlight to y≈1040
+  if(mode==='post'){ ph.style.top=Math.round(Math.min(330,Math.max(1200-ph.offsetHeight,820-cy)))+'px'; }
+  return document.fonts.ready.then(()=>Promise.all([...document.images].map(i=>i.decode().catch(()=>0))));
+}
+function op(el,v){el.style.opacity=v}
+function render(t){
+  // background drift
+  $('#bg').style.transform=`translate(${Math.sin(t/3)*40}px,${Math.cos(t/4)*50}px)`;
+  $('#o1').style.transform=`scale(${1+0.08*Math.sin(t/2)})`;
+  // 0-3.4s hook, word by word
+  const words=[...$('#hook').children];
+  words.forEach((w,i)=>{const p=ease(prog(t,0.15+i*0.2,0.55+i*0.2));w.style.opacity=p;w.style.transform=`translateY(${(1-p)*60}px)`;});
+  const hOut=ease(prog(t,3.1,3.6)); $('#hook').style.opacity=1-hOut; $('#hook').style.transform=`scale(${1-0.15*hOut})`;
+  // 3.4s headline + phone
+  const hi=ease(prog(t,3.4,4.0)); op($('#head'),hi*(1-ease(prog(t,4.9,5.4)))); $('#head').style.transform=`translateY(${(1-hi)*-40}px)`;
+  const pi=ease(prog(t,3.5,4.4)), zoom=ease(prog(t,5.0,6.0))*(1-ease(prog(t,9.8,10.4)));
+  const pOut=ease(prog(t,10.3,10.9));
+  $('#phone').style.transform=`translateY(${(1-pi)*900+pOut*900+C.pan*zoom}px) scale(${1+0.15*zoom})`;
+  op($('#phone'),pi*(1-pOut));
+  const rp=prog(t,5.6,6.1); op($('#ring'),rp*(1-pOut)); $('#ring').style.transform=`scale(${1+0.04*Math.sin(t*6)*rp})`;
+  // captions
+  [...$('#cap').children].forEach((c,i)=>{const a=6.2+i*1.5;const p=back(prog(t,a,a+0.5));c.style.opacity=clamp(prog(t,a,a+0.3))*(1-pOut);c.style.transform=`scale(${0.6+0.4*p})`;});
+  // end card 10.8s
+  const e=prog(t,10.8,11.6); op($('#end'),clamp(e*1.5));
+  $('#logo').style.transform=`scale(${back(e)})`;
+  const e2=ease(prog(t,11.3,12.0)); $('#end h2').style.opacity=e2; $('#end p').style.opacity=e2;
+  $('#end h2').style.transform=`translateY(${(1-e2)*40}px)`;
+  [...$('#chips').children].forEach((c,i)=>{const p=back(prog(t,11.8+i*0.15,12.3+i*0.15));c.style.opacity=clamp(p);c.style.transform=`scale(${p})`;});
+  const c=back(prog(t,12.6,13.2)); $('#cta').style.opacity=clamp(c); $('#cta').style.transform=`scale(${c*(1+0.03*Math.sin(t*5)*prog(t,13.2,13.4))})`;
+}
+// static feed post: headline + phone + ring, no hook/captions/end
+function renderPost(){
+  op($('#hook'),0); op($('#cap'),0); op($('#end'),0); op($('#head'),1); op($('#phone'),1); op($('#ring'),1);
+}
+</script>
+</body>
+</html>
