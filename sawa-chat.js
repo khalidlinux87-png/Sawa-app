@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c348";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c349";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -4591,7 +4591,8 @@
           : L("⚠️ ملفّاتٌ على الخادم ليست النسخة المطلوبة: ", "⚠️ Server files don't match: ") + us.mism.map(function (m) { return String(m.u).replace("./", "") + " (" + Math.round(m.got / 1024) + L(" ك.ب بدل ", " KB instead of ") + Math.round(m.want / 1024) + ")"; }).join(" · ");
         body.appendChild(note(why + L(" — أعد رفع الملفّ ثمّ sw.js برقمٍ جديد.", " — re-upload the file, then sw.js with a new number."), "#b42318", "#fdecec"));
       }
-      if (upd.notes) { var nn = note(L("ما الجديد: ", "What's new: ") + upd.notes); nn.style.whiteSpace = "pre-line"; nn.style.marginTop = "8px"; body.appendChild(nn); }
+      // C349: «ما الجديد» (قائمة الإصلاحات) للمشرف والمدير والمالك فقط — المستخدم يرى النسخة وزرّ التحديث
+      if (upd.notes && adminAtLeast("moderator")) { var nn = note(L("ما الجديد: ", "What's new: ") + upd.notes); nn.style.whiteSpace = "pre-line"; nn.style.marginTop = "8px"; body.appendChild(nn); }
     };
     draw();
     try { if (global.caches) caches.open("flags-sawa").then(function (c) { return c.match("/upd-status"); }).then(function (r) { return r ? r.json() : null; }).then(function (j) { if (j) { upd.swStatus = j; draw(); } }).catch(function () {}); } catch (e) {}
