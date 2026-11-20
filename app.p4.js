@@ -1561,6 +1561,8 @@ function ChatSettingsScreen({ chatBackupEnabled, setChatBackupEnabled, chatFolde
     // C314: إخفاء آخر ظهور (يتزامن بين أجهزتك عبر SawaChat)
     const SCh = window.SawaChat && window.SawaChat.setHideSeen ? window.SawaChat : null;
     const [hideSeenOn, setHideSeenOn] = useState(() => !!(SCh && SCh.hideSeen()));
+    const SCg = window.SawaChat && window.SawaChat.galSupported && window.SawaChat.galSupported() ? window.SawaChat : null;   // C350
+    const [galOn, setGalOn] = useState(() => !!(SCg && SCg.galAuto()));
     return (React.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
         React.createElement(TopBar, { title: t("iadadat_almhadthat"), onBack: onBack }),
         React.createElement("div", { className: "flex-1 overflow-y-auto p-4", style: { backgroundColor: colors.bg } },
@@ -1593,6 +1595,14 @@ function ChatSettingsScreen({ chatBackupEnabled, setChatBackupEnabled, chatFolde
                 React.createElement("div", { className: `flex-1 ${textStart()}` },
                     React.createElement("span", { className: "text-sm font-bold block mb-1", style: { color: colors.text } }, t("tdhkyrat_sla_alrhm")),
                     React.createElement("p", { className: "text-[10px]", style: { color: colors.textMuted } }, t("btaqat_tdhkyr_altwasl_walmwaayd")))),
+            // C350: حفظ الصور والفيديو الواردة في معرض الهاتف (تطبيق أندرويد والآيفون فقط)
+            SCg && React.createElement("p", { className: "text-xs font-bold mb-2", style: { color: colors.textMuted } }, tl("الوسائط", "Media")),
+            SCg && React.createElement(Card, { className: `flex ${rowEnd()} items-start gap-2.5 mb-4` },
+                React.createElement("button", { role: "switch", "aria-checked": galOn, "data-sawa": "gal-auto", "aria-label": tl("حفظ في معرض الهاتف", "Save to phone gallery"), onClick: () => { const v = !galOn; setGalOn(v); SCg.setGalAuto(v); }, className: "w-11 h-6 rounded-full relative shrink-0 mt-0.5", style: { backgroundColor: galOn ? colors.primaryFill : colors.border } },
+                    React.createElement("span", { className: "absolute top-0.5 w-5 h-5 rounded-full bg-white", style: { [galOn ? "right" : "left"]: 2 } })),
+                React.createElement("div", { className: `flex-1 ${textStart()}` },
+                    React.createElement("span", { className: "text-sm font-bold block mb-1", style: { color: colors.text } }, tl("حفظ الصور والفيديو في معرض الهاتف", "Save photos & videos to the gallery")),
+                    React.createElement("p", { className: "text-[10px]", style: { color: colors.textMuted } }, tl("ما يصلك من صور وفيديو يظهر في معرض هاتفك (ألبوم Sawa) تلقائيّاً. لا يشمل المحادثات السرّيّة والمؤقّتة وصور المرّة الواحدة.", "Photos and videos you receive appear in your phone's gallery (Sawa album). Not for secret or disappearing chats or view-once media.")))),
             SCh && React.createElement("p", { className: "text-xs font-bold mb-2", style: { color: colors.textMuted } }, tl("الخصوصيّة", "Privacy")),
             SCh && React.createElement(Card, { className: `flex ${rowEnd()} items-start gap-2.5 mb-4` },
                 React.createElement("button", { role: "switch", "aria-checked": hideSeenOn, "aria-label": tl("إخفاء آخر ظهور", "Hide last seen"), onClick: () => { const v = !hideSeenOn; setHideSeenOn(v); SCh.setHideSeen(v); }, className: "w-11 h-6 rounded-full relative shrink-0 mt-0.5", style: { backgroundColor: hideSeenOn ? colors.primaryFill : colors.border } },

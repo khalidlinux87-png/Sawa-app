@@ -1495,7 +1495,7 @@ function MediaLightbox({ items: itemsIn, startIndex = 0, onClose, onForward, onR
     }
     function handleDownload() {
         // C89: في تطبيق أندرويد عبر الجسر (WebView لا يُنزّل روابط blob:) ⇒ «التنزيلات/Sawa»
-        try { const SCd = window.SawaChat; if (SCd && SCd.nativeFiles && SCd.nativeFiles()) { SCd.saveMediaUrl(cur.url, cur.name || (cur.type === "video" ? "sawa-video.mp4" : "sawa-image.jpg"), "save"); return; } } catch (e) { }
+        try { const SCd = window.SawaChat; if (SCd && ((SCd.nativeFiles && SCd.nativeFiles()) || (window.SawaIOS && window.SawaIOS.photos))) { SCd.saveMediaUrl(cur.url, cur.name || (cur.type === "video" ? "sawa-video.mp4" : "sawa-image.jpg"), "save"); return; } } catch (e) { }   // C350: أندرويد ⇒ معرض الهاتف · آيفون ⇒ «الصور»
         try {
             const a = document.createElement("a");
             a.href = cur.url;

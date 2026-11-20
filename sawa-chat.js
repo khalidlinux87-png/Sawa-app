@@ -2479,6 +2479,18 @@
   // action: open | save | share
   function saveBlob(blob, name, action, mime) {
     if (!blob) return Promise.resolve(false);
+    mime = mimeOf(name, mime || blob.type);   // C350: الصورة/الفيديو يُعرف نوعه ⇒ يذهب إلى معرض الهاتف
+    var quiet = action === "gallery";   // C350: الحفظ التلقائيّ في المعرض — بلا رسائل
+    var isMedia = /^(image|video)\//.test(mime || "");
+    // C350: آيفون (بناءٌ فيه saveToPhotos) ⇒ «حفظ» صورةٍ أو فيديو يذهب إلى تطبيق «الصور» مباشرة
+    if (IOSB() && IOSB().photos && isMedia && (action === "save" || quiet) && blob.size < 60 * 1024 * 1024) {
+      return blobPartB64(blob, 0, blob.size).then(function (b64) { return IOSB().call("saveToPhotos", { fileB64: b64, mime: mime, name: name || "" }, 120000); }).then(function (r) {
+        if (r && r.ok) { if (!quiet) toast(L("حُفظ في «الصور» ✓", "Saved to Photos ✓")); return true; }
+        if (!quiet) toast(r && r.error === "perm" ? L("اسمح لسوا بإضافة الصور من الإعدادات ← سوا ← الصور", "Allow Sawa to add photos in Settings → Sawa → Photos") : L("تعذّر الحفظ في «الصور»", "Couldn't save to Photos"));
+        return false;
+      }, function () { return false; });
+    }
+    if (quiet && !(NB() && NB().galleryOk)) return Promise.resolve(false);
     if (nativeFiles()) {
       var id = NB().fileBegin(name || "file", mime || blob.type || "");
       if (!id) { toast(L("تعذّر تجهيز الملفّ", "Couldn't prepare the file")); return Promise.resolve(false); }
@@ -2488,7 +2500,11 @@
         return blobPartB64(blob, off, CH).then(function (b64) { if (!NB().fileChunk(id, b64)) throw new Error("write"); off += CH; return step(); });
       };
       return step().then(function (r) {
-        if (r && r.ok) { if (action === "save") toast(L("حُفظ في «التنزيلات» ✓ ", "Saved to Downloads ✓ ") + (r.where ? "— " + r.where : "")); return true; }
+        if (r && r.ok) {
+          if (action === "save") toast(/(^|\/)(Pictures|Movies)\//.test(r.where || "") ? L("حُفظ في معرض الصور ✓", "Saved to the gallery ✓") : L("حُفظ في «التنزيلات» ✓ ", "Saved to Downloads ✓ ") + (r.where ? "— " + r.where : ""));   // C350
+          return true;
+        }
+        if (quiet) return false;
         toast(action === "open" ? L("لا تطبيق على هاتفك يفتح هذا النوع — جرّب «حفظ» أو «مشاركة»", "No app can open this type — try Save or Share") : L("تعذّر: ", "Failed: ") + ((r && r.error) || "")); return false;
       }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); return false; });
     }
@@ -3075,7 +3091,7 @@
           var b = mk("button", "position:absolute;top:50%;transform:translateY(-50%);" + ((z[0] < 0) !== isAr() ? "left" : "right") + ":8px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;font:800 22px var(--sawa-font,system-ui)", z[1]);
           b.onclick = function () { go(z[0]); }; stage.appendChild(b);
         });
-        sv.onclick = function () { saveMediaUrl(u, "sawa-moment-" + (i + 1) + (it.t === "video" ? ".mp4" : ".jpg"), IOSB() ? "share" : "save", it.mime); };
+        sv.onclick = function () { saveMediaUrl(u, "sawa-moment-" + (i + 1) + (it.t === "video" ? ".mp4" : ".jpg"), IOSB() && !IOSB().photos ? "share" : "save", it.mime); };
       }).catch(function () { sp.textContent = L("تعذّر التحميل", "Couldn't load"); });
     }
     if (p.text) ov.appendChild(mk("div", "padding:10px 16px " + (p.id ? "4px" : "calc(env(safe-area-inset-bottom,0px) + 14px)") + ";font:500 14px/1.7 var(--sawa-font,system-ui);max-height:22vh;overflow:auto;background:linear-gradient(transparent,rgba(0,0,0,.6))", p.text));
@@ -4183,6 +4199,53 @@
     patchLocal(cid, id, function (m) { m.viewed = Object.assign({}, m.viewed); m.viewed[state.uid] = Date.now(); return m; });
     call("media.viewed", { cid: cid, day: f.day, id: id }).catch(fail);
   }
+  // ==================================================================
+  // C350: حفظ الصور والفيديو الواردة في معرض الهاتف تلقائيّاً (كواتساب) — تطبيق أندرويد (Pictures/Sawa · Movies/Sawa)
+  //       والآيفون (تطبيق «الصور»). إعدادٌ لكلّ جهاز، مفعّلٌ افتراضيّاً، ولما يصل بعد تفعيله فقط (لا يُفرغ السجلّ القديم).
+  //       لا يُحفظ: ما أرسلتُه · صورة المرّة الواحدة · المحادثات السرّيّة والمؤقّتة · الفيديو الأكبر من 50 ميغابايت · وضع توفير البيانات.
+  // ==================================================================
+  var GAL_MAX_VIDEO = 50 * 1024 * 1024;
+  function galSupported() { return !!((NB() && NB().galleryOk) || (IOSB() && IOSB().photos)); }
+  function galState() {
+    var g = lsGet("sawa_gal_auto", null);
+    if (!g || typeof g.on !== "boolean") { g = { on: true, since: Date.now() }; lsSet("sawa_gal_auto", g); }
+    return g;
+  }
+  function galAuto() { return galSupported() && galState().on; }
+  function setGalAuto(on) { lsSet("sawa_gal_auto", { on: !!on, since: Date.now() }); }
+  var galDone = lsGet("sawa_gal_done", {}), galQ = [], galBusy = false, galTries = {};
+  (function () { var c = Date.now() - 7 * 864e5, n = 0; Object.keys(galDone).forEach(function (k) { if (!(galDone[k] > c)) { delete galDone[k]; n++; } }); if (n) lsSet("sawa_gal_done", galDone); })();
+  function galMaybe(m, cid, mine) {
+    if (mine || !m || !(m.type === "image" || m.type === "video") || m.del || m.gone) return;
+    var ex = m.extra || {}, mid = ex.mid;
+    if (!mid || galDone[mid] || ex.viewOnce || !galAuto()) return;
+    var c = chats[cid] || {};
+    if (c.disappear || e2eOn(c) || /^sdm_/.test(String(cid))) return;
+    if ((m.ts || 0) < galState().since) return;
+    if (m.type === "video" && (ex.size || 0) > GAL_MAX_VIDEO) return;
+    try { var cn = navigator.connection; if (cn && cn.saveData && m.type === "video") return; } catch (e) {}
+    galDone[mid] = Date.now(); lsSet("sawa_gal_done", galDone);   // يُعلَّم قبل الحفظ ⇒ لا تكرار ولو أُعيد رسم المحادثة
+    galQ.push({ cid: cid, mid: mid, type: m.type, ex: ex, ts: m.ts || Date.now() }); galPump();
+  }
+  function galPump() {
+    if (galBusy || !galQ.length) return;
+    galBusy = true; var j = galQ.shift();
+    var fin = function () { galBusy = false; setTimeout(galPump, 300); };
+    var ext = j.type === "video" ? ((j.ex.mime || "").indexOf("quicktime") >= 0 ? ".mov" : ".mp4") : ((j.ex.mime || "").indexOf("png") >= 0 ? ".png" : ".jpg");
+    var name = "Sawa-" + new Date(j.ts).toISOString().replace(/[-:T]/g, "").slice(0, 14) + "-" + String(j.mid).slice(-4) + ext;
+    withTimeout(idbGet(j.mid), 4000, null).then(function (b) {
+      if (b) return b;
+      return ensureMedia(j.cid, j.mid).then(function (u) { return u ? blobOfUrl(u) : null; });
+    }).then(function (b) {
+      if (!b || !b.size) throw new Error("no media");
+      var mime = j.ex.mime || b.type || (j.type === "video" ? "video/mp4" : "image/jpeg");
+      return saveBlob(b.type === mime ? b : new Blob([b], { type: mime }), name, "gallery", mime);
+    }).then(function (ok) { if (!ok) LOG.info("gal.skip", { mid: j.mid }); fin(); }, function (e) {
+      galTries[j.mid] = (galTries[j.mid] || 0) + 1;
+      if (galTries[j.mid] < 5) { delete galDone[j.mid]; lsSet("sawa_gal_done", galDone); }   // يُعاد مع الرسم التالي (بعد اكتمال التنزيل) حتّى 5 مرّات
+      LOG.warn("gal.fail", { mid: j.mid, err: (e && e.message) || String(e) }); fin();
+    });
+  }
   // يحوّل رسالة وسائط إلى شكل الواجهة (ويطلب التنزيل التلقائيّ للصغير في المحادثة المفتوحة)
   function autoVideoMax() {
     try { var cn = navigator.connection; if (cn && (cn.saveData || /(^|-)2g$/.test(String(cn.effectiveType || "")))) return AUTO_DL; } catch (e) {}
@@ -4213,6 +4276,7 @@
     var auto = (cid === openCid || (fresh && (m.type !== "video" || r2v || (ex.size || 0) <= AUTO_DL))) && !url && !mediaFailed[mid] && !(ex.viewOnce && (mine || viewedByMe || m.gone))
       && (m.type !== "file") && (m.type !== "video" || r2v || (ex.size || 0) <= autoVideoMax());
     if (auto) setTimeout(function () { ensureMedia(cid, mid, !!ex.viewOnce); }, 0);
+    if (!mine && (m.type === "image" || m.type === "video") && !galDone[mid]) setTimeout(function () { galMaybe(m, cid, mine); }, 0);   // C350
     return o;
   }
 
@@ -7269,6 +7333,7 @@
     // C164: editTasks · notifAvatars · setNotifAvatars (C170: كان هذا التعليق في وسط السطر فعطّل ما بعده — react وdeleteForAll وpin…)
     hideSeen: hideSeen, setHideSeen: setHideSeen,   // C314
     readInfo: readInfo, readInfoSheet: readInfoSheet, saveToPhone: saveToPhone,   // C350
+    galSupported: galSupported, galAuto: galAuto, setGalAuto: setGalAuto,   // C350: الحفظ التلقائيّ في معرض الهاتف
     sendTasks: sendTasks, setTask: setTask, editTasks: editTasks, addTask: addTask, myTasks: myTasks, notifAvatars: notifAvatars, setNotifAvatars: setNotifAvatars, deleteForAll: deleteForAll, deleteForMe: deleteForMe, react: react, pin: pin,
     setDisappear: setDisappear, openDm: openDm, openSaved: openSaved, dmWith: function (u) { return state.uid ? dmWith(u) : null; },
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
