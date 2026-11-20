@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c349";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c350";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -1021,6 +1021,62 @@
     if (os.every(function (u) { return (reads[u] || 0) >= ts; })) return "read";
     if (os.every(function (u) { return (del[u] || 0) >= ts || (reads[u] || 0) >= ts; })) return "delivered";
     return "sent";
+  }
+  // C350: «معلومات الرسالة» في المجموعات — من قرأها ومن وصلته ومن لم تصله بعد (من reads/delivered في وثيقة المحادثة:
+  //       آخر رسالةٍ قرأها/وصلت كلّ عضو). لا وقت قراءةٍ لكلّ رسالة في الخادم ⇒ القوائم بلا ساعة.
+  function readInfo(cid, id) {
+    var c = chats[cid]; if (!c) return null;
+    var f = id ? findMsg(cid, id) : null, ts = f && f.msg ? f.msg.ts : 0; if (!ts) return null;
+    var reads = c.reads || {}, del = c.delivered || {}, out = { read: [], delivered: [], pending: [] };
+    others(c).forEach(function (u) {
+      if ((reads[u] || 0) >= ts) out.read.push(u);
+      else if ((del[u] || 0) >= ts) out.delivered.push(u);
+      else out.pending.push(u);
+    });
+    return out;
+  }
+  function readInfoSheet(cid, id) {
+    var c = chats[cid], ri = readInfo(cid, id);
+    if (!ri) { toast(L("لم تُرسَل هذه الرسالة بعد", "This message hasn't been sent yet")); return; }
+    var s = sheet(L("معلومات الرسالة", "Message info"));
+    var f = findMsg(cid, id), m = f && f.msg;
+    if (m && m.text) s.box.appendChild(mk("div", "background:#f5f7fa;border-radius:12px;padding:10px 12px;margin:4px 0 10px;font:500 14px/1.7 var(--sawa-font,system-ui);white-space:pre-wrap;word-break:break-word;max-height:120px;overflow:auto", m.text));
+    var sec = function (title, icon, color, list) {
+      var hd = mk("div", "display:flex;align-items:center;gap:6px;margin:12px 0 4px;font:800 13.5px var(--sawa-font,system-ui);color:" + color);
+      hd.appendChild(mk("span", "font-size:15px", icon)); hd.appendChild(document.createTextNode(title + " (" + list.length + ")")); s.box.appendChild(hd);
+      if (!list.length) { s.box.appendChild(mk("div", "font:600 12.5px var(--sawa-font,system-ui);color:#8a96a3;padding:4px 2px", "—")); return; }
+      list.map(function (u) { return { u: u, n: personName(u, c) }; }).sort(function (a, b) { return String(a.n).localeCompare(String(b.n), "ar"); }).forEach(function (x) {
+        var r = mk("div", "display:flex;align-items:center;gap:10px;padding:7px 2px;border-top:1px solid #edeff2");
+        var ph = photoOf(x.u);
+        if (ph) { var im = mk("img", "width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0"); im.src = ph; im.alt = ""; r.appendChild(im); } else r.appendChild(avatar(x.n, 34));
+        r.appendChild(mk("div", "flex:1;min-width:0;font:700 14px var(--sawa-font,system-ui);overflow:hidden;text-overflow:ellipsis;white-space:nowrap", x.n));
+        s.box.appendChild(r);
+      });
+    };
+    sec(L("قرأها", "Read by"), "✓✓", "#2774BA", ri.read);
+    sec(L("وصلته ولم يقرأها", "Delivered to"), "✓✓", "#5b6b7c", ri.delivered);
+    if (ri.pending.length) sec(L("لم تصله بعد", "Not delivered yet"), "✓", "#8a96a3", ri.pending);
+    s.box.appendChild(note(L("تُحسب القراءة بفتح العضو للمجموعة بعد وصول الرسالة.", "A message counts as read once the member opens the group after it arrived."), "#8a96a3"));
+  }
+  // C350: حفظ رقمٍ من سوا في جهات الهاتف — شاشة «جهة اتّصال جديدة» من النظام (أندرويد ACTION_INSERT · آيفون CNContactViewController)
+  //       بلا إذن جهات الاتّصال؛ والمتصفّح أو بناءٌ قديم ⇒ بطاقة vCard تُفتح في تطبيق جهات الاتّصال
+  function saveToPhone(ct) {
+    ct = ct || {};
+    var name = String(ct.name || "").trim(), phone = String(ct.phone || "").replace(/[^\d+]/g, "");
+    if (!phone) { toast(L("لا رقم هاتف لهذا الشخص", "No phone number for this person")); return Promise.resolve(false); }
+    var code = ct.code ? String(ct.code).replace(/\D/g, "") : "";
+    var noteTx = code ? L("سوا: ", "Sawa: ") + code.replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3") : L("من سوا", "From Sawa");
+    try { if (NB() && NB().addContact) { NB().addContact(name, phone, noteTx); return Promise.resolve(true); } } catch (e) {}
+    var vcf = function () {
+      var esc = function (v) { return String(v).replace(/([\\,;])/g, "\\$1").replace(/\n/g, " "); };
+      var t = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:" + esc(name || phone) + "\r\nN:" + esc(name || phone) + ";;;;\r\nTEL;TYPE=CELL:" + phone + "\r\nNOTE:" + esc(noteTx) + "\r\nEND:VCARD\r\n";
+      return saveBlob(new Blob([t], { type: "text/x-vcard" }), (name || "contact").replace(/[\\/:*?"<>|]/g, "").slice(0, 60) + ".vcf", "open", "text/x-vcard");
+    };
+    if (IOSB() && IOSB().addContact) return IOSB().call("addContact", { name: name, phone: phone, note: noteTx }, 600000).then(function (r) {
+      if (r && r.saved) toast(L("حُفظ في جهات الهاتف ✓", "Saved to phone contacts ✓"));
+      return !!(r && r.ok);
+    }, function () { return vcf(); });
+    return vcf();
   }
   function unreadOf(c) {
     if (c.cid === openCid && document.visibilityState !== "hidden") return 0;
@@ -2423,6 +2479,18 @@
   // action: open | save | share
   function saveBlob(blob, name, action, mime) {
     if (!blob) return Promise.resolve(false);
+    mime = mimeOf(name, mime || blob.type);   // C350: الصورة/الفيديو يُعرف نوعه ⇒ يذهب إلى معرض الهاتف
+    var quiet = action === "gallery";   // C350: الحفظ التلقائيّ في المعرض — بلا رسائل
+    var isMedia = /^(image|video)\//.test(mime || "");
+    // C350: آيفون (بناءٌ فيه saveToPhotos) ⇒ «حفظ» صورةٍ أو فيديو يذهب إلى تطبيق «الصور» مباشرة
+    if (IOSB() && IOSB().photos && isMedia && (action === "save" || quiet) && blob.size < 60 * 1024 * 1024) {
+      return blobPartB64(blob, 0, blob.size).then(function (b64) { return IOSB().call("saveToPhotos", { fileB64: b64, mime: mime, name: name || "" }, 120000); }).then(function (r) {
+        if (r && r.ok) { if (!quiet) toast(L("حُفظ في «الصور» ✓", "Saved to Photos ✓")); return true; }
+        if (!quiet) toast(r && r.error === "perm" ? L("اسمح لسوا بإضافة الصور من الإعدادات ← سوا ← الصور", "Allow Sawa to add photos in Settings → Sawa → Photos") : L("تعذّر الحفظ في «الصور»", "Couldn't save to Photos"));
+        return false;
+      }, function () { return false; });
+    }
+    if (quiet && !(NB() && NB().galleryOk)) return Promise.resolve(false);
     if (nativeFiles()) {
       var id = NB().fileBegin(name || "file", mime || blob.type || "");
       if (!id) { toast(L("تعذّر تجهيز الملفّ", "Couldn't prepare the file")); return Promise.resolve(false); }
@@ -2432,7 +2500,11 @@
         return blobPartB64(blob, off, CH).then(function (b64) { if (!NB().fileChunk(id, b64)) throw new Error("write"); off += CH; return step(); });
       };
       return step().then(function (r) {
-        if (r && r.ok) { if (action === "save") toast(L("حُفظ في «التنزيلات» ✓ ", "Saved to Downloads ✓ ") + (r.where ? "— " + r.where : "")); return true; }
+        if (r && r.ok) {
+          if (action === "save") toast(/(^|\/)(Pictures|Movies)\//.test(r.where || "") ? L("حُفظ في معرض الصور ✓", "Saved to the gallery ✓") : L("حُفظ في «التنزيلات» ✓ ", "Saved to Downloads ✓ ") + (r.where ? "— " + r.where : ""));   // C350
+          return true;
+        }
+        if (quiet) return false;
         toast(action === "open" ? L("لا تطبيق على هاتفك يفتح هذا النوع — جرّب «حفظ» أو «مشاركة»", "No app can open this type — try Save or Share") : L("تعذّر: ", "Failed: ") + ((r && r.error) || "")); return false;
       }).catch(function (e) { toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); return false; });
     }
@@ -2524,7 +2596,8 @@
   //   Firestore: stories/{u} {name, aud[], hide[], items[]} (يكتبه الخادم) · stories/{u}/media/{mid}+c/{i} (يرفعها صاحبها)
   // ==================================================================
   var ST_BG = [["#2774BA", "#1E3A63"], ["#16a34a", "#065f46"], ["#e11d48", "#7f1d1d"], ["#7c3aed", "#1a237e"], ["#f59e0b", "#b45309"], ["#0ea5e9", "#0f766e"], ["#334155", "#111827"], ["#db2777", "#6a1b9a"]];
-  var stState = { mine: null, others: {}, unsub: [] }, stSeen = lsGet("sawa_story_seen", {}), stUrls = {};
+  var stState = { mine: null, others: {}, unsub: [] }, stSeen = lsGet("sawa_story_seen", {}), stLiked = lsGet("sawa_story_liked", {}), stUrls = {};   // C350: stLiked = قصصٌ أعجبتني
+  (function () { var c = Date.now() - 2 * 864e5, n = 0; Object.keys(stLiked).forEach(function (k) { if (!(stLiked[k] > c)) { delete stLiked[k]; n++; } }); if (n) lsSet("sawa_story_liked", stLiked); })();   // القصّة تعيش 24 ساعة
   function stItemsLive(items) { var now = Date.now(); return (items || []).filter(function (x) { return x && x.id && (x.exp || 0) > now; }).sort(function (a, b) { return a.ts - b.ts; }); }
   function stEmit() { try { global.dispatchEvent(new CustomEvent("sawa-stories")); } catch (e) {} }
   function startStories(uid) {
@@ -2707,8 +2780,9 @@
     play: '<polygon points="6 4 20 12 6 20 6 4" fill="#fff" stroke="none"/>'
   };
   // ---------- الشاشة ----------
+  var moLastOpts = null;   // C350: ألوان التطبيق وقوائم البثّ من آخر فتحٍ للّحظات (لمنشئ اللحظة من «مشاركة إلى سوا»)
   function momentsMount(host, opts) {
-    opts = opts || {};
+    opts = opts || {}; moLastOpts = opts;
     var T = moTheme(opts.colors);
     host.innerHTML = ""; host.dir = isAr() ? "rtl" : "ltr";
     host.style.cssText = "flex:1;min-height:0;display:flex;flex-direction:column;background:" + T.bg + ";color:" + T.text + ";font-family:var(--sawa-font,system-ui)";
@@ -2800,7 +2874,7 @@
       moLong(tx, function () { moCopySheet(p.text); }); c.appendChild(tx);
       if (p.text.length > 320) { var more = mk("button", "border:0;background:transparent;color:" + T.primary + ";font:800 13px var(--sawa-font,system-ui);padding:0 14px 10px", L("عرض المزيد", "See more")); more.onclick = function () { tx.style.maxHeight = "none"; more.remove(); }; c.appendChild(more); }
     }
-    if (p.media && p.media.length) c.appendChild(moGrid(p, T, function (cell) { moBurst(cell); if (!liked) moReact(p, "❤️", view); }));
+    if (p.media && p.media.length) c.appendChild(moGrid(p, T, function (cell) { moBurst(cell); if (!liked) moReact(p, "❤️", view); }, view));
     if (p.loc && isFinite(Number(p.loc.lat)) && isFinite(Number(p.loc.lng))) c.appendChild(moLocCard(p.loc, T));
     if (p.poll && p.poll.opts) c.appendChild(moPoll(p, T, view));
     var sum = moRxSum(p);
@@ -2844,7 +2918,7 @@
     }
     return c;
   }
-  function moGrid(p, T, dbl) {
+  function moGrid(p, T, dbl, view) {
     var m = p.media, n = m.length, g = mk("div", "display:grid;gap:3px;background:" + T.border);
     if (n === 1) g.style.gridTemplateColumns = "1fr";
     else if (n === 2) g.style.gridTemplateColumns = "1fr 1fr";
@@ -2874,7 +2948,7 @@
       var io = global.IntersectionObserver ? new IntersectionObserver(function (es) { if (es[0].isIntersecting) { io.disconnect(); load(); } }, { rootMargin: "300px" }) : null;
       if (io) io.observe(cell); else load();
       var lastTap = 0, tapT = null;   // C135: ضغطتان سريعتان ⇒ ❤️
-      cell.onclick = function () { var now = Date.now(); if (dbl && now - lastTap < 300) { clearTimeout(tapT); lastTap = 0; dbl(cell); return; } lastTap = now; clearTimeout(tapT); tapT = setTimeout(function () { moViewer(p, i); }, dbl ? 300 : 0); };
+      cell.onclick = function () { var now = Date.now(); if (dbl && now - lastTap < 300) { clearTimeout(tapT); lastTap = 0; dbl(cell); return; } lastTap = now; clearTimeout(tapT); tapT = setTimeout(function () { moViewer(p, i, view); }, dbl ? 300 : 0); };
       g.appendChild(cell);
     });
     return g;
@@ -2976,8 +3050,9 @@
       r.appendChild(moAv(u, moName(u), 34, moTheme())); r.appendChild(mk("div", "font:700 14px var(--sawa-font,system-ui)", moName(u))); s.box.appendChild(r);
     });
   }
-  function moLikers(p) {
+  function moLikers(p, top) {
     var sum = moRxSum(p), rx = p.rx || {}, s = sheet(sum.map(function (x) { return x[0] + " " + x[1]; }).join("   ") || "❤️ 0");
+    if (top) s.ov.style.zIndex = "2147483006";   // C350: فوق عارض اللحظة
     (p.likes || []).slice(0, 300).forEach(function (u) {
       var r = mk("div", "display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid #edeff2");
       r.appendChild(moAv(u, moName(u), 34, moTheme())); r.appendChild(mk("div", "flex:1;font:700 14px var(--sawa-font,system-ui)", moName(u))); r.appendChild(mk("div", "font-size:20px", rx[u] || "❤️")); s.box.appendChild(r);
@@ -2990,7 +3065,7 @@
     if (navigator.share) navigator.share({ text: tx }).catch(function () {}); else { copyText(tx); toast(L("نُسخ — الصقه حيث تريد", "Copied")); }
   }
   // ---------- العارض ----------
-  function moViewer(p, start) {
+  function moViewer(p, start, view) {   // C350: view ⇒ الإعجاب والتعليق من العارض أيضاً
     var i = start || 0, m = p.media;
     var ov = stOverlay("#000");
     var top = mk("div", "display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 8px");
@@ -3016,10 +3091,41 @@
           var b = mk("button", "position:absolute;top:50%;transform:translateY(-50%);" + ((z[0] < 0) !== isAr() ? "left" : "right") + ":8px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;font:800 22px var(--sawa-font,system-ui)", z[1]);
           b.onclick = function () { go(z[0]); }; stage.appendChild(b);
         });
-        sv.onclick = function () { saveMediaUrl(u, "sawa-moment-" + (i + 1) + (it.t === "video" ? ".mp4" : ".jpg"), IOSB() ? "share" : "save", it.mime); };
+        sv.onclick = function () { saveMediaUrl(u, "sawa-moment-" + (i + 1) + (it.t === "video" ? ".mp4" : ".jpg"), IOSB() && !IOSB().photos ? "share" : "save", it.mime); };
       }).catch(function () { sp.textContent = L("تعذّر التحميل", "Couldn't load"); });
     }
-    if (p.text) ov.appendChild(mk("div", "padding:10px 16px calc(env(safe-area-inset-bottom,0px) + 14px);font:500 14px/1.7 var(--sawa-font,system-ui);max-height:22vh;overflow:auto;background:linear-gradient(transparent,rgba(0,0,0,.6))", p.text));
+    if (p.text) ov.appendChild(mk("div", "padding:10px 16px " + (p.id ? "4px" : "calc(env(safe-area-inset-bottom,0px) + 14px)") + ";font:500 14px/1.7 var(--sawa-font,system-ui);max-height:22vh;overflow:auto;background:linear-gradient(transparent,rgba(0,0,0,.6))", p.text));
+    // C350: الإعجاب باللحظة من العارض — ضغطة ⇒ ❤️ (أو سحبه) · مطوّلة ⇒ اختيار التفاعل · ضغطتان على الصورة ⇒ ❤️ · وزرّ التعليقات
+    if (p.id) {
+      var bar = mk("div", "display:flex;align-items:center;gap:8px;padding:8px 14px calc(env(safe-area-inset-bottom,0px) + 12px)"); ov.appendChild(bar);
+      var react = function (e) { moReact(p, e, view); paintBar(); };
+      var paintBar = function () {
+        bar.innerHTML = "";
+        var my = (p.rx || {})[state.uid] || ((p.likes || []).indexOf(state.uid) >= 0 ? "❤️" : null);
+        var lb = mk("button", "display:flex;align-items:center;gap:7px;border:0;border-radius:22px;padding:10px 16px;background:rgba(255,255,255,.15);color:#fff;font:800 14px var(--sawa-font,system-ui);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none");
+        lb.setAttribute("aria-label", L("إعجاب", "Like"));
+        if (my && my !== "❤️") lb.appendChild(mk("span", "font-size:18px;line-height:1", my));
+        else { var hi = moIcon(MI.heart, 20, my ? "#F43F5E" : "#fff"); if (my) hi.setAttribute("fill", "#F43F5E"); lb.appendChild(hi); }
+        lb.appendChild(document.createTextNode(my ? moRxName(my) : L("إعجاب", "Like")));
+        moLong(lb, function () { moRxPicker(lb, my, react); });
+        lb.onclick = function () { react(my ? null : "❤️"); };
+        bar.appendChild(lb);
+        var n = (p.likes || []).length;
+        if (n) { var ls = mk("button", "border:0;background:transparent;color:rgba(255,255,255,.85);font:700 13px var(--sawa-font,system-ui);direction:ltr", moRxSum(p).slice(0, 3).map(function (x) { return x[0]; }).join("") + " " + n); ls.onclick = function () { moLikers(p, true); }; bar.appendChild(ls); }
+        bar.appendChild(mk("div", "flex:1"));
+        var cb = mk("button", "display:flex;align-items:center;gap:6px;border:0;border-radius:22px;padding:10px 14px;background:rgba(255,255,255,.15);color:#fff;font:800 13.5px var(--sawa-font,system-ui)");
+        cb.appendChild(moIcon(MI.chat, 18, "#fff")); cb.appendChild(document.createTextNode(p.cc ? String(p.cc) : L("تعليق", "Comment")));
+        cb.onclick = function () { ov.remove(); moComments(p, view); }; bar.appendChild(cb);
+      };
+      paintBar();
+      var lastTap = 0;
+      stage.addEventListener("click", function (e) {
+        if (e.target.closest && e.target.closest("button,video")) return;
+        var now = Date.now();
+        if (now - lastTap < 300) { lastTap = 0; moBurst(stage); var my = (p.likes || []).indexOf(state.uid) >= 0; if (!my) react("❤️"); return; }
+        lastTap = now;
+      });
+    }
     show();
   }
   // ---------- التعليقات (C135: الردود · الإعجاب بالتعليق · الإشارة بـ@ · الانتقال إلى تعليقٍ من إشعار) ----------
@@ -3538,6 +3644,7 @@
     body.appendChild(hideBtn);
     var ta = mk("textarea", "width:100%;min-height:120px;border:0;outline:none;resize:none;background:transparent;color:" + T.text + ";font:500 18px/1.7 var(--sawa-font,system-ui);box-sizing:border-box");
     ta.placeholder = L("بماذا تفكّر؟", "What's on your mind?"); ta.maxLength = 2000; body.appendChild(ta);
+    if (opts.text) ta.value = String(opts.text).slice(0, 2000);   // C350
     var prev = mk("div", "display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:6px"); body.appendChild(prev);
     // C135: الإشارة بـ@ إلى من سيرون اللحظة (حسب الجمهور المختار، بلا المُخفى عنهم)
     var audCands = function () {
@@ -3624,6 +3731,12 @@
     }
     fiImg.onchange = function () { var f = fiImg.files; addFiles(f, false); fiImg.value = ""; };
     fiVid.onchange = function () { var f = fiVid.files; addFiles(f, true); fiVid.value = ""; };
+    // C350: صور/فيديو جاهزة (مشاركة من معرض الهاتف) ⇒ تُضاف كما لو اختيرت من «صور»/«فيديو»
+    if (opts.files && opts.files.length) {
+      var pv0 = opts.files.filter(function (f) { return /^video\//.test(f.type); });
+      if (pv0.length) addFiles(pv0.slice(0, 1), true);
+      else addFiles(opts.files.filter(function (f) { return /^image\//.test(f.type); }), false);
+    }
     // C133b: الموقع — كان يُطلب بدقّةٍ عالية فقط (15 ث) فيفشل داخل البيوت، ومن ينشر قبل وصوله تُنشر اللحظة بلا موقع.
     //        الآن: سريعٌ أوّلاً (الشبكة) ثمّ دقيق، وبطاقة «جارٍ تحديد موقعك…»، و«نشر» ينتظره.
     function geo(hi, ms) { return new Promise(function (res, rej) { navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: hi, timeout: ms, maximumAge: 300000 }); }); }
@@ -3668,8 +3781,9 @@
   }
 
   // ---------- إنشاء قصّة ----------
-  function storyComposer(start) {
+  function storyComposer(start, file, caption) {   // C350: file = صورة/فيديو جاهز (مشاركة من معرض الهاتف)
     if (!state.uid) { toast(L("جارٍ الاتّصال بالخادم…", "Connecting…")); return; }
+    if (file) start = "media";
     var bg = Math.floor(Math.random() * ST_BG.length), mode = start === "media" ? "media" : "text", picked = null;
     var ov = stOverlay("#000"), close = function () { try { ov.remove(); } catch (e) {} if (picked && picked.url) URL.revokeObjectURL(picked.url); };
     var top = mk("div", "display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 10px");
@@ -3687,6 +3801,7 @@
     var fi = mk("input"); fi.type = "file"; fi.accept = "image/*,video/*"; fi.style.display = "none"; ov.appendChild(fi);
     var cap = mk("input", "width:100%;box-sizing:border-box;border:0;border-radius:14px;padding:12px 14px;font:600 15px var(--sawa-font,system-ui);background:rgba(255,255,255,.14);color:#fff;outline:none");
     cap.placeholder = L("أضف تعليقاً…", "Add a caption…"); cap.maxLength = 300;
+    if (caption) cap.value = String(caption).slice(0, 300);   // C350
     var dots = mk("div", "display:flex;gap:10px;justify-content:center;padding:12px 0 4px");
     ST_BG.forEach(function (c, i) { var dt = mk("button", "width:30px;height:30px;border-radius:50%;border:3px solid " + (i === bg ? "#fff" : "transparent") + ";background:" + stGrad(i)); dt.onclick = function () { bg = i; paint(); }; dots.appendChild(dt); });
     var bottom = mk("div", "padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;flex-direction:column;gap:10px"); ov.appendChild(bottom);
@@ -3717,8 +3832,8 @@
       }
       bottom.appendChild(aud); bottom.appendChild(post);
     }
-    fi.onchange = function () {
-      var f = fi.files && fi.files[0]; fi.value = ""; if (!f) return;
+    fi.onchange = function () { var f = fi.files && fi.files[0]; fi.value = ""; if (f) takeFile(f); };
+    function takeFile(f) {
       var video = /^video\//.test(f.type);
       // القصّة كاللحظة: الفيديو حتى دقيقتين، والزائد أو الكبير يُفتح له القصّ بدل الرفض
       function take(r, src) {
@@ -3735,7 +3850,7 @@
         if (video && (!r.duration || r.duration > MOMENT_MAX_VIDEO_SEC + 1)) { trimThenTake(f); return; }   // مدّة مجهولة ⇒ يُقصّ (المحرّر يحسبها)
         take(r, f);
       }).catch(function () { toast(L("تعذّر قراءة الملفّ", "Couldn't read the file")); });
-    };
+    }
     post.onclick = function () {
       var p0;
       if (mode === "text") { var tx = ta.value.trim(); if (!tx) { toast(L("اكتب شيئاً أوّلاً", "Write something first")); return; } p0 = Promise.resolve({ t: "text", text: tx, bg: bg }); }
@@ -3747,7 +3862,8 @@
       }).catch(function (e) { post.disabled = false; post.textContent = L("نشر القصّة", "Post story"); toast(L("تعذّر النشر: ", "Couldn't post: ") + ((e && e.message) || e)); });
     };
     paint();
-    if (mode === "media") fi.click();
+    if (file) takeFile(file);
+    else if (mode === "media") fi.click();
   }
 
   // ---------- عرض القصص ----------
@@ -3756,7 +3872,7 @@
     var S0 = stories(), mine = owner === state.uid;
     var queue = mine ? [S0.me.uid] : S0.list.map(function (x) { return x.owner; });
     var qi = Math.max(0, queue.indexOf(owner));
-    var ov = stOverlay("#000"), timer = null, paused = false, t0 = 0, left = 0, cur = null, idx = 0, items = [], vid = null;
+    var ov = stOverlay("#000"), timer = null, paused = false, t0 = 0, left = 0, cur = null, idx = 0, items = [], vid = null, likeNow = null;
     var bars = mk("div", "display:flex;gap:3px;padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 6px"); ov.appendChild(bars);
     var head = mk("div", "display:flex;align-items:center;gap:10px;padding:2px 12px 8px"); ov.appendChild(head);
     var stage = mk("div", "flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden"); ov.appendChild(stage);
@@ -3818,7 +3934,7 @@
       paintFoot(it);
     }
     function paintFoot(it) {
-      foot.innerHTML = "";
+      foot.innerHTML = ""; likeNow = null;
       if (cur === state.uid) {
         var sv = mk("button", "flex:1;border:0;border-radius:14px;padding:12px;background:rgba(255,255,255,.14);color:#fff;font:800 14px var(--sawa-font,system-ui)", "👁 " + L("المشاهدات", "Views"));
         sv.onclick = function () { pause(true); storySeenSheet(it, function () { pause(false); }); };
@@ -3844,7 +3960,23 @@
           inp.value = ""; inp.blur(); toast(L("أُرسل الردّ في المحادثة الخاصّة ✓", "Reply sent ✓")); pause(false);
         };
         inp.onkeydown = function (e) { if (e.key === "Enter") go.onclick(); };
-        foot.appendChild(inp); foot.appendChild(go);
+        // C350: الإعجاب بالقصّة — ضغطة ⇒ ❤️ (أو سحبه) · ضغطتان على القصّة ⇒ ❤️ · يصل صاحبها إشعارٌ ويراه في «من شاهد قصّتك»
+        var lk = mk("button", "border:0;border-radius:50%;width:44px;height:44px;flex-shrink:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center");
+        lk.setAttribute("data-sawa", "story-like");
+        var paintLk = function () { var on = !!stLiked[it.id]; lk.innerHTML = ""; var h = moIcon(MI.heart, 24, on ? "#F43F5E" : "#fff"); if (on) h.setAttribute("fill", "#F43F5E"); lk.appendChild(h); lk.setAttribute("aria-label", on ? L("إلغاء الإعجاب", "Unlike") : L("إعجاب", "Like")); };
+        likeNow = function (on) {
+          if (!!stLiked[it.id] === on) return;
+          if (on) stLiked[it.id] = Date.now(); else delete stLiked[it.id];
+          lsSet("sawa_story_liked", stLiked); paintLk();
+          if (on) { moBurst(stage); try { if (navigator.vibrate) navigator.vibrate(10); } catch (x) {} }
+          call("story.like", { owner: cur, sid: it.id, on: on }).catch(function (e) {
+            if (on) delete stLiked[it.id]; else stLiked[it.id] = Date.now();
+            lsSet("sawa_story_liked", stLiked); paintLk(); toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e));
+          });
+        };
+        lk.onclick = function () { likeNow(!stLiked[it.id]); };
+        paintLk();
+        foot.appendChild(inp); foot.appendChild(lk); foot.appendChild(go);
       }
     }
     // اللمس: الطرف الأيمن = السابق، الباقي = التالي (اتّجاه العربيّة) · الضغط المطوّل = إيقاف مؤقّت
@@ -3853,12 +3985,25 @@
     stage.addEventListener("pointerup", function (e) {
       var held = Date.now() - downAt; downAt = 0;
       if (held >= 250) { pause(false); return; }
+      // C350: ضغطتان سريعتان على قصّة غيري ⇒ ❤️ (والضغطة الأولى لا تنتقل حتّى يتأكّد أنّها ليست مزدوجة)
+      if (cur !== state.uid && likeNow) {
+        var now2 = Date.now();
+        if (now2 - lastTapAt < 300) { clearTimeout(tapNav); lastTapAt = 0; likeNow(true); return; }
+        lastTapAt = now2; var ex = e.clientX;
+        clearTimeout(tapNav); tapNav = setTimeout(function () { navTap(ex, false); }, 300); return;
+      }
+      navTap(e.clientX, true);
+    });
+    var lastTapAt = 0, tapNav = null;
+    function navTap(clientX, sync) {
+      if (!ov.isConnected) return;
+      var e = { clientX: clientX };
       var r = stage.getBoundingClientRect(), xr = (e.clientX - r.left) / (r.width || 1);
       var back = isAr() ? xr > 0.7 : xr < 0.3;
       if (back) prev(); else next();
       // C335: آخر قصّة ⇒ أُغلق العارض عند رفع الإصبع، فكانت «النقرة» التي تليه تقع على ما تحته (محادثة) فتفتحها
-      if (!ov.isConnected) swallowNextClick();
-    });
+      if (!ov.isConnected && sync) swallowNextClick();   // C350: بعد التأخير (فحص الضغطتين) تكون النقرة قد مرّت
+    }
     load(queue[qi]);
   }
   function swallowNextClick() {
@@ -3869,7 +4014,10 @@
   }
   function stSeenCount(it, btn) {
     var d = fsdb(); if (!d) return;
-    d.collection("stories").doc(state.uid).collection("seen").where("sid", "==", it.id).get().then(function (snap) { btn.textContent = "👁 " + snap.size + " " + L("مشاهدة", "views"); }).catch(function () {});
+    d.collection("stories").doc(state.uid).collection("seen").where("sid", "==", it.id).get().then(function (snap) {
+      var lk = 0; snap.forEach(function (d0) { if ((d0.data() || {}).like) lk++; });
+      btn.textContent = "👁 " + snap.size + " " + L("مشاهدة", "views") + (lk ? " · ❤️ " + lk : "");   // C350
+    }).catch(function () {});
   }
   function storySeenSheet(it, onClose) {
     var s = sheet(L("👁 من شاهد قصّتك", "👁 Who viewed")); s.ov.style.zIndex = "2147483006";
@@ -3878,11 +4026,13 @@
     var d = fsdb();
     d.collection("stories").doc(state.uid).collection("seen").where("sid", "==", it.id).get().then(function (snap) {
       box.innerHTML = ""; var rows = []; snap.forEach(function (doc) { var v = doc.data() || {}; rows.push(v); });
-      rows.sort(function (a, b) { return b.ts - a.ts; });
+      rows.sort(function (a, b) { return (b.like ? 1 : 0) - (a.like ? 1 : 0) || (b.ts || 0) - (a.ts || 0); });   // C350: المعجبون أوّلاً
       if (!rows.length) box.appendChild(note(L("لم يشاهدها أحدٌ بعد", "No views yet")));
+      var nl = rows.filter(function (v) { return v.like; }).length;
+      if (nl) box.appendChild(mk("div", "font:800 13px var(--sawa-font,system-ui);color:#E11D48;margin:2px 0 4px", "❤️ " + L("أعجب بها " + nl, nl + " liked it")));
       rows.forEach(function (v) {
         var r = mk("div", "display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid #f1f5f9");
-        r.appendChild(avatar(stName(v.by), 36)); r.appendChild(mk("div", "flex:1;font:700 14px var(--sawa-font,system-ui)", stName(v.by))); r.appendChild(mk("div", "font:600 12px var(--sawa-font,system-ui);color:#8a93a0", stAgo(v.ts)));
+        r.appendChild(avatar(stName(v.by), 36)); r.appendChild(mk("div", "flex:1;font:700 14px var(--sawa-font,system-ui)", stName(v.by))); if (v.like) r.appendChild(mk("div", "font-size:17px", v.like)); r.appendChild(mk("div", "font:600 12px var(--sawa-font,system-ui);color:#8a93a0", stAgo(v.ts)));
         box.appendChild(r);
       });
     }).catch(function () { box.innerHTML = ""; box.appendChild(note(L("تعذّر التحميل", "Couldn't load"))); });
@@ -3990,6 +4140,32 @@
       };
       s.box.appendChild(asMe);
     }
+    // C350: صورة/فيديو من معرض الهاتف ⇒ «نشر لحظة» أو «نشر قصّة» مباشرة (المنشئ نفسه، والملفّ فيه جاهز)
+    var kinds = files.map(function (f) { return kindOfMime(f.mime); });
+    var allImg = kinds.length && kinds.every(function (k) { return k === "image"; }), oneVid = kinds.length === 1 && kinds[0] === "video";
+    if (allImg || oneVid) {
+      var pubRow = mk("div", "display:flex;gap:8px;margin-top:8px");
+      var pullAll = function (list) { return list.reduce(function (pr, f) { return pr.then(function (acc) { return shareInPull(f).then(function (b) { acc.push(b); return acc; }); }); }, Promise.resolve([])); };
+      var pubBtn = function (label, tag, fn) {
+        var b = mkBtn(label); b.style.flex = "1"; b.setAttribute("data-sawa", tag);
+        b.onclick = function () {
+          b.disabled = true; b.textContent = L("جارٍ التحضير…", "Preparing…");
+          fn().catch(function (e) { b.disabled = false; b.textContent = label; toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e)); });
+        };
+        pubRow.appendChild(b);
+      };
+      pubBtn(L("نشر لحظة", "Post a moment"), "share-as-moment", function () {
+        return pullAll(files.slice(0, oneVid ? 1 : 4)).then(function (bs) {
+          s.close();
+          if (files.length > 4) toast(L("اللحظة تتّسع لـ4 صور — أُخذت الأولى", "A moment holds 4 photos — the first 4 were added"));
+          momentComposer(Object.assign({}, moLastOpts || {}, { files: bs, text: cap ? cap.value.trim() : "" }));
+        });
+      });
+      if (files.length === 1) pubBtn(L("نشر قصّة", "Post a story"), "share-as-story", function () {
+        return shareInPull(files[0]).then(function (b) { s.close(); storyComposer("media", b, cap ? cap.value.trim() : ""); });
+      });
+      s.box.appendChild(pubRow);
+    }
     sendB.onclick = function () {
       var keys = Object.keys(picked).filter(function (k) { return picked[k]; });
       if (!keys.length) { toast(L("اختر محادثة على الأقلّ", "Pick at least one chat")); return; }
@@ -4023,6 +4199,53 @@
     patchLocal(cid, id, function (m) { m.viewed = Object.assign({}, m.viewed); m.viewed[state.uid] = Date.now(); return m; });
     call("media.viewed", { cid: cid, day: f.day, id: id }).catch(fail);
   }
+  // ==================================================================
+  // C350: حفظ الصور والفيديو الواردة في معرض الهاتف تلقائيّاً (كواتساب) — تطبيق أندرويد (Pictures/Sawa · Movies/Sawa)
+  //       والآيفون (تطبيق «الصور»). إعدادٌ لكلّ جهاز، مفعّلٌ افتراضيّاً، ولما يصل بعد تفعيله فقط (لا يُفرغ السجلّ القديم).
+  //       لا يُحفظ: ما أرسلتُه · صورة المرّة الواحدة · المحادثات السرّيّة والمؤقّتة · الفيديو الأكبر من 50 ميغابايت · وضع توفير البيانات.
+  // ==================================================================
+  var GAL_MAX_VIDEO = 50 * 1024 * 1024;
+  function galSupported() { return !!((NB() && NB().galleryOk) || (IOSB() && IOSB().photos)); }
+  function galState() {
+    var g = lsGet("sawa_gal_auto", null);
+    if (!g || typeof g.on !== "boolean") { g = { on: true, since: Date.now() }; lsSet("sawa_gal_auto", g); }
+    return g;
+  }
+  function galAuto() { return galSupported() && galState().on; }
+  function setGalAuto(on) { lsSet("sawa_gal_auto", { on: !!on, since: Date.now() }); }
+  var galDone = lsGet("sawa_gal_done", {}), galQ = [], galBusy = false, galTries = {};
+  (function () { var c = Date.now() - 7 * 864e5, n = 0; Object.keys(galDone).forEach(function (k) { if (!(galDone[k] > c)) { delete galDone[k]; n++; } }); if (n) lsSet("sawa_gal_done", galDone); })();
+  function galMaybe(m, cid, mine) {
+    if (mine || !m || !(m.type === "image" || m.type === "video") || m.del || m.gone) return;
+    var ex = m.extra || {}, mid = ex.mid;
+    if (!mid || galDone[mid] || ex.viewOnce || !galAuto()) return;
+    var c = chats[cid] || {};
+    if (c.disappear || e2eOn(c) || /^sdm_/.test(String(cid))) return;
+    if ((m.ts || 0) < galState().since) return;
+    if (m.type === "video" && (ex.size || 0) > GAL_MAX_VIDEO) return;
+    try { var cn = navigator.connection; if (cn && cn.saveData && m.type === "video") return; } catch (e) {}
+    galDone[mid] = Date.now(); lsSet("sawa_gal_done", galDone);   // يُعلَّم قبل الحفظ ⇒ لا تكرار ولو أُعيد رسم المحادثة
+    galQ.push({ cid: cid, mid: mid, type: m.type, ex: ex, ts: m.ts || Date.now() }); galPump();
+  }
+  function galPump() {
+    if (galBusy || !galQ.length) return;
+    galBusy = true; var j = galQ.shift();
+    var fin = function () { galBusy = false; setTimeout(galPump, 300); };
+    var ext = j.type === "video" ? ((j.ex.mime || "").indexOf("quicktime") >= 0 ? ".mov" : ".mp4") : ((j.ex.mime || "").indexOf("png") >= 0 ? ".png" : ".jpg");
+    var name = "Sawa-" + new Date(j.ts).toISOString().replace(/[-:T]/g, "").slice(0, 14) + "-" + String(j.mid).slice(-4) + ext;
+    withTimeout(idbGet(j.mid), 4000, null).then(function (b) {
+      if (b) return b;
+      return ensureMedia(j.cid, j.mid).then(function (u) { return u ? blobOfUrl(u) : null; });
+    }).then(function (b) {
+      if (!b || !b.size) throw new Error("no media");
+      var mime = j.ex.mime || b.type || (j.type === "video" ? "video/mp4" : "image/jpeg");
+      return saveBlob(b.type === mime ? b : new Blob([b], { type: mime }), name, "gallery", mime);
+    }).then(function (ok) { if (!ok) LOG.info("gal.skip", { mid: j.mid }); fin(); }, function (e) {
+      galTries[j.mid] = (galTries[j.mid] || 0) + 1;
+      if (galTries[j.mid] < 5) { delete galDone[j.mid]; lsSet("sawa_gal_done", galDone); }   // يُعاد مع الرسم التالي (بعد اكتمال التنزيل) حتّى 5 مرّات
+      LOG.warn("gal.fail", { mid: j.mid, err: (e && e.message) || String(e) }); fin();
+    });
+  }
   // يحوّل رسالة وسائط إلى شكل الواجهة (ويطلب التنزيل التلقائيّ للصغير في المحادثة المفتوحة)
   function autoVideoMax() {
     try { var cn = navigator.connection; if (cn && (cn.saveData || /(^|-)2g$/.test(String(cn.effectiveType || "")))) return AUTO_DL; } catch (e) {}
@@ -4053,6 +4276,7 @@
     var auto = (cid === openCid || (fresh && (m.type !== "video" || r2v || (ex.size || 0) <= AUTO_DL))) && !url && !mediaFailed[mid] && !(ex.viewOnce && (mine || viewedByMe || m.gone))
       && (m.type !== "file") && (m.type !== "video" || r2v || (ex.size || 0) <= autoVideoMax());
     if (auto) setTimeout(function () { ensureMedia(cid, mid, !!ex.viewOnce); }, 0);
+    if (!mine && (m.type === "image" || m.type === "video") && !galDone[mid]) setTimeout(function () { galMaybe(m, cid, mine); }, 0);   // C350
     return o;
   }
 
@@ -7108,6 +7332,8 @@
     sendPoll: sendPoll, vote: vote, editPoll: editPoll, sendBill: sendBill, billPaid: billPaid, sendFund: sendFund, contribute: contribute,
     // C164: editTasks · notifAvatars · setNotifAvatars (C170: كان هذا التعليق في وسط السطر فعطّل ما بعده — react وdeleteForAll وpin…)
     hideSeen: hideSeen, setHideSeen: setHideSeen,   // C314
+    readInfo: readInfo, readInfoSheet: readInfoSheet, saveToPhone: saveToPhone,   // C350
+    galSupported: galSupported, galAuto: galAuto, setGalAuto: setGalAuto,   // C350: الحفظ التلقائيّ في معرض الهاتف
     sendTasks: sendTasks, setTask: setTask, editTasks: editTasks, addTask: addTask, myTasks: myTasks, notifAvatars: notifAvatars, setNotifAvatars: setNotifAvatars, deleteForAll: deleteForAll, deleteForMe: deleteForMe, react: react, pin: pin,
     setDisappear: setDisappear, openDm: openDm, openSaved: openSaved, dmWith: function (u) { return state.uid ? dmWith(u) : null; },
     typing: typing, whoTyping: whoTyping, observePrefs: observePrefs, markRead: markRead,
