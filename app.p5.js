@@ -1205,7 +1205,8 @@ function useVoiceRecorder({ onComplete, transcribe }) {
                 recognizer.onerror = function () { };
                 try { recognizer.start(); speechRef.current = recognizer; } catch (err) { }
             }
-        }).catch(function () { if (window.__sawaActiveRecorder === selfRef.current) window.__sawaActiveRecorder = null; flashError(); });   // C19: لا يبقى «يسجّل» عالقاً
+        }).catch(function (err) { if (window.__sawaActiveRecorder === selfRef.current) window.__sawaActiveRecorder = null; flashError();
+            if (err && err.name === "NotAllowedError" && window.SawaChat && window.SawaChat.permHelp) window.SawaChat.permHelp("mic"); });   // C348   // C19: لا يبقى «يسجّل» عالقاً
     }
 
     function stop() {
