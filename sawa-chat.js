@@ -2580,7 +2580,8 @@
   //   Firestore: stories/{u} {name, aud[], hide[], items[]} (يكتبه الخادم) · stories/{u}/media/{mid}+c/{i} (يرفعها صاحبها)
   // ==================================================================
   var ST_BG = [["#2774BA", "#1E3A63"], ["#16a34a", "#065f46"], ["#e11d48", "#7f1d1d"], ["#7c3aed", "#1a237e"], ["#f59e0b", "#b45309"], ["#0ea5e9", "#0f766e"], ["#334155", "#111827"], ["#db2777", "#6a1b9a"]];
-  var stState = { mine: null, others: {}, unsub: [] }, stSeen = lsGet("sawa_story_seen", {}), stUrls = {};
+  var stState = { mine: null, others: {}, unsub: [] }, stSeen = lsGet("sawa_story_seen", {}), stLiked = lsGet("sawa_story_liked", {}), stUrls = {};   // C350: stLiked = قصصٌ أعجبتني
+  (function () { var c = Date.now() - 2 * 864e5, n = 0; Object.keys(stLiked).forEach(function (k) { if (!(stLiked[k] > c)) { delete stLiked[k]; n++; } }); if (n) lsSet("sawa_story_liked", stLiked); })();   // القصّة تعيش 24 ساعة
   function stItemsLive(items) { var now = Date.now(); return (items || []).filter(function (x) { return x && x.id && (x.exp || 0) > now; }).sort(function (a, b) { return a.ts - b.ts; }); }
   function stEmit() { try { global.dispatchEvent(new CustomEvent("sawa-stories")); } catch (e) {} }
   function startStories(uid) {
@@ -3855,7 +3856,7 @@
     var S0 = stories(), mine = owner === state.uid;
     var queue = mine ? [S0.me.uid] : S0.list.map(function (x) { return x.owner; });
     var qi = Math.max(0, queue.indexOf(owner));
-    var ov = stOverlay("#000"), timer = null, paused = false, t0 = 0, left = 0, cur = null, idx = 0, items = [], vid = null;
+    var ov = stOverlay("#000"), timer = null, paused = false, t0 = 0, left = 0, cur = null, idx = 0, items = [], vid = null, likeNow = null;
     var bars = mk("div", "display:flex;gap:3px;padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 6px"); ov.appendChild(bars);
     var head = mk("div", "display:flex;align-items:center;gap:10px;padding:2px 12px 8px"); ov.appendChild(head);
     var stage = mk("div", "flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden"); ov.appendChild(stage);
@@ -3917,7 +3918,7 @@
       paintFoot(it);
     }
     function paintFoot(it) {
-      foot.innerHTML = "";
+      foot.innerHTML = ""; likeNow = null;
       if (cur === state.uid) {
         var sv = mk("button", "flex:1;border:0;border-radius:14px;padding:12px;background:rgba(255,255,255,.14);color:#fff;font:800 14px var(--sawa-font,system-ui)", "👁 " + L("المشاهدات", "Views"));
         sv.onclick = function () { pause(true); storySeenSheet(it, function () { pause(false); }); };
@@ -3943,7 +3944,23 @@
           inp.value = ""; inp.blur(); toast(L("أُرسل الردّ في المحادثة الخاصّة ✓", "Reply sent ✓")); pause(false);
         };
         inp.onkeydown = function (e) { if (e.key === "Enter") go.onclick(); };
-        foot.appendChild(inp); foot.appendChild(go);
+        // C350: الإعجاب بالقصّة — ضغطة ⇒ ❤️ (أو سحبه) · ضغطتان على القصّة ⇒ ❤️ · يصل صاحبها إشعارٌ ويراه في «من شاهد قصّتك»
+        var lk = mk("button", "border:0;border-radius:50%;width:44px;height:44px;flex-shrink:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center");
+        lk.setAttribute("data-sawa", "story-like");
+        var paintLk = function () { var on = !!stLiked[it.id]; lk.innerHTML = ""; var h = moIcon(MI.heart, 24, on ? "#F43F5E" : "#fff"); if (on) h.setAttribute("fill", "#F43F5E"); lk.appendChild(h); lk.setAttribute("aria-label", on ? L("إلغاء الإعجاب", "Unlike") : L("إعجاب", "Like")); };
+        likeNow = function (on) {
+          if (!!stLiked[it.id] === on) return;
+          if (on) stLiked[it.id] = Date.now(); else delete stLiked[it.id];
+          lsSet("sawa_story_liked", stLiked); paintLk();
+          if (on) { moBurst(stage); try { if (navigator.vibrate) navigator.vibrate(10); } catch (x) {} }
+          call("story.like", { owner: cur, sid: it.id, on: on }).catch(function (e) {
+            if (on) delete stLiked[it.id]; else stLiked[it.id] = Date.now();
+            lsSet("sawa_story_liked", stLiked); paintLk(); toast(L("تعذّر: ", "Failed: ") + ((e && e.message) || e));
+          });
+        };
+        lk.onclick = function () { likeNow(!stLiked[it.id]); };
+        paintLk();
+        foot.appendChild(inp); foot.appendChild(lk); foot.appendChild(go);
       }
     }
     // اللمس: الطرف الأيمن = السابق، الباقي = التالي (اتّجاه العربيّة) · الضغط المطوّل = إيقاف مؤقّت
@@ -3952,12 +3969,25 @@
     stage.addEventListener("pointerup", function (e) {
       var held = Date.now() - downAt; downAt = 0;
       if (held >= 250) { pause(false); return; }
+      // C350: ضغطتان سريعتان على قصّة غيري ⇒ ❤️ (والضغطة الأولى لا تنتقل حتّى يتأكّد أنّها ليست مزدوجة)
+      if (cur !== state.uid && likeNow) {
+        var now2 = Date.now();
+        if (now2 - lastTapAt < 300) { clearTimeout(tapNav); lastTapAt = 0; likeNow(true); return; }
+        lastTapAt = now2; var ex = e.clientX;
+        clearTimeout(tapNav); tapNav = setTimeout(function () { navTap(ex, false); }, 300); return;
+      }
+      navTap(e.clientX, true);
+    });
+    var lastTapAt = 0, tapNav = null;
+    function navTap(clientX, sync) {
+      if (!ov.isConnected) return;
+      var e = { clientX: clientX };
       var r = stage.getBoundingClientRect(), xr = (e.clientX - r.left) / (r.width || 1);
       var back = isAr() ? xr > 0.7 : xr < 0.3;
       if (back) prev(); else next();
       // C335: آخر قصّة ⇒ أُغلق العارض عند رفع الإصبع، فكانت «النقرة» التي تليه تقع على ما تحته (محادثة) فتفتحها
-      if (!ov.isConnected) swallowNextClick();
-    });
+      if (!ov.isConnected && sync) swallowNextClick();   // C350: بعد التأخير (فحص الضغطتين) تكون النقرة قد مرّت
+    }
     load(queue[qi]);
   }
   function swallowNextClick() {
@@ -3968,7 +3998,10 @@
   }
   function stSeenCount(it, btn) {
     var d = fsdb(); if (!d) return;
-    d.collection("stories").doc(state.uid).collection("seen").where("sid", "==", it.id).get().then(function (snap) { btn.textContent = "👁 " + snap.size + " " + L("مشاهدة", "views"); }).catch(function () {});
+    d.collection("stories").doc(state.uid).collection("seen").where("sid", "==", it.id).get().then(function (snap) {
+      var lk = 0; snap.forEach(function (d0) { if ((d0.data() || {}).like) lk++; });
+      btn.textContent = "👁 " + snap.size + " " + L("مشاهدة", "views") + (lk ? " · ❤️ " + lk : "");   // C350
+    }).catch(function () {});
   }
   function storySeenSheet(it, onClose) {
     var s = sheet(L("👁 من شاهد قصّتك", "👁 Who viewed")); s.ov.style.zIndex = "2147483006";
@@ -3977,11 +4010,13 @@
     var d = fsdb();
     d.collection("stories").doc(state.uid).collection("seen").where("sid", "==", it.id).get().then(function (snap) {
       box.innerHTML = ""; var rows = []; snap.forEach(function (doc) { var v = doc.data() || {}; rows.push(v); });
-      rows.sort(function (a, b) { return b.ts - a.ts; });
+      rows.sort(function (a, b) { return (b.like ? 1 : 0) - (a.like ? 1 : 0) || (b.ts || 0) - (a.ts || 0); });   // C350: المعجبون أوّلاً
       if (!rows.length) box.appendChild(note(L("لم يشاهدها أحدٌ بعد", "No views yet")));
+      var nl = rows.filter(function (v) { return v.like; }).length;
+      if (nl) box.appendChild(mk("div", "font:800 13px var(--sawa-font,system-ui);color:#E11D48;margin:2px 0 4px", "❤️ " + L("أعجب بها " + nl, nl + " liked it")));
       rows.forEach(function (v) {
         var r = mk("div", "display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid #f1f5f9");
-        r.appendChild(avatar(stName(v.by), 36)); r.appendChild(mk("div", "flex:1;font:700 14px var(--sawa-font,system-ui)", stName(v.by))); r.appendChild(mk("div", "font:600 12px var(--sawa-font,system-ui);color:#8a93a0", stAgo(v.ts)));
+        r.appendChild(avatar(stName(v.by), 36)); r.appendChild(mk("div", "flex:1;font:700 14px var(--sawa-font,system-ui)", stName(v.by))); if (v.like) r.appendChild(mk("div", "font-size:17px", v.like)); r.appendChild(mk("div", "font:600 12px var(--sawa-font,system-ui);color:#8a93a0", stAgo(v.ts)));
         box.appendChild(r);
       });
     }).catch(function () { box.innerHTML = ""; box.appendChild(note(L("تعذّر التحميل", "Couldn't load"))); });
