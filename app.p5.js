@@ -303,20 +303,44 @@ function VoiceMessageBubble({ url, duration, mine, transcript, loading = false, 
 // الآن: شبكة صورٍ وفيديو تُنزَّل مصغّراتها عند الحاجة (SawaChat.ensureMedia — أوّل ٣٠)، والضغط يفتح العارض
 // بملء الشاشة · قائمة ملفّاتٍ باسمها وحجمها وتاريخها، والضغط يفتحها (SawaChat.openFile: فتح · حفظ · مشاركة).
 // ============================================================
-function ChatMediaGallery({ messages = [] }) {
+// C350: صندوق تعديل الرسالة — نصٌّ متعدّد الأسطر (كان input سطراً واحداً: يحذف فواصل الأسطر فيضيع تنسيق الرسالة،
+//       وزرّ Enter في لوحة المفاتيح كان «حفظاً» لا سطراً جديداً). الآن Enter = سطرٌ جديد، والحفظ بزرّ «حفظ»
+//       (أو Ctrl/⌘+Enter على الحاسوب) · يكبر مع النصّ حتّى 8 أسطر · المؤشّر في آخر النصّ.
+function EditMsgBox({ value, onChange, onSave, onCancel, mine }) {
     const { colors } = useTheme();
-    const [tab, setTab] = useState("media");
+    const ref = useRef(null);
+    const fit = () => { const el = ref.current; if (!el) return; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight + 2, 8 * 22 + 12) + "px"; };
+    useEffect(() => { const el = ref.current; if (!el) return; fit(); try { el.focus(); const n = el.value.length; el.setSelectionRange(n, n); } catch (e) { } }, []);
+    useEffect(fit, [value]);
+    return React.createElement("textarea", { ref, dir: "auto", rows: 1, value, enterKeyHint: "enter", "data-sawa": "edit-msg",
+        onChange: (e) => onChange(e.target.value),
+        onKeyDown: (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onSave(); } else if (e.key === "Escape") onCancel(); },
+        className: "text-sm rounded px-2 py-1", style: { ...BIDI_TEXT_STYLE, minWidth: 200, width: "100%", resize: "none", lineHeight: "22px", whiteSpace: "pre-wrap", overflowWrap: "anywhere", backgroundColor: mine ? "rgba(255,255,255,0.15)" : colors.bg, color: mine ? "#fff" : colors.text, border: `1px solid ${mine ? "#ffffff55" : colors.border}`, outline: "none" } });
+}
+function ChatMediaGallery({ messages = [] }) {
+    // C350: ملخّصٌ مضغوط — آخر صورة/فيديو · آخر ملفّ · آخر رابط، كلٌّ بعدده — و«عرض الكلّ» يفتح شاشةً كاملة
+    //       بثلاثة تبويبات: صور وفيديو · ملفّات · روابط (كانت الشبكة كلّها داخل المعلومات بتبويبين، بلا روابط).
+    const { colors } = useTheme();
+    const [tab, setTab] = useState(null);   // null = الملخّص · "media" | "files" | "links" = الشاشة الكاملة
     const [viewUrl, setViewUrl] = useState(null);
     const [preview, setPreview] = useState(null);
     const live = (messages || []).filter((m) => m && !m.deleted && !m.deletedForAll && !m.viewOnce);
     const media = live.filter((m) => m.type === "image" || m.type === "video").slice().reverse();   // الأحدث أوّلاً
     const files = live.filter((m) => m.type === "file").slice().reverse();
+    const links = [];
+    live.slice().reverse().forEach((m) => {
+        const tx = (!m.type || m.type === "text") ? m.text : (m.extra && m.extra.cap) || "";
+        if (!tx) return;
+        const seen = {};
+        urlsIn(tx).forEach((u) => { if (seen[u]) return; seen[u] = 1; let host = ""; try { host = new URL(urlHref(u)).hostname.replace(/^www\./, ""); } catch (e) { } links.push({ key: m.id + "|" + u, u, host, m, text: tx }); });
+    });
     const urlOf = (m) => m.fileUrl || null;
+    const want = tab === "media" ? 60 : 1;
     useEffect(() => {
         const SC = window.SawaChat;
         if (!SC || !SC.ensureMedia) return;
-        media.slice(0, 30).forEach((m) => { if (!m.fileUrl && m.cloudMid && m.cloudCid) { try { SC.ensureMedia(m.cloudCid, m.cloudMid); } catch (e) { } } });
-    }, [media.length]);
+        media.slice(0, Math.max(want, 1)).forEach((m) => { if (!m.fileUrl && m.cloudMid && m.cloudCid) { try { SC.ensureMedia(m.cloudCid, m.cloudMid); } catch (e) { } } });
+    }, [media.length, want]);
     const items = media.filter(urlOf).map((m) => ({ url: m.fileUrl, type: m.type, name: m.fileName || "" }));
     const fileName = (m) => m.fileName || m.text || tl("ملفّ", "File");
     const openFile = (m) => {
@@ -326,27 +350,63 @@ function ChatMediaGallery({ messages = [] }) {
     };
     const when = (ts) => { try { return new Date(ts).toLocaleDateString(loc(), { day: "numeric", month: "short" }); } catch (e) { return ""; } };
     const size = (b) => !b ? "" : b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
-    return React.createElement("div", { "data-media-gallery": "1" },
-        React.createElement("div", { className: `flex ${rowStart()} gap-2 mb-2` },
-            React.createElement(Chip, { label: tl("صور وفيديو (" + media.length + ")", "Photos & videos (" + media.length + ")"), active: tab === "media", onPress: () => setTab("media") }),
-            React.createElement(Chip, { label: tl("ملفّات (" + files.length + ")", "Files (" + files.length + ")"), active: tab === "files", onPress: () => setTab("files") })),
-        tab === "media"
-            ? (media.length === 0 ? React.createElement("p", { className: "text-xs text-center py-4", style: { color: colors.textMuted } }, tl("لا صور ولا فيديو بعد", "No photos or videos yet"))
-                : React.createElement("div", { className: "grid grid-cols-3 gap-1.5" }, media.map((m) => {
-                    const u = urlOf(m), thumb = u || m.thumb || null;
-                    return React.createElement("button", { key: m.id, "aria-label": m.type === "video" ? tl("فيديو", "Video") : tl("صورة", "Photo"), onClick: () => u ? setViewUrl(u) : (window.SawaChat && m.cloudMid && window.SawaChat.ensureMedia && window.SawaChat.ensureMedia(m.cloudCid, m.cloudMid)), className: "relative overflow-hidden rounded-lg", style: { aspectRatio: "1 / 1", backgroundColor: colors.border + "55" } },
-                        thumb ? (m.type === "video" && u ? React.createElement("video", { src: u, muted: true, preload: "metadata", className: "w-full h-full object-cover" }) : React.createElement("img", { src: thumb, alt: "", loading: "lazy", className: "w-full h-full object-cover" }))
-                            : React.createElement("div", { className: "w-full h-full flex flex-col items-center justify-center gap-1" }, React.createElement(m.type === "video" ? Video : Images, { size: 18, color: colors.textMuted }), React.createElement("span", { className: "text-[9px]", style: { color: colors.textMuted } }, tl("اضغط للتنزيل", "Tap to load"))),
-                        m.type === "video" && React.createElement("div", { className: "absolute inset-0 flex items-center justify-center", style: { backgroundColor: "rgba(0,0,0,0.25)" } }, React.createElement(Play, { size: 18, color: "#fff", fill: "#fff" })));
-                })))
-            : (files.length === 0 ? React.createElement("p", { className: "text-xs text-center py-4", style: { color: colors.textMuted } }, tl("لا ملفّات بعد", "No files yet"))
-                : React.createElement("div", null, files.map((m) => React.createElement("button", { key: m.id, onClick: () => openFile(m), className: `w-full flex ${rowStart()} items-center gap-3 px-3 py-2.5 rounded-xl mb-1.5`, style: { backgroundColor: colors.bg } },
-                    React.createElement("span", { className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primaryFill } }, React.createElement(FileIconLucide, { size: 17, color: "#fff" })),
-                    React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
-                        React.createElement("div", { className: "text-[13px] font-bold truncate", dir: "auto", style: { color: colors.text } }, fileName(m)),
-                        React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted } }, [size(m.fileSize), when(m.createdAt), m.senderName].filter(Boolean).join(" · "))),
-                    React.createElement("span", { className: "text-[11px] font-extrabold shrink-0 rounded-full px-3 py-1.5", style: { backgroundColor: colors.primaryFill, color: "#fff" } }, tl("فتح", "Open")))))),
-        viewUrl && React.createElement(MediaLightbox, { items, startIndex: Math.max(0, items.findIndex((it) => it.url === viewUrl)), onClose: () => setViewUrl(null) }),
+    const tapMedia = (m) => { const u = urlOf(m); if (u) setViewUrl(u); else if (window.SawaChat && m.cloudMid && window.SawaChat.ensureMedia) window.SawaChat.ensureMedia(m.cloudCid, m.cloudMid); };
+    const mediaCell = (m, big) => {
+        const u = urlOf(m), thumb = u || m.thumb || null;
+        return React.createElement("button", { key: m.id, "aria-label": m.type === "video" ? tl("فيديو", "Video") : tl("صورة", "Photo"), onClick: () => tapMedia(m), className: "relative overflow-hidden rounded-lg w-full", style: { aspectRatio: "1 / 1", backgroundColor: colors.bg } },
+            thumb ? (m.type === "video" && u ? React.createElement("video", { src: u, muted: true, preload: "metadata", className: "w-full h-full object-cover" }) : React.createElement("img", { src: thumb, alt: "", loading: "lazy", className: "w-full h-full object-cover" }))
+                : React.createElement("div", { className: "w-full h-full flex flex-col items-center justify-center gap-1" }, React.createElement(m.type === "video" ? Video : Images, { size: big ? 18 : 22, color: colors.textMuted }), big ? React.createElement("span", { className: "text-[9px]", style: { color: colors.textMuted } }, tl("اضغط للتنزيل", "Tap to load")) : null),
+            m.type === "video" && React.createElement("div", { className: "absolute inset-0 flex items-center justify-center", style: { backgroundColor: "rgba(0,0,0,0.25)" } }, React.createElement(Play, { size: 18, color: "#fff", fill: "#fff" })));
+    };
+    const fileRow = (m) => React.createElement("button", { key: m.id, onClick: () => openFile(m), className: `w-full flex ${rowStart()} items-center gap-3 px-3 py-2.5 rounded-xl mb-1.5`, style: { backgroundColor: colors.card } },
+        React.createElement("span", { className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primaryFill } }, React.createElement(FileIconLucide, { size: 17, color: "#fff" })),
+        React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+            React.createElement("div", { className: "text-[13px] font-bold truncate", dir: "auto", style: { color: colors.text } }, fileName(m)),
+            React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted } }, [size(m.fileSize), when(m.createdAt), m.senderName].filter(Boolean).join(" · "))),
+        React.createElement("span", { className: "text-[11px] font-extrabold shrink-0 rounded-full px-3 py-1.5", style: { backgroundColor: colors.primaryFill, color: "#fff" } }, tl("فتح", "Open")));
+    const linkRow = (l) => React.createElement("button", { key: l.key, onClick: (e) => openUrl(l.u, e), className: `w-full flex ${rowStart()} items-center gap-3 px-3 py-2.5 rounded-xl mb-1.5`, style: { backgroundColor: colors.card } },
+        React.createElement("span", { className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { backgroundColor: colors.primaryLight } }, React.createElement(LinkIcon, { size: 17, color: colors.primary })),
+        React.createElement("div", { className: `flex-1 min-w-0 ${textStart()}` },
+            React.createElement("div", { className: "text-[13px] font-bold truncate", dir: "ltr", style: { color: colors.primary, textAlign: "start" } }, l.host || l.u),
+            l.text.trim() !== l.u && React.createElement("div", { className: "text-[11.5px] truncate", dir: "auto", style: { color: colors.text } }, l.text.replace(/\s+/g, " ").slice(0, 120)),
+            React.createElement("div", { className: "text-[11px]", style: { color: colors.textMuted } }, [when(l.m.createdAt), l.m.senderName].filter(Boolean).join(" · "))));
+    const empty = (txt) => React.createElement("p", { className: "text-xs text-center py-8", style: { color: colors.textMuted } }, txt);
+    // الملخّص: ثلاث بطاقات — آخر عنصرٍ من كلّ تبويب
+    const tile = (key, label, n, body) => React.createElement("button", { key, "data-sawa": "gal-" + key, onClick: () => setTab(key), className: "flex flex-col rounded-xl overflow-hidden min-w-0", style: { backgroundColor: colors.bg, border: `1px solid ${colors.border}` } },
+        React.createElement("div", { className: "w-full flex items-center justify-center overflow-hidden", style: { aspectRatio: "1 / 1" } }, body),
+        React.createElement("div", { className: "w-full px-1.5 py-1.5 text-[11.5px] font-bold truncate text-center", style: { color: colors.text } }, label + " (" + n + ")"));
+    const ph = (Icon) => React.createElement(Icon, { size: 24, color: colors.textMuted });
+    const lastMedia = media[0], lastFile = files[0], lastLink = links[0];
+    const lastMediaThumb = lastMedia ? (urlOf(lastMedia) || lastMedia.thumb || null) : null;
+    const summary = React.createElement("div", { "data-media-gallery": "1" },
+        React.createElement("div", { className: "grid grid-cols-3 gap-2" },
+            tile("media", tl("صور وفيديو", "Media"), media.length, lastMedia
+                ? (lastMediaThumb && !(lastMedia.type === "video" && !lastMedia.thumb && urlOf(lastMedia))
+                    ? React.createElement("div", { className: "relative w-full h-full" }, React.createElement("img", { src: lastMediaThumb, alt: "", className: "w-full h-full object-cover" }), lastMedia.type === "video" && React.createElement("div", { className: "absolute inset-0 flex items-center justify-center", style: { backgroundColor: "rgba(0,0,0,0.25)" } }, React.createElement(Play, { size: 18, color: "#fff", fill: "#fff" })))
+                    : lastMedia.type === "video" && urlOf(lastMedia) ? React.createElement("video", { src: urlOf(lastMedia), muted: true, preload: "metadata", className: "w-full h-full object-cover" }) : ph(lastMedia.type === "video" ? Video : Images))
+                : ph(Images)),
+            tile("files", tl("ملفّات", "Files"), files.length, lastFile
+                ? React.createElement("div", { className: "flex flex-col items-center gap-1 px-1.5 min-w-0 w-full" }, React.createElement(FileIconLucide, { size: 22, color: colors.primary }), React.createElement("span", { className: "text-[10.5px] font-bold truncate w-full text-center", dir: "auto", style: { color: colors.textMuted } }, fileName(lastFile)))
+                : ph(FileIconLucide)),
+            tile("links", tl("روابط", "Links"), links.length, lastLink
+                ? React.createElement("div", { className: "flex flex-col items-center gap-1 px-1.5 min-w-0 w-full" }, React.createElement(LinkIcon, { size: 22, color: colors.primary }), React.createElement("span", { className: "text-[10.5px] font-bold truncate w-full text-center", dir: "ltr", style: { color: colors.textMuted } }, lastLink.host || lastLink.u))
+                : ph(LinkIcon))),
+        (media.length + files.length + links.length) > 0 && React.createElement("button", { onClick: () => setTab(media.length ? "media" : files.length ? "files" : "links"), className: "w-full mt-2 py-2 text-[12.5px] font-extrabold rounded-xl", style: { color: colors.primary, backgroundColor: colors.primaryLight } }, tl("عرض الكلّ", "See all")));
+    const full = tab && React.createElement("div", { className: "fixed inset-0 flex flex-col", "data-media-all": "1", style: { zIndex: 65, backgroundColor: colors.bg } },
+        React.createElement("div", { className: `flex ${rowStart()} items-center gap-2 px-3 pb-2`, style: { paddingTop: "calc(env(safe-area-inset-top, 0px) + 10px)", backgroundColor: colors.card, borderBottom: `1px solid ${colors.border}` } },
+            React.createElement("button", { "aria-label": tl("رجوع", "Back"), onClick: () => setTab(null), className: "w-10 h-10 rounded-full flex items-center justify-center" }, React.createElement(isRTL() ? ChevronRight : ChevronLeft, { size: 22, color: colors.text })),
+            React.createElement("span", { className: "flex-1 text-base font-extrabold", style: { color: colors.text } }, tl("الوسائط والملفّات والروابط", "Media, files & links"))),
+        React.createElement("div", { className: `flex ${rowStart()} gap-2 px-3 py-2`, style: { backgroundColor: colors.card } },
+            React.createElement(Chip, { label: tl("صور وفيديو (" + media.length + ")", "Media (" + media.length + ")"), active: tab === "media", onPress: () => setTab("media") }),
+            React.createElement(Chip, { label: tl("ملفّات (" + files.length + ")", "Files (" + files.length + ")"), active: tab === "files", onPress: () => setTab("files") }),
+            React.createElement(Chip, { label: tl("روابط (" + links.length + ")", "Links (" + links.length + ")"), active: tab === "links", onPress: () => setTab("links") })),
+        React.createElement("div", { className: "flex-1 overflow-y-auto p-3", style: { paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" } },
+            tab === "media" ? (media.length ? React.createElement("div", { className: "grid grid-cols-3 gap-1.5" }, media.map((m) => mediaCell(m, true))) : empty(tl("لا صور ولا فيديو بعد", "No photos or videos yet")))
+                : tab === "files" ? (files.length ? files.map(fileRow) : empty(tl("لا ملفّات بعد", "No files yet")))
+                    : (links.length ? links.map(linkRow) : empty(tl("لا روابط بعد", "No links yet")))),
+        viewUrl && React.createElement(MediaLightbox, { items, startIndex: Math.max(0, items.findIndex((it) => it.url === viewUrl)), onClose: () => setViewUrl(null) }));
+    return React.createElement(React.Fragment, null, summary, full,
+        !tab && viewUrl && React.createElement(MediaLightbox, { items, startIndex: Math.max(0, items.findIndex((it) => it.url === viewUrl)), onClose: () => setViewUrl(null) }),
         preview && React.createElement(FilePreviewSheet, { file: preview, onClose: () => setPreview(null) }));
 }
 // ============================================================
@@ -446,7 +506,7 @@ function GroupInfoScreen({ muteKey = 0, onSetMute = null, messages = [], onMessa
                         React.createElement(Pic, { photo: m.photo || null, letter: (m.name || "?").charAt(0), size: 40, bg: colors.primaryLight, color: colors.primary }))))),
             // C204: معرض الوسائط والملفّات
             React.createElement("div", { className: "mt-3 px-4 py-3", style: { backgroundColor: colors.card } },
-                React.createElement("div", { className: `text-xs font-extrabold mb-2 ${textStart()}`, style: { color: colors.textMuted } }, tl("الوسائط والملفّات", "Media & files")),
+                React.createElement("div", { className: `text-xs font-extrabold mb-2 ${textStart()}`, style: { color: colors.textMuted } }, tl("الوسائط والملفّات والروابط", "Media, files & links")),
                 React.createElement(ChatMediaGallery, { messages })),
             // C314: كتم إشعارات المجموعة (أو العائلة) بمدّة — كان الكتم من قائمة المحادثات للفرديّة فقط
             onSetMute && React.createElement("div", { className: "mt-3 px-4 py-3", style: { backgroundColor: colors.card } },
@@ -1935,7 +1995,7 @@ function ChatScreen({ conversation, messages, onSend, onForward, onReact, onSend
                                     React.createElement("div", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } },
                                         (m.fileSize / 1024).toFixed(0),
                                         t("ch_kylwbayt"))))) : m.type === "contact" && m.card ? React.createElement(ContactCardBubble, { m, mine }) : m.type === "location" ? React.createElement(LocationBubble, { m, mine }) : m.type === "voice" ? (React.createElement(VoiceMessageBubble, { loading: !!m.mediaLoading, failed: !!m.mediaFailed, cid: m.cloudCid || null, mid: m.cloudMid || null, url: m.audioUrl, duration: m.duration, mine: mine, transcript: m.transcript })) : editingMessageId === m.id ? (React.createElement("div", { className: "flex flex-col gap-1.5" },
-                                React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: editingText, onChange: (e) => setEditingText(e.target.value), onKeyDown: (e) => { if (e.key === "Enter" && editingText.trim()) { e.preventDefault(); onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); } else if (e.key === "Escape") setEditingMessageId(null); }, className: "text-sm rounded px-2 py-1", style: { backgroundColor: mine ? "rgba(255,255,255,0.15)" : colors.bg, color: mine ? "#fff" : colors.text, border: `1px solid ${mine ? "#ffffff55" : colors.border}` }, autoFocus: true }),
+                                React.createElement(EditMsgBox, { value: editingText, onChange: setEditingText, mine, onSave: () => { if (editingText.trim()) { onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); } }, onCancel: () => setEditingMessageId(null) }),
                                 React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                                     React.createElement("button", { onClick: () => { onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); }, className: "text-[10px] font-bold", style: { color: mine ? "#fff" : colors.primary } }, t("hfz")),
                                     React.createElement("button", { onClick: () => setEditingMessageId(null), className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, t("ilgha"))))) : (React.createElement("span", { className: "text-sm", "data-bubble-text": "1", dir: textDir(m.text), style: Object.assign({ color: mine ? "#fff" : colors.text }, BIDI_TEXT_STYLE) },
@@ -2951,7 +3011,7 @@ function GroupChatScreen({ muteKey = 0, onSetMute = null, onTogglePin, onToggleS
                         React.createElement("div", { className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } },
                             (m.fileSize / 1024).toFixed(0),
                             t("gc_kylwbayt"))))) : m.type === "contact" && m.card ? React.createElement(ContactCardBubble, { m, mine }) : m.type === "location" ? React.createElement(LocationBubble, { m, mine }) : m.type === "voice" ? (React.createElement(VoiceMessageBubble, { loading: !!m.mediaLoading, failed: !!m.mediaFailed, cid: m.cloudCid || null, mid: m.cloudMid || null, url: m.audioUrl, duration: m.duration, mine: mine, transcript: m.transcript })) : editingMessageId === m.id ? (React.createElement("div", { className: "flex flex-col gap-1.5" },
-                    React.createElement("input", { dir: isRTL() ? "rtl" : "ltr", value: editingText, onChange: (e) => setEditingText(e.target.value), onKeyDown: (e) => { if (e.key === "Enter" && editingText.trim()) { e.preventDefault(); onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); } else if (e.key === "Escape") setEditingMessageId(null); }, className: "text-sm rounded px-2 py-1", style: { backgroundColor: mine ? "rgba(255,255,255,0.15)" : colors.bg, color: mine ? "#fff" : colors.text, border: `1px solid ${mine ? "#ffffff55" : colors.border}` }, autoFocus: true }),
+                    React.createElement(EditMsgBox, { value: editingText, onChange: setEditingText, mine, onSave: () => { if (editingText.trim()) { onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); } }, onCancel: () => setEditingMessageId(null) }),
                     React.createElement("div", { className: `flex ${rowStart()} gap-2` },
                         React.createElement("button", { onClick: () => { onEditMessage(m.id, editingText.trim()); setEditingMessageId(null); }, className: "text-[10px] font-bold", style: { color: mine ? "#fff" : colors.primary } }, t("hfz")),
                         React.createElement("button", { onClick: () => setEditingMessageId(null), className: "text-[10px]", style: { color: mine ? "#ffffffcc" : colors.textMuted } }, t("ilgha"))))) : (React.createElement("span", { className: "text-sm", "data-bubble-text": "1", dir: textDir(m.text), style: Object.assign({ color: mine ? "#fff" : colors.text }, BIDI_TEXT_STYLE) },
@@ -2966,7 +3026,9 @@ function GroupChatScreen({ muteKey = 0, onSetMute = null, onTogglePin, onToggleS
                         m.createdAt ? new Date(m.createdAt).toLocaleTimeString(loc(), { hour: "numeric", minute: "2-digit" }) : ""),
                     m.uploadPct != null && React.createElement("span", { className: "text-[10px] font-bold", style: { color: colors.textMuted } }, "⏫ " + m.uploadPct + "%"),
                     // C149: علامات الوصول في المجموعات كالخاصّ — ✓ أُرسلت · ✓✓ وصلت للجميع · ✓✓ زرقاء قرأها الجميع (كانت لا تظهر)
-                    mine && m.status && m.status !== "failed" && m.uploadPct == null && React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : m.status === "pending" ? t("c2_pending") : t("ch_tm_alirsal"), className: "inline-flex items-center" },
+                    mine && m.status && m.status !== "failed" && m.uploadPct == null && React.createElement("span", { title: m.status === "read" ? t("ch_tmt_alqraa") : m.status === "delivered" ? t("ch_tm_altslym") : m.status === "pending" ? t("c2_pending") : t("ch_tm_alirsal"), className: "inline-flex items-center",
+                        role: m.status !== "pending" && group.cloud ? "button" : undefined, "aria-label": tl("من قرأها", "Who read it"),
+                        onClick: m.status !== "pending" && group.cloud && window.SawaChat && window.SawaChat.readInfoSheet ? (e) => { e.stopPropagation(); window.SawaChat.readInfoSheet(group.id, m.id); } : undefined },   // C350: لمس العلامات ⇒ من قرأها
                         m.status === "pending" ? React.createElement(Clock, { size: 11, color: colors.textMuted })
                             : m.status === "sent" ? React.createElement(Check, { size: 12, color: colors.textMuted })
                             : React.createElement(CheckCheck, { size: 12, color: m.status === "read" ? colors.primary : colors.textMuted })),
@@ -3221,7 +3283,8 @@ function GroupChatScreen({ muteKey = 0, onSetMute = null, onTogglePin, onToggleS
                         { icon: ArrowUpRight, label: tl("مشاركة خارج سوا", "Share outside Sawa"), act: () => shareMessageOut(messages.find((x) => x.id === groupMsgMenu.id), showToast) }]),
                     ...(msgFirstUrl(groupMsgMenu.text) && (!groupMsgMenu.type || groupMsgMenu.type === "text") ? [{ icon: LinkIcon, label: tl("نسخ الرابط", "Copy link"), act: () => { copyText(msgFirstUrl(groupMsgMenu.text)); showToast(t("gc_tm_alnskh"), "success"); } }] : []),
                     ...(groupMsgMenu.text && (!groupMsgMenu.type || groupMsgMenu.type === "text") ? [{ icon: Copy, label: t("nskh"), act: () => { copyText(groupMsgMenu.text || ""); showToast(t("gc_tm_alnskh"), "success"); } }] : []),
-                ]).concat(groupMsgMenu.mine && groupMsgMenu.text && !groupMsgMenu.deleted && (!groupMsgMenu.type || groupMsgMenu.type === "text") ? [{ icon: Edit2, label: t("tadyl"), act: () => { setEditingMessageId(groupMsgMenu.id); setEditingText(groupMsgMenu.text || ""); } }] : [])
+                ]).concat(groupMsgMenu.mine && !groupMsgMenu.deleted && group.cloud && window.SawaChat && window.SawaChat.readInfoSheet ? [{ icon: Info, label: tl("معلومات الرسالة", "Message info"), act: () => window.SawaChat.readInfoSheet(group.id, groupMsgMenu.id) }] : [])   // C350: من قرأها
+                .concat(groupMsgMenu.mine && groupMsgMenu.text && !groupMsgMenu.deleted && (!groupMsgMenu.type || groupMsgMenu.type === "text") ? [{ icon: Edit2, label: t("tadyl"), act: () => { setEditingMessageId(groupMsgMenu.id); setEditingText(groupMsgMenu.text || ""); } }] : [])
                 .concat(onDeleteMessage ? [{ icon: Trash2, label: t("hdhf"), act: () => setGDel({ id: groupMsgMenu.id, canAll: !groupMsgMenu.deleted && (groupMsgMenu.mine || isAdmin) }) }] : []) }),
         null));
 }

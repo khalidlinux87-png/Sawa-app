@@ -1925,7 +1925,7 @@ function ContactCardBubble({ m, mine }) {
         acts.push([tl("اتّصال", "Call"), () => { location.href = "tel:" + tels[0]; }]);
         if (!k.uid && !k.code) acts.push([tl("ابحث عنه في سوا", "Find on Sawa"), () => SC.findSheet({ phone: tels[0] })]);
         if (!k.uid && !k.code && !mine) acts.push([tl("دعوة إلى سوا", "Invite to Sawa"), () => SC.invitePhone(tels[0])]);
-        acts.push([tl("حفظ", "Save"), () => shareContactOut({ name: k.n, phone: tels[0], code: k.code || "" })]);
+        acts.push([tl("حفظ", "Save"), () => (SC && SC.saveToPhone ? SC.saveToPhone({ name: k.n, phone: tels[0], code: k.code || "" }) : shareContactOut({ name: k.n, phone: tels[0], code: k.code || "" }))]);   // C350: إلى جهات الهاتف مباشرة
     }
     return React.createElement("div", { style: { minWidth: 210, maxWidth: 260 } },
         React.createElement("div", { className: `flex ${rowStart()} items-center gap-2.5 pb-2`, style: { borderBottom: `1px solid ${mine ? "#ffffff33" : colors.border}` } },
@@ -2807,6 +2807,19 @@ function ChatInfoScreen({ conversation, messages, background, setBackground, dis
                         React.createElement("div", { className: `flex-1 ${textStart()}` },
                             React.createElement("span", { className: "text-sm font-bold block", style: { color: colors.text } }, conversation.secret ? tl("رمز الأمان", "Safety code") : tl("بدء محادثة سرّيّة", "Start a secret chat")),
                             React.createElement("span", { className: "text-[10px]", style: { color: colors.textMuted } }, conversation.secret ? tl("قارنه مع الطرف الآخر للتأكّد أنّ لا أحد بينكما", "Compare it to make sure nobody is in between") : tl("مشفّرة بين جهازيكما فقط — لا يقرؤها خادم سوا", "Encrypted between your two devices only"))))),
+                // C350: رقم الطرف الآخر (إن كان من جهات اتّصالي في سوا وعُرف رقمه) ⇒ حفظه في جهات الهاتف
+                (() => {
+                    const SC = window.SawaChat;
+                    if (!conversation.peerUid || conversation.isSavedMessages || !SC || !SC.saveToPhone || !SC.contacts) return null;
+                    const ct = SC.contacts().find((c) => c && c.uid === conversation.peerUid);
+                    if (!ct || !ct.phone) return null;
+                    return React.createElement("button", { onClick: () => SC.saveToPhone({ name: (SC.nickOf && SC.nickOf(ct.uid)) || ct.name || conversation.name, phone: ct.phone, code: ct.code }), className: "w-full mb-4", "data-sawa": "save-to-phone" },
+                        React.createElement(Card, { className: `flex ${rowStart()} items-center gap-3` },
+                            React.createElement(UserPlus, { size: 17, color: colors.primary }),
+                            React.createElement("div", { className: `flex-1 ${textStart()}` },
+                                React.createElement("span", { className: "text-sm font-bold block", style: { color: colors.text } }, tl("حفظ في جهات الهاتف", "Save to phone contacts")),
+                                React.createElement("span", { className: "text-[11px]", dir: "ltr", style: { color: colors.textMuted, unicodeBidi: "isolate" } }, ct.phone))));
+                })(),
                 React.createElement("button", { onClick: exportChat, className: "w-full mb-4" },
                     React.createElement(Card, { className: `flex ${rowStart()} items-center gap-3` },
                         React.createElement(Download, { size: 17, color: colors.primary }),
