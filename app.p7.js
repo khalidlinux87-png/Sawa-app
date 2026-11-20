@@ -1027,6 +1027,7 @@ function SelfieCapture({ onCaptured }) {
             setStatus("streaming");
         }
         catch (err) {
+            if (err.name === "NotAllowedError" && window.SawaChat && window.SawaChat.permHelp) window.SawaChat.permHelp("cam");   // C348
             setErrorMsg(err.name === "NotAllowedError" ? t("w_rfd_alkamyra") : t("tadhr_tshghyl_alkamyra", { message: err.message }));
             setStatus("error");
         }

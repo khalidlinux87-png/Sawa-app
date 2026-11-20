@@ -243,7 +243,7 @@
   }
   function avChanged() { publish(); publishChats(); Object.keys(days).forEach(publishMessages); try { if (app && app.setMyProfile) app.setMyProfile(profile()); } catch (e) {} try { global.dispatchEvent(new CustomEvent("sawa-avatars")); } catch (e) {} }
   // C155: صورة المجموعة — تُحفظ في avatars/{cid} كصور الحسابات (يكتبها الخادم لمن يحقّ له تعديل المعلومات) · photoTs في المحادثة يجدّد النسخة المخزّنة
-  var CHAT_BUILD = "c346";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
+  var CHAT_BUILD = "c348";   // C160: يُرفع مع كلّ تعديلٍ على هذا الملفّ — يظهر في «تحديث التطبيق»
   function setGroupPhoto(cid, has) {
     return choosePhoto({ title: L("صورة المجموعة", "Group photo"), remove: !!has }).then(function (du) {
       if (!du) return null;
@@ -865,7 +865,7 @@
                          : jsq.then(function () { try { return viaJsQr(); } catch (e) { return null; } });
           p.then(function (v) { if (v) return finish(v); setTimeout(tick, useDet ? 250 : 180); });
         })();
-      }).catch(function (e) { finish(null, new Error(e && e.name === "NotAllowedError" ? L("لا إذن للكاميرا — اسمح بها من إعدادات المتصفّح", "No camera permission") : L("تعذّر فتح الكاميرا", "Couldn't open the camera"))); });
+      }).catch(function (e) { if (e && e.name === "NotAllowedError") permHelp("cam"); finish(null, new Error(e && e.name === "NotAllowedError" ? L("لا إذن للكاميرا — اسمح بها من إعدادات المتصفّح", "No camera permission") : L("تعذّر فتح الكاميرا", "Couldn't open the camera"))); });
     });
   }
   // C20: ما يُمسح يُوجَّه بحسب نوعه — رابط شخص · رابط مجموعة · رابط غرفة · رمز سوا (10 أرقام). وكلّها تسأل قبل التنفيذ.
@@ -4219,6 +4219,7 @@
     emitPush();
     if (st === "default" || st === "denied") return maybeBanner(st);
     if (st !== "granted") return;
+    setTimeout(maybeBgBanner, 6000);   // C348
     var prev = lsGet("sawa_push", {});
     if (NB() || IOSB()) { pushToken().then(registerToken).catch(function (e) { LOG.warn("native.token", { err: (e && e.message) || e }); }); return; }   // C72: أندرويد يجدّد رمزه وحده (onNewToken)
     resubFlagged().then(function (flag) {
@@ -4396,6 +4397,107 @@
     ok.onclick = function () { try { ov.remove(); } catch (e) {} };
     ov.onclick = function (e) { if (e.target === ov) ok.onclick(); };
     box.appendChild(h); box.appendChild(p); box.appendChild(ok); ov.appendChild(box); document.body.appendChild(ov);
+  }
+  // C348: إعدادات الهاتف التي تمنع المكالمات والرسائل والتطبيق مغلق (أندرويد الأصليّ) — تُعرض واحدةً واحدة بالترتيب مع زرٍّ يفتح صفحتها
+  //   في شاشات البداية بعد «الإشعارات»، وللمستخدم الحاليّ عبر شريط «قد لا تصلك المكالمات» وورقة bgFixSheet
+  var bgSkip = {};
+  var BG_MAKERS = /honor|huawei|xiaomi|redmi|poco|oppo|vivo|realme|oneplus|tecno|infinix|itel|meizu|asus/;
+  function bgStatusNow() { try { return NB() && NB().bgStatus ? (JSON.parse(NB().bgStatus()) || null) : null; } catch (e) { return null; } }
+  function bgItems(bs, withLaunch) {
+    if (!bs) return [];
+    var maker = String(bs.maker || ""), list = [];
+    if (bs.callsChannel != null && bs.callsChannel >= 0 && bs.notif) list.push({ id: "calls", kind: "calls", ok: bs.callsChannel >= 4,
+      t: L("صوت المكالمات وظهورها", "Call sound & pop-up"),
+      why: L("قناة «المكالمات» في إشعارات سوا مكتومة أو مخفيّة، فلا يرنّ الهاتف حين يتّصل بك أحد. افتحها واجعلها «عاجلة» مع الصوت والظهور على الشاشة.", "The Calls channel is muted or hidden, so your phone won't ring. Set it to Urgent with sound and pop-up."),
+      btn: L("فتح إعدادات المكالمات", "Open call settings") });
+    if (bs.sdk >= 34) list.push({ id: "fullscreen", kind: "fullscreen", ok: bs.fullScreen !== false,
+      t: L("شاشة المكالمة فوق القفل", "Call screen on the lock screen"),
+      why: L("حتّى تظهر شاشة المكالمة كاملةً والهاتف مقفل، فعّل «السماح بإشعارات ملء الشاشة» لسوا.", "So incoming calls show full screen when the phone is locked, allow full-screen notifications for Sawa."),
+      btn: L("السماح", "Allow") });
+    list.push({ id: "battery", kind: "battery", ok: !!bs.battery,
+      t: L("البطاريّة: بلا قيود", "Battery: unrestricted"),
+      why: L("الهاتف يوقف سوا في الخلفيّة لتوفير البطاريّة، فلا تصل المكالمات والرسائل إلّا حين تفتح التطبيق. اختر «سماح» أو «بلا قيود».", "Your phone stops Sawa in the background to save battery, so calls and messages arrive late. Choose Allow or Unrestricted."),
+      btn: L("السماح", "Allow") });
+    if (withLaunch && BG_MAKERS.test(maker)) list.push({ id: "launch", kind: "launch", ok: !!lsGet("sawa_bg_launch", 0), manual: true,
+      t: L("التشغيل التلقائيّ", "Auto-start"),
+      why: L("في هواتف " + (maker.charAt(0).toUpperCase() + maker.slice(1)) + " إعدادٌ إضافيّ يمنع التطبيقات من العمل في الخلفيّة. في الصفحة التي ستُفتح ابحث عن سوا وفعّل «التشغيل التلقائيّ» (أو اجعل إدارتها «يدويّة» وفعّل كلّ المفاتيح).", "Phones by " + maker + " have an extra setting that stops background apps. Find Sawa on the next page and turn on Auto-start (or set it to Manual with all toggles on)."),
+      btn: L("فتح الإعدادات", "Open settings") });
+    return list;
+  }
+  function bgPending(withLaunch) { return bgItems(bgStatusNow(), withLaunch).filter(function (x) { return !x.ok && !bgSkip[x.id]; }); }
+  function bgOpen(item) {
+    if (item.manual) lsSet("sawa_bg_launch", Date.now());   // لا يمكن فحصه — يُعدّ منجزاً بعد فتح صفحته
+    try { NB().openSetting(item.kind); } catch (e) {}
+  }
+  // ورقةٌ للمستخدم الحاليّ: البند الأوّل غير المضبوط، ثمّ التالي تلقائيّاً بعد العودة من الإعدادات
+  function bgFixSheet() {
+    if (!NB() || !NB().bgStatus) return pushCheckSheet();
+    bgSkip = {};
+    var s = sheet(L("📞 حتّى تصلك المكالمات والتطبيق مغلق", "📞 So calls reach you when Sawa is closed")), body = mk("div"), timer = null, cur = null, total = 0;
+    s.box.appendChild(body);
+    var close = s.close; s.close = function () { if (timer) clearInterval(timer); close(); };
+    s.ov.onclick = function (e) { if (e.target === s.ov) s.close(); };
+    var draw = function () {
+      var all = bgItems(bgStatusNow(), true), todo = all.filter(function (x) { return !x.ok && !bgSkip[x.id]; });
+      var item = todo[0] || null;
+      if (cur && item && cur === item.id) return;   // لا إعادة رسم بلا تغيير
+      cur = item ? item.id : "done"; body.innerHTML = "";
+      if (!item) {
+        body.appendChild(note(L("✅ إعدادات الهاتف جاهزة. ستصلك المكالمات والرسائل والتطبيق مغلق.", "✅ Your phone is set up. Calls and messages will reach you when Sawa is closed."), "#2e7d5b", "#e6f5ec"));
+        var t = mkBtn(L("اختبار مكالمة وإشعار", "Test a call and a notification")); t.style.marginTop = "8px"; t.onclick = function () { s.close(); pushCheckSheet(); }; body.appendChild(t);
+        var d = mkBtn(L("تمّ", "Done"), "primary"); d.style.marginTop = "8px"; d.onclick = s.close; body.appendChild(d);
+        lsSet("sawa_bg_asked", Date.now()); hideBanner();
+        return;
+      }
+      total = Math.max(total, todo.length); var n = total, k = n - todo.length + 1;
+      body.appendChild(mk("div", "font:700 12px var(--sawa-font,system-ui);color:#5b6b7c;text-align:center;margin-bottom:8px", L("الخطوة " + k + " من " + n, "Step " + k + " of " + n)));
+      body.appendChild(mk("div", "font:800 15px var(--sawa-font,system-ui);margin:4px 0", item.t));
+      var w = note(item.why); w.style.fontSize = "13.5px"; body.appendChild(w);
+      var go = mkBtn(item.btn, "primary"); go.style.marginTop = "10px";
+      go.onclick = function () { bgOpen(item); if (item.manual) { cur = null; setTimeout(draw, 800); } };
+      var sk = mkBtn(L("تخطّي", "Skip"), "ghost"); sk.style.marginTop = "4px";
+      sk.onclick = function () { bgSkip[item.id] = 1; cur = null; draw(); };
+      body.appendChild(go); body.appendChild(sk);
+    };
+    draw();
+    timer = setInterval(function () { if (!document.body.contains(s.ov)) { clearInterval(timer); return; } draw(); }, 1500);   // صفحات الإعدادات لا ترجع بنتيجة
+  }
+  // شريط للمستخدم الحاليّ: الإشعارات مسموحة لكنّ الهاتف يمنعها في الخلفيّة — مرّةً كلّ ٣ أيّام
+  function maybeBgBanner() {
+    if (bannerEl || !document.body || onbActive() || !NB() || !NB().bgStatus) return;
+    if (lsGet("sawa_bg_asked", 0) > Date.now() - 3 * 86400000) return;
+    if (global.SawaRTC && ((SawaRTC.active && SawaRTC.active()) || (SawaRTC.group && SawaRTC.group()) || (SawaRTC.room && SawaRTC.room()))) return;
+    if (!bgPending(false).length) return;
+    bannerEl = bannerShell();
+    var txt = document.createElement("div"); txt.style.flex = "1";
+    txt.textContent = L("⚠️ قد لا تصلك المكالمات والرسائل والتطبيق مغلق — إعدادات الهاتف تمنعها", "⚠️ Calls and messages may not reach you when Sawa is closed — phone settings block them");
+    var yes = btn(L("إصلاح", "Fix"), true), no = btn(L("لاحقاً", "Later"));
+    yes.onclick = function () { hideBanner(); lsSet("sawa_bg_asked", Date.now()); bgFixSheet(); };
+    no.onclick = function () { lsSet("sawa_bg_asked", Date.now()); hideBanner(); };
+    bannerEl.appendChild(txt); bannerEl.appendChild(yes); bannerEl.appendChild(no); document.body.appendChild(bannerEl);
+  }
+  // C348: الميكروفون أو الكاميرا مرفوضان — بدل رسالةٍ عابرة: ورقةٌ تشرح السبب وزرٌّ يفتح إعدادات سوا مباشرة
+  var permHelpAt = 0;
+  function permHelp(kind) {
+    if (Date.now() - permHelpAt < 5000 || !document.body) return;   // نداءاتٌ متتالية من الخطأ نفسه
+    permHelpAt = Date.now();
+    var mic = kind === "mic", cam = kind === "cam";
+    var what = mic ? L("الميكروفون", "the microphone") : cam ? L("الكاميرا", "the camera") : L("الميكروفون والكاميرا", "the microphone and camera");
+    var s = sheet(mic ? L("🎙 اسمح لسوا بالميكروفون", "🎙 Allow Sawa to use the microphone") : cam ? L("📷 اسمح لسوا بالكاميرا", "📷 Allow Sawa to use the camera") : L("🎙 اسمح لسوا بالميكروفون والكاميرا", "🎙 Allow microphone & camera"));
+    s.ov.style.zIndex = "2147483005";   // فوق شاشة المكالمة
+    s.box.appendChild(note(L("سوا لا تستطيع استخدام " + what + "، لأنّ الإذن مرفوض. هذا ليس عطلاً في التطبيق — " + (mic ? "المكالمات والرسائل الصوتيّة تحتاجه." : cam ? "مكالمات الفيديو والتصوير تحتاجها." : "المكالمات والرسائل الصوتيّة تحتاجهما."),
+      "Sawa can't use " + what + " because permission is denied. This isn't a bug — calls and voice messages need it.")));
+    var steps = NB() ? L("اضغط «فتح الإعدادات» ← «الأذونات» ← " + (mic ? "«الميكروفون»" : cam ? "«الكاميرا»" : "«الميكروفون» و«الكاميرا»") + " ← «السماح أثناء استخدام التطبيق»، ثمّ عُد إلى سوا.", "Tap Open settings → Permissions → " + (mic ? "Microphone" : cam ? "Camera" : "Microphone and Camera") + " → Allow while using the app, then come back.")
+      : IOSB() ? L("اضغط «فتح الإعدادات» وفعّل " + (mic ? "«الميكروفون»" : cam ? "«الكاميرا»" : "«الميكروفون» و«الكاميرا»") + "، ثمّ عُد إلى سوا.", "Tap Open settings and turn on " + (mic ? "Microphone" : cam ? "Camera" : "Microphone and Camera") + ", then come back.")
+      : isIOS() ? L("افتح «الإعدادات» ← «Safari» ← " + (mic ? "«الميكروفون»" : cam ? "«الكاميرا»" : "«الميكروفون» و«الكاميرا»") + " ← «سماح»، أو اضغط «ᴀA» في شريط العنوان ← «إعدادات موقع الويب».", "Open Settings → Safari → Microphone/Camera → Allow, or tap ᴀA in the address bar → Website Settings.")
+      : L("اضغط رمز القفل 🔒 بجانب العنوان ← «الأذونات» ← اسمح بـ" + what + "، ثمّ أعد تحميل الصفحة. في تطبيق سوا المثبّت: اضغط مطوّلاً على الأيقونة ← «معلومات التطبيق» ← «الأذونات».", "Tap the 🔒 next to the address → Permissions → allow " + what + ", then reload.");
+    var st = note(steps, "#1e293b", "#f5f7fa"); st.style.fontSize = "13.5px"; s.box.appendChild(st);
+    if (NB() || IOSB()) {
+      var go = mkBtn(L("فتح الإعدادات", "Open settings"), "primary"); go.style.marginTop = "10px";
+      go.onclick = function () { s.close(); try { if (NB()) NB().openSetting("app"); else IOSB().call("openSettings"); } catch (e) {} };
+      s.box.appendChild(go);
+    }
+    var c = mkBtn(L("لاحقاً", "Later"), "ghost"); c.style.marginTop = "6px"; c.onclick = s.close; s.box.appendChild(c);
   }
   // عند العودة للتطبيق: ربّما غيّر المستخدم الإذن من إعدادات الهاتف
   try {
@@ -5844,7 +5946,8 @@
   //  ترحيب ← الدخول (Google · البريد · بدون حساب) ← الاسم ← رمزك ← الإشعارات ← تواصل مع أحد ← المحادثات
   var onb = null, pendingCode = null, pendingDelete = false, onbDeleteMode = false;
   var ONB_BASE = ["login", "name", "code", "notify", "find"];
-  function onbSteps() { return installable() ? ["login", "name", "code", "notify", "install", "find"] : ONB_BASE; }
+  function onbSteps() { var a = ["login", "name", "code", "notify"]; if (onbHasBg()) a.push("bg"); if (installable()) a.push("install"); a.push("find"); return a; }
+  function onbHasBg() { return !!(NB() && NB().bgStatus); }   // C348: خطوة «إعدادات الهاتف» في تطبيق أندرويد
   function onbActive() { return !!onb; }
   function onbNeeded() {
     if (lsGet("sawa_onboarded", 0)) return false;
@@ -6028,8 +6131,9 @@
     if (step === "name") { var a = authNow(); return a && !a.anon ? null : "login"; }
     if (step === "code") return "name";
     if (step === "notify") return "code";
-    if (step === "install") return pushState() === "default" ? "notify" : "code";
-    if (step === "find") return installable() ? "install" : pushState() === "default" ? "notify" : "code";
+    if (step === "bg") return pushState() === "default" ? "notify" : "code";
+    if (step === "install") return onbHasBg() ? "bg" : pushState() === "default" ? "notify" : "code";
+    if (step === "find") return installable() ? "install" : onbHasBg() ? "bg" : pushState() === "default" ? "notify" : "code";
     return null;
   }
   function onbSetLang(lang) {
@@ -6257,7 +6361,7 @@
       return;
     }
     if (step === "notify") {
-      if (pushState() !== "default") return onbGo("find");
+      if (pushState() !== "default") return onbGo(onbHasBg() ? "bg" : "find");
       b.appendChild(oTile("bell", "ob-ring"));
       b.appendChild(hTitle(L("لا تفوّتك رسالةٌ أو مكالمة", "Don't miss a message or call")));
       b.appendChild(hSub(L("نُعلمك حين تصلك رسالة أو مكالمة أو طلب تواصل — حتّى والتطبيق مغلق.", "We'll tell you about messages, calls and requests — even when the app is closed.")));
@@ -6269,8 +6373,29 @@
       var on = bigBtn(L("تفعيل الإشعارات", "Turn on notifications"), "white", "bell");
       var later = bigBtn(L("ليس الآن", "Not now"), "link");
       ft.appendChild(on); ft.appendChild(later);
-      on.onclick = function () { on.disabled = true; enablePush().then(function () { onbGo("install"); }); };
-      later.onclick = function () { lsSet("sawa_push_asked", Date.now()); onbGo("install"); };
+      on.onclick = function () { on.disabled = true; enablePush().then(function () { onbGo("bg"); }); };
+      later.onclick = function () { lsSet("sawa_push_asked", Date.now()); onbGo("bg"); };
+      return;
+    }
+    // C348: إعدادات الهاتف للمكالمات والتطبيق مغلق — بندٌ واحد في كلّ مرّة، ويتقدّم وحده بعد العودة من صفحة الإعدادات
+    if (step === "bg") {
+      var bgItem = onbHasBg() ? bgPending(true)[0] : null;
+      if (!bgItem) return onbGo("install");
+      b.appendChild(oTile("phone", "ob-ring"));
+      b.appendChild(hTitle(bgItem.t));
+      b.appendChild(hSub(bgItem.why));
+      var left = bgPending(true).length;
+      if (left > 1) b.appendChild(hSub(L("بقي " + arNum(left - 1) + " بعد هذا.", arNum(left - 1) + " more after this.")));
+      var fx = bigBtn(bgItem.btn, "white");
+      var sk2 = bigBtn(L("تخطّي", "Skip"), "link");
+      ft.appendChild(fx); ft.appendChild(sk2);
+      fx.onclick = function () { bgOpen(bgItem); if (bgItem.manual) setTimeout(function () { if (onb && onb.step === "bg") onbGo("bg"); }, 800); };
+      sk2.onclick = function () { bgSkip[bgItem.id] = 1; onbGo("bg"); };
+      onb.timer = setInterval(function () {   // صفحات الإعدادات لا ترجع بنتيجة ⇒ نفحص كلّ ثانيةٍ ونصف
+        if (!onb || onb.step !== "bg") return;
+        var nx = bgPending(true)[0];
+        if (!nx || nx.id !== bgItem.id) onbGo("bg");
+      }, 1500);
       return;
     }
     if (step === "install") {
@@ -6974,7 +7099,7 @@
     isCloud: isCloud, enabled: function () { return !!state.uid; }, openChat: openChat, closeChat: closeChat, clearNotifs: clearChatNotifs,
     send: send, edit: edit, clearChat: clearChat,
     // C4
-    enablePush: enablePush, disablePush: disablePush, pushEnabled: pushEnabled, pushSupported: pushSupported, pushState: pushState, pushHelp: helpSheet, pushCheckSheet: pushCheckSheet, updateSheet: updateSheet, checkUpdate: checkUpdate, forceUpdate: forceUpdate, updateAvailable: function () { return upd.available; },
+    enablePush: enablePush, disablePush: disablePush, pushEnabled: pushEnabled, pushSupported: pushSupported, pushState: pushState, pushHelp: helpSheet, pushCheckSheet: pushCheckSheet, bgFixSheet: bgFixSheet, permHelp: permHelp, updateSheet: updateSheet, checkUpdate: checkUpdate, forceUpdate: forceUpdate, updateAvailable: function () { return upd.available; },
     sendMedia: sendMedia, forwardMessage: forwardMessage, openFile: openFile, choosePhoto: choosePhoto, markViewedOnce: markViewedOnce, ensureMedia: ensureMedia,
     // C3
     createGroup: createGroup, updateGroup: updateGroup, addMembers: addMembers, removeMember: removeMember, setAdmin: setAdmin,
