@@ -148,7 +148,7 @@
   // ---------- C94: عدّة وسطاء — قياس الأقرب لشبكة هذا الهاتف ----------
   // يقيس زمن حجز منفذٍ في كلّ وسيط (≈ ذهابان وعودتان) ويرتّبها: الأسرع أوّلاً (المتصفّح يفضّل أوّل خادمٍ في القائمة)، ومعه احتياطيّ واحد.
   // الاختيار تلقائيّ بالكامل (لا يراه المستخدم). يُعاد القياس كلّ 30 دقيقة أو حين تتغيّر الشبكة.
-  var RTC_BUILD = "c348";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
+  var RTC_BUILD = "c351";   // C167: يظهر في «تحديث التطبيق» — ما يعمل فعلاً من ملفّ المكالمات · C300: P2P priority + TURN-TLS + relay upgrade
   var iceRelays = null, relayMs = {}, relayAt = 0, relayNet = "", relayBusy = null, relayPrimary = null;
   function lsGet(k) { try { return global.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { global.localStorage.setItem(k, v); } catch (e) {} }
@@ -4218,8 +4218,11 @@
     r.micBad = bad ? (r.micBad || 0) + 1 : 0;
     if (r.micBad < 3 || (r.healN || 0) >= 5) return;
     r.healing = true; r.micBad = 0; r.healN = (r.healN || 0) + 1;
-    LOG.warn("room.mic.heal", { n: r.healN, st: a ? a.readyState : "none", muted: !!(a && a.muted), zero: !!zero });
-    var plain = !!zero && (r.zeroN || 0) >= 2 && !micPlain();   // C278: الإعادة العاديّة لم تكفِ ⇒ نمط الميكروفون العاديّ
+    LOG.warn("room.mic.heal", { n: r.healN, st: a ? a.readyState : "none", muted: !!(a && a.muted), zero: !!zero, early: Date.now() - (r.joinedAt || 0) < 20000 });
+    // C351: أوّل 20 ث من الغرفة (والانتقال إليها من مكالمة) يتغيّر فيها مسار الصوت فيُعطي الميكروفون صمتاً لحظيّاً — ليس عطلاً.
+    //       كان يُفعِّل النمط البديل (بلا إلغاء صدى) حتّى إغلاق التطبيق ⇒ كلّ غرفةٍ وجماعيّةٍ بعدها منخفضة الصوت ومع صدى. هنا إعادة الميكروفون العاديّة فقط.
+    var early = Date.now() - (r.joinedAt || 0) < 20000;
+    var plain = !!zero && (r.zeroN || 0) >= 2 && !micPlain() && !early;   // C278: الإعادة العاديّة لم تكفِ ⇒ نمط الميكروفون العاديّ
     if (plain) { r.plainCheck = true; LOG.warn("mic.plain.try"); }
     getMedia("audio", null, plain || micPlain()).then(function (st) {
       r.healing = false;
