@@ -3390,3 +3390,10 @@ Khalid's notes on C314:
 - **لم يُغيَّر:** إعدادات الميكروفون والترميز، والتسجيل نفسه (لا موازنة لمستوى الرسالة بعد — الآيفون يتجاهل ضبط الكسب فرسائله أخفض غالباً؛ يحتاج قياساً قبل أيّ تغيير)، والمكبّر الإجباريّ في الجماعيّة.
 - **الفحص:** `node --check` (sawa-rtc · sw) · javac للصياغة فقط · zip: الملفّان المقصودان فقط تغيّرا (83 ملفّاً) · Swift لم يُترجم هنا (يترجمه سير ios-build). **لم يُجرَّب على هاتف.**
 - **الرفع:** Sawa-app: sawa-rtc.js + BUILD.md + HANDOFF.md ← sw.js (v530، `EXPECT` sawa-rtc = 490827) أخيراً · Sawa-android: sawa-native.zip (c286) ⇒ البناء · Sawa-iOS: Sawa/NativeBridge.swift ⇒ ios-testflight.
+
+## 📱 C352 — Google Play: «ميزات أجهزة غير متوافقة» (الاتّجاه العموديّ وWi-Fi) · أندرويد c287 (بلا تغييرٍ في الويب)
+- **التحذير (Play Console، الإصدار 1105):** `android.hardware.screen.portrait` و`android.hardware.wifi` عُدّتا إلزاميّتين ⇒ سوا لا يُثبَّت على بعض الأجهزة اللوحيّة وأجهزة سطح المكتب وAndroid XR.
+- **المصدر:** الاتّجاه العموديّ من نشاط ماسح QR في مكتبةٍ خارجيّة (ليس في بيان سوا)، وWi-Fi يُستنتج من إذن `ACCESS_WIFI_STATE`.
+- **الإصلاح:** `<uses-feature … required="false">` للاثنتين في `AndroidManifest.xml`.
+- **الفحص:** البيان XML صالح · zip بالملفّات الـ83 نفسها (البيان وSAWA_BUILD فقط تغيّرا). **لم يُجرَّب على جهاز.**
+- **الرفع:** Sawa-android: sawa-native.zip (c287) ⇒ البناء ⇒ Release ‏android-latest ⇒ رفع AAB الجديد إلى Play Console.
